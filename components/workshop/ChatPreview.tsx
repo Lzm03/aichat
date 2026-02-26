@@ -23,11 +23,14 @@ export const ChatPreview: React.FC<ChatPreviewProps> = ({
 
   const [inputText, setInputText] = useState("");
 
-  const canChat = currentStep >= 3; // ⭐ 第3步才出现聊天框
+  const canChat = currentStep >= 3; 
+  /// <reference types="vite/client" />
 
   // Deepseek API 调用
   async function askLLM(systemPrompt: string, userPrompt: string) {
-    const r = await fetch("http://localhost:4000/api/ask", {
+    const baseUrl = import.meta.env.VITE_API_URL;
+
+    const r = await fetch(`${baseUrl}/api/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ systemPrompt, userPrompt }),
