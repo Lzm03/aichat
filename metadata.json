@@ -1,0 +1,5 @@
+{
+  "name": "Remix: SmartEdu HK Teacher Portal",
+  "description": "An AI Bot Workshop for teachers to create and manage AI teaching assistants for K12 education. Built with React, TypeScript, and Tailwind CSS, featuring a modern Bento Grid layout and intuitive creation flow.",
+  "requestFramePermissions": []
+}
