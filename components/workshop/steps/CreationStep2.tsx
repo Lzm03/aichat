@@ -72,8 +72,10 @@ const handleProcess = async () => {
     content = inputValue;
   }
 
+  const baseUrl = import.meta.env.VITE_API_URL;
+
   // ===== 调用真正的深度解析 API =====
-  const r = await fetch("http://localhost:4000/api/ask", {
+  const r = await fetch(`${baseUrl}/api/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
