@@ -43,10 +43,7 @@ export default function VideoStudioModal({
   const [speakingUrl, setSpeakingUrl] = useState<string | null>(null);
   const [thinkingUrl, setThinkingUrl] = useState<string | null>(null);
 
-  const API_BASE =
-    process.env.NODE_ENV === "development"
-      ? "http://localhost:4000"
-      : process.env.NEXT_PUBLIC_API_BASE;
+  const baseUrl = import.meta.env.VITE_API_URL;
 
   const prompts = {
     idle: "角色保持静止并微微眨眼的待机动画",
@@ -71,7 +68,7 @@ export default function VideoStudioModal({
       imageUrl: imageBase64,
     };
 
-    const res = await axios.post(`${API_BASE}/api/video/generate`, payload, {
+    const res = await axios.post(`${baseUrl}/api/video/generate`, payload, {
       headers: { "Content-Type": "application/json" },
     });
 
@@ -89,7 +86,7 @@ export default function VideoStudioModal({
 
         try {
           const res = await axios.get(
-            `${API_BASE}/api/video/result/${requestId}`
+            `${baseUrl}/api/video/result/${requestId}`
           );
           const data = res.data;
 
