@@ -157,7 +157,8 @@ export const CreationStepSoundAnimation = ({
   // ------------------------
   useEffect(() => {
     const loadVoices = async () => {
-      const res = await fetch("http://localhost:4000/api/voices");
+      const baseUrl = import.meta.env.VITE_API_URL;
+      const res = await fetch(`${baseUrl}/api/voices`);
       const data = await res.json();
       console.log("🎤 后端返回 voices =", data.voices);
       setVoiceList(data.voices || []);
@@ -187,7 +188,8 @@ export const CreationStepSoundAnimation = ({
 
     setIsAuditioning(true);
     try {
-      const res = await fetch("http://localhost:4000/api/tts", {
+      const baseUrl = import.meta.env.VITE_API_URL;
+      const res = await fetch(`${baseUrl}/api/tts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
