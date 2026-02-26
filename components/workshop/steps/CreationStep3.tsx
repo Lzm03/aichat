@@ -44,8 +44,9 @@ const AvatarGenerator: React.FC<{
 
     try {
       const fullPrompt = `${selectedStyle}: ${prompt}`;
+      const baseUrl = import.meta.env.VITE_API_URL;
 
-      const res = await fetch("http://localhost:4000/api/generate-image", {
+      const res = await fetch(`${baseUrl}/api/generate-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: fullPrompt }),
