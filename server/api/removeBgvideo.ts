@@ -6,15 +6,16 @@ import express from "express";
 import multer from "multer";
 import fetch from "node-fetch";
 import fs from "fs";
+import path from "path";
 
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
 
 const API_KEY = process.env.VIDEO_BG_REMOVER_KEY;
-const PUBLIC_BASE = process.env.BACKEND_URL;  // ⭐ 加载 ngrok
+const PUBLIC_BASE = process.env.BACKEND_URL; // e.g. https://xxxx.ngrok-free.app
 
 if (!API_KEY) console.error("❌ Missing VIDEO_BG_REMOVER_KEY");
-if (!PUBLIC_BASE) console.error("❌ Missing PUBLIC_BASE_URL");
+if (!PUBLIC_BASE) console.error("❌ Missing BACKEND_URL");
 
 /* ---------------- Poll Status ---------------- */
 async function pollStatus(jobId: string): Promise<string> {
@@ -23,12 +24,14 @@ async function pollStatus(jobId: string): Promise<string> {
       `https://api.videobgremover.com/v1/jobs/${jobId}/status`,
       { headers: { "X-Api-Key": API_KEY! } }
     );
+
     const statusJson: any = await statusRes.json();
 
     if (statusJson.status === "completed") {
       console.log("✅ Remove BG Done");
-      return statusJson.processed_video_url;
+      return statusJson.processed_video_url; // ⚠️ 這是臨時 URL
     }
+
     if (statusJson.status === "failed") {
       throw new Error("❌ Remove BG Failed");
     }
@@ -36,6 +39,30 @@ async function pollStatus(jobId: string): Promise<string> {
     console.log("⏳ Processing:", statusJson.status);
     await new Promise((r) => setTimeout(r, 2000));
   }
+}
+
+/* ---------------- Download video and save locally ---------------- */
+async function downloadToLocal(url: string) {
+  console.log("⬇️ Downloading processed video:", url);
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("❌ Failed to download processed video");
+
+  const buffer = Buffer.from(await res.arrayBuffer());
+
+  const filename = `video_${Date.now()}.webm`;
+  const savePath = path.join("uploads", filename);
+
+  // Save to local /uploads folder
+  fs.writeFileSync(savePath, buffer);
+
+  // Permanent public URL
+  const publicUrl = `${PUBLIC_BASE}/uploads/${filename}`;
+
+  console.log("📦 Saved to:", savePath);
+  console.log("🌍 Public URL:", publicUrl);
+
+  return publicUrl;
 }
 
 /* ---------------- Main Upload Route ---------------- */
@@ -56,10 +83,10 @@ router.post("/remove-bg", upload.single("file"), async (req, res) => {
       console.log("🔥 File Mode:", tempFilePath);
 
       if (!PUBLIC_BASE) {
-        return res.status(500).json({ error: "Missing PUBLIC_BASE_URL" });
+        return res.status(500).json({ error: "Missing BACKEND_URL" });
       }
 
-      // ⭐ 关键修改：使用 ngrok URL，而不是 localhost URL
+      // ⚠️ MUST use your BACKEND_URL for public access
       videoUrl = `${PUBLIC_BASE}/${tempFilePath}`;
       console.log("🌍 Public URL:", videoUrl);
     }
@@ -108,17 +135,19 @@ router.post("/remove-bg", upload.single("file"), async (req, res) => {
     console.log("🌀 Processing started…");
 
     /* ---------- 轮询 ---------- */
-    const transparentUrl = await pollStatus(jobId);
+    const temporaryUrl = await pollStatus(jobId);
 
-    /* ---------- 删除临时文件 ---------- */
+    /* ---------- 删除临时上传文件 ---------- */
     if (tempFilePath) {
       fs.unlink(tempFilePath, () =>
         console.log("🧹 Deleted temp:", tempFilePath)
       );
     }
 
-    /* ---------- 返回透明视频 ---------- */
-    return res.json({ transparentUrl });
+    /* ---------- ⚡ 下載到後端，生成永久網址 ---------- */
+    const permanentUrl = await downloadToLocal(temporaryUrl);
+
+    return res.json({ transparentUrl: permanentUrl });
   } catch (err) {
     console.error("❌ Remove background failed:", err);
     res.status(500).json({ error: "Remove background failed" });
