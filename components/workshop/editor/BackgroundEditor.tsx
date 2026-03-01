@@ -14,14 +14,19 @@ const presetBackgrounds = [
     'https://images.unsplash.com/photo-1518152006812-edab29b069ac?q=80&w=2940&auto=format&fit=crop',
     'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?q=80&w=2942&auto=format&fit=crop',
     'https://images.unsplash.com/photo-1506748686214-e9df14d4d9d0?q=80&w=2940&auto=format&fit=crop',
-    'https://images.unsplash.com/photo-1511300636412-01634d3b8783?q=80&w=2940&auto=format&fit=crop',
+    'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?w=1600&q=80',
     'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?q=80&w=2940&auto=format&fit=crop',
 ];
 
-const mockStyles = {
-    '寫實畫風': 'https://images.unsplash.com/photo-1532274402911-5a369e4c4bb5?w=400&q=80',
-    '手繪畫風': 'https://images.unsplash.com/photo-1531816432631-f6ecd765da74?w=400&q=80',
-    '卡通畫風': 'https://images.unsplash.com/photo-1634501094318-156a2f76329e?w=400&q=80',
+export const mockStyles = {
+  "寫實風格":
+    "https://images.unsplash.com/photo-1607746882042-944635dfe10e?w=800&q=80",
+
+  "手繪風格":
+    "https://images.unsplash.com/photo-1532274402911-5a369e4c4bb5?w=400&q=80",
+
+  "卡通風格":
+    "https://images.unsplash.com/photo-1606112219348-204d7d8b94ee?w=600&q=80",
 };
 
 type Tab = 'templates' | 'upload';

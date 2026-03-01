@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Icons } from "../icons";
 
 interface ChatPreviewProps {
@@ -8,7 +8,7 @@ interface ChatPreviewProps {
     name: string;
     avatar: string;
     background: string;
-    knowledgeBase: string;   // ← 第2步产生的 generatedDescription
+    knowledgeBase: string;
   };
 }
 
@@ -16,17 +16,25 @@ export const ChatPreview: React.FC<ChatPreviewProps> = ({
   currentStep,
   botConfig,
 }) => {
-
   const [messages, setMessages] = useState<
     { role: "user" | "bot"; text: string }[]
   >([]);
 
   const [inputText, setInputText] = useState("");
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  const canChat = currentStep >= 3; 
-  /// <reference types="vite/client" />
+  const canChat = currentStep > 3;
 
-  // Deepseek API 调用
+  /** ⭐ 新訊息自動滾到底部 */
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [messages]);
+
   async function askLLM(systemPrompt: string, userPrompt: string) {
     const baseUrl = import.meta.env.VITE_API_URL;
 
@@ -40,78 +48,72 @@ export const ChatPreview: React.FC<ChatPreviewProps> = ({
     return data.reply;
   }
 
-  async function sendMessage() {
-    if (!inputText.trim()) return;
+async function sendMessage() {
+  if (!inputText.trim()) return;
 
-    const userMsg = { role: "user" as const, text: inputText };
-    setMessages((prev) => [...prev, userMsg]);
+  const text = inputText;     
+  setInputText("");            
 
-    const systemPrompt = `
-你是一名 AI 助教，具有以下人物设定与知识：
+  const userMsg = { role: "user" as const, text };
+  setMessages((prev) => [...prev, userMsg]);
 
-${botConfig.knowledgeBase}
+  const reply = await askLLM(botConfig.knowledgeBase, text);
+  const botMsg = { role: "bot" as const, text: reply };
 
-请严格根据以上内容回答问题，保持温柔友善的语气。
-`;
-
-    setInputText("");
-
-    const reply = await askLLM(systemPrompt, userMsg.text);
-
-    const botMsg = { role: "bot" as const, text: reply };
-    setMessages((prev) => [...prev, botMsg]);
-  }
-
-  const hasBackground = botConfig.background?.trim();
-  const hasAvatar = botConfig.avatar?.trim();
+  setMessages((prev) => [...prev, botMsg]);
+}
 
   return (
-    <div className="h-[600px] bg-white rounded-3xl shadow-lg flex flex-col overflow-hidden relative">
+    <div className="relative h-[600px] rounded-3xl shadow-lg overflow-hidden">
 
-      {/* 背景 */}
-      {currentStep >= 2 && hasBackground && (
-        <img
-          src={botConfig.background}
-          className="absolute inset-0 w-full h-full object-cover"
-        />
-      )}
+      {/* ⭐ 背景：固定不動 */}
+      <div
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: `url(${botConfig.background})` }}
+      />
 
-      {/* 名字 */}
-      <div className="relative z-20 flex justify-center pt-4 pb-2">
-        <span className="px-4 py-1.5 bg-slate-200 text-slate-700 text-xs font-semibold rounded-full shadow-sm">
-          {botConfig.name}
-        </span>
-      </div>
+      {/* ⭐ 半透明遮罩 */}
+      <div className="absolute inset-0 bg-white/10 backdrop-blur-sm"></div>
 
-      {/* Step1 空状态 */}
-      {currentStep === 1 && (
-        <div className="relative z-20 flex-1 flex flex-col items-center justify-center text-slate-500">
-          <Icons.bot className="w-12 h-12 text-slate-400 mb-3" />
-          <p className="text-base font-medium">角色構建中…</p>
+      {/* ⭐ 內容 */}
+      <div className="relative z-10 flex flex-col h-full">
+
+        {/* 名稱 */}
+        <div className="flex justify-center pt-4 pb-2">
+          <span className="px-4 py-1.5 bg-white/80 rounded-full text-xs font-semibold shadow">
+            {botConfig.name}
+          </span>
         </div>
-      )}
 
-      {/* Step2+ 显示头像 */}
-      {currentStep >= 2 && (
-        <div className="relative z-20 flex-1 flex flex-col justify-between">
-
-          {/* Avatar */}
-          <div className="flex items-center justify-center mt-3">
-            {hasAvatar && (
-              <div className="w-20 h-20 rounded-full overflow-hidden shadow border-2 border-white">
-                <img
-                  src={botConfig.avatar}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            )}
+        {/* Step1 */}
+        {currentStep === 1 && (
+          <div className="flex-1 flex flex-col items-center justify-center text-white">
+            <Icons.bot className="w-12 h-12 opacity-70 mb-3" />
+            <p className="text-base font-medium">角色構建中…</p>
           </div>
+        )}
 
-          {/* Step3 聊天框 */}
-          {canChat && (
-            <>
-              {/* 聊天记录 */}
-              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-white/70 rounded-xl mx-4 mt-3">
+        {/* Step2+ */}
+        {currentStep >= 2 && (
+          <>
+            {/* Avatar */}
+            <div className="flex justify-center mt-2 mb-2">
+              {botConfig.avatar && (
+                <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-white shadow-xl">
+                  <img src={botConfig.avatar} className="w-full h-full object-cover" />
+                </div>
+              )}
+            </div>
+
+            {/* ⭐ 聊天內容（可滾動） */}
+            {canChat && (
+              <div
+                ref={scrollRef}
+                className="
+                  flex-1 overflow-y-auto px-4 py-3 space-y-3 
+                  custom-scroll
+                "
+              >
                 {messages.map((m, i) => (
                   <div
                     key={i}
@@ -120,10 +122,10 @@ ${botConfig.knowledgeBase}
                     }`}
                   >
                     <div
-                      className={`max-w-[75%] p-3 rounded-xl text-sm ${
+                      className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm shadow ${
                         m.role === "user"
-                          ? "bg-blue-600 text-white"
-                          : "bg-gray-200 text-gray-800"
+                          ? "bg-indigo-600 text-white"
+                          : "bg-white/80 backdrop-blur text-slate-800"
                       }`}
                     >
                       {m.text}
@@ -131,26 +133,28 @@ ${botConfig.knowledgeBase}
                   </div>
                 ))}
               </div>
+            )}
 
-              {/* 输入框 */}
-              <div className="p-4 flex gap-2 relative z-20 bg-white">
+            {/* ⭐ 輸入框 */}
+            {canChat && (
+              <div className="p-4 flex gap-2 bg-white/60 backdrop-blur border-t border-white/30">
                 <input
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   placeholder="向你的機器人問問題吧…"
-                  className="flex-1 p-3 rounded-xl border border-slate-300 text-sm"
+                  className="flex-1 p-3 rounded-xl text-sm border border-slate-300 focus:ring-2 focus:ring-indigo-300"
                 />
                 <button
                   onClick={sendMessage}
-                  className="p-3 bg-indigo-600 text-white rounded-xl"
+                  className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700"
                 >
                   <Icons.send className="w-4 h-4" />
                 </button>
               </div>
-            </>
-          )}
-        </div>
-      )}
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 };

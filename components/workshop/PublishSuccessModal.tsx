@@ -1,184 +1,348 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Copy, Check, Send, Sparkles } from 'lucide-react';
+import React, { useState, useRef, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  X,
+  Copy,
+  Check,
+  Send,
+  MoreHorizontal,
+  Link as LinkIcon,
+  Edit,
+  Trash2,
+} from "lucide-react";
 
-export const PublishSuccessModal = ({ isOpen, onClose, botConfig }) => {
-  const { name: botName = "孔夫子 (AI 助教)" } = botConfig || {};
-  const [copied, setCopied] = useState(false);
-  const [inputText, setInputText] = useState('');
-  const [botState, setBotState] = useState('idle'); // 'idle' | 'thinking' | 'speaking'
+interface PublishSuccessModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  botConfig: any;
+  onEdit: () => void;
+  onDelete: (botId: string) => void;
+}
+
+export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
+  isOpen,
+  onClose,
+  botConfig,
+  onEdit,
+  onDelete,
+}) => {
+  if (!botConfig) return null;
+
+  const {
+    name: botName = "AI 機器人",
+    avatarUrl,
+    background,
+    videoIdle,
+    videoThinking,
+    videoTalking,
+    voiceId, 
+  } = botConfig;
+
   const [messages, setMessages] = useState([
-    { role: 'bot', content: `你好！我是${botName}，我已經準備好與學生們互動了！` }
+    { role: "bot", content: `你好！我是 ${botName}，我已經準備好和你聊天了！` },
   ]);
 
-  const mockShareUrl = "https://smartedu.hk/bot/abcd-1234";
-  
-  // 模擬的背景與全身數字人素材
-  const mockBgUrl = "https://images.unsplash.com/photo-1577896851231-70ef18881754?q=80&w=2000&auto=format&fit=crop"; // 教室背景
-  const mockAvatarUrl = "https://cdn3d.iconscout.com/3d/premium/thumb/teacher-holding-pointer-4993685-4161041.png"; // 3D 全身教師
+  const [inputText, setInputText] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [botState, setBotState] = useState<"idle" | "thinking" | "speaking">(
+    "idle"
+  );
 
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef(null);
+
+  const shareUrl = "https://smartedu.hk/bot/xxxxx";
+
+  // -----------------------------
+  // 🔥 自动切换三段动画
+  // -----------------------------
+  const videoSrc =
+    botState === "idle"
+      ? videoIdle
+      : botState === "thinking"
+      ? videoThinking
+      : videoTalking;
+
+  // -----------------------------
+  // 点击外面自动关闭 dropdown
+  // -----------------------------
+  useEffect(() => {
+    const handleClick = (e: any) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  // -----------------------------
+  // 🔥 复制链接
+  // -----------------------------
   const handleCopy = () => {
-    navigator.clipboard.writeText(mockShareUrl);
+    navigator.clipboard.writeText(shareUrl);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), 1500);
   };
 
-  const handleSend = () => {
-    if (!inputText.trim()) return;
-    
-    setMessages(prev => [...prev, { role: 'user', content: inputText }]);
-    setInputText('');
-    setBotState('thinking');
-    
-    setTimeout(() => {
-      setBotState('speaking');
-      setMessages(prev => [...prev, { role: 'bot', content: '這是一個非常好的問題！讓我用我剛學到的知識來為你解答...' }]);
-      setTimeout(() => setBotState('idle'), 3000);
-    }, 2000);
-  };
+const sendMessage = async () => {
+  if (!inputText.trim()) return;
+
+  const userMsg = inputText;
+  setInputText("");
+
+  // 顯示使用者訊息
+  setMessages(prev => [...prev, { role: "user", content: userMsg }]);
+
+  // 進入 thinking
+  setBotState("thinking");
+
+  const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+
+  try {
+    // ========= 🔥 LLM + TTS 同時開始 =========
+    const askReq = fetch(`${baseUrl}/api/ask`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemPrompt: botConfig.knowledgeBase + "\n" + botConfig.securityPrompt,
+        userPrompt: userMsg,
+      }),
+    });
+
+    const askRes = await askReq;
+    const askData = await askRes.json();
+    const reply = askData.reply || "（無回應）";
+
+    // 如果沒有 voiceId → 直接輸出文字
+    if (!voiceId) {
+      setMessages(prev => [...prev, { role: "bot", content: reply }]);
+      setBotState("idle");
+      return;
+    }
+
+    // ========= 🔥 LLM 回覆後，立即請求 TTS =========
+    const ttsReq = fetch(`${baseUrl}/api/tts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: reply,
+        voiceId,
+      }),
+    });
+
+    const audioRes = await ttsReq;
+    const audioBlob = await audioRes.blob();
+    const audio = new Audio(URL.createObjectURL(audioBlob));
+
+    // ========= 🔥 TTS 準備好後 → 一次過開始播放 =========
+    setMessages(prev => [...prev, { role: "bot", content: reply }]);
+    setBotState("speaking");
+    audio.play();
+
+    audio.onended = () => {
+      setBotState("idle");
+    };
+
+  } catch (error) {
+    console.error("❌ 聊天或語音錯誤:", error);
+    setBotState("idle");
+  }
+};
 
   if (!isOpen) return null;
 
   return (
     <AnimatePresence>
-      { isOpen &&
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-        {/* 背景遮罩 */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-          onClick={onClose}
-        />
-
-        {/* 彈窗主體 (加大尺寸) */}
-        <motion.div
-          initial={{ scale: 0.95, opacity: 0, y: 20 }}
-          animate={{ scale: 1, opacity: 1, y: 0 }}
-          exit={{ scale: 0.95, opacity: 0, y: 20 }}
-          className="relative w-full max-w-6xl h-[85vh] bg-white rounded-[32px] shadow-2xl flex overflow-hidden z-10"
-        >
-          {/* 關閉按鈕 */}
-          <button 
+      {isOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          {/* 背景 */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={onClose}
-            className="absolute top-6 right-6 z-50 p-2 bg-black/10 hover:bg-black/20 backdrop-blur-md rounded-full text-slate-700 transition-colors"
+          />
+
+          {/* 主体 */}
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.95, opacity: 0, y: 20 }}
+            className="relative w-full max-w-6xl h-[85vh] bg-white rounded-3xl shadow-2xl overflow-hidden flex"
           >
-            <X size={24} />
-          </button>
+            {/* 左侧背景 + 动画 */}
+            {/* 左侧背景 + 动画 */}
+            <div className="relative w-3/5 bg-slate-200">
 
-          {/* ================= 左側：4:3 全景沉浸展示區 ================= */}
-          <div className="relative w-3/5 bg-slate-100 flex-shrink-0 overflow-hidden">
-            {/* 1. 背景圖 */}
-            <img 
-              src={mockBgUrl} 
-              alt="Bot Background" 
-              className="absolute inset-0 w-full h-full object-cover opacity-90"
-            />
-            
-            {/* 2. 數字人全身形象 (根據狀態切換微動效) */}
-            <motion.div 
-              className="absolute inset-0 flex items-end justify-center pb-12"
-              animate={{
-                thinking: { y: [0, 8, 0], scale: [1, 1.02, 1] },
-                speaking: { y: [0, -4, 0] },
-                idle: { y: 0, scale: 1 }
-              }[botState]}
-              transition={{ repeat: botState !== 'idle' ? Infinity : 0, duration: 2, ease: "easeInOut" }}
-            >
-              <img 
-                src={mockAvatarUrl} 
-                alt="Bot Full Body" 
-                className="h-[85%] object-contain drop-shadow-2xl"
-              />
-            </motion.div>
-
-            {/* 3. 懸浮資訊卡 (Glassmorphism) */}
-            <div className="absolute bottom-8 left-8 right-8 bg-white/70 backdrop-blur-xl border border-white/40 p-5 rounded-[24px] shadow-lg flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-slate-800">{botName}</h2>
-                <div className="flex items-center gap-2 px-3 py-1 bg-emerald-500/10 text-emerald-600 text-sm rounded-full font-bold border border-emerald-500/20">
-                  <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                  已發佈上線
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-2 p-2 bg-white/80 rounded-xl border border-white/50 shadow-sm">
-                <input 
-                  type="text" 
-                  readOnly 
-                  value={mockShareUrl}
-                  className="flex-1 bg-transparent text-sm text-slate-600 outline-none px-2 font-medium"
+              {/* ⭐ 背景圖片：如為空 → 不渲染 img，改用灰底 */}
+              {background && background.trim() !== "" ? (
+                <img
+                  src={background}
+                  className="absolute inset-0 w-full h-full object-cover opacity-80"
                 />
-                <button 
-                  onClick={handleCopy}
-                  className={`p-2 rounded-lg transition-colors ${copied ? 'bg-emerald-100 text-emerald-600' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm'}`}
-                >
-                  {copied ? <Check size={18} /> : <Copy size={18} />}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* ================= 右側：聊天測試區 ================= */}
-          <div className="flex-1 flex flex-col bg-slate-50 relative z-20 shadow-[-10px_0_30px_rgba(0,0,0,0.05)]">
-            <div className="p-6 border-b border-slate-200 bg-white">
-              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <Sparkles size={20} className="text-indigo-500"/>
-                開始對話測試
-              </h3>
-            </div>
-            
-            {/* 聊天記錄 */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {messages.map((msg, idx) => (
-                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] p-4 shadow-sm ${
-                    msg.role === 'user' 
-                      ? 'bg-indigo-600 text-white rounded-[20px] rounded-br-sm' 
-                      : 'bg-white border border-slate-100 text-slate-700 rounded-[20px] rounded-bl-sm'
-                  }`}>
-                    {msg.content}
-                  </div>
-                </div>
-              ))}
-              
-              {/* 思考中狀態氣泡 */}
-              {botState === 'thinking' && (
-                <div className="flex justify-start">
-                  <div className="bg-white border border-slate-100 text-slate-400 p-4 rounded-[20px] rounded-bl-sm flex items-center gap-2 shadow-sm">
-                    <span className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce" />
-                    <span className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                    <span className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
-                  </div>
-                </div>
+              ) : (
+                <div className="absolute inset-0 w-full h-full bg-slate-300 opacity-80" />
               )}
+
+              {/* ⭐ 安全處理三段動畫：空字串 → 不渲染 video */}
+              <motion.div
+                className="absolute inset-0 flex items-end justify-center pb-12"
+                transition={{ duration: 2, repeat: Infinity }}
+              >
+                {(() => {
+                  const safeVideo =
+                    videoSrc && videoSrc.trim() !== "" ? videoSrc : null;
+
+                  if (safeVideo) {
+                    return (
+                      <video
+                        src={safeVideo}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="h-[80%] object-contain drop-shadow-xl"
+                      />
+                    );
+                  }
+
+                  // ⭐ avatarUrl 也要安全 fallback
+                  const safeAvatar =
+                    avatarUrl && avatarUrl.trim() !== ""
+                      ? avatarUrl
+                      : "https://via.placeholder.com/400";
+
+                  return (
+                    <img
+                      src={safeAvatar}
+                      className="h-[80%] object-contain drop-shadow-xl"
+                    />
+                  );
+                })()}
+              </motion.div>
             </div>
 
-            {/* 底部輸入框 */}
-            <div className="p-6 bg-white border-t border-slate-100">
-              <div className="flex items-center gap-3 p-2 bg-slate-50 rounded-full border border-slate-200 focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-50 transition-all">
-                <input
-                  type="text"
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                  placeholder="輸入訊息測試..."
-                  className="flex-1 bg-transparent border-none outline-none px-4 text-slate-700"
-                />
-                <button 
-                  onClick={handleSend}
-                  disabled={!inputText.trim()}
-                  className="p-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed active:translate-y-[2px] shadow-sm transition-all"
-                >
-                  <Send size={18} />
-                </button>
+            {/* 右侧聊天 */}
+            <div className="w-2/5 flex flex-col bg-slate-50">
+              {/* header */}
+              <div className="bg-white border-b p-4 flex justify-between items-center">
+                <div>
+                  <div className="text-lg font-bold">{botName}</div>
+                  <div className="text-xs text-emerald-600 flex items-center gap-1">
+                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                    已發佈上線
+                  </div>
+                </div>
+
+                <div className="flex items-center">
+                  <div className="relative" ref={dropdownRef}>
+                    <button
+                      className="p-2 rounded-full hover:bg-slate-200"
+                      onClick={() => setShowDropdown(!showDropdown)}
+                    >
+                      <MoreHorizontal size={18} />
+                    </button>
+
+                    {showDropdown && (
+                      <div className="absolute right-0 top-10 bg-white rounded-xl shadow-xl border p-2 w-56">
+                        <button
+                          className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded-lg w-full"
+                          onClick={onEdit}
+                        >
+                          <Edit size={16} /> 編輯機器人
+                        </button>
+
+                        <button
+                          onClick={handleCopy}
+                          className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded-lg w-full"
+                        >
+                          {copied ? <Check size={16} /> : <LinkIcon size={16} />}
+                          {copied ? "已複製" : "複製分享連結"}
+                        </button>
+
+                        <button
+                          className="flex items-center gap-2 p-2 hover:bg-red-50 text-red-600 rounded-lg w-full"
+                          onClick={() => onDelete(botConfig.id)}
+                        >
+                          <Trash2 size={16} /> 刪除機器人
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    className="ml-2 p-2 text-slate-500 hover:bg-slate-100 rounded-full"
+                    onClick={onClose}
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+              {/* messages */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {messages.map((m, i) => (
+                  <div
+                    key={i}
+                    className={`flex ${
+                      m.role === "user" ? "justify-end" : "justify-start"
+                    }`}
+                  >
+                    <div
+                      className={`max-w-[70%] p-3 rounded-2xl text-sm ${
+                        m.role === "user"
+                          ? "bg-indigo-600 text-white rounded-br-sm"
+                          : "bg-white border border-slate-200 rounded-bl-sm"
+                      }`}
+                    >
+                      {m.content}
+                    </div>
+                  </div>
+                ))}
+
+                {/* thinking bubble */}
+                {botState === "thinking" && (
+                  <div className="flex">
+                    <div className="bg-white border border-slate-200 p-3 rounded-2xl flex gap-1">
+                      <span className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce"></span>
+                      <span
+                        className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce"
+                        style={{ animationDelay: "0.2s" }}
+                      ></span>
+                      <span
+                        className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce"
+                        style={{ animationDelay: "0.4s" }}
+                      ></span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* input */}
+              <div className="p-4 bg-white border-t">
+                <div className="flex items-center bg-slate-100 rounded-full p-2">
+                  <input
+                    className="flex-1 bg-transparent px-3 text-sm outline-none"
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                    placeholder="輸入訊息測試..."
+                  />
+                  <button
+                    onClick={sendMessage}
+                    disabled={!inputText.trim()}
+                    className="p-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-40"
+                  >
+                    <Send size={16} />
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        </motion.div>
-      </div>
-      }
+          </motion.div>
+        </div>
+      )}
     </AnimatePresence>
   );
 };

@@ -16,7 +16,6 @@ interface Props {
 async function blobUrlToBase64(blobUrl: string): Promise<string> {
   const response = await fetch(blobUrl);
   const blob = await response.blob();
-
   return new Promise<string>((resolve) => {
     const reader = new FileReader();
     reader.onloadend = () => resolve(reader.result as string);
@@ -29,35 +28,39 @@ export default function VideoStudioModal({
   avatarUrl,
   onVideosGenerated,
 }: Props) {
+
+  // ===== 左侧面板 UI =====
   const [preset, setPreset] = useState("cinematic");
   const [duration, setDuration] = useState("10");
   const [aspectRatio, setAspectRatio] = useState("16:9");
   const [resolution, setResolution] = useState("1080p");
 
+  // ===== Loading 状态 =====
   const [progress, setProgress] = useState(0);
   const [loadingText, setLoadingText] = useState("");
   const [loading, setLoading] = useState(false);
 
-  /* ⭐ 新增：三个生成结果 URL */
-  const [idleUrl, setIdleUrl] = useState<string | null>(null);
-  const [speakingUrl, setSpeakingUrl] = useState<string | null>(null);
-  const [thinkingUrl, setThinkingUrl] = useState<string | null>(null);
+  // ===== 最终透明版视频 =====
+  const [idleWebm, setIdleWebm] = useState<string | null>(null);
+  const [speakingWebm, setSpeakingWebm] = useState<string | null>(null);
+  const [thinkingWebm, setThinkingWebm] = useState<string | null>(null);
 
   const baseUrl = import.meta.env.VITE_API_URL;
 
+  // 动作对应的 prompts
   const prompts = {
     idle: "角色保持静止并微微眨眼的待机动画",
     speaking: "角色张嘴说话的自然口型动画",
     thinking: "角色抬头或皱眉的思考动作动画",
   };
 
-  /* ========= 单个视频生成 ========= */
+  /* ========= Step 1: 生成原始动画 ========= */
   async function requestOneVideo(type: "idle" | "speaking" | "thinking") {
-    setLoadingText(`正在生成：${type}...`);
+    setLoadingText(`正在生成：${type} 原始視頻...`);
 
-    let imageBase64 = avatarUrl;
+    let img = avatarUrl;
     if (avatarUrl.startsWith("blob:")) {
-      imageBase64 = await blobUrlToBase64(avatarUrl);
+      img = await blobUrlToBase64(avatarUrl);
     }
 
     const payload = {
@@ -65,19 +68,19 @@ export default function VideoStudioModal({
       duration,
       aspectRatio,
       resolution,
-      imageUrl: imageBase64,
+      preset,
+      imageUrl: img,
     };
 
     const res = await axios.post(`${baseUrl}/api/video/generate`, payload, {
       headers: { "Content-Type": "application/json" },
     });
 
-    const requestId = res.data.request_id;
-    return await pollResult(requestId, type);
+    return await pollVideoStatus(res.data.request_id, type);
   }
 
-  /* ========= 轮询结果 ========= */
-  async function pollResult(requestId: string, type: string) {
+  /* ========= Step 2: 轮询生成状态 ========= */
+  async function pollVideoStatus(requestId: string, type: string) {
     let attempts = 0;
 
     return new Promise<string>((resolve, reject) => {
@@ -85,16 +88,16 @@ export default function VideoStudioModal({
         attempts++;
 
         try {
-          const res = await axios.get(
-            `${baseUrl}/api/video/result/${requestId}`
-          );
+          const res = await axios.get(`${baseUrl}/api/video/result/${requestId}`);
           const data = res.data;
 
-          if (data.progress) setProgress(Math.min(100, data.progress));
+          if (data.progress) {
+            setProgress(Math.min(80, data.progress));
+          }
 
           if (data.status === "completed") {
             clearInterval(timer);
-            resolve(data.url);
+            resolve(data.url); // 原始视频地址
           }
 
           if (data.status === "failed") {
@@ -106,56 +109,78 @@ export default function VideoStudioModal({
             clearInterval(timer);
             reject(new Error(`${type} 超时`));
           }
-        } catch (err) {
+        } catch (error) {
           clearInterval(timer);
-          reject(err);
+          reject(error);
         }
       }, 2000);
     });
   }
 
-  /* ========= 一键生成全部动画 ========= */
+  /* ========= Step 3: remove-bg API ========= */
+  async function removeBg(inputUrl: string) {
+    setLoadingText("正在移除背景…（Remove BG）");
+
+    const res = await axios.post(
+      `${baseUrl}/api/video/remove-bg`,
+      { url: inputUrl },
+      { headers: { "Content-Type": "application/json" } }
+    );
+
+    return res.data.transparentUrl; // webm
+  }
+
+  /* ========= Step 4: 完整流程 一键生成所有动画 ========= */
   async function generateAll() {
     setLoading(true);
-    setProgress(2);
+    setProgress(1);
 
     try {
+      // Idle
       const idle = await requestOneVideo("idle");
-      setIdleUrl(idle);
-      setProgress(35);
+      setProgress(30);
+      const idleWebmUrl = await removeBg(idle);
+      setIdleWebm(idleWebmUrl);
+      setProgress(50);
 
+      // Speaking
       const speak = await requestOneVideo("speaking");
-      setSpeakingUrl(speak);
-      setProgress(65);
+      setProgress(60);
+      const speakWebmUrl = await removeBg(speak);
+      setSpeakingWebm(speakWebmUrl);
+      setProgress(80);
 
+      // Thinking
       const think = await requestOneVideo("thinking");
-      setThinkingUrl(think);
+      setProgress(85);
+      const thinkWebmUrl = await removeBg(think);
+      setThinkingWebm(thinkWebmUrl);
       setProgress(100);
 
+      // 返回给外层组件（透明视频）
       onVideosGenerated({
-        idleUrl: idle,
-        speakingUrl: speak,
-        thinkingUrl: think,
+        idleUrl: idleWebmUrl,
+        speakingUrl: speakWebmUrl,
+        thinkingUrl: thinkWebmUrl,
       });
 
       setLoading(false);
-    } catch (err) {
+    } catch (error) {
+      console.error("生成失败", error);
       setLoading(false);
       alert("生成失败，请稍后再试");
     }
   }
 
-  /* ======================================
-     UI 开始
-  ====================================== */
+  /* ========= UI ========= */
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
       <div className="w-[90vw] h-[90vh] bg-white rounded-xl shadow-xl flex overflow-hidden">
-        
-        {/* 左侧设置面板 */}
-        <aside className="w-[360px] bg-white p-6 border-r overflow-y-auto">
+
+        {/* ================= 左侧设置 ================= */}
+        <aside className="w-[360px] p-6 border-r overflow-y-auto">
           <h2 className="text-xl font-bold">影片工作室</h2>
-          <p className="text-gray-500 text-sm mb-4">電影級 AI 影片生成 · 快速預覽</p>
+          <p className="text-gray-500 text-sm mb-4">AI 影片生成（透明背景）</p>
 
           {/* 风格 */}
           <div className="mt-4">
@@ -179,7 +204,7 @@ export default function VideoStudioModal({
             </div>
           </div>
 
-          {/* 高级设置 */}
+          {/* 长度 / 比例 / 分辨率 */}
           <div className="mt-4 grid grid-cols-2 gap-3">
             <div>
               <label className="text-sm font-semibold">長度</label>
@@ -188,9 +213,9 @@ export default function VideoStudioModal({
                 onChange={(e) => setDuration(e.target.value)}
                 className="w-full p-2 border rounded-lg"
               >
-                <option value="2">2 sec</option>
-                <option value="5">5 sec</option>
-                <option value="10">10 sec</option>
+                <option value="2">2 秒</option>
+                <option value="5">5 秒</option>
+                <option value="10">10 秒</option>
               </select>
             </div>
 
@@ -227,59 +252,59 @@ export default function VideoStudioModal({
               onClick={generateAll}
               className="w-full py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700"
             >
-              🎬 生成三種動畫
+              🎬 生成三種動畫（透明背景）
             </button>
 
-            <button onClick={onClose} className="mt-3 w-full py-3 rounded-xl border">
+            <button
+              onClick={onClose}
+              className="mt-3 w-full py-3 rounded-xl border"
+            >
               取消
             </button>
           </div>
         </aside>
 
-        {/* 右侧内容：初始 / Loading / 视频预览 */}
-        <main className="flex-1 bg-gray-50 p-6 overflow-y-auto">
+        {/* ================= 右侧预览区 ================= */}
+        <main className="flex-1 p-6 overflow-y-auto bg-gray-50">
 
-          {/* 初始状态 */}
-          {!loading && !idleUrl && !speakingUrl && !thinkingUrl && (
-            <div className="text-gray-500 text-center mt-20">
-              <div className="text-4xl mb-3">🎬</div>
-              <div className="font-semibold text-lg">影片準備開始</div>
-              <div>設定左側參數並點擊「生成三種動畫」</div>
-            </div>
-          )}
-
-          {/* 加载中 */}
+          {/* Loading UI */}
           {loading && (
             <div className="text-center mt-20">
-              <div className="animate-spin w-12 h-12 border-4 border-gray-300 border-t-blue-600 rounded-full mx-auto mb-4"></div>
+              <div className="animate-spin w-12 h-12 border-4 border-gray-300 border-t-blue-600 rounded-full mx-auto mb-4" />
               <div className="font-bold text-lg">{loadingText}</div>
               <div className="text-gray-500 mt-1">{progress}%</div>
             </div>
           )}
 
-          {/* 生成成功：三个视频预览 */}
-          {!loading && idleUrl && speakingUrl && thinkingUrl && (
+          {/* 三个透明视频预览 */}
+          {!loading && idleWebm && speakingWebm && thinkingWebm && (
             <div className="space-y-10">
-
               <div>
-                <h3 className="text-lg font-semibold mb-2 text-slate-700">✨ Idle（待機動畫）</h3>
-                <video className="w-full rounded-xl shadow" controls src={idleUrl} />
+                <h3 className="text-lg font-semibold mb-2">✨ Idle（透明）</h3>
+                <video className="w-full rounded-xl shadow" autoPlay muted loop src={idleWebm} />
               </div>
 
               <div>
-                <h3 className="text-lg font-semibold mb-2 text-slate-700">🗣 Speaking（說話動畫）</h3>
-                <video className="w-full rounded-xl shadow" controls src={speakingUrl} />
+                <h3 className="text-lg font-semibold mb-2">🗣 Speaking（透明）</h3>
+                <video className="w-full rounded-xl shadow" autoPlay muted loop src={speakingWebm} />
               </div>
 
               <div>
-                <h3 className="text-lg font-semibold mb-2 text-slate-700">🤔 Thinking（思考動畫）</h3>
-                <video className="w-full rounded-xl shadow" controls src={thinkingUrl} />
+                <h3 className="text-lg font-semibold mb-2">🤔 Thinking（透明）</h3>
+                <video className="w-full rounded-xl shadow" autoPlay muted loop src={thinkingWebm} />
               </div>
+            </div>
+          )}
 
+          {/* 初始界面 */}
+          {!loading && !idleWebm && (
+            <div className="text-gray-500 text-center mt-20">
+              <div className="text-4xl mb-3">🎬</div>
+              <div className="font-semibold text-lg">影片準備開始</div>
+              <div>設定左側參數後開始生成</div>
             </div>
           )}
         </main>
-
       </div>
     </div>
   );
