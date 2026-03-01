@@ -209,26 +209,46 @@ export const CreationStepSoundAnimation = ({
 
         <div className="mt-6 space-y-5">
           {[
-            { key: "idle", label: "Idle（待機動畫）", value: videoIdle },
-            { key: "thinking", label: "Thinking（思考動畫）", value: videoThinking },
-            { key: "talking", label: "Talking（說話動畫）", value: videoTalking },
-          ].map((item: any) => (
-            <div key={item.key}>
-              <label className="text-sm font-medium">{item.label}</label>
+            { key: "idle", label: "✨ Idle（待機動畫）", value: videoIdle },
+            { key: "thinking", label: "🤔 Thinking（思考動畫）", value: videoThinking },
+            { key: "talking", label: "🗣 Talking（說話動畫）", value: videoTalking },
+          ].map((item) => (
+            <div
+              key={item.key}
+              className="p-4 border rounded-2xl bg-white shadow-sm hover:shadow-md transition"
+            >
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm font-semibold">{item.label}</span>
 
-              {/* 上传按钮 */}
-              <input type="file" accept="video/*" onChange={(e) => handleUpload(e, item.key)} />
+                {/* 狀態小點點 */}
+                {uploadState[item.key].loading ? (
+                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+                ) : item.value ? (
+                  <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                ) : (
+                  <span className="w-2 h-2 rounded-full bg-gray-300"></span>
+                )}
+              </div>
+
+              {/* 上傳按鈕 */}
+              <input
+                type="file"
+                accept="video/*"
+                onChange={(e) => handleUpload(e, item.key)}
+                className="mb-2 block text-sm"
+              />
 
               {/* Loading */}
               {uploadState[item.key].loading ? (
-                <div className="text-xs text-blue-600 mt-1">
-                  正在移除背景… {uploadState[item.key].progress}%
+                <div className="flex items-center gap-2 text-xs text-blue-600 mt-1">
+                  <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                  <span>正在移除背景…</span>
                 </div>
               ) : (
                 item.value && (
                   <video
                     src={item.value}
-                    className="mt-2 w-40 rounded-xl shadow"
+                    className="mt-2 w-full rounded-xl shadow"
                     autoPlay
                     loop
                     muted
