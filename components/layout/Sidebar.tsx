@@ -46,10 +46,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
     <aside className="w-64 bg-white border-r border-slate-200/80 p-4 flex-col justify-between hidden lg:flex">
       <div>
         <div className="flex items-center space-x-3 p-4 mb-6">
-          <div className="bg-indigo-600 p-2 rounded-lg shadow-md shadow-indigo-500/20">
-            <Icons.sparkles className="text-white w-6 h-6" />
-          </div>
-          <h1 className="text-xl font-bold text-[#1E293B]">Chopreality</h1>
+          <img src="/choprealitylogo.png" alt="Logo" className="w-12 h-12 object-contain" />
+          <h1 className="text-xl font-bold text-[#1E293B] font-sans">CHOPREALITY</h1>
         </div>
         <nav>
           <ul className="space-y-2">
