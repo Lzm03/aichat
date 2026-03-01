@@ -38,9 +38,9 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     voiceId, 
   } = botConfig;
 
-  const [messages, setMessages] = useState([
-    { role: "bot", content: `你好！我是 ${botName}，我已經準備好和你聊天了！` },
-  ]);
+  
+
+  const [messages, setMessages] = useState<{ role: "user" | "bot"; content: string }[]>([]);
 
   const [inputText, setInputText] = useState("");
   const [copied, setCopied] = useState(false);
@@ -75,6 +75,19 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setMessages([
+      {
+        role: "bot",
+        content: `你好！我是 ${botName}，我已經準備好和你聊天了！`,
+      },
+    ]);
+  }, [botName, isOpen]);
+  
+  
 
   // -----------------------------
   // 🔥 复制链接
