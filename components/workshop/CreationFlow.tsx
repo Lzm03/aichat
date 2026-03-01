@@ -207,14 +207,14 @@ ${data.knowledgeSummary}
   // 4. 给 ChatPreview 的完整 prompt
   // -------------------------------
   const fullSystemPrompt = `
-你是一名 AI 助教，具備以下資訊：
+    你是一名 AI 助教，具備以下資訊：
 
-${botConfig.knowledgeBase}
+    ${botConfig.knowledgeBase}
 
-【安全規則】
-${botConfig.securityPrompt}
+    【安全規則】
+    ${botConfig.securityPrompt}
 
-請務必嚴格遵守以上所有規則。
+    請嚴格遵守以上所有規則，回答需簡短直接，不使用語氣詞。
 `.trim();
 
 const handleDeleteBot = async () => {
