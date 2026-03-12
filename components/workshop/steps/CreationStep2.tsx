@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Icons } from "../../icons";
 import { motion } from "framer-motion";
-import { API_BASE } from "../../../utils/api";
 
 type UploadMethod = "file" | "url" | "text";
 
@@ -25,7 +24,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated }) => 
   const [characterBackground, setCharacterBackground] = useState("");
   const [knowledgeSummary, setKnowledgeSummary] = useState("");
 
-  const baseUrl = API_BASE;
+  const baseUrl = import.meta.env.VITE_API_URL;
 
   // --------------------------
   // ⭐ 系統提示詞（深度分析 PDF）
@@ -103,10 +102,74 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated }) => 
       body: JSON.stringify({
         systemPrompt,
         userPrompt: content,
+        stream: false,
       }),
     });
 
-    return await res.json();
+    const raw = await res.text();
+
+    try {
+      return JSON.parse(raw);
+    } catch {
+      // 容錯：若後端仍返回 SSE（data:...），手動拼接成 reply
+      const reply = raw
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.replace(/^data:/, ""))
+        .join("")
+        .trim();
+      return { reply };
+    }
+  };
+
+  const processUrl = async (url: string) => {
+    const res = await fetch(`${baseUrl}/api/ask-url`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemPrompt,
+        url,
+      }),
+    });
+
+    const raw = await res.text();
+    let data: any = {};
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = { reply: raw };
+    }
+
+    if (!res.ok) {
+      throw new Error(data?.error || "網址解析失敗");
+    }
+
+    return data;
+  };
+
+  const parseKnowledgeReply = (reply: string) => {
+    const bgMatch = reply.match(/【人物背景設定】([\s\S]*?)【人物知識庫摘要】/);
+    const ksMatch = reply.match(/【人物知識庫摘要】([\s\S]*)/);
+
+    let bg = bgMatch?.[1]?.trim() ?? "";
+    let ks = ksMatch?.[1]?.trim() ?? "";
+
+    // 容錯：模型沒完全按格式回覆時，仍然產生可用內容
+    if (!bg && reply.trim()) {
+      const firstBlock = reply.split("\n\n")[0]?.trim() || "";
+      bg = firstBlock || "我會根據你提供的資料進行回答與整理。";
+    }
+    if (!ks && reply.trim()) {
+      const lines = reply
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .slice(0, 10)
+        .map((l) => (l.startsWith("-") ? l : `- ${l}`));
+      ks = lines.join("\n");
+    }
+
+    return { bg, ks };
   };
 
   // --------------------------
@@ -118,30 +181,29 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated }) => 
 
     setStatus("processing");
 
-    let result;
-    if (uploadMethod === "file" && file) {
-      result = await processFile(file);
-    } else {
-      result = await processText(inputValue.trim());
+    try {
+      let result;
+      if (uploadMethod === "file" && file) {
+        result = await processFile(file);
+      } else if (uploadMethod === "url") {
+        result = await processUrl(inputValue.trim());
+      } else {
+        result = await processText(inputValue.trim());
+      }
+
+      const reply = result.reply || "";
+      const { bg, ks } = parseKnowledgeReply(reply);
+
+      setCharacterBackground(bg);
+      setKnowledgeSummary(ks);
+      onGenerated({ characterBackground: bg, knowledgeSummary: ks });
+      setStatus("complete");
+    } catch (error) {
+      console.error("知識解析失敗:", error);
+      setCharacterBackground("解析失敗，請重試。");
+      setKnowledgeSummary("- 目前未能整理內容\n- 請檢查 API 設定或稍後重試");
+      setStatus("complete");
     }
-
-    const reply = result.reply || "";
-
-    // --------------------------
-    // 🔍 自動解析 block
-    // --------------------------
-    const bgMatch = reply.match(/【人物背景設定】([\s\S]*?)【人物知識庫摘要】/);
-    const ksMatch = reply.match(/【人物知識庫摘要】([\s\S]*)/);
-
-    const bg = bgMatch?.[1]?.trim() ?? "";
-    const ks = ksMatch?.[1]?.trim() ?? "";
-
-    setCharacterBackground(bg);
-    setKnowledgeSummary(ks);
-
-    onGenerated({ characterBackground: bg, knowledgeSummary: ks });
-
-    setStatus("complete");
   };
 
   // --------------------------

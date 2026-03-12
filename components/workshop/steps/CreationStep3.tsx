@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Icons } from "../../icons";
 import { BackgroundEditor } from "../editor/BackgroundEditor";
-import { API_BASE } from "../../../utils/api";
 
 interface CreationStep3Props {
   updateConfig: (key: "avatarUrl" | "background", value: string) => void;
@@ -30,7 +29,7 @@ const mockStyles = {
     const formData = new FormData();
     formData.append("file", file);
 
-    const baseUrl = API_BASE;
+    const baseUrl = import.meta.env.VITE_API_URL;
     const res = await fetch(`${baseUrl}/api/upload-image`, {
       method: "POST",
       body: formData
@@ -59,7 +58,7 @@ const AvatarGenerator: React.FC<{ onAvatarGenerated: (url: string) => void }> = 
 
     try {
       const fullPrompt = `${selectedStyle}: ${prompt}`;
-      const baseUrl = API_BASE;
+      const baseUrl = import.meta.env.VITE_API_URL;
 
       const res = await fetch(`${baseUrl}/api/generate-image`, {
         method: "POST",
@@ -170,7 +169,7 @@ const AvatarUploader: React.FC<{ onImageUploaded: (url: string) => void }> = ({
     const formData = new FormData();
     formData.append("file", file);
 
-    const baseUrl = API_BASE;
+    const baseUrl = import.meta.env.VITE_API_URL;
     const res = await fetch(`${baseUrl}/api/upload-image`, {
       method: "POST",
       body: formData,
