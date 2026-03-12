@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { motion } from "framer-motion";
 import {
   X,
   Copy,
@@ -11,7 +11,6 @@ import {
   Edit,
   Trash2,
 } from "lucide-react";
-import { API_BASE } from "../../utils/api";
 
 interface PublishSuccessModalProps {
   isOpen: boolean;
@@ -51,6 +50,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     "idle"
   );
   const [isStopAvailable, setIsStopAvailable] = useState(false);
+  const [isBooting, setIsBooting] = useState(false);
+  const [openingReady, setOpeningReady] = useState(false);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
@@ -64,15 +65,31 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 4) 不要長段落鋪陳，直接回答重點。
 `.trim();
 
-  // -----------------------------
-  // 🔥 自动切换三段动画
-  // -----------------------------
-  const videoSrc =
-    botState === "idle"
-      ? videoIdle
+  const safeVideoIdle = videoIdle && videoIdle.trim() !== "" ? videoIdle : null;
+  const safeVideoThinking =
+    videoThinking && videoThinking.trim() !== "" ? videoThinking : null;
+  const safeVideoTalking =
+    videoTalking && videoTalking.trim() !== "" ? videoTalking : null;
+  const hasAnyVideo = Boolean(safeVideoIdle || safeVideoThinking || safeVideoTalking);
+  const shouldShowBooting = isOpen && !openingReady;
+  const visualState =
+    botState === "speaking"
+      ? safeVideoTalking
+        ? "speaking"
+        : safeVideoIdle
+        ? "idle"
+        : "thinking"
       : botState === "thinking"
-      ? videoThinking
-      : videoTalking;
+      ? safeVideoThinking
+        ? "thinking"
+        : safeVideoIdle
+        ? "idle"
+        : "speaking"
+      : safeVideoIdle
+      ? "idle"
+      : safeVideoThinking
+      ? "thinking"
+      : "speaking";
 
   // -----------------------------
   // 点击外面自动关闭 dropdown
@@ -95,28 +112,90 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     });
   }, [messages, botState]);
 
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    setOpeningReady(false);
+    if (voiceId) {
+      // Set loading state before first paint to avoid chat UI flashing for 1-2 frames.
+      setIsBooting(true);
+      setMessages([]);
+      setBotState("thinking");
+      setIsStopAvailable(false);
+    } else {
+      setIsBooting(false);
+      setOpeningReady(true);
+    }
+  }, [isOpen, voiceId]);
+
   useEffect(() => {
     if (!isOpen) return;
 
+    ttsSessionRef.current += 1;
     ttsSeq.current = 0;
     nextPlaySeq.current = 0;
     ttsInflight.current = 0;
     ttsTextQueue.current = [];
     ttsAudioMap.current.clear();
     playing.current = false;
+    setIsStopAvailable(false);
 
     const openingMessage = `你好！我是 ${botName}，你現在最想解決什麼？`;
+    const sessionId = ttsSessionRef.current;
 
-    setMessages([
-      {
-        role: "bot",
-        content: openingMessage,
-      },
-    ]);
+    if (!voiceId) {
+      setIsBooting(false);
+      setBotState("idle");
+      setMessages([
+        {
+          role: "bot",
+          content: openingMessage,
+        },
+      ]);
+      setOpeningReady(true);
+      return;
+    }
 
-    // 開場提問也走 TTS
-    if (voiceId) setIsStopAvailable(true);
-    enqueueSpeak(openingMessage);
+    setIsBooting(true);
+    setBotState("thinking");
+    setMessages([]);
+
+    const openingSeq = ttsSeq.current++;
+    let openingReady = false;
+    requestTTSAudio(openingMessage, sessionId)
+      .then((audio) => {
+        if (!audio || sessionId !== ttsSessionRef.current) {
+          return;
+        }
+        openingReady = true;
+        ttsAudioMap.current.set(openingSeq, audio);
+        setMessages([
+          {
+            role: "bot",
+            content: openingMessage,
+          },
+        ]);
+        setIsStopAvailable(true);
+        setBotState("speaking");
+        setIsBooting(false);
+        setOpeningReady(true);
+        tryPlayInOrder();
+      })
+      .catch((e) => {
+        console.error("Opening TTS prepare error:", e);
+      })
+      .finally(() => {
+        if (sessionId === ttsSessionRef.current && !openingReady) {
+          setIsBooting(false);
+          setMessages([
+            {
+              role: "bot",
+              content: openingMessage,
+            },
+          ]);
+          setBotState("idle");
+          setOpeningReady(true);
+        }
+      });
   }, [botName, isOpen, voiceId]);
   
   
@@ -133,6 +212,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const playing = useRef(false);
   const activeAudio = useRef<HTMLAudioElement | null>(null);
   const activeRequestController = useRef<AbortController | null>(null);
+  const ttsRequestControllers = useRef<Set<AbortController>>(new Set());
+  const ttsSessionRef = useRef(0);
   const generationIdRef = useRef(0);
   const ttsSeq = useRef(0);
   const nextPlaySeq = useRef(0);
@@ -141,11 +222,14 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const ttsAudioMap = useRef<Map<number, HTMLAudioElement>>(new Map());
   const maxTtsInflight = 3;
 
-const requestTTSAudio = async (text: string) => {
+const requestTTSAudio = async (text: string, sessionId: number) => {
 
   if (!voiceId || !text.trim()) return;
+  if (sessionId !== ttsSessionRef.current) return;
 
-  const baseUrl = API_BASE;
+  const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+  const controller = new AbortController();
+  ttsRequestControllers.current.add(controller);
 
   try {
 
@@ -167,16 +251,23 @@ const requestTTSAudio = async (text: string) => {
         text,
         voiceId,
       }),
+      signal: controller.signal,
     });
+    if (!res.ok) throw new Error(`TTS failed: ${res.status}`);
+    if (sessionId !== ttsSessionRef.current) return;
 
     const blob = await res.blob();
+    if (sessionId !== ttsSessionRef.current) return;
 
     const audio = new Audio(URL.createObjectURL(blob));
     audio.playbackRate = 1.12;
     return audio;
 
   } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") return;
     console.error("TTS error:", e);
+  } finally {
+    ttsRequestControllers.current.delete(controller);
   }
 };
 
@@ -217,9 +308,21 @@ const tryPlayInOrder = () => {
   playing.current = true;
   activeAudio.current = audio;
   setBotState("speaking");
-  audio.play();
+  void audio.play().catch((e) => {
+    console.error("Audio play blocked:", e);
+    playing.current = false;
+    activeAudio.current = null;
+    setBotState("idle");
+  });
 
   audio.onended = () => {
+    URL.revokeObjectURL(audio.src);
+    activeAudio.current = null;
+    playing.current = false;
+    nextPlaySeq.current += 1;
+    tryPlayInOrder();
+  };
+  audio.onerror = () => {
     URL.revokeObjectURL(audio.src);
     activeAudio.current = null;
     playing.current = false;
@@ -229,6 +332,7 @@ const tryPlayInOrder = () => {
 };
 
 const pumpTTSRequests = () => {
+  const sessionId = ttsSessionRef.current;
   while (
     ttsInflight.current < maxTtsInflight &&
     ttsTextQueue.current.length > 0
@@ -236,9 +340,13 @@ const pumpTTSRequests = () => {
     const item = ttsTextQueue.current.shift()!;
     ttsInflight.current += 1;
 
-    requestTTSAudio(item.text)
+    requestTTSAudio(item.text, sessionId)
       .then((audio) => {
         if (!audio) return;
+        if (sessionId !== ttsSessionRef.current) {
+          URL.revokeObjectURL(audio.src);
+          return;
+        }
         ttsAudioMap.current.set(item.seq, audio);
         tryPlayInOrder();
       })
@@ -255,8 +363,11 @@ const isSentenceEnd = (text: string) => {
 
 const stopAllSpeech = () => {
   generationIdRef.current += 1;
+  ttsSessionRef.current += 1;
   activeRequestController.current?.abort();
   activeRequestController.current = null;
+  ttsRequestControllers.current.forEach((controller) => controller.abort());
+  ttsRequestControllers.current.clear();
 
   if (activeAudio.current) {
     activeAudio.current.pause();
@@ -277,9 +388,11 @@ const stopAllSpeech = () => {
   nextPlaySeq.current = 0;
   setBotState("idle");
   setIsStopAvailable(false);
+  setIsBooting(false);
 };
 
 const sendMessage = async () => {
+  if (shouldShowBooting) return;
   if (!inputText.trim()) return;
 
   stopAllSpeech();
@@ -290,7 +403,7 @@ const sendMessage = async () => {
   setMessages(prev => [...prev, { role: "user", content: userMsg }]);
   setBotState("thinking");
 
-  const baseUrl = API_BASE;
+  const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
   const currentGenId = generationIdRef.current;
 
   try {
@@ -425,6 +538,8 @@ const sendMessage = async () => {
   useEffect(() => {
     if (isOpen) return;
     stopAllSpeech();
+    setMessages([]);
+    setOpeningReady(false);
   }, [isOpen]);
 
   useEffect(() => {
@@ -440,25 +555,24 @@ const sendMessage = async () => {
   if (!isOpen) return null;
 
   return (
-    <AnimatePresence>
+    <>
       {isOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
           {/* 背景 */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+          <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={handleCloseWithInterrupt}
           />
 
           {/* 主体 */}
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0, y: 20 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.95, opacity: 0, y: 20 }}
-            className="relative w-full max-w-6xl h-[85vh] bg-white rounded-3xl shadow-2xl overflow-hidden flex"
-          >
+          <div className="relative w-full max-w-6xl h-[85vh] bg-white rounded-3xl shadow-2xl overflow-hidden flex">
+            {shouldShowBooting ? (
+              <div className="flex-1 flex flex-col items-center justify-center gap-4 bg-white">
+                <div className="w-10 h-10 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
+                <div className="text-sm text-slate-600">正在載入聊天與語音...</div>
+              </div>
+            ) : (
+              <>
             {/* 左侧背景 + 动画 */}
             {/* 左侧背景 + 动画 */}
             <div className="relative w-3/5 bg-slate-200">
@@ -473,41 +587,66 @@ const sendMessage = async () => {
                 <div className="absolute inset-0 w-full h-full bg-slate-300 opacity-80" />
               )}
 
-              {/* ⭐ 安全處理三段動畫：空字串 → 不渲染 video */}
               <motion.div
                 className="absolute inset-0 flex items-end justify-center pb-12"
                 transition={{ duration: 2, repeat: Infinity }}
               >
-                {(() => {
-                  const safeVideo =
-                    videoSrc && videoSrc.trim() !== "" ? videoSrc : null;
-
-                  if (safeVideo) {
-                    return (
+                {hasAnyVideo ? (
+                  <div className="relative h-[80%] w-full">
+                    {safeVideoIdle && (
                       <video
-                        src={safeVideo}
+                        src={safeVideoIdle}
                         autoPlay
                         loop
                         muted
                         playsInline
+                        preload="auto"
+                        className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                          visualState === "idle" ? "block" : "hidden"
+                        }`}
+                      />
+                    )}
+                    {safeVideoThinking && (
+                      <video
+                        src={safeVideoThinking}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        preload="auto"
+                        className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                          visualState === "thinking" ? "block" : "hidden"
+                        }`}
+                      />
+                    )}
+                    {safeVideoTalking && (
+                      <video
+                        src={safeVideoTalking}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        preload="auto"
+                        className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                          visualState === "speaking" ? "block" : "hidden"
+                        }`}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  (() => {
+                    const safeAvatar =
+                      avatarUrl && avatarUrl.trim() !== ""
+                        ? avatarUrl
+                        : "https://via.placeholder.com/400";
+                    return (
+                      <img
+                        src={safeAvatar}
                         className="h-[80%] object-contain drop-shadow-xl"
                       />
                     );
-                  }
-
-                  // ⭐ avatarUrl 也要安全 fallback
-                  const safeAvatar =
-                    avatarUrl && avatarUrl.trim() !== ""
-                      ? avatarUrl
-                      : "https://via.placeholder.com/400";
-
-                  return (
-                    <img
-                      src={safeAvatar}
-                      className="h-[80%] object-contain drop-shadow-xl"
-                    />
-                  );
-                })()}
+                  })()
+                )}
               </motion.div>
             </div>
 
@@ -615,6 +754,7 @@ const sendMessage = async () => {
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                    disabled={shouldShowBooting}
                     placeholder="先回答機器人的提問..."
                   />
                   <button
@@ -627,7 +767,7 @@ const sendMessage = async () => {
                   </button>
                   <button
                     onClick={sendMessage}
-                    disabled={!inputText.trim()}
+                    disabled={shouldShowBooting || !inputText.trim()}
                     className="p-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-40"
                   >
                     <Send size={16} />
@@ -635,9 +775,11 @@ const sendMessage = async () => {
                 </div>
               </div>
             </div>
-          </motion.div>
+              </>
+            )}
+          </div>
         </div>
       )}
-    </AnimatePresence>
+    </>
   );
 };
