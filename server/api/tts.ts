@@ -3,6 +3,27 @@ import fetch from "node-fetch";
 
 const router = express.Router();
 
+const collectVoices = (node: any, bucket: any[]) => {
+  if (!node) return;
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      if (item && typeof item === "object") {
+        if (item.voice_id || item.voiceId) {
+          bucket.push(item);
+          continue;
+        }
+        collectVoices(item, bucket);
+      }
+    }
+    return;
+  }
+  if (typeof node === "object") {
+    for (const value of Object.values(node)) {
+      collectVoices(value, bucket);
+    }
+  }
+};
+
 router.get("/voices", async (req, res) => {
   try {
     const token = process.env.MINIMAX_TOKEN;
@@ -17,7 +38,18 @@ router.get("/voices", async (req, res) => {
     });
 
     const data:any = await result.json();
-    res.json({ voices: data.system_voice || [] });
+    const collected: any[] = [];
+    collectVoices(data, collected);
+
+    const dedupedMap = new Map<string, any>();
+    for (const voice of collected) {
+      const id = voice.voice_id || voice.voiceId;
+      if (!id) continue;
+      if (!dedupedMap.has(id)) dedupedMap.set(id, voice);
+    }
+
+    const voices = Array.from(dedupedMap.values());
+    res.json({ voices });
   } catch (e) {
     res.status(500).json({ error: "voice list failed" });
   }
@@ -42,7 +74,7 @@ router.post("/tts", async (req, res) => {
           language_boost: "Chinese,Yue",
           voice_setting: {
             voice_id: voiceId,
-            speed: 1,
+            speed: 1.15,
             vol: 1,
             pitch: 0,
             emotion: "calm",

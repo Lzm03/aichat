@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 
 interface Props {
@@ -28,24 +28,133 @@ export default function VideoStudioModal({
   avatarUrl,
   onVideosGenerated,
 }: Props) {
+  const phaseMilestones = [18, 33, 48, 63, 78, 93];
 
   // ===== 左侧面板 UI =====
   const [preset, setPreset] = useState("cinematic");
-  const [duration, setDuration] = useState("10");
-  const [aspectRatio, setAspectRatio] = useState("16:9");
-  const [resolution, setResolution] = useState("1080p");
+  const [sourceAspectRatio, setSourceAspectRatio] = useState<string>("16:9");
 
   // ===== Loading 状态 =====
   const [progress, setProgress] = useState(0);
   const [loadingText, setLoadingText] = useState("");
   const [loading, setLoading] = useState(false);
+  const cancelRef = useRef(false);
+  const [phaseIndex, setPhaseIndex] = useState(0); // 0..5 (3次生成 + 3次去背景)
+  const progressRef = useRef(0);
+  const phaseTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const phaseStartTimeRef = useRef(0);
+  const phaseFromRef = useRef(0);
+  const phaseToRef = useRef(0);
+  const genEstimateMsRef = useRef(22000);
+  const rmEstimateMsRef = useRef(7000);
 
   // ===== 最终透明版视频 =====
   const [idleWebm, setIdleWebm] = useState<string | null>(null);
   const [speakingWebm, setSpeakingWebm] = useState<string | null>(null);
   const [thinkingWebm, setThinkingWebm] = useState<string | null>(null);
+  const canSave = !!(idleWebm && speakingWebm && thinkingWebm);
 
   const baseUrl = import.meta.env.VITE_API_URL;
+  const SUPPORTED_ASPECTS = new Set(["16:9", "9:16", "1:1"]);
+
+  function simplifyRatio(width: number, height: number): string {
+    const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+    const g = gcd(width, height);
+    return `${Math.round(width / g)}:${Math.round(height / g)}`;
+  }
+
+  async function getImageRatio(url: string): Promise<string> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(simplifyRatio(img.naturalWidth, img.naturalHeight));
+      img.onerror = () => resolve("16:9");
+      img.src = url;
+    });
+  }
+
+  function normalizeAspectRatioForApi(ratio: string): string {
+    if (SUPPORTED_ASPECTS.has(ratio)) return ratio;
+
+    const parts = ratio.split(":").map((v) => Number(v));
+    if (parts.length !== 2 || !parts[0] || !parts[1]) return "16:9";
+
+    const [w, h] = parts;
+    const value = w / h;
+
+    // 接近正方形时优先 1:1，其余按方向映射
+    if (Math.abs(value - 1) <= 0.15) return "1:1";
+    return value > 1 ? "16:9" : "9:16";
+  }
+
+  useEffect(() => {
+    let active = true;
+
+    async function detectSourceRatio() {
+      if (!avatarUrl) {
+        if (active) setSourceAspectRatio("16:9");
+        return;
+      }
+
+      if (avatarUrl.startsWith("blob:")) {
+        const base64 = await blobUrlToBase64(avatarUrl);
+        const ratio = await getImageRatio(base64);
+        if (active) setSourceAspectRatio(ratio);
+        return;
+      }
+
+      const ratio = await getImageRatio(avatarUrl);
+      if (active) setSourceAspectRatio(ratio);
+    }
+
+    void detectSourceRatio();
+    return () => {
+      active = false;
+    };
+  }, [avatarUrl]);
+
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
+
+  function clearPhaseTimer() {
+    if (phaseTimerRef.current) {
+      clearInterval(phaseTimerRef.current);
+      phaseTimerRef.current = null;
+    }
+  }
+
+  function beginPhase(index: number, type: "gen" | "rm") {
+    clearPhaseTimer();
+    setPhaseIndex(index);
+
+    phaseStartTimeRef.current = Date.now();
+    phaseFromRef.current = progressRef.current;
+    phaseToRef.current = phaseMilestones[index];
+    const estimate = type === "gen" ? genEstimateMsRef.current : rmEstimateMsRef.current;
+
+    phaseTimerRef.current = setInterval(() => {
+      if (cancelRef.current) return;
+      const elapsed = Date.now() - phaseStartTimeRef.current;
+      const t = Math.min(elapsed / estimate, 0.999);
+      const next = Math.floor(
+        phaseFromRef.current + (phaseToRef.current - phaseFromRef.current) * t
+      );
+      setProgress((prev) => (next > prev ? next : prev));
+    }, 80);
+  }
+
+  function completePhase(type: "gen" | "rm") {
+    clearPhaseTimer();
+    setProgress(phaseToRef.current);
+    progressRef.current = phaseToRef.current;
+
+    const actual = Date.now() - phaseStartTimeRef.current;
+    if (type === "gen") {
+      genEstimateMsRef.current = Math.round(genEstimateMsRef.current * 0.65 + actual * 0.35);
+    } else {
+      rmEstimateMsRef.current = Math.round(rmEstimateMsRef.current * 0.65 + actual * 0.35);
+    }
+  }
 
   // 动作对应的 prompts
   const prompts = {
@@ -59,15 +168,25 @@ export default function VideoStudioModal({
     setLoadingText(`正在生成：${type} 原始視頻...`);
 
     let img = avatarUrl;
-    if (avatarUrl.startsWith("blob:")) {
+    const isLocalAsset =
+      avatarUrl.startsWith("blob:") ||
+      avatarUrl.includes("localhost") ||
+      avatarUrl.includes("127.0.0.1");
+
+    // 云端模型无法访问本机 localhost，改用 base64 直传
+    if (isLocalAsset) {
       img = await blobUrlToBase64(avatarUrl);
     }
 
+    const rawAspectRatio =
+      isLocalAsset ? sourceAspectRatio : await getImageRatio(avatarUrl);
+    const selectedAspectRatio = normalizeAspectRatioForApi(rawAspectRatio);
+
     const payload = {
       prompt: prompts[type],
-      duration,
-      aspectRatio,
-      resolution,
+      duration: "2",
+      aspectRatio: selectedAspectRatio,
+      resolution: "480p",
       preset,
       imageUrl: img,
     };
@@ -79,12 +198,34 @@ export default function VideoStudioModal({
     return await pollVideoStatus(res.data.request_id, type);
   }
 
+  async function requestOneVideoWithRetry(
+    type: "idle" | "speaking" | "thinking",
+    maxRetry = 1
+  ) {
+    let attempt = 0;
+    while (true) {
+      try {
+        return await requestOneVideo(type);
+      } catch (err) {
+        if (cancelRef.current) throw err;
+        if (attempt >= maxRetry) throw err;
+        attempt += 1;
+        setLoadingText(`正在重試：${type}（第 ${attempt + 1} 次）...`);
+      }
+    }
+  }
+
   /* ========= Step 2: 轮询生成状态 ========= */
   async function pollVideoStatus(requestId: string, type: string) {
     let attempts = 0;
 
     return new Promise<string>((resolve, reject) => {
       const timer = setInterval(async () => {
+        if (cancelRef.current) {
+          clearInterval(timer);
+          reject(new Error("cancelled"));
+          return;
+        }
         attempts++;
 
         try {
@@ -92,7 +233,7 @@ export default function VideoStudioModal({
           const data = res.data;
 
           if (data.progress) {
-            setProgress(Math.min(80, data.progress));
+            // 前端改为阶段线性进度，此处不再直接覆盖 UI 进度
           }
 
           if (data.status === "completed") {
@@ -132,44 +273,82 @@ export default function VideoStudioModal({
 
   /* ========= Step 4: 完整流程 一键生成所有动画 ========= */
   async function generateAll() {
+    cancelRef.current = false;
     setLoading(true);
     setProgress(1);
+    progressRef.current = 1;
+    setPhaseIndex(0);
 
     try {
       // Idle
-      const idle = await requestOneVideo("idle");
-      setProgress(30);
+      beginPhase(0, "gen");
+      const idle = await requestOneVideoWithRetry("idle");
+      if (cancelRef.current) throw new Error("cancelled");
+      completePhase("gen");
+
+      beginPhase(1, "rm");
       const idleWebmUrl = await removeBg(idle);
+      if (cancelRef.current) throw new Error("cancelled");
       setIdleWebm(idleWebmUrl);
-      setProgress(50);
+      completePhase("rm");
 
       // Speaking
-      const speak = await requestOneVideo("speaking");
-      setProgress(60);
+      beginPhase(2, "gen");
+      const speak = await requestOneVideoWithRetry("speaking");
+      if (cancelRef.current) throw new Error("cancelled");
+      completePhase("gen");
+
+      beginPhase(3, "rm");
       const speakWebmUrl = await removeBg(speak);
+      if (cancelRef.current) throw new Error("cancelled");
       setSpeakingWebm(speakWebmUrl);
-      setProgress(80);
+      completePhase("rm");
 
       // Thinking
-      const think = await requestOneVideo("thinking");
-      setProgress(85);
-      const thinkWebmUrl = await removeBg(think);
-      setThinkingWebm(thinkWebmUrl);
-      setProgress(100);
+      beginPhase(4, "gen");
+      const think = await requestOneVideoWithRetry("thinking");
+      if (cancelRef.current) throw new Error("cancelled");
+      completePhase("gen");
 
-      // 返回给外层组件（透明视频）
-      onVideosGenerated({
-        idleUrl: idleWebmUrl,
-        speakingUrl: speakWebmUrl,
-        thinkingUrl: thinkWebmUrl,
-      });
+      beginPhase(5, "rm");
+      const thinkWebmUrl = await removeBg(think);
+      if (cancelRef.current) throw new Error("cancelled");
+      setThinkingWebm(thinkWebmUrl);
+      completePhase("rm");
+
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      setProgress(100);
+      progressRef.current = 100;
 
       setLoading(false);
     } catch (error) {
       console.error("生成失败", error);
+      clearPhaseTimer();
       setLoading(false);
-      alert("生成失败，请稍后再试");
+      if (!cancelRef.current) {
+        alert("生成失败，请稍后再试");
+      }
     }
+  }
+
+  function handleCancelGenerating() {
+    cancelRef.current = true;
+    clearPhaseTimer();
+    setLoading(false);
+  }
+
+  function handleSaveAndClose() {
+    if (!canSave) {
+      onClose();
+      return;
+    }
+
+    onVideosGenerated({
+      idleUrl: idleWebm!,
+      speakingUrl: speakingWebm!,
+      thinkingUrl: thinkingWebm!,
+    });
+    onClose();
   }
 
   /* ========= UI ========= */
@@ -180,7 +359,7 @@ export default function VideoStudioModal({
         {/* ================= 左侧设置 ================= */}
         <aside className="w-[360px] p-6 border-r overflow-y-auto">
           <h2 className="text-xl font-bold">影片工作室</h2>
-          <p className="text-gray-500 text-sm mb-4">AI 影片生成（透明背景）</p>
+          <p className="text-gray-500 text-sm mb-4">極簡模式</p>
 
           {/* 风格 */}
           <div className="mt-4">
@@ -204,62 +383,26 @@ export default function VideoStudioModal({
             </div>
           </div>
 
-          {/* 长度 / 比例 / 分辨率 */}
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm font-semibold">長度</label>
-              <select
-                value={duration}
-                onChange={(e) => setDuration(e.target.value)}
-                className="w-full p-2 border rounded-lg"
-              >
-                <option value="2">2 秒</option>
-                <option value="5">5 秒</option>
-                <option value="10">10 秒</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-sm font-semibold">畫面比例</label>
-              <select
-                value={aspectRatio}
-                onChange={(e) => setAspectRatio(e.target.value)}
-                className="w-full p-2 border rounded-lg"
-              >
-                <option>16:9</option>
-                <option>9:16</option>
-                <option>1:1</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-sm font-semibold">解析度</label>
-              <select
-                value={resolution}
-                onChange={(e) => setResolution(e.target.value)}
-                className="w-full p-2 border rounded-lg"
-              >
-                <option>480p</option>
-                <option>720p</option>
-                <option>1080p</option>
-              </select>
-            </div>
-          </div>
-
           {/* 按钮 */}
           <div className="mt-6">
             <button
               onClick={generateAll}
+              disabled={loading}
               className="w-full py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700"
             >
               🎬 生成三種動畫（透明背景）
             </button>
 
             <button
-              onClick={onClose}
-              className="mt-3 w-full py-3 rounded-xl border"
+              onClick={handleSaveAndClose}
+              disabled={loading}
+              className={`mt-3 w-full py-3 rounded-xl font-semibold ${
+                canSave
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                  : "border"
+              } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
             >
-              取消
+              {canSave ? "保存並返回" : "關閉"}
             </button>
           </div>
         </aside>
@@ -269,29 +412,76 @@ export default function VideoStudioModal({
 
           {/* Loading UI */}
           {loading && (
-            <div className="text-center mt-20">
-              <div className="animate-spin w-12 h-12 border-4 border-gray-300 border-t-blue-600 rounded-full mx-auto mb-4" />
-              <div className="font-bold text-lg">{loadingText}</div>
-              <div className="text-gray-500 mt-1">{progress}%</div>
+            <div
+              className="relative h-[72vh] rounded-3xl overflow-hidden"
+              style={{
+                backgroundColor: "#f3f4f6",
+                backgroundImage:
+                  "radial-gradient(circle, rgba(148,163,184,0.35) 2px, transparent 2px)",
+                backgroundSize: "30px 30px",
+              }}
+            >
+              <div className="absolute inset-0 bg-white/30" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="px-7 py-3 rounded-full bg-gray-700/65 text-white text-2xl font-semibold tracking-wide backdrop-blur-sm shadow-lg flex items-center gap-4">
+                  <span>生成中 {Math.max(1, Math.min(100, Math.round(progress)))}%</span>
+                  <span className="opacity-70">|</span>
+                  <button
+                    onClick={handleCancelGenerating}
+                    className="text-white/95 hover:text-white"
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+              <div className="absolute bottom-6 left-0 right-0 text-center text-sm text-slate-600">
+                {loadingText}
+              </div>
             </div>
           )}
 
           {/* 三个透明视频预览 */}
           {!loading && idleWebm && speakingWebm && thinkingWebm && (
-            <div className="space-y-10">
-              <div>
-                <h3 className="text-lg font-semibold mb-2">✨ Idle（透明）</h3>
-                <video className="w-full rounded-xl shadow" autoPlay muted loop src={idleWebm} />
-              </div>
+            <div className="h-full flex items-center">
+              <div className="w-full grid grid-cols-3 gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold mb-2 text-slate-700">Idle</h3>
+                  <div className="rounded-2xl bg-black p-2 shadow">
+                    <video
+                      className="w-full h-[260px] object-contain rounded-xl"
+                      autoPlay
+                      muted
+                      loop
+                      src={idleWebm}
+                    />
+                  </div>
+                </div>
 
-              <div>
-                <h3 className="text-lg font-semibold mb-2">🗣 Speaking（透明）</h3>
-                <video className="w-full rounded-xl shadow" autoPlay muted loop src={speakingWebm} />
-              </div>
+                <div>
+                  <h3 className="text-sm font-semibold mb-2 text-slate-700">Speaking</h3>
+                  <div className="rounded-2xl bg-black p-2 shadow">
+                    <video
+                      className="w-full h-[260px] object-contain rounded-xl"
+                      autoPlay
+                      muted
+                      loop
+                      src={speakingWebm}
+                    />
+                  </div>
+                </div>
 
-              <div>
-                <h3 className="text-lg font-semibold mb-2">🤔 Thinking（透明）</h3>
-                <video className="w-full rounded-xl shadow" autoPlay muted loop src={thinkingWebm} />
+                <div>
+                  <h3 className="text-sm font-semibold mb-2 text-slate-700">Thinking</h3>
+                  <div className="rounded-2xl bg-black p-2 shadow">
+                    <video
+                      className="w-full h-[260px] object-contain rounded-xl"
+                      autoPlay
+                      muted
+                      loop
+                      src={thinkingWebm}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           )}

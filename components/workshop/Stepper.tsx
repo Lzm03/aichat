@@ -4,24 +4,31 @@ import { Icons } from '../icons';
 interface StepperProps {
   steps: string[];
   currentStep: number;
-  setCurrentStep: (step: number) => void;
+  onStepClick: (step: number) => void;
+  maxReachableStep?: number;
 }
 
-export const Stepper: React.FC<StepperProps> = ({ steps, currentStep, setCurrentStep }) => {
+export const Stepper: React.FC<StepperProps> = ({
+  steps,
+  currentStep,
+  onStepClick,
+  maxReachableStep = 1,
+}) => {
   return (
     <div className="w-full bg-white p-2 sm:p-4 rounded-3xl shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)]">
       <div className="flex items-start">
         {steps.map((step, index) => {
           const stepNumber = index + 1;
-          const isCompleted = currentStep > stepNumber;
+          const isCompleted = stepNumber < maxReachableStep;
           const isActive = currentStep === stepNumber;
+          const isEnabled = stepNumber <= maxReachableStep;
 
           return (
             <React.Fragment key={step}>
               <div className="flex-1 flex flex-col items-center">
                 <button 
-                  onClick={() => isCompleted && setCurrentStep(stepNumber)}
-                  disabled={!isCompleted && !isActive}
+                  onClick={() => isEnabled && onStepClick(stepNumber)}
+                  disabled={!isEnabled}
                   className="flex flex-col items-center text-center px-1 disabled:cursor-default group"
                 >
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${

@@ -23,6 +23,40 @@ interface GrokVideoResult {
   error?: string;
 }
 
+const SUPPORTED_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"] as const;
+
+function normalizeAspectRatio(aspectRatio?: string | null): string | null {
+  if (!aspectRatio) return null;
+  if ((SUPPORTED_ASPECT_RATIOS as readonly string[]).includes(aspectRatio)) {
+    return aspectRatio;
+  }
+
+  const parts = aspectRatio.split(":").map((v) => Number(v));
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+
+  const value = parts[0] / parts[1];
+  const targets = [
+    { ratio: "1:1", value: 1 },
+    { ratio: "16:9", value: 16 / 9 },
+    { ratio: "9:16", value: 9 / 16 },
+    { ratio: "4:3", value: 4 / 3 },
+    { ratio: "3:4", value: 3 / 4 },
+    { ratio: "3:2", value: 3 / 2 },
+    { ratio: "2:3", value: 2 / 3 },
+  ] as const;
+
+  let bestRatio: string = targets[0].ratio;
+  let minDiff = Math.abs(value - targets[0].value);
+  for (const t of targets) {
+    const diff = Math.abs(value - t.value);
+    if (diff < minDiff) {
+      minDiff = diff;
+      bestRatio = t.ratio;
+    }
+  }
+  return bestRatio;
+}
+
 /* =======================================================
    1. 发起 Grok 视频生成
 ======================================================= */
@@ -44,7 +78,8 @@ async function createVideoRequest({
     payload.image = { url: imageUrl }; // ⭐ 核心
   }
   if (duration) payload.duration = Number(duration);
-  if (aspectRatio) payload.aspect_ratio = aspectRatio;
+  const normalizedAspectRatio = normalizeAspectRatio(aspectRatio);
+  if (normalizedAspectRatio) payload.aspect_ratio = normalizedAspectRatio;
   if (resolution) payload.resolution = resolution;
 
   console.log("🔥 [Grok Payload Sending]", payload);

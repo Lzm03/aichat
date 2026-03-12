@@ -91,47 +91,96 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({ onBack, botId }) => 
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [isPublishSuccessModalOpen, setIsPublishSuccessModalOpen] = useState(false);
   const [isInitialPreviewOpen, setIsInitialPreviewOpen] = useState(!!botId);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [actionError, setActionError] = useState("");
 
   const updateConfig = <K extends keyof typeof botConfig>(key: K, value: typeof botConfig[K]) => {
     setBotConfig((prev) => ({ ...prev, [key]: value }));
   };
 
+  const stepValidationRules = [
+    {
+      isValid: botConfig.name.trim().length > 0,
+      reason: "請先輸入機器人名稱。",
+    },
+    {
+      isValid: botConfig.avatarUrl.trim().length > 0 && botConfig.background.trim().length > 0,
+      reason: "請先完成頭像與背景設定。",
+    },
+    {
+      isValid:
+        botConfig.voiceId.trim().length > 0 &&
+        botConfig.videoIdle.trim().length > 0 &&
+        botConfig.videoThinking.trim().length > 0 &&
+        botConfig.videoTalking.trim().length > 0,
+      reason: "請先完成音色與三段動畫影片。",
+    },
+    {
+      isValid: botConfig.knowledgeBase.trim().length > 0,
+      reason: "請先完成知識餵養內容整理。",
+    },
+    {
+      isValid: botConfig.securityPrompt.trim().length > 0,
+      reason: "請先完成安全與權限設定。",
+    },
+  ];
+
+  const firstInvalidStepIndex = stepValidationRules.findIndex((rule) => !rule.isValid);
+  const firstInvalidStep = firstInvalidStepIndex === -1 ? steps.length + 1 : firstInvalidStepIndex + 1;
+  const maxReachableStep = Math.min(steps.length, firstInvalidStep);
+  const currentStepRule = stepValidationRules[currentStep - 1];
+  const canProceed = Boolean(currentStepRule?.isValid);
+  const isAllStepsValid = firstInvalidStepIndex === -1;
+
   const handlePublish = async () => {
-    const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+    if (!isAllStepsValid || isPublishing) return;
+    setActionError("");
+    setIsPublishing(true);
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
-    const newBot = {
-      id: botId || Date.now().toString(),
-      name: botConfig.name,
-      subject: "未分類",
-      subjectColor: "indigo",
-      avatarUrl: botConfig.avatarUrl,
-      interactions: 0,
-      accuracy: 0,
-      isVisible: true,
+      const newBot = {
+        id: botId || Date.now().toString(),
+        name: botConfig.name,
+        subject: "未分類",
+        subjectColor: "indigo",
+        avatarUrl: botConfig.avatarUrl,
+        interactions: 0,
+        accuracy: 0,
+        isVisible: true,
 
-      background: botConfig.background,
-      animation: botConfig.animation,
+        background: botConfig.background,
+        animation: botConfig.animation,
 
-      knowledgeBase: botConfig.knowledgeBase,
-      securityPrompt: botConfig.securityPrompt,
+        knowledgeBase: botConfig.knowledgeBase,
+        securityPrompt: botConfig.securityPrompt,
 
-      videoIdle: botConfig.videoIdle,
-      videoThinking: botConfig.videoThinking,
-      videoTalking: botConfig.videoTalking,
-      voiceId: botConfig.voiceId,
-    };
+        videoIdle: botConfig.videoIdle,
+        videoThinking: botConfig.videoThinking,
+        videoTalking: botConfig.videoTalking,
+        voiceId: botConfig.voiceId,
+      };
 
-    const apiUrl = botId
-      ? `${baseUrl}/api/bots/${botId}`
-      : `${baseUrl}/api/bots`;
+      const apiUrl = botId
+        ? `${baseUrl}/api/bots/${botId}`
+        : `${baseUrl}/api/bots`;
 
-    await fetch(apiUrl, {
-      method: botId ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newBot),
-    });
+      const response = await fetch(apiUrl, {
+        method: botId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newBot),
+      });
+      if (!response.ok) {
+        throw new Error("發布失敗，請稍後再試。");
+      }
 
-    setIsPublishSuccessModalOpen(true);
+      setIsPublishSuccessModalOpen(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "發布失敗，請稍後再試。";
+      setActionError(message);
+    } finally {
+      setIsPublishing(false);
+    }
   };
 
   const handleClosePublishModal = () => {
@@ -145,8 +194,19 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({ onBack, botId }) => 
     onBack();
   };
 
-  const handleNext = () => currentStep < steps.length && setCurrentStep(currentStep + 1);
+  const handleNext = () => {
+    if (!canProceed) return;
+    setActionError("");
+    if (currentStep < steps.length) {
+      setCurrentStep(currentStep + 1);
+    }
+  };
   const handlePrev = () => currentStep > 1 && setCurrentStep(currentStep - 1);
+  const handleStepClick = (targetStep: number) => {
+    if (targetStep <= maxReachableStep) {
+      setCurrentStep(targetStep);
+    }
+  };
 
   // -------------------------------
   // 3. 渲染 Step 组件
@@ -206,7 +266,7 @@ ${data.knowledgeSummary}
   // -------------------------------
   // 4. 给 ChatPreview 的完整 prompt
   // -------------------------------
-  const fullSystemPrompt = `
+const fullSystemPrompt = `
     你是一名 AI 助教，具備以下資訊：
 
     ${botConfig.knowledgeBase}
@@ -214,7 +274,17 @@ ${data.knowledgeSummary}
     【安全規則】
     ${botConfig.securityPrompt}
 
-    請嚴格遵守以上所有規則，回答需簡短直接，不使用語氣詞。
+    【對話方式】
+    每次新對話先主動提出 2~3 個澄清問題，再根據使用者回答提供建議。
+    若資訊不足，優先追問，不要直接假設。
+
+    【回覆格式規則（強制）】
+    1) 禁止輸出舞台描述或動作描寫，例如「（微笑）」「（拱手）」「*點頭*」。
+    2) 非用戶明確要求角色扮演時，不要使用文言/古風自稱（如「老夫」「在下」）。
+    3) 每次回覆控制在 1~3 句，優先短句；除非用戶要求詳細版，否則不超過 120 字。
+    4) 不要長段落鋪陳，直接回答重點。
+
+    請嚴格遵守以上所有規則。
 `.trim();
 
 const handleDeleteBot = async () => {
@@ -247,7 +317,12 @@ const handleDeleteBot = async () => {
       </button>
 
       {/* Stepper */}
-      <Stepper steps={steps} currentStep={currentStep} setCurrentStep={setCurrentStep} />
+      <Stepper
+        steps={steps}
+        currentStep={currentStep}
+        onStepClick={handleStepClick}
+        maxReachableStep={maxReachableStep}
+      />
 
       <div className="mt-8 grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
 
@@ -347,21 +422,38 @@ const handleDeleteBot = async () => {
         )}
 
         {currentStep < steps.length ? (
-          <button
-            onClick={handleNext}
-            className="px-6 py-3 rounded-xl text-sm font-semibold bg-indigo-600 text-white"
-          >
-            下一步
-          </button>
+          <div className="flex flex-col items-end gap-2">
+            <button
+              onClick={handleNext}
+              disabled={!canProceed}
+              className="px-6 py-3 rounded-xl text-sm font-semibold bg-indigo-600 text-white disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed"
+            >
+              下一步
+            </button>
+            {!canProceed && (
+              <p className="text-xs text-amber-600">{currentStepRule?.reason}</p>
+            )}
+          </div>
         ) : (
-          <button
-            onClick={handlePublish}
-            className="px-6 py-3 rounded-xl text-sm font-semibold bg-emerald-600 text-white"
-          >
-            {botId ? '更新機器人' : '完成並發布'}
-          </button>
+          <div className="flex flex-col items-end gap-2">
+            <button
+              onClick={handlePublish}
+              disabled={!isAllStepsValid || isPublishing}
+              className="px-6 py-3 rounded-xl text-sm font-semibold bg-emerald-600 text-white disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed"
+            >
+              {isPublishing ? "發布中..." : botId ? '更新機器人' : '完成並發布'}
+            </button>
+            {!isAllStepsValid && (
+              <p className="text-xs text-amber-600">
+                尚有未完成步驟，請先完成第 {firstInvalidStep} 步。
+              </p>
+            )}
+          </div>
         )}
       </div>
+      {actionError && (
+        <p className="mt-3 text-sm text-rose-600">{actionError}</p>
+      )}
     </div>
   );
 };

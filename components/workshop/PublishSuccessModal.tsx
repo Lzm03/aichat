@@ -5,6 +5,7 @@ import {
   Copy,
   Check,
   Send,
+  Square,
   MoreHorizontal,
   Link as LinkIcon,
   Edit,
@@ -39,19 +40,28 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   } = botConfig;
 
   
-
+  const lastTTS = useRef(0);
   const [messages, setMessages] = useState<{ role: "user" | "bot"; content: string }[]>([]);
 
   const [inputText, setInputText] = useState("");
   const [copied, setCopied] = useState(false);
+  const messagesRef = useRef<HTMLDivElement | null>(null);
   const [botState, setBotState] = useState<"idle" | "thinking" | "speaking">(
     "idle"
   );
+  const [isStopAvailable, setIsStopAvailable] = useState(false);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
 
   const shareUrl = "https://smartedu.hk/bot/xxxxx";
+  const chatStyleRules = `
+【回覆格式規則（強制）】
+1) 禁止輸出舞台描述或動作描寫，例如「（微笑）」「（拱手）」「*點頭*」。
+2) 非用戶明確要求角色扮演時，不要使用文言/古風自稱（如「老夫」「在下」）。
+3) 每次回覆控制在 1~3 句，優先短句；除非用戶要求詳細版，否則不超過 120 字。
+4) 不要長段落鋪陳，直接回答重點。
+`.trim();
 
   // -----------------------------
   // 🔥 自动切换三段动画
@@ -77,15 +87,36 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   }, []);
 
   useEffect(() => {
+    if (!messagesRef.current) return;
+    messagesRef.current.scrollTo({
+      top: messagesRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [messages, botState]);
+
+  useEffect(() => {
     if (!isOpen) return;
+
+    ttsSeq.current = 0;
+    nextPlaySeq.current = 0;
+    ttsInflight.current = 0;
+    ttsTextQueue.current = [];
+    ttsAudioMap.current.clear();
+    playing.current = false;
+
+    const openingMessage = `你好！我是 ${botName}，你現在最想解決什麼？`;
 
     setMessages([
       {
         role: "bot",
-        content: `你好！我是 ${botName}，我已經準備好和你聊天了！`,
+        content: openingMessage,
       },
     ]);
-  }, [botName, isOpen]);
+
+    // 開場提問也走 TTS
+    if (voiceId) setIsStopAvailable(true);
+    enqueueSpeak(openingMessage);
+  }, [botName, isOpen, voiceId]);
   
   
 
@@ -98,71 +129,313 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     setTimeout(() => setCopied(false), 1500);
   };
 
-const sendMessage = async () => {
-  if (!inputText.trim()) return;
+  const playing = useRef(false);
+  const activeAudio = useRef<HTMLAudioElement | null>(null);
+  const activeRequestController = useRef<AbortController | null>(null);
+  const generationIdRef = useRef(0);
+  const ttsSeq = useRef(0);
+  const nextPlaySeq = useRef(0);
+  const ttsInflight = useRef(0);
+  const ttsTextQueue = useRef<{ seq: number; text: string }[]>([]);
+  const ttsAudioMap = useRef<Map<number, HTMLAudioElement>>(new Map());
+  const maxTtsInflight = 3;
 
-  const userMsg = inputText;
-  setInputText("");
+const requestTTSAudio = async (text: string) => {
 
-  // 顯示使用者訊息
-  setMessages(prev => [...prev, { role: "user", content: userMsg }]);
-
-  // 進入 thinking
-  setBotState("thinking");
+  if (!voiceId || !text.trim()) return;
 
   const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
   try {
-    // ========= 🔥 LLM + TTS 同時開始 =========
-    const askReq = fetch(`${baseUrl}/api/ask`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemPrompt: botConfig.knowledgeBase + "\n" + botConfig.securityPrompt,
-        userPrompt: userMsg,
-      }),
-    });
 
-    const askRes = await askReq;
-    const askData = await askRes.json();
-    const reply = askData.reply || "（無回應）";
+    // ⭐ 先限流
+    const now = Date.now();
 
-    // 如果沒有 voiceId → 直接輸出文字
-    if (!voiceId) {
-      setMessages(prev => [...prev, { role: "bot", content: reply }]);
-      setBotState("idle");
-      return;
+    if (now - lastTTS.current < 40) {
+      await new Promise(r => setTimeout(r, 40));
     }
 
-    // ========= 🔥 LLM 回覆後，立即請求 TTS =========
-    const ttsReq = fetch(`${baseUrl}/api/tts`, {
+    lastTTS.current = Date.now();
+
+    const res = await fetch(`${baseUrl}/api/tts`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
-        text: reply,
+        text,
         voiceId,
       }),
     });
 
-    const audioRes = await ttsReq;
-    const audioBlob = await audioRes.blob();
-    const audio = new Audio(URL.createObjectURL(audioBlob));
+    const blob = await res.blob();
 
-    // ========= 🔥 TTS 準備好後 → 一次過開始播放 =========
-    setMessages(prev => [...prev, { role: "bot", content: reply }]);
-    setBotState("speaking");
-    audio.play();
+    const audio = new Audio(URL.createObjectURL(blob));
+    audio.playbackRate = 1.12;
+    return audio;
 
-    audio.onended = () => {
+  } catch (e) {
+    console.error("TTS error:", e);
+  }
+};
+
+const enqueueSpeak = (text: string) => {
+  if (!voiceId || !text.trim()) return;
+  const seq = ttsSeq.current++;
+  ttsTextQueue.current.push({ seq, text });
+  pumpTTSRequests();
+  return seq;
+};
+
+const waitForAudioReady = (seq: number, timeoutMs = 1000) =>
+  new Promise<void>((resolve) => {
+    const start = Date.now();
+    const timer = setInterval(() => {
+      const ready = ttsAudioMap.current.has(seq) || seq < nextPlaySeq.current;
+      const timeout = Date.now() - start > timeoutMs;
+      if (ready || timeout) {
+        clearInterval(timer);
+        resolve();
+      }
+    }, 20);
+  });
+
+const tryPlayInOrder = () => {
+  if (playing.current) return;
+
+  const audio = ttsAudioMap.current.get(nextPlaySeq.current);
+  if (!audio) {
+    if (ttsInflight.current === 0 && ttsAudioMap.current.size === 0) {
       setBotState("idle");
-    };
+      setIsStopAvailable(false);
+    }
+    return;
+  }
 
-  } catch (error) {
-    console.error("❌ 聊天或語音錯誤:", error);
+  ttsAudioMap.current.delete(nextPlaySeq.current);
+  playing.current = true;
+  activeAudio.current = audio;
+  setBotState("speaking");
+  audio.play();
+
+  audio.onended = () => {
+    URL.revokeObjectURL(audio.src);
+    activeAudio.current = null;
+    playing.current = false;
+    nextPlaySeq.current += 1;
+    tryPlayInOrder();
+  };
+};
+
+const pumpTTSRequests = () => {
+  while (
+    ttsInflight.current < maxTtsInflight &&
+    ttsTextQueue.current.length > 0
+  ) {
+    const item = ttsTextQueue.current.shift()!;
+    ttsInflight.current += 1;
+
+    requestTTSAudio(item.text)
+      .then((audio) => {
+        if (!audio) return;
+        ttsAudioMap.current.set(item.seq, audio);
+        tryPlayInOrder();
+      })
+      .finally(() => {
+        ttsInflight.current = Math.max(0, ttsInflight.current - 1);
+        pumpTTSRequests();
+      });
+  }
+};
+
+const isSentenceEnd = (text: string) => {
+  return /[。！？.!?]/.test(text);
+};
+
+const stopAllSpeech = () => {
+  generationIdRef.current += 1;
+  activeRequestController.current?.abort();
+  activeRequestController.current = null;
+
+  if (activeAudio.current) {
+    activeAudio.current.pause();
+    URL.revokeObjectURL(activeAudio.current.src);
+    activeAudio.current = null;
+  }
+
+  ttsAudioMap.current.forEach((audio) => {
+    audio.pause();
+    URL.revokeObjectURL(audio.src);
+  });
+
+  ttsTextQueue.current = [];
+  ttsAudioMap.current.clear();
+  ttsInflight.current = 0;
+  playing.current = false;
+  ttsSeq.current = 0;
+  nextPlaySeq.current = 0;
+  setBotState("idle");
+  setIsStopAvailable(false);
+};
+
+const sendMessage = async () => {
+  if (!inputText.trim()) return;
+
+  stopAllSpeech();
+  setIsStopAvailable(true);
+  const userMsg = inputText;
+  setInputText("");
+
+  setMessages(prev => [...prev, { role: "user", content: userMsg }]);
+  setBotState("thinking");
+
+  const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+  const currentGenId = generationIdRef.current;
+
+  try {
+    const controller = new AbortController();
+    activeRequestController.current = controller;
+    const response = await fetch(`${baseUrl}/api/ask`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        systemPrompt:
+          botConfig.knowledgeBase +
+          "\n" +
+          botConfig.securityPrompt +
+          "\n" +
+          chatStyleRules,
+        userPrompt: userMsg,
+      }),
+      signal: controller.signal,
+    });
+    activeRequestController.current = null;
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+
+    let committedReply = "";
+    let segmentBuffer = "";
+    let displayChain = Promise.resolve();
+
+    setMessages(prev => [...prev, { role: "bot", content: "" }]);
+
+    while (true) {
+      const { done, value } = await reader!.read();
+      if (done) break;
+      if (currentGenId !== generationIdRef.current) return;
+
+      const chunk = decoder.decode(value);
+      const lines = chunk.split("\n");
+
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue;
+
+        const token = line.replace("data:", "");
+
+        if (!token.trim()) continue;
+
+        segmentBuffer += token;
+
+        const sentenceEnd = isSentenceEnd(segmentBuffer);
+
+        if (sentenceEnd) {
+          const sentence = segmentBuffer.trim();
+          const segmentText = segmentBuffer;
+
+          if (voiceId && sentence.length > 0) {
+            const seq = enqueueSpeak(sentence);
+            displayChain = displayChain.then(async () => {
+              if (currentGenId !== generationIdRef.current) return;
+              if (typeof seq === "number") {
+                await waitForAudioReady(seq, 900);
+              }
+              if (currentGenId !== generationIdRef.current) return;
+              committedReply += segmentText;
+              setMessages(prev => {
+                const newMessages = [...prev];
+                newMessages[newMessages.length - 1] = {
+                  role: "bot",
+                  content: committedReply,
+                };
+                return newMessages;
+              });
+            });
+          } else {
+            committedReply += segmentText;
+            setMessages(prev => {
+              const newMessages = [...prev];
+              newMessages[newMessages.length - 1] = {
+                role: "bot",
+                content: committedReply,
+              };
+              return newMessages;
+            });
+          }
+
+          segmentBuffer = "";
+        }
+      }
+    }
+
+    // 最后一段（未遇到句号的尾巴）
+    if (segmentBuffer.trim()) {
+      const tail = segmentBuffer;
+      if (voiceId) {
+        const seq = enqueueSpeak(segmentBuffer.trim());
+        displayChain = displayChain.then(async () => {
+          if (currentGenId !== generationIdRef.current) return;
+          if (typeof seq === "number") {
+            await waitForAudioReady(seq, 900);
+          }
+          if (currentGenId !== generationIdRef.current) return;
+          committedReply += tail;
+          setMessages(prev => {
+            const newMessages = [...prev];
+            newMessages[newMessages.length - 1] = {
+              role: "bot",
+              content: committedReply,
+            };
+            return newMessages;
+          });
+        });
+      } else {
+        committedReply += tail;
+        setMessages(prev => {
+          const newMessages = [...prev];
+          newMessages[newMessages.length - 1] = {
+            role: "bot",
+            content: committedReply,
+          };
+          return newMessages;
+        });
+      }
+    }
+
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") return;
+    console.error(err);
     setBotState("idle");
   }
 };
 
+  useEffect(() => {
+    if (isOpen) return;
+    stopAllSpeech();
+  }, [isOpen]);
+
+  useEffect(() => {
+    return () => {
+      stopAllSpeech();
+    };
+  }, []);
+
+  const handleCloseWithInterrupt = () => {
+    stopAllSpeech();
+    onClose();
+  };
   if (!isOpen) return null;
 
   return (
@@ -175,7 +448,7 @@ const sendMessage = async () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={onClose}
+            onClick={handleCloseWithInterrupt}
           />
 
           {/* 主体 */}
@@ -287,7 +560,7 @@ const sendMessage = async () => {
 
                   <button
                     className="ml-2 p-2 text-slate-500 hover:bg-slate-100 rounded-full"
-                    onClick={onClose}
+                    onClick={handleCloseWithInterrupt}
                   >
                     <X size={20} />
                   </button>
@@ -295,7 +568,7 @@ const sendMessage = async () => {
               </div>
 
               {/* messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div ref={messagesRef} className="flex-1 overflow-y-auto p-4 space-y-3">
                 {messages.map((m, i) => (
                   <div
                     key={i}
@@ -341,8 +614,16 @@ const sendMessage = async () => {
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                    placeholder="輸入訊息測試..."
+                    placeholder="先回答機器人的提問..."
                   />
+                  <button
+                    onClick={stopAllSpeech}
+                    disabled={!isStopAvailable}
+                    className="p-3 mr-2 text-slate-600 bg-white rounded-full hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="停止回覆與語音"
+                  >
+                    <Square size={16} />
+                  </button>
                   <button
                     onClick={sendMessage}
                     disabled={!inputText.trim()}

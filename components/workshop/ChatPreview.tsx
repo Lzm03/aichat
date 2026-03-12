@@ -4,9 +4,11 @@ import { Icons } from "../icons";
 
 interface ChatPreviewProps {
   currentStep: number;
+  isEditing?: boolean;
   botConfig: {
     name: string;
-    avatar: string;
+    avatar?: string;
+    avatarUrl?: string;
     background: string;
     knowledgeBase: string;
   };
@@ -24,6 +26,14 @@ export const ChatPreview: React.FC<ChatPreviewProps> = ({
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const canChat = currentStep > 3;
+  const avatarSrc = botConfig.avatarUrl || botConfig.avatar || "";
+
+  useEffect(() => {
+    if (!canChat) {
+      setMessages([]);
+      setInputText("");
+    }
+  }, [canChat]);
 
   /** ⭐ 新訊息自動滾到底部 */
   useEffect(() => {
@@ -98,9 +108,9 @@ async function sendMessage() {
           <>
             {/* Avatar */}
             <div className="flex justify-center mt-2 mb-2">
-              {botConfig.avatar && (
+              {avatarSrc && (
                 <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-white shadow-xl">
-                  <img src={botConfig.avatar} className="w-full h-full object-cover" />
+                  <img src={avatarSrc} className="w-full h-full object-cover" />
                 </div>
               )}
             </div>
@@ -141,7 +151,7 @@ async function sendMessage() {
                 <input
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  placeholder="向你的機器人問問題吧…"
+                  placeholder="輸入訊息測試..."
                   className="flex-1 p-3 rounded-xl text-sm border border-slate-300 focus:ring-2 focus:ring-indigo-300"
                 />
                 <button
