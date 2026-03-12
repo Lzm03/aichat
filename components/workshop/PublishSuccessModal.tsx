@@ -11,6 +11,7 @@ import {
   Edit,
   Trash2,
 } from "lucide-react";
+import { API_BASE } from "../../utils/api";
 
 interface PublishSuccessModalProps {
   isOpen: boolean;
@@ -144,7 +145,7 @@ const requestTTSAudio = async (text: string) => {
 
   if (!voiceId || !text.trim()) return;
 
-  const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+  const baseUrl = API_BASE;
 
   try {
 
@@ -289,7 +290,7 @@ const sendMessage = async () => {
   setMessages(prev => [...prev, { role: "user", content: userMsg }]);
   setBotState("thinking");
 
-  const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+  const baseUrl = API_BASE;
   const currentGenId = generationIdRef.current;
 
   try {

@@ -2,6 +2,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { Icons } from "../../icons";
 import VideoStudioModal from "../VideoStudioModal";
+import { API_BASE } from "../../../utils/api";
 
 // ============ Section Wrapper ============
 const Section = ({ title, children }: any) => (
@@ -85,7 +86,7 @@ export const CreationStepSoundAnimation = ({
   videoTalking,
   voiceId,
 }: any) => {
-  const baseUrl = import.meta.env.VITE_API_URL;
+  const baseUrl = API_BASE;
 
   const [showStudio, setShowStudio] = useState(false);
   const [voiceList, setVoiceList] = useState([]);

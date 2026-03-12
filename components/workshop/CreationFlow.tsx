@@ -9,6 +9,7 @@ import { CreationStepSoundAnimation } from './steps/CreationStepSoundAnimation';
 import { ChatPreview } from './ChatPreview';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PublishSuccessModal } from './PublishSuccessModal';
+import { API_BASE } from '../../utils/api';
 
 interface CreationFlowProps {
   onBack: () => void;
@@ -62,7 +63,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({ onBack, botId }) => 
   const fetchBot = async () => {
     if (!botId) return;
 
-    const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+    const baseUrl = API_BASE;
     const res = await fetch(`${baseUrl}/api/bots/${botId}`);
     const data = await res.json();
 
@@ -137,7 +138,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({ onBack, botId }) => 
     setActionError("");
     setIsPublishing(true);
     try {
-      const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+      const baseUrl = API_BASE;
 
       const newBot = {
         id: botId || Date.now().toString(),
@@ -290,7 +291,7 @@ const fullSystemPrompt = `
 const handleDeleteBot = async () => {
   if (!botId) return;
 
-  const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+  const baseUrl = API_BASE;
 
   await fetch(`${baseUrl}/api/bots/${botId}`, {
     method: "DELETE",

@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
 import { Icons } from "../icons";
+import { API_BASE } from "../../utils/api";
 
 interface ChatPreviewProps {
   currentStep: number;
@@ -46,7 +47,7 @@ export const ChatPreview: React.FC<ChatPreviewProps> = ({
   }, [messages]);
 
   async function askLLM(systemPrompt: string, userPrompt: string) {
-    const baseUrl = import.meta.env.VITE_API_URL;
+    const baseUrl = API_BASE;
 
     const r = await fetch(`${baseUrl}/api/ask`, {
       method: "POST",

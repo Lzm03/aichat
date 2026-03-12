@@ -40,6 +40,7 @@ import React, { useEffect, useState } from "react";
 import { BotCard } from "./BotCard";
 import { Icons } from "../icons";
 import type { AiBot } from "../../types";
+import { API_BASE } from "../../utils/api";
 
 interface LibraryViewProps {
   onStartCreation: () => void;
@@ -55,7 +56,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [bots, setBots] = useState<AiBot[]>([]);
 
   useEffect(() => {
-    const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+    const baseUrl = API_BASE;
 
     fetch(`${baseUrl}/api/bots`)
       .then(res => res.json())
@@ -89,7 +90,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   }, []);
 
   const deleteBot = async (botId: string) => {
-    const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+    const baseUrl = API_BASE;
 
     await fetch(`${baseUrl}/api/bots/${botId}`, {
       method: "DELETE",

@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Icons } from "../../icons";
 import { motion } from "framer-motion";
+import { API_BASE } from "../../../utils/api";
 
 type UploadMethod = "file" | "url" | "text";
 
@@ -24,7 +25,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated }) => 
   const [characterBackground, setCharacterBackground] = useState("");
   const [knowledgeSummary, setKnowledgeSummary] = useState("");
 
-  const baseUrl = import.meta.env.VITE_API_URL;
+  const baseUrl = API_BASE;
 
   // --------------------------
   // ⭐ 系統提示詞（深度分析 PDF）

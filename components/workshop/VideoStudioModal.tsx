@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
+import { API_BASE } from "../../utils/api";
 
 interface Props {
   onClose: () => void;
@@ -54,7 +55,7 @@ export default function VideoStudioModal({
   const [thinkingWebm, setThinkingWebm] = useState<string | null>(null);
   const canSave = !!(idleWebm && speakingWebm && thinkingWebm);
 
-  const baseUrl = import.meta.env.VITE_API_URL;
+  const baseUrl = API_BASE;
   const SUPPORTED_ASPECTS = new Set(["16:9", "9:16", "1:1"]);
 
   function simplifyRatio(width: number, height: number): string {
