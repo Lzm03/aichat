@@ -173,6 +173,12 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({ onBack, botId }) => 
         throw new Error("發布失敗，請稍後再試。");
       }
 
+      const savedBot = await response.json();
+      setBotConfig((prev) => ({
+        ...prev,
+        id: savedBot?.id || newBot.id,
+      }));
+
       setIsPublishSuccessModalOpen(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : "發布失敗，請稍後再試。";
