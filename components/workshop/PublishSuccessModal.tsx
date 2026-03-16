@@ -54,9 +54,13 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [openingReady, setOpeningReady] = useState(false);
 
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const dropdownRef = useRef(null);
 
-  const shareUrl = "https://smartedu.hk/bot/xxxxx";
+  const shareUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/bot/${botConfig.id || ""}`
+      : `/bot/${botConfig.id || ""}`;
   const chatStyleRules = `
 【回覆格式規則（強制）】
 1) 禁止輸出舞台描述或動作描寫，例如「（微笑）」「（拱手）」「*點頭*」。
@@ -552,6 +556,11 @@ const sendMessage = async () => {
     stopAllSpeech();
     onClose();
   };
+
+  const handleConfirmDelete = () => {
+    setShowDeleteConfirm(false);
+    onDelete(botConfig.id);
+  };
   if (!isOpen) return null;
 
   return (
@@ -690,7 +699,10 @@ const sendMessage = async () => {
 
                         <button
                           className="flex items-center gap-2 p-2 hover:bg-red-50 text-red-600 rounded-lg w-full"
-                          onClick={() => onDelete(botConfig.id)}
+                          onClick={() => {
+                            setShowDropdown(false);
+                            setShowDeleteConfirm(true);
+                          }}
                         >
                           <Trash2 size={16} /> 刪除機器人
                         </button>
@@ -778,6 +790,31 @@ const sendMessage = async () => {
               </>
             )}
           </div>
+
+          {showDeleteConfirm && (
+            <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/45">
+              <div className="w-[92%] max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+                <div className="text-base font-semibold text-slate-800">確認刪除這個聊天？</div>
+                <div className="mt-2 text-sm text-slate-500">
+                  刪除後將無法復原，分享連結也會失效。
+                </div>
+                <div className="mt-5 flex justify-end gap-2">
+                  <button
+                    className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
+                    onClick={() => setShowDeleteConfirm(false)}
+                  >
+                    取消
+                  </button>
+                  <button
+                    className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700"
+                    onClick={handleConfirmDelete}
+                  >
+                    確認刪除
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </>

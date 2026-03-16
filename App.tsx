@@ -6,6 +6,7 @@ import { Header } from './components/layout/Header';
 import { Dashboard } from './pages/Dashboard';
 import { AiBotWorkshopPage } from './pages/AiBotWorkshopPage';
 import { TaskCenter } from './pages/TaskCenter';
+import { SharedBotChatPage } from './pages/SharedBotChatPage';
 import { MobileSidebarDrawer } from './components/layout/MobileSidebarDrawer';
 import { Icons } from './components/icons';
 
@@ -20,11 +21,26 @@ const pageConfig = {
 const App: React.FC = () => {
   const [activePage, setActivePage] = useState<Page>('workshop');
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [sharedBotId, setSharedBotId] = useState<string | null>(null);
 
   // 在本地永远视为已准备好，不检查 window.aistudio
   const hasApiKey = true;
 
   const CurrentPage = () => pageConfig[activePage].component;
+
+  useEffect(() => {
+    const syncRoute = () => {
+      const m = window.location.pathname.match(/^\/bot\/([^/]+)$/);
+      setSharedBotId(m ? decodeURIComponent(m[1]) : null);
+    };
+    syncRoute();
+    window.addEventListener("popstate", syncRoute);
+    return () => window.removeEventListener("popstate", syncRoute);
+  }, []);
+
+  if (sharedBotId) {
+    return <SharedBotChatPage botId={sharedBotId} />;
+  }
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex text-slate-800">

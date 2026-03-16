@@ -9,7 +9,7 @@ import { CreationStepSoundAnimation } from './steps/CreationStepSoundAnimation';
 import { ChatPreview } from './ChatPreview';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PublishSuccessModal } from './PublishSuccessModal';
-import { API_BASE } from '../../utils/api';
+
 
 interface CreationFlowProps {
   onBack: () => void;
@@ -19,6 +19,7 @@ interface CreationFlowProps {
 const steps = ["基礎設定", "形象與人格", "聲音與動畫", "知識餵養", "安全與權限"];
 
 export const CreationFlow: React.FC<CreationFlowProps> = ({ onBack, botId }) => {
+  const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
   // -------------------------------
   // 1. 载入或初始化机器人配置
@@ -63,7 +64,6 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({ onBack, botId }) => 
   const fetchBot = async () => {
     if (!botId) return;
 
-    const baseUrl = API_BASE;
     const res = await fetch(`${baseUrl}/api/bots/${botId}`);
     const data = await res.json();
 
@@ -138,8 +138,6 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({ onBack, botId }) => 
     setActionError("");
     setIsPublishing(true);
     try {
-      const baseUrl = API_BASE;
-
       const newBot = {
         id: botId || Date.now().toString(),
         name: botConfig.name,
@@ -290,8 +288,6 @@ const fullSystemPrompt = `
 
 const handleDeleteBot = async () => {
   if (!botId) return;
-
-  const baseUrl = API_BASE;
 
   await fetch(`${baseUrl}/api/bots/${botId}`, {
     method: "DELETE",
