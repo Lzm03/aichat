@@ -254,6 +254,7 @@ ${data.knowledgeSummary}
         return (
           <CreationStep4
             onSecurityChange={(prompt) => updateConfig("securityPrompt", prompt)}
+            botId={botConfig.id || botId}
           />
         );
 

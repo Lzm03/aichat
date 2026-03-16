@@ -7,9 +7,10 @@ import multer from "multer";
 import fetch from "node-fetch";
 import fs from "fs";
 import path from "path";
+import { uploadsDir } from "../lib/uploads-dir.ts";
 
 const router = express.Router();
-const upload = multer({ dest: "uploads/" });
+const upload = multer({ dest: uploadsDir });
 
 const API_KEY = process.env.VIDEO_BG_REMOVER_KEY;
 const PUBLIC_BASE = process.env.BACKEND_URL; // e.g. https://xxxx.ngrok-free.app
@@ -51,7 +52,7 @@ async function downloadToLocal(url: string) {
   const buffer = Buffer.from(await res.arrayBuffer());
 
   const filename = `video_${Date.now()}.webm`;
-  const savePath = path.join("uploads", filename);
+  const savePath = path.join(uploadsDir, filename);
 
   // Save to local /uploads folder
   fs.writeFileSync(savePath, buffer);
@@ -87,7 +88,7 @@ router.post("/remove-bg", upload.single("file"), async (req, res) => {
       }
 
       // ⚠️ MUST use your BACKEND_URL for public access
-      videoUrl = `${PUBLIC_BASE}/${tempFilePath}`;
+      videoUrl = `${PUBLIC_BASE}/uploads/${path.basename(tempFilePath)}`;
       console.log("🌍 Public URL:", videoUrl);
     }
 

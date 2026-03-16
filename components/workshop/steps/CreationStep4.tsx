@@ -80,15 +80,20 @@ const FilterCard: React.FC<{
 // -----------------------------
 export const CreationStep4: React.FC<{
   onSecurityChange?: (securityPrompt: string) => void;
-}> = ({ onSecurityChange }) => {
+  botId?: string | null;
+}> = ({ onSecurityChange, botId }) => {
   const [sharingMode, setSharingMode] = useState<SharingMode>('link');
   const [filterLevel, setFilterLevel] = useState<FilterLevel>('standard');
   const [customWords, setCustomWords] = useState('');
   const [isCopied, setIsCopied] = useState(false);
 
-  const shareableLink = 'https://smartedu.hk/bot/share/xYz123';
+  const shareableLink =
+    botId && typeof window !== "undefined"
+      ? `${window.location.origin}/bot/${botId}`
+      : "發布後生成可分享連結";
 
   const handleCopy = () => {
+    if (!botId) return;
     navigator.clipboard.writeText(shareableLink);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
@@ -96,6 +101,7 @@ export const CreationStep4: React.FC<{
 
   const handleLinkBoxClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const input = e.currentTarget.querySelector('input');
+    if (!botId) return;
     input?.select();
     handleCopy();
   };
@@ -196,8 +202,13 @@ ${customWords
                 e.stopPropagation();
                 handleCopy();
               }}
+              disabled={!botId}
               className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center space-x-2 transition ${
-                isCopied ? 'bg-emerald-500 text-white' : 'bg-white text-slate-600 hover:bg-slate-200'
+                !botId
+                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  : isCopied
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-white text-slate-600 hover:bg-slate-200'
               }`}
             >
               {isCopied ? <Icons.success className="w-4 h-4" /> : <Icons.copy className="w-4 h-4" />}

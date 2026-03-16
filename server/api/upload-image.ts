@@ -3,15 +3,10 @@ dotenv.config();
 
 import express from "express";
 import multer from "multer";
-import fs from "fs";
 import path from "path";
+import { uploadsDir } from "../lib/uploads-dir.ts";
 
 const router = express.Router();
-
-const uploadsDir = path.resolve("uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),
