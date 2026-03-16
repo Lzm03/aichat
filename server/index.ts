@@ -11,6 +11,9 @@ import ttsRoute from "./api/tts.ts";
 import askRoute from "./api/ask.ts";
 import removeBgRoute from "./api/removeBgvideo.ts";
 import uploadImageRoute from "./api/upload-image.ts";
+import uploadVideoRoute from "./api/upload-video.ts";
+import debugStorageRoute from "./api/debug-storage.ts";
+import { uploadsDir } from "./lib/uploads-dir.ts";
 
 const app = express();
 // ⭐ 專業 CORS 設定：允許所有 localhost 與 Railway
@@ -42,14 +45,19 @@ app.use("/api/video", animationRoute);
 app.use("/api/video", removeBgRoute);
 app.use("/api", askRoute);
 app.use("/api/upload-image", uploadImageRoute);
+app.use("/api/upload-video", uploadVideoRoute);
+app.use("/api/debug", debugStorageRoute);
 app.use(
   "/uploads",
-  express.static("uploads", {
+  express.static(uploadsDir, {
     setHeaders: (res, filePath) => {
       if (filePath.endsWith(".png")) res.set("Content-Type", "image/png");
       if (filePath.endsWith(".jpg") || filePath.endsWith(".jpeg"))
         res.set("Content-Type", "image/jpeg");
       if (filePath.endsWith(".webp")) res.set("Content-Type", "image/webp");
+      if (filePath.endsWith(".mp4")) res.set("Content-Type", "video/mp4");
+      if (filePath.endsWith(".webm")) res.set("Content-Type", "video/webm");
+      if (filePath.endsWith(".mov")) res.set("Content-Type", "video/quicktime");
     },
   })
 );
