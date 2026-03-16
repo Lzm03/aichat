@@ -1,0 +1,7 @@
+{
+  "rewrites": [
+    { "source": "/bot/:id", "destination": "/" },
+    { "source": "/(.*)", "destination": "/" }
+  ]
+}
+
