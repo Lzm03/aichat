@@ -384,7 +384,8 @@ export const CreationStepSoundAnimation = ({
   videoTalking,
   voiceId,
 }: any) => {
-  const baseUrl = import.meta.env.VITE_API_URL;
+  const envBaseUrl = (import.meta.env.VITE_API_URL || "").trim();
+  const baseUrl = (envBaseUrl || "http://localhost:4000").replace(/\/$/, "");
 
   const [showStudio, setShowStudio] = useState(false);
   const [voiceList, setVoiceList] = useState([]);
@@ -409,33 +410,38 @@ export const CreationStepSoundAnimation = ({
     })();
   }, []);
 
-  // ============ 上传并 remove-bg 流程 ============
-  async function uploadRemoveBgVideo(file: File, type: "idle" | "thinking" | "talking") {
+  // ============ 本地直傳到後端（不去背） ============
+  async function uploadDirectVideo(file: File, type: "idle" | "thinking" | "talking") {
     setUploadState((s) => ({ ...s, [type]: { loading: true, progress: 1 } }));
 
     const form = new FormData();
     form.append("file", file);
 
     try {
-      const res = await fetch(`${baseUrl}/api/video/remove-bg`, {
+      const res = await fetch(`${baseUrl}/api/upload-video`, {
         method: "POST",
         body: form,
       });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Upload failed (${res.status}): ${errText || "unknown error"}`);
+      }
 
       const data = await res.json();
-
-      if (!data.transparentUrl) {
-        alert("RemoveBG 处理失败");
+      const finalUrl = data.url;
+      if (!finalUrl) {
+        alert(`影片上傳失敗：${data?.error || "後端未返回 url"}`);
         return;
       }
 
       setUploadState((s) => ({ ...s, [type]: { loading: false, progress: 100 } }));
 
-      if (type === "idle") updateConfig("videoIdle", data.transparentUrl);
-      if (type === "thinking") updateConfig("videoThinking", data.transparentUrl);
-      if (type === "talking") updateConfig("videoTalking", data.transparentUrl);
+      if (type === "idle") updateConfig("videoIdle", finalUrl);
+      if (type === "thinking") updateConfig("videoThinking", finalUrl);
+      if (type === "talking") updateConfig("videoTalking", finalUrl);
     } catch (err) {
-      alert("上传失败");
+      const message = err instanceof Error ? err.message : "上传失败";
+      alert(`上传失败：${message}`);
       setUploadState((s) => ({ ...s, [type]: { loading: false, progress: 0 } }));
     }
   }
@@ -444,7 +450,7 @@ export const CreationStepSoundAnimation = ({
   function handleUpload(e: any, type: "idle" | "thinking" | "talking") {
     const file = e.target.files?.[0];
     if (!file) return;
-    uploadRemoveBgVideo(file, type);
+    uploadDirectVideo(file, type);
   }
 
   // ============ 试听 TTS ============
@@ -541,7 +547,7 @@ export const CreationStepSoundAnimation = ({
               {uploadState[item.key].loading ? (
                 <div className="flex items-center gap-2 text-xs text-blue-600 mt-1">
                   <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
-                  <span>正在移除背景…</span>
+                  <span>正在上傳影片…</span>
                 </div>
               ) : (
                 item.value && (

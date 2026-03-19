@@ -5,6 +5,7 @@ import {
   Copy,
   Check,
   Send,
+  Mic,
   Square,
   MoreHorizontal,
   Link as LinkIcon,
@@ -44,6 +45,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [messages, setMessages] = useState<{ role: "user" | "bot"; content: string }[]>([]);
 
   const [inputText, setInputText] = useState("");
+  const [isListening, setIsListening] = useState(false);
   const [copied, setCopied] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const [botState, setBotState] = useState<"idle" | "thinking" | "speaking">(
@@ -134,6 +136,10 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
 
+    clearProactiveTimer();
+    botTurnsSinceUserRef.current = 0;
+    proactiveCountRef.current = 0;
+    hasUserSpokenRef.current = false;
     ttsSessionRef.current += 1;
     ttsSeq.current = 0;
     nextPlaySeq.current = 0;
@@ -225,6 +231,26 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const ttsTextQueue = useRef<{ seq: number; text: string }[]>([]);
   const ttsAudioMap = useRef<Map<number, HTMLAudioElement>>(new Map());
   const maxTtsInflight = 3;
+  const speechRecognitionRef = useRef<any>(null);
+  const sttTypingTokenRef = useRef(0);
+  const sttTypingTimerRef = useRef<number | null>(null);
+  const proactiveTimerRef = useRef<number | null>(null);
+  const botTurnsSinceUserRef = useRef(0);
+  const proactiveCountRef = useRef(0);
+  const hasUserSpokenRef = useRef(false);
+  const isListeningRef = useRef(false);
+  const botStateRef = useRef<"idle" | "thinking" | "speaking">("idle");
+  const PROACTIVE_INACTIVITY_MS = 15000;
+  const PROACTIVE_AFTER_BOT_TURNS = 1;
+  const PROACTIVE_MAX_PER_SESSION = 3;
+
+  useEffect(() => {
+    isListeningRef.current = isListening;
+  }, [isListening]);
+
+  useEffect(() => {
+    botStateRef.current = botState;
+  }, [botState]);
 
 const requestTTSAudio = async (text: string, sessionId: number) => {
 
@@ -365,7 +391,63 @@ const isSentenceEnd = (text: string) => {
   return /[。！？.!?]/.test(text);
 };
 
+const clearProactiveTimer = () => {
+  if (proactiveTimerRef.current) {
+    window.clearTimeout(proactiveTimerRef.current);
+    proactiveTimerRef.current = null;
+  }
+};
+
+const pushProactiveQuestion = () => {
+  const candidates = [
+    "你想我先幫你整理重點，還是直接給你下一步建議？",
+    "如果你願意，我可以先問你兩個關鍵問題再給最貼合的答案。",
+    "我可以繼續幫你拆解，你想先從哪一部分開始？",
+  ];
+  const text = candidates[proactiveCountRef.current % candidates.length];
+  setMessages((prev) => [...prev, { role: "bot", content: text }]);
+  if (voiceId) {
+    setIsStopAvailable(true);
+    enqueueSpeak(text);
+  }
+  proactiveCountRef.current += 1;
+  botTurnsSinceUserRef.current = PROACTIVE_AFTER_BOT_TURNS;
+  if (proactiveCountRef.current < PROACTIVE_MAX_PER_SESSION) {
+    scheduleProactiveCheck();
+  }
+};
+
+const scheduleProactiveCheck = () => {
+  clearProactiveTimer();
+  proactiveTimerRef.current = window.setTimeout(() => {
+    const shouldTrigger =
+      hasUserSpokenRef.current &&
+      botTurnsSinceUserRef.current >= PROACTIVE_AFTER_BOT_TURNS &&
+      proactiveCountRef.current < PROACTIVE_MAX_PER_SESSION &&
+      !shouldShowBooting &&
+      !isListeningRef.current &&
+      botStateRef.current !== "thinking";
+
+    if (!shouldTrigger) return;
+    pushProactiveQuestion();
+  }, PROACTIVE_INACTIVITY_MS);
+};
+
+const countSentenceLike = (text: string) => {
+  const matches = text.match(/[。！？.!?]/g);
+  return Math.max(1, matches ? matches.length : 0);
+};
+
+const handleBotTurnCommitted = (text: string) => {
+  if (!hasUserSpokenRef.current) return;
+  botTurnsSinceUserRef.current += countSentenceLike(text);
+  if (botTurnsSinceUserRef.current >= PROACTIVE_AFTER_BOT_TURNS) {
+    scheduleProactiveCheck();
+  }
+};
+
 const stopAllSpeech = () => {
+  clearProactiveTimer();
   generationIdRef.current += 1;
   ttsSessionRef.current += 1;
   activeRequestController.current?.abort();
@@ -395,13 +477,17 @@ const stopAllSpeech = () => {
   setIsBooting(false);
 };
 
-const sendMessage = async () => {
+const sendMessage = async (forcedText?: string) => {
   if (shouldShowBooting) return;
-  if (!inputText.trim()) return;
+  const textToSend = (forcedText ?? inputText).trim();
+  if (!textToSend) return;
 
+  hasUserSpokenRef.current = true;
+  botTurnsSinceUserRef.current = 0;
+  clearProactiveTimer();
   stopAllSpeech();
   setIsStopAvailable(true);
-  const userMsg = inputText;
+  const userMsg = textToSend;
   setInputText("");
 
   setMessages(prev => [...prev, { role: "user", content: userMsg }]);
@@ -532,11 +618,97 @@ const sendMessage = async () => {
       }
     }
 
+    await displayChain;
+    if (currentGenId !== generationIdRef.current) return;
+    if (committedReply.trim()) {
+      handleBotTurnCommitted(committedReply);
+    }
+
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") return;
     console.error(err);
     setBotState("idle");
   }
+};
+
+const stopSpeechInput = () => {
+  sttTypingTokenRef.current += 1;
+  if (sttTypingTimerRef.current) {
+    window.clearInterval(sttTypingTimerRef.current);
+    sttTypingTimerRef.current = null;
+  }
+  if (speechRecognitionRef.current) {
+    speechRecognitionRef.current.stop();
+  }
+  setIsListening(false);
+};
+
+const startSpeechInput = () => {
+  if (shouldShowBooting) return;
+  const SR =
+    (window as any).SpeechRecognition ||
+    (window as any).webkitSpeechRecognition;
+
+  if (!SR) {
+    alert("此瀏覽器不支援語音輸入（建議使用 Chrome）。");
+    return;
+  }
+
+  if (isListening) {
+    stopSpeechInput();
+    return;
+  }
+
+  // Mic acts as an interrupt: stop current AI speech/stream first, then listen.
+  stopAllSpeech();
+
+  const recognition = new SR();
+  speechRecognitionRef.current = recognition;
+  recognition.lang = "zh-HK";
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  recognition.onstart = () => setIsListening(true);
+  recognition.onerror = () => setIsListening(false);
+  recognition.onend = () => setIsListening(false);
+
+  recognition.onresult = (event: any) => {
+    const transcript = event?.results?.[0]?.[0]?.transcript?.trim() || "";
+    if (!transcript) return;
+
+    sttTypingTokenRef.current += 1;
+    const typingToken = sttTypingTokenRef.current;
+    if (sttTypingTimerRef.current) {
+      window.clearInterval(sttTypingTimerRef.current);
+      sttTypingTimerRef.current = null;
+    }
+
+    let i = 0;
+    setInputText("");
+    sttTypingTimerRef.current = window.setInterval(() => {
+      if (typingToken !== sttTypingTokenRef.current) {
+        if (sttTypingTimerRef.current) {
+          window.clearInterval(sttTypingTimerRef.current);
+          sttTypingTimerRef.current = null;
+        }
+        return;
+      }
+
+      i += 1;
+      const current = transcript.slice(0, i);
+      setInputText(current);
+
+      if (i >= transcript.length) {
+        if (sttTypingTimerRef.current) {
+          window.clearInterval(sttTypingTimerRef.current);
+          sttTypingTimerRef.current = null;
+        }
+        void sendMessage(transcript);
+      }
+    }, 35);
+  };
+
+  recognition.start();
 };
 
   useEffect(() => {
@@ -548,11 +720,13 @@ const sendMessage = async () => {
 
   useEffect(() => {
     return () => {
+      stopSpeechInput();
       stopAllSpeech();
     };
   }, []);
 
   const handleCloseWithInterrupt = () => {
+    stopSpeechInput();
     stopAllSpeech();
     onClose();
   };
@@ -761,6 +935,18 @@ const sendMessage = async () => {
               {/* input */}
               <div className="p-4 bg-white border-t">
                 <div className="flex items-center bg-slate-100 rounded-full p-2">
+                  <button
+                    onClick={startSpeechInput}
+                    disabled={shouldShowBooting}
+                    className={`p-3 mr-2 rounded-full border ${
+                      isListening
+                        ? "bg-red-50 border-red-300 text-red-600"
+                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100"
+                    } disabled:opacity-40`}
+                    title={isListening ? "點擊停止語音輸入" : "語音輸入（廣東話）"}
+                  >
+                    <Mic size={16} />
+                  </button>
                   <input
                     className="flex-1 bg-transparent px-3 text-sm outline-none"
                     value={inputText}
@@ -778,7 +964,9 @@ const sendMessage = async () => {
                     <Square size={16} />
                   </button>
                   <button
-                    onClick={sendMessage}
+                    onClick={() => {
+                      void sendMessage();
+                    }}
                     disabled={shouldShowBooting || !inputText.trim()}
                     className="p-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-40"
                   >

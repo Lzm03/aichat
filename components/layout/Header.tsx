@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from '../icons';
 import { TokenUsageMonitor } from '../system/TokenUsageMonitor';
-import { TokenDetailModal } from '../system/TokenDetailModal';
+import { TokenDetailModal, ProviderUsage } from '../system/TokenDetailModal';
 import { UserMenu } from './UserMenu';
 
 interface HeaderProps {
@@ -13,6 +13,9 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick }) => {
   const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [providers, setProviders] = useState<ProviderUsage[]>([]);
+  const [tokenLoading, setTokenLoading] = useState(false);
+  const [tokenError, setTokenError] = useState<string | null>(null);
   
   const tokenTriggerRef = useRef<HTMLDivElement>(null);
   const userMenuTriggerRef = useRef<HTMLDivElement>(null);
@@ -31,6 +34,57 @@ export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick }) => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const envBase = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+    const candidateBases = Array.from(new Set([envBase, ""].filter(Boolean)));
+
+    const fetchUsage = async () => {
+      setTokenLoading(true);
+      setTokenError(null);
+      try {
+        let lastErr = "No available endpoint";
+        for (const base of candidateBases) {
+          try {
+            const res = await fetch(`${base}/api/token-usage`);
+            if (!res.ok) {
+              lastErr = `HTTP ${res.status} @ ${base || "same-origin"}`;
+              continue;
+            }
+            const data = await res.json();
+            if (cancelled) return;
+            setProviders(Array.isArray(data?.providers) ? data.providers : []);
+            setTokenError(null);
+            return;
+          } catch (err) {
+            lastErr =
+              err instanceof Error ? err.message : `Fetch failed @ ${base || "same-origin"}`;
+          }
+        }
+        throw new Error(lastErr);
+      } catch (err) {
+        if (cancelled) return;
+        setProviders([]);
+        setTokenError(err instanceof Error ? err.message : "Fetch failed");
+      } finally {
+        if (!cancelled) setTokenLoading(false);
+      }
+    };
+
+    void fetchUsage();
+    const timer = window.setInterval(() => {
+      void fetchUsage();
+    }, 30000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const okCount = providers.filter((p) => p.status === "ok").length;
+  const totalCount = providers.length || 1;
 
   return (
     <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200/80 px-6 lg:px-8 py-4 flex items-center justify-between sticky top-0 z-20">
@@ -65,10 +119,10 @@ export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick }) => {
                 className="cursor-pointer"
                 onClick={() => setIsTokenModalOpen(prev => !prev)}
             >
-                <TokenUsageMonitor used={3.8} total={5.0} resetDate="3月1日" />
+                <TokenUsageMonitor used={okCount} total={totalCount} resetDate="即時更新" />
             </motion.div>
             <AnimatePresence>
-                {isTokenModalOpen && <TokenDetailModal />}
+                {isTokenModalOpen && <TokenDetailModal providers={providers} loading={tokenLoading} error={tokenError} />}
             </AnimatePresence>
         </div>
 

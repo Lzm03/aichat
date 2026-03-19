@@ -13,6 +13,7 @@ import removeBgRoute from "./api/removeBgvideo.ts";
 import uploadImageRoute from "./api/upload-image.ts";
 import uploadVideoRoute from "./api/upload-video.ts";
 import debugStorageRoute from "./api/debug-storage.ts";
+import tokenUsageRoute from "./api/token-usage.ts";
 import { uploadsDir } from "./lib/uploads-dir.ts";
 
 const app = express();
@@ -47,6 +48,7 @@ app.use("/api", askRoute);
 app.use("/api/upload-image", uploadImageRoute);
 app.use("/api/upload-video", uploadVideoRoute);
 app.use("/api/debug", debugStorageRoute);
+app.use("/api", tokenUsageRoute);
 app.use(
   "/uploads",
   express.static(uploadsDir, {

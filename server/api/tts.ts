@@ -1,5 +1,6 @@
 import express from "express";
 import fetch from "node-fetch";
+import { recordMinimaxTtsUsage } from "../lib/minimax-usage.ts";
 
 const router = express.Router();
 
@@ -96,6 +97,9 @@ router.post("/tts", async (req, res) => {
       console.log("TTS ERROR:", data);
       return res.status(500).json({ error: "No audio returned" });
     }
+
+    // Track MiniMax TTS usage for estimated balance visualization.
+    recordMinimaxTtsUsage(String(text || ""));
 
     const buffer = Buffer.from(data.data.audio, "hex");
     res.writeHead(200, {
