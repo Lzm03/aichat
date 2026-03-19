@@ -38,6 +38,13 @@ app.use(
 );
 
 app.use(express.json({ limit: "20mb" }));
+app.get("/api/health", (_req, res) => {
+  res.json({
+    ok: true,
+    now: new Date().toISOString(),
+    version: process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || "dev",
+  });
+});
 app.use("/api/bots", botsRoute);
 // Routes
 app.use("/api/generate-image", generateImageRoute);

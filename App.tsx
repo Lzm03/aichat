@@ -22,6 +22,7 @@ const App: React.FC = () => {
   const [activePage, setActivePage] = useState<Page>('workshop');
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [sharedBotId, setSharedBotId] = useState<string | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   // 在本地永远视为已准备好，不检查 window.aistudio
   const hasApiKey = true;
@@ -38,12 +39,49 @@ const App: React.FC = () => {
     return () => window.removeEventListener("popstate", syncRoute);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    let failedCount = 0;
+    const envBase = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+    const base = envBase || "";
+
+    const checkHealth = async () => {
+      try {
+        const res = await fetch(`${base}/api/health`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        failedCount = 0;
+        if (!cancelled) setIsUpdating(false);
+      } catch {
+        failedCount += 1;
+        if (!cancelled && failedCount >= 2) {
+          setIsUpdating(true);
+        }
+      }
+    };
+
+    void checkHealth();
+    const timer = window.setInterval(() => void checkHealth(), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
   if (sharedBotId) {
     return <SharedBotChatPage botId={sharedBotId} />;
   }
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex text-slate-800">
+      {isUpdating ? (
+        <div className="fixed inset-0 z-[9999] bg-white/95 backdrop-blur-sm flex items-center justify-center">
+          <div className="text-center">
+            <div className="mx-auto h-12 w-12 rounded-full border-4 border-slate-200 border-t-indigo-600 animate-spin" />
+            <p className="mt-4 text-lg font-semibold text-slate-800">系统更新中</p>
+            <p className="mt-1 text-sm text-slate-500">新版本部署完成后将自动恢复</p>
+          </div>
+        </div>
+      ) : null}
       <Sidebar activePage={activePage} setActivePage={setActivePage} />
       <MobileSidebarDrawer 
         isOpen={isMobileDrawerOpen}
