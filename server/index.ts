@@ -42,8 +42,12 @@ app.get("/", (_req, res) => {
   res.status(200).send("ok");
 });
 app.get("/api/health", (_req, res) => {
+  const maintenance = /^(1|true|yes|on)$/i.test(
+    String(process.env.MAINTENANCE_MODE || "").trim()
+  );
   res.json({
     ok: true,
+    maintenance,
     now: new Date().toISOString(),
     version: process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || "dev",
   });

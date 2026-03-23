@@ -49,6 +49,12 @@ const App: React.FC = () => {
       try {
         const res = await fetch(`${base}/api/health`, { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        if (data?.maintenance === true) {
+          failedCount = 0;
+          if (!cancelled) setIsUpdating(true);
+          return;
+        }
         failedCount = 0;
         if (!cancelled) setIsUpdating(false);
       } catch {
@@ -67,10 +73,6 @@ const App: React.FC = () => {
     };
   }, []);
 
-  if (sharedBotId) {
-    return <SharedBotChatPage botId={sharedBotId} />;
-  }
-
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex text-slate-800">
       {isUpdating ? (
@@ -82,22 +84,28 @@ const App: React.FC = () => {
           </div>
         </div>
       ) : null}
-      <Sidebar activePage={activePage} setActivePage={setActivePage} />
-      <MobileSidebarDrawer 
-        isOpen={isMobileDrawerOpen}
-        setIsOpen={setIsMobileDrawerOpen}
-        activePage={activePage}
-        setActivePage={setActivePage}
-      />
-      <div className="flex-1 flex flex-col">
-        <Header 
-          pageTitle={pageConfig[activePage].title} 
-          onMenuClick={() => setIsMobileDrawerOpen(true)}
-        />
-        <main className="flex-1 p-6 lg:p-8 overflow-y-auto">
-          <CurrentPage />
-        </main>
-      </div>
+      {sharedBotId ? (
+        <SharedBotChatPage botId={sharedBotId} />
+      ) : (
+        <>
+          <Sidebar activePage={activePage} setActivePage={setActivePage} />
+          <MobileSidebarDrawer 
+            isOpen={isMobileDrawerOpen}
+            setIsOpen={setIsMobileDrawerOpen}
+            activePage={activePage}
+            setActivePage={setActivePage}
+          />
+          <div className="flex-1 flex flex-col">
+            <Header 
+              pageTitle={pageConfig[activePage].title} 
+              onMenuClick={() => setIsMobileDrawerOpen(true)}
+            />
+            <main className="flex-1 p-6 lg:p-8 overflow-y-auto">
+              <CurrentPage />
+            </main>
+          </div>
+        </>
+      )}
     </div>
   );
 };
