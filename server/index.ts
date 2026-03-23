@@ -38,6 +38,9 @@ app.use(
 );
 
 app.use(express.json({ limit: "20mb" }));
+app.get("/", (_req, res) => {
+  res.status(200).send("ok");
+});
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
