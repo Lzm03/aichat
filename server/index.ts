@@ -81,6 +81,23 @@ app.use(
 // ⭐ Railway 會動態提供 PORT
 const PORT = process.env.PORT || 4000;
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Backend running at http://localhost:${PORT}`);
 });
+
+function shutdown(signal: string) {
+  console.log(`${signal} received, shutting down gracefully...`);
+  server.close((err) => {
+    if (err) {
+      console.error("Error while closing server:", err);
+      process.exit(1);
+    }
+    process.exit(0);
+  });
+
+  // Force exit if something hangs (DB/socket keep-alive, etc).
+  setTimeout(() => process.exit(1), 10000).unref();
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
