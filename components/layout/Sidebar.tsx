@@ -33,9 +33,10 @@ const NavItem: React.FC<NavItemProps> = ({ icon: Icon, label, active = false, on
 interface SidebarProps {
   activePage: Page;
   setActivePage: (page: Page) => void;
+  forceHidden?: boolean;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, forceHidden = false }) => {
   const navItems: { id: Page; label: string; icon: React.ElementType }[] = [
     { id: 'dashboard', label: '教學指揮艙', icon: Icons.dashboard },
     { id: 'workshop', label: 'AI 機器人工作坊', icon: Icons.bot },
@@ -43,7 +44,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
   ];
 
   return (
-    <aside className="w-64 bg-white border-r border-slate-200/80 p-4 flex-col justify-between hidden lg:flex">
+    <aside className={`w-64 bg-white border-r border-slate-200/80 p-4 flex-col justify-between ${forceHidden ? "hidden" : "hidden lg:flex"}`}>
       <div>
         <div className="flex items-center space-x-3 p-4 mb-6">
           <img src="/choprealitylogo.png" alt="Logo" className="w-12 h-12 object-contain" />

@@ -8,9 +8,10 @@ interface MobileSidebarDrawerProps {
     setIsOpen: (isOpen: boolean) => void;
     activePage: Page;
     setActivePage: (page: Page) => void;
+    forceVisible?: boolean;
 }
 
-export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen, setIsOpen, activePage, setActivePage }) => {
+export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen, setIsOpen, activePage, setActivePage, forceVisible = false }) => {
   
   const menuItems: { id: Page; label: string; icon: React.ElementType }[] = [
     { id: 'dashboard', label: '教學指揮艙', icon: Icons.dashboard },
@@ -27,7 +28,7 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsOpen(false)}
-              className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] lg:hidden"
+              className={`fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] ${forceVisible ? "" : "lg:hidden"}`}
             />
 
             <motion.div
@@ -35,7 +36,7 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed left-0 top-0 bottom-0 w-[280px] bg-white z-[70] shadow-2xl rounded-r-[32px] flex flex-col lg:hidden"
+              className={`fixed left-0 top-0 bottom-0 w-[280px] bg-white z-[70] shadow-2xl rounded-r-[32px] flex flex-col ${forceVisible ? "" : "lg:hidden"}`}
             >
               <div className="p-6 flex items-center justify-between border-b border-slate-100">
                 <div className="flex items-center gap-3">

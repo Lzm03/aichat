@@ -23,6 +23,7 @@ const App: React.FC = () => {
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [sharedBotId, setSharedBotId] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isPortraitLayout, setIsPortraitLayout] = useState(false);
 
   // 在本地永远视为已准备好，不检查 window.aistudio
   const hasApiKey = true;
@@ -37,6 +38,14 @@ const App: React.FC = () => {
     syncRoute();
     window.addEventListener("popstate", syncRoute);
     return () => window.removeEventListener("popstate", syncRoute);
+  }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia("(orientation: portrait)");
+    const update = () => setIsPortraitLayout(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
   }, []);
 
   useEffect(() => {
@@ -74,7 +83,7 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex text-slate-800">
+    <div className={`min-h-screen bg-[#F8FAFC] text-slate-800 ${sharedBotId ? "block" : "flex"}`}>
       {isUpdating ? (
         <div className="fixed inset-0 z-[9999] bg-white/95 backdrop-blur-sm flex items-center justify-center">
           <div className="text-center">
@@ -85,20 +94,24 @@ const App: React.FC = () => {
         </div>
       ) : null}
       {sharedBotId ? (
-        <SharedBotChatPage botId={sharedBotId} />
+        <div className="w-screen min-h-screen">
+          <SharedBotChatPage botId={sharedBotId} />
+        </div>
       ) : (
         <>
-          <Sidebar activePage={activePage} setActivePage={setActivePage} />
+          <Sidebar activePage={activePage} setActivePage={setActivePage} forceHidden={isPortraitLayout} />
           <MobileSidebarDrawer 
             isOpen={isMobileDrawerOpen}
             setIsOpen={setIsMobileDrawerOpen}
             activePage={activePage}
             setActivePage={setActivePage}
+            forceVisible={isPortraitLayout}
           />
           <div className="flex-1 flex flex-col">
             <Header 
               pageTitle={pageConfig[activePage].title} 
               onMenuClick={() => setIsMobileDrawerOpen(true)}
+              forceMobileMenu={isPortraitLayout}
             />
             <main className="flex-1 p-6 lg:p-8 overflow-y-auto">
               <CurrentPage />

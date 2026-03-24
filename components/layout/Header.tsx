@@ -8,9 +8,10 @@ import { UserMenu } from './UserMenu';
 interface HeaderProps {
   pageTitle: string;
   onMenuClick: () => void;
+  forceMobileMenu?: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick }) => {
+export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, forceMobileMenu = false }) => {
   const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [providers, setProviders] = useState<ProviderUsage[]>([]);
@@ -91,7 +92,7 @@ export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick }) => {
       <div className="flex items-center space-x-4">
         <button 
           onClick={onMenuClick}
-          className="lg:hidden p-2 -ml-2 text-slate-600 hover:text-indigo-600 active:bg-slate-100 rounded-lg"
+          className={`${forceMobileMenu ? "inline-flex" : "lg:hidden"} p-2 -ml-2 text-slate-600 hover:text-indigo-600 active:bg-slate-100 rounded-lg`}
         >
           <Icons.menu className="w-6 h-6" />
         </button>
