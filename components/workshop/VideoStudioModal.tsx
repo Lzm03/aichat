@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { API_BASE } from "../../utils/api";
+import { SequencePngPlayer } from "./SequencePngPlayer";
 
 interface Props {
   onClose: () => void;
@@ -55,7 +55,7 @@ export default function VideoStudioModal({
   const [thinkingWebm, setThinkingWebm] = useState<string | null>(null);
   const canSave = !!(idleWebm && speakingWebm && thinkingWebm);
 
-  const baseUrl = API_BASE;
+  const baseUrl = import.meta.env.VITE_API_URL;
   const SUPPORTED_ASPECTS = new Set(["16:9", "9:16", "1:1"]);
 
   function simplifyRatio(width: number, height: number): string {
@@ -269,7 +269,7 @@ export default function VideoStudioModal({
       { headers: { "Content-Type": "application/json" } }
     );
 
-    return res.data.transparentUrl; // webm
+    return res.data.sequenceManifestUrl || res.data.transparentUrl; // manifest.json or webm
   }
 
   /* ========= Step 4: 完整流程 一键生成所有动画 ========= */
@@ -351,6 +351,57 @@ export default function VideoStudioModal({
     });
     onClose();
   }
+
+  const isSequenceManifest = (url?: string | null) =>
+    Boolean(url && /\/manifest\.json(\?|$)/i.test(url));
+
+  const SequenceOrVideo = ({ src }: { src: string }) => {
+    const [manifest, setManifest] = useState<any>(null);
+
+    useEffect(() => {
+      let active = true;
+      if (!isSequenceManifest(src)) {
+        setManifest(null);
+        return;
+      }
+      (async () => {
+        try {
+          const res = await fetch(src);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (active) setManifest(data);
+        } catch {
+          // ignore
+        }
+      })();
+      return () => {
+        active = false;
+      };
+    }, [src]);
+
+    if (isSequenceManifest(src) && manifest) {
+      return (
+        <SequencePngPlayer
+          folderUrl={manifest.folderUrl}
+          pattern={manifest.pattern}
+          frameCount={manifest.frameCount}
+          fps={manifest.fps}
+          className="w-full h-[260px] object-contain rounded-xl"
+          active={true}
+        />
+      );
+    }
+
+    return (
+      <video
+        className="w-full h-[260px] object-contain rounded-xl"
+        autoPlay
+        muted
+        loop
+        src={src}
+      />
+    );
+  };
 
   /* ========= UI ========= */
   return (
@@ -447,42 +498,24 @@ export default function VideoStudioModal({
               <div className="w-full grid grid-cols-3 gap-4">
                 <div>
                   <h3 className="text-sm font-semibold mb-2 text-slate-700">Idle</h3>
-                  <div className="rounded-2xl bg-black p-2 shadow">
-                    <video
-                      className="w-full h-[260px] object-contain rounded-xl"
-                      autoPlay
-                      muted
-                      loop
-                      src={idleWebm}
-                    />
-                  </div>
-                </div>
+	                  <div className="rounded-2xl bg-black p-2 shadow">
+	                    <SequenceOrVideo src={idleWebm} />
+	                  </div>
+	                </div>
 
                 <div>
                   <h3 className="text-sm font-semibold mb-2 text-slate-700">Speaking</h3>
-                  <div className="rounded-2xl bg-black p-2 shadow">
-                    <video
-                      className="w-full h-[260px] object-contain rounded-xl"
-                      autoPlay
-                      muted
-                      loop
-                      src={speakingWebm}
-                    />
-                  </div>
-                </div>
+	                  <div className="rounded-2xl bg-black p-2 shadow">
+	                    <SequenceOrVideo src={speakingWebm} />
+	                  </div>
+	                </div>
 
                 <div>
                   <h3 className="text-sm font-semibold mb-2 text-slate-700">Thinking</h3>
-                  <div className="rounded-2xl bg-black p-2 shadow">
-                    <video
-                      className="w-full h-[260px] object-contain rounded-xl"
-                      autoPlay
-                      muted
-                      loop
-                      src={thinkingWebm}
-                    />
-                  </div>
-                </div>
+	                  <div className="rounded-2xl bg-black p-2 shadow">
+	                    <SequenceOrVideo src={thinkingWebm} />
+	                  </div>
+	                </div>
               </div>
             </div>
           )}

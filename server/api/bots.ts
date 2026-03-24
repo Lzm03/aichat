@@ -17,9 +17,45 @@ router.get("/", async (req, res) => {
 });
 
 /* -------------------- GET SINGLE BOT -------------------- */
+router.post("/precompute-sequences/all", async (req, res) => {
+  const fps = Number(req.body?.fps || 20);
+  try {
+    const result = await pool.query("SELECT * FROM bots ORDER BY created_at DESC");
+    const base = getPublicBase(req);
+    const report: Array<any> = [];
+
+    for (const row of result.rows) {
+      const bot = toClient(row) as any;
+      const item: any = { botId: bot.id, name: bot.name, sequences: {} };
+      const entries: Array<{ key: "idle" | "thinking" | "talking"; url: string }> = [
+        { key: "idle", url: bot.videoIdle || "" },
+        { key: "thinking", url: bot.videoThinking || "" },
+        { key: "talking", url: bot.videoTalking || "" },
+      ].filter((x) => x.url);
+
+      for (const entry of entries) {
+        try {
+          const manifest = await getOrCreateWebmSequence(entry.url, fps, base);
+          item.sequences[entry.key] = manifest;
+        } catch (e) {
+          item.sequences[entry.key] = {
+            error: e instanceof Error ? e.message : "sequence generation failed",
+          };
+        }
+      }
+      report.push(item);
+    }
+
+    return res.json({ ok: true, fps, count: report.length, report });
+  } catch (err) {
+    console.error("❌ POST /precompute-sequences/all Failed:", err);
+    return res.status(500).json({ error: "Failed to precompute all bot sequences" });
+  }
+});
+
 router.post("/:id/precompute-sequences", async (req, res) => {
   const { id } = req.params;
-  const fps = Number(req.body?.fps || 12);
+  const fps = Number(req.body?.fps || 20);
   try {
     const result = await pool.query("SELECT * FROM bots WHERE id=$1", [id]);
     if (result.rows.length === 0) {
@@ -28,7 +64,6 @@ router.post("/:id/precompute-sequences", async (req, res) => {
 
     const bot = toClient(result.rows[0]) as any;
     const base = getPublicBase(req);
-
     const entries: Array<{ key: "idle" | "thinking" | "talking"; url: string }> = [
       { key: "idle", url: bot.videoIdle || "" },
       { key: "thinking", url: bot.videoThinking || "" },
@@ -36,23 +71,17 @@ router.post("/:id/precompute-sequences", async (req, res) => {
     ].filter((x) => x.url);
 
     const sequences: Record<string, any> = {};
-    for (const item of entries) {
+    for (const entry of entries) {
       try {
-        const manifest = await getOrCreateWebmSequence(item.url, fps, base);
-        sequences[item.key] = manifest;
+        sequences[entry.key] = await getOrCreateWebmSequence(entry.url, fps, base);
       } catch (e) {
-        sequences[item.key] = {
+        sequences[entry.key] = {
           error: e instanceof Error ? e.message : "sequence generation failed",
         };
       }
     }
 
-    return res.json({
-      ok: true,
-      botId: id,
-      fps,
-      sequences,
-    });
+    return res.json({ ok: true, botId: id, fps, sequences });
   } catch (err) {
     console.error("❌ POST /:id/precompute-sequences Failed:", err);
     return res.status(500).json({ error: "Failed to precompute sequences" });
