@@ -14,6 +14,7 @@ import uploadImageRoute from "./api/upload-image.ts";
 import uploadVideoRoute from "./api/upload-video.ts";
 import debugStorageRoute from "./api/debug-storage.ts";
 import tokenUsageRoute from "./api/token-usage.ts";
+import webmSequenceRoute from "./api/webm-sequence.ts";
 import { uploadsDir } from "./lib/uploads-dir.ts";
 
 const app = express();
@@ -58,6 +59,7 @@ app.use("/api/generate-image", generateImageRoute);
 app.use("/api", ttsRoute);
 app.use("/api/video", animationRoute);
 app.use("/api/video", removeBgRoute);
+app.use("/api/video", webmSequenceRoute);
 app.use("/api", askRoute);
 app.use("/api/upload-image", uploadImageRoute);
 app.use("/api/upload-video", uploadVideoRoute);
@@ -81,23 +83,6 @@ app.use(
 // ⭐ Railway 會動態提供 PORT
 const PORT = process.env.PORT || 4000;
 
-const server = app.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`Backend running at http://localhost:${PORT}`);
 });
-
-function shutdown(signal: string) {
-  console.log(`${signal} received, shutting down gracefully...`);
-  server.close((err) => {
-    if (err) {
-      console.error("Error while closing server:", err);
-      process.exit(1);
-    }
-    process.exit(0);
-  });
-
-  // Force exit if something hangs (DB/socket keep-alive, etc).
-  setTimeout(() => process.exit(1), 10000).unref();
-}
-
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));

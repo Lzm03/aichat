@@ -32,9 +32,23 @@ export const SharedBotChatPage: React.FC<SharedBotChatPageProps> = ({ botId }) =
     loadBot();
   }, [botId]);
 
+  useEffect(() => {
+    if (!botConfig?.id) return;
+    const ua = navigator.userAgent || "";
+    const isMobileLike = /iPhone|iPad|iPod|Android/i.test(ua);
+    if (!isMobileLike) return;
+    const baseUrl = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+    const base = baseUrl || "";
+    void fetch(`${base}/api/bots/${botConfig.id}/precompute-sequences`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fps: 12 }),
+    }).catch(() => undefined);
+  }, [botConfig?.id]);
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-100">
+      <div className="w-screen min-h-screen bg-slate-900 flex items-center justify-center text-slate-100">
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-4 border-slate-500 border-t-white rounded-full animate-spin" />
           <div className="text-sm">正在載入聊天...</div>
@@ -45,7 +59,7 @@ export const SharedBotChatPage: React.FC<SharedBotChatPageProps> = ({ botId }) =
 
   if (error || !botConfig) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-100 p-6">
+      <div className="w-screen min-h-screen bg-slate-900 flex items-center justify-center text-slate-100 p-6">
         <div className="text-sm">無法打開此聊天：{error || "機器人不存在"}</div>
       </div>
     );
@@ -63,4 +77,3 @@ export const SharedBotChatPage: React.FC<SharedBotChatPageProps> = ({ botId }) =
     />
   );
 };
-

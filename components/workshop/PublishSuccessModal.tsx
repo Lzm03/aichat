@@ -12,6 +12,8 @@ import {
   Edit,
   Trash2,
 } from "lucide-react";
+import { ChromaKeyVideo } from "./ChromaKeyVideo";
+import { SequencePngPlayer } from "./SequencePngPlayer";
 
 interface PublishSuccessModalProps {
   isOpen: boolean;
@@ -37,6 +39,9 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     videoIdle,
     videoThinking,
     videoTalking,
+    videoIdleGreen,
+    videoThinkingGreen,
+    videoTalkingGreen,
     voiceId, 
   } = botConfig;
 
@@ -78,6 +83,11 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const safeVideoTalking =
     videoTalking && videoTalking.trim() !== "" ? videoTalking : null;
   const hasAnyVideo = Boolean(safeVideoIdle || safeVideoThinking || safeVideoTalking);
+  const hasGreenVideo = Boolean(videoIdleGreen || videoThinkingGreen || videoTalkingGreen);
+  const [supportsAlphaWebm, setSupportsAlphaWebm] = useState(true);
+  const [seqIdle, setSeqIdle] = useState<any>(null);
+  const [seqThinking, setSeqThinking] = useState<any>(null);
+  const [seqTalking, setSeqTalking] = useState<any>(null);
   const shouldShowBooting = isOpen && !openingReady;
   const visualState =
     botState === "speaking"
@@ -97,6 +107,41 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       : safeVideoThinking
       ? "thinking"
       : "speaking";
+
+  useEffect(() => {
+    const ua = navigator.userAgent || "";
+    const isIOS = /iPhone|iPad|iPod/i.test(ua);
+    const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+    // Practical fallback: iOS/Safari often cannot reliably display WebM alpha.
+    setSupportsAlphaWebm(!(isIOS || isSafari));
+  }, []);
+
+  const shouldUseChroma = !supportsAlphaWebm && hasGreenVideo;
+  const shouldUsePngSequence = !supportsAlphaWebm;
+
+  useEffect(() => {
+    if (!isOpen || !shouldUsePngSequence) return;
+    const baseUrl = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+    const base = baseUrl || "";
+    const fetchSeq = async (videoUrl: string, setter: (v: any) => void) => {
+      if (!videoUrl) return;
+      try {
+        const res = await fetch(`${base}/api/video/webm-sequence`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ videoUrl, fps: 12 }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data?.manifest) setter(data.manifest);
+      } catch {
+        // ignore fallback errors
+      }
+    };
+    void fetchSeq(safeVideoIdle || "", setSeqIdle);
+    void fetchSeq(safeVideoThinking || "", setSeqThinking);
+    void fetchSeq(safeVideoTalking || "", setSeqTalking);
+  }, [isOpen, shouldUsePngSequence, safeVideoIdle, safeVideoThinking, safeVideoTalking]);
 
   // -----------------------------
   // 点击外面自动关闭 dropdown
@@ -838,7 +883,26 @@ const startSpeechInput = () => {
               >
                 {hasAnyVideo ? (
                   <div className="relative h-full md:h-[80%] w-full">
-                    {safeVideoIdle && (
+                    {shouldUsePngSequence && seqIdle ? (
+                      <SequencePngPlayer
+                        folderUrl={seqIdle.folderUrl}
+                        pattern={seqIdle.pattern}
+                        frameCount={seqIdle.frameCount}
+                        fps={seqIdle.fps}
+                        className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                          visualState === "idle" ? "block" : "hidden"
+                        }`}
+                        active={visualState === "idle"}
+                      />
+                    ) : shouldUseChroma && videoIdleGreen ? (
+                      <ChromaKeyVideo
+                        src={videoIdleGreen}
+                        className={`absolute inset-0 h-full w-full ${
+                          visualState === "idle" ? "block" : "hidden"
+                        }`}
+                        active={visualState === "idle"}
+                      />
+                    ) : safeVideoIdle && (
                       <video
                         src={safeVideoIdle}
                         autoPlay
@@ -851,7 +915,26 @@ const startSpeechInput = () => {
                         }`}
                       />
                     )}
-                    {safeVideoThinking && (
+                    {shouldUsePngSequence && seqThinking ? (
+                      <SequencePngPlayer
+                        folderUrl={seqThinking.folderUrl}
+                        pattern={seqThinking.pattern}
+                        frameCount={seqThinking.frameCount}
+                        fps={seqThinking.fps}
+                        className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                          visualState === "thinking" ? "block" : "hidden"
+                        }`}
+                        active={visualState === "thinking"}
+                      />
+                    ) : shouldUseChroma && videoThinkingGreen ? (
+                      <ChromaKeyVideo
+                        src={videoThinkingGreen}
+                        className={`absolute inset-0 h-full w-full ${
+                          visualState === "thinking" ? "block" : "hidden"
+                        }`}
+                        active={visualState === "thinking"}
+                      />
+                    ) : safeVideoThinking && (
                       <video
                         src={safeVideoThinking}
                         autoPlay
@@ -864,7 +947,26 @@ const startSpeechInput = () => {
                         }`}
                       />
                     )}
-                    {safeVideoTalking && (
+                    {shouldUsePngSequence && seqTalking ? (
+                      <SequencePngPlayer
+                        folderUrl={seqTalking.folderUrl}
+                        pattern={seqTalking.pattern}
+                        frameCount={seqTalking.frameCount}
+                        fps={seqTalking.fps}
+                        className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                          visualState === "speaking" ? "block" : "hidden"
+                        }`}
+                        active={visualState === "speaking"}
+                      />
+                    ) : shouldUseChroma && videoTalkingGreen ? (
+                      <ChromaKeyVideo
+                        src={videoTalkingGreen}
+                        className={`absolute inset-0 h-full w-full ${
+                          visualState === "speaking" ? "block" : "hidden"
+                        }`}
+                        active={visualState === "speaking"}
+                      />
+                    ) : safeVideoTalking && (
                       <video
                         src={safeVideoTalking}
                         autoPlay

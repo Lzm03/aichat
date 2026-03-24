@@ -1,6 +1,7 @@
 import express from "express";
 import { pool } from "../db.ts";
 import { toDb, toClient } from "../botMapper.js";
+import { getOrCreateWebmSequence, getPublicBase } from "./webm-sequence.ts";
 
 const router = express.Router();
 
@@ -16,6 +17,48 @@ router.get("/", async (req, res) => {
 });
 
 /* -------------------- GET SINGLE BOT -------------------- */
+router.post("/:id/precompute-sequences", async (req, res) => {
+  const { id } = req.params;
+  const fps = Number(req.body?.fps || 12);
+  try {
+    const result = await pool.query("SELECT * FROM bots WHERE id=$1", [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Bot not found" });
+    }
+
+    const bot = toClient(result.rows[0]) as any;
+    const base = getPublicBase(req);
+
+    const entries: Array<{ key: "idle" | "thinking" | "talking"; url: string }> = [
+      { key: "idle", url: bot.videoIdle || "" },
+      { key: "thinking", url: bot.videoThinking || "" },
+      { key: "talking", url: bot.videoTalking || "" },
+    ].filter((x) => x.url);
+
+    const sequences: Record<string, any> = {};
+    for (const item of entries) {
+      try {
+        const manifest = await getOrCreateWebmSequence(item.url, fps, base);
+        sequences[item.key] = manifest;
+      } catch (e) {
+        sequences[item.key] = {
+          error: e instanceof Error ? e.message : "sequence generation failed",
+        };
+      }
+    }
+
+    return res.json({
+      ok: true,
+      botId: id,
+      fps,
+      sequences,
+    });
+  } catch (err) {
+    console.error("❌ POST /:id/precompute-sequences Failed:", err);
+    return res.status(500).json({ error: "Failed to precompute sequences" });
+  }
+});
+
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
   try {
