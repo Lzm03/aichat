@@ -3,20 +3,20 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "ts-node-dev index.ts",
-    "db": "ts-node db.ts",
-    "start": "ts-node index.ts"
+    "dev": "node --loader ts-node/esm index.ts",
+    "db": "node --loader ts-node/esm db.ts",
+    "start": "node --loader ts-node/esm index.ts"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
     "@railway/cli": "^4.30.5",
     "pdf-parse": "^1.1.1",
-    "pg": "^8.19.0"
+    "pg": "^8.19.0",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.0.0"
   },
   "devDependencies": {
     "@types/pg": "^8.16.0",
-    "ts-node": "^10.9.1",
-    "ts-node-dev": "^2.0.0",
-    "typescript": "^5.0.0"
+    "ts-node-dev": "^2.0.0"
   }
 }
