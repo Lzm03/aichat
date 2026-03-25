@@ -58,6 +58,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [isBooting, setIsBooting] = useState(false);
   const [openingReady, setOpeningReady] = useState(false);
   const [mediaReady, setMediaReady] = useState(false);
+  const [isMobileClient, setIsMobileClient] = useState(false);
   const [permissionReady, setPermissionReady] = useState(false);
   const [permissionError, setPermissionError] = useState("");
   const [isUnlocking, setIsUnlocking] = useState(false);
@@ -91,7 +92,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     Boolean(url && /\/manifest\.json(\?|$)/i.test(url));
   const hasAnyVideo = Boolean(safeVideoIdle || safeVideoThinking || safeVideoTalking);
   const shouldShowBooting = isOpen && (!openingReady || !mediaReady);
-  const shouldBlockChat = shouldShowBooting || !permissionReady;
+  const shouldRequirePermission = Boolean(voiceId) && isMobileClient;
+  const shouldBlockChat = shouldShowBooting || (shouldRequirePermission && !permissionReady);
   const visualState =
     botState === "speaking"
       ? safeVideoTalking
@@ -134,6 +136,13 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       behavior: "smooth",
     });
   }, [messages, botState]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const coarse = window.matchMedia?.("(pointer: coarse)")?.matches;
+    const uaMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    setIsMobileClient(Boolean(coarse || uaMobile));
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -218,7 +227,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   useLayoutEffect(() => {
     if (!isOpen) return;
     setOpeningReady(false);
-    if (voiceId && !permissionReady) {
+    if (shouldRequirePermission && !permissionReady) {
       // Wait for explicit user authorization before booting opening voice.
       setIsBooting(false);
       setMessages([]);
@@ -237,11 +246,11 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       setIsBooting(false);
       setOpeningReady(true);
     }
-  }, [isOpen, voiceId, permissionReady]);
+  }, [isOpen, voiceId, permissionReady, shouldRequirePermission]);
 
   useEffect(() => {
     if (!isOpen) return;
-    if (voiceId && !permissionReady) {
+    if (shouldRequirePermission && !permissionReady) {
       stopAllSpeech();
       setMessages([]);
       setBotState("idle");
@@ -319,7 +328,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
           setOpeningReady(true);
         }
       });
-  }, [botName, isOpen, voiceId, permissionReady]);
+  }, [botName, isOpen, voiceId, permissionReady, shouldRequirePermission]);
   
   
 
@@ -440,7 +449,7 @@ const waitForAudioReady = (seq: number, timeoutMs = 1000) =>
   });
 
 const tryPlayInOrder = () => {
-  if (!permissionReady) return;
+  if (shouldRequirePermission && !permissionReady) return;
   if (playing.current) return;
   if (!ttsPlayerRef.current) {
     ttsPlayerRef.current = new Audio();
@@ -1092,14 +1101,14 @@ const unlockAudioAndMic = async () => {
 
   useEffect(() => {
     if (!isOpen) return;
-    if (!voiceId) {
+    if (!voiceId || !shouldRequirePermission) {
       setPermissionReady(true);
       setPermissionError("");
       return;
     }
     // Require one explicit tap after each open, then keep unlocked within this session.
     setPermissionReady(false);
-  }, [isOpen, voiceId]);
+  }, [isOpen, voiceId, shouldRequirePermission]);
 
   useEffect(() => {
     return () => {
@@ -1464,7 +1473,7 @@ const unlockAudioAndMic = async () => {
                 <div className="text-sm text-slate-600">正在載入聊天與語音...</div>
               </div>
             )}
-            {!shouldShowBooting && !permissionReady && (
+            {!shouldShowBooting && shouldRequirePermission && !permissionReady && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-white/95 px-6 text-center">
                 <div className="text-xl font-semibold text-slate-800">開始體驗前需要一次授權</div>
                 <div className="text-sm text-slate-600">
