@@ -60,6 +60,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [mediaReady, setMediaReady] = useState(false);
   const [permissionReady, setPermissionReady] = useState(false);
   const [permissionError, setPermissionError] = useState("");
+  const [isMobileClient, setIsMobileClient] = useState(false);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -133,6 +134,13 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       behavior: "smooth",
     });
   }, [messages, botState]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const coarse = window.matchMedia?.("(pointer: coarse)")?.matches;
+    const uaMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    setIsMobileClient(Boolean(coarse || uaMobile));
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -779,7 +787,7 @@ const sendMessage = async (forcedText?: string) => {
   }
 };
 
-const stopSpeechInput = () => {
+const stopSpeechInput = (forceAbort = false) => {
   sttTypingTokenRef.current += 1;
   if (sttWatchdogRef.current) {
     window.clearTimeout(sttWatchdogRef.current);
@@ -803,7 +811,9 @@ const stopSpeechInput = () => {
       speechRecognitionRef.current.onspeechend = null;
       speechRecognitionRef.current.onsoundstart = null;
       speechRecognitionRef.current.stop();
-      speechRecognitionRef.current.abort?.();
+      if (forceAbort) {
+        speechRecognitionRef.current.abort?.();
+      }
     } catch {
       // ignore
     }
@@ -982,6 +992,20 @@ const startSpeechInput = async () => {
   }
 };
 
+const handleMobilePressStart = (e: React.SyntheticEvent) => {
+  if (!isMobileClient) return;
+  e.preventDefault();
+  if (isListeningRef.current) return;
+  void startSpeechInput();
+};
+
+const handleMobilePressEnd = (e: React.SyntheticEvent) => {
+  if (!isMobileClient) return;
+  e.preventDefault();
+  if (!isListeningRef.current) return;
+  stopSpeechInput(false);
+};
+
 const unlockAudioAndMic = async () => {
   setPermissionError("");
   if (typeof window === "undefined") return;
@@ -1054,13 +1078,13 @@ const unlockAudioAndMic = async () => {
         window.clearTimeout(audioRetryTimerRef.current);
         audioRetryTimerRef.current = null;
       }
-      stopSpeechInput();
+      stopSpeechInput(true);
       stopAllSpeech();
     };
   }, []);
 
   const handleCloseWithInterrupt = () => {
-    stopSpeechInput();
+    stopSpeechInput(true);
     stopAllSpeech();
     onClose();
   };
@@ -1362,9 +1386,26 @@ const unlockAudioAndMic = async () => {
                     已收到回覆語音，請點一下畫面以恢復播放。
                   </div>
                 )}
+                {isMobileClient && (
+                  <div className="mb-2 text-xs text-slate-500">
+                    手機模式：按住麥克風說話，鬆開自動發送。
+                  </div>
+                )}
                 <div className="flex items-center bg-slate-100 rounded-full p-2">
                   <button
-                    onClick={startSpeechInput}
+                    onClick={(e) => {
+                      if (isMobileClient) {
+                        e.preventDefault();
+                        return;
+                      }
+                      void startSpeechInput();
+                    }}
+                    onTouchStart={handleMobilePressStart}
+                    onTouchEnd={handleMobilePressEnd}
+                    onTouchCancel={handleMobilePressEnd}
+                    onMouseDown={handleMobilePressStart}
+                    onMouseUp={handleMobilePressEnd}
+                    onMouseLeave={handleMobilePressEnd}
                     disabled={shouldBlockChat}
                     className={`p-3 mr-2 rounded-full border ${
                       isListening
