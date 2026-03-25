@@ -60,6 +60,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [mediaReady, setMediaReady] = useState(false);
   const [permissionReady, setPermissionReady] = useState(false);
   const [permissionError, setPermissionError] = useState("");
+  const [isUnlocking, setIsUnlocking] = useState(false);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -1024,13 +1025,20 @@ const startSpeechInput = async () => {
 };
 
 const unlockAudioAndMic = async () => {
+  if (isUnlocking || permissionReady) return;
+  setIsUnlocking(true);
   setPermissionError("");
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined") {
+    setIsUnlocking(false);
+    return;
+  }
   try {
     if (navigator.mediaDevices?.getUserMedia) {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach((t) => t.stop());
     }
+    // Enter chat immediately once mic permission is granted.
+    setPermissionReady(true);
     const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (AudioCtx) {
       const ctx = new AudioCtx();
@@ -1055,14 +1063,16 @@ const unlockAudioAndMic = async () => {
     await ttsPlayerRef.current.play().catch(() => {});
     ttsPlayerRef.current.pause();
     ttsPlayerRef.current.muted = false;
-    setPermissionReady(true);
   } catch (e: any) {
     const name = e?.name || "UnknownError";
+    setPermissionReady(false);
     if (name === "NotAllowedError") {
       setPermissionError("你拒絕了麥克風權限，請在瀏覽器設定中允許後再試。");
     } else {
       setPermissionError("授權失敗，請檢查手機瀏覽器麥克風與音訊權限。");
     }
+  } finally {
+    setIsUnlocking(false);
   }
 };
 
@@ -1457,9 +1467,10 @@ const unlockAudioAndMic = async () => {
                   onClick={() => {
                     void unlockAudioAndMic();
                   }}
+                  disabled={isUnlocking}
                   className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-medium text-white hover:bg-indigo-700"
                 >
-                  開始體驗並授權
+                  {isUnlocking ? "授權中..." : "開始體驗並授權"}
                 </button>
                 {permissionError && (
                   <div className="max-w-md text-xs text-red-600">{permissionError}</div>
