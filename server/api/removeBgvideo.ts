@@ -134,7 +134,7 @@ async function downloadZipAndExtractToSequence(url: string, publicBase: string) 
 
   const manifest = {
     id: seqId,
-    fps: 20,
+    fps: 15,
     frameCount: frameFiles.length,
     folderUrl: `${publicBase}/uploads/sequences/${seqId}/frames`,
     pattern: "frame_%04d.png",

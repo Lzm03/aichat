@@ -100,7 +100,7 @@ export async function getOrCreateWebmSequence(
 router.post("/webm-sequence", async (req, res) => {
   try {
     const videoUrl = String(req.body?.videoUrl || "").trim();
-    const fps = Number(req.body?.fps || 20);
+    const fps = Number(req.body?.fps || 15);
     if (!videoUrl) return res.status(400).json({ error: "Missing videoUrl" });
     const manifest = await getOrCreateWebmSequence(videoUrl, fps, getPublicBase(req));
     return res.json({ ok: true, manifest });

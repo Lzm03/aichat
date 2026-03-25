@@ -2,6 +2,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { Icons } from "../../icons";
 import VideoStudioModal from "../VideoStudioModal";
+import { SequencePngPlayer } from "../SequencePngPlayer";
 
 // ============ Section Wrapper ============
 const Section = ({ title, children }: any) => (
@@ -10,6 +11,61 @@ const Section = ({ title, children }: any) => (
     {children}
   </div>
 );
+
+const isSequenceManifest = (url?: string | null) =>
+  Boolean(url && /\/manifest\.json(\?|$)/i.test(url));
+
+const StepMediaPreview = ({ src }: { src: string }) => {
+  const [manifest, setManifest] = useState<any>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!isSequenceManifest(src)) {
+      setManifest(null);
+      return;
+    }
+
+    (async () => {
+      try {
+        const res = await fetch(src);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (active) setManifest(data);
+      } catch {
+        // ignore; fallback to <video />
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [src]);
+
+  if (isSequenceManifest(src) && manifest) {
+    return (
+      <SequencePngPlayer
+        folderUrl={manifest.folderUrl}
+        pattern={manifest.pattern}
+        frameCount={manifest.frameCount}
+        fps={manifest.fps}
+        className="mt-2 w-full h-40 object-contain rounded-xl shadow bg-black"
+        active={true}
+      />
+    );
+  }
+
+  return (
+    <video
+      src={src}
+      className="mt-2 w-full h-40 object-contain rounded-xl shadow bg-black"
+      autoPlay
+      loop
+      muted
+      playsInline
+      preload="auto"
+    />
+  );
+};
 
 // ============ 声线工具 ============
 const getPinyin = (str: string) =>
@@ -542,17 +598,11 @@ export const CreationStepSoundAnimation = ({
               {uploadState[item.key].loading ? (
                 <div className="flex items-center gap-2 text-xs text-blue-600 mt-1">
                   <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
-                  <span>正在移除背景…</span>
+                  <span>正在上傳影片…</span>
                 </div>
               ) : (
                 item.value && (
-                  <video
-                    src={item.value}
-                    className="mt-2 w-full h-40 object-contain rounded-xl shadow bg-black"
-                    autoPlay
-                    loop
-                    muted
-                  />
+                  <StepMediaPreview src={item.value} />
                 )
               )}
             </div>
