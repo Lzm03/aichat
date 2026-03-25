@@ -829,7 +829,8 @@ const startSpeechInput = async () => {
 
   const recognition = new SR();
   speechRecognitionRef.current = recognition;
-  recognition.lang = /^zh/i.test(navigator.language) ? navigator.language : "zh-HK";
+  // Force Hong Kong Chinese for better Cantonese behavior on mobile Chrome.
+  recognition.lang = "zh-HK";
   recognition.continuous = false;
   recognition.interimResults = true;
   recognition.maxAlternatives = 1;
