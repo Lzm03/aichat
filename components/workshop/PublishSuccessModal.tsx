@@ -840,14 +840,12 @@ const startSpeechInput = () => {
           />
 
           {/* 主体 */}
-          <div className="relative w-full max-w-6xl h-[88vh] md:h-[85vh] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row">
-            {shouldShowBooting ? (
-              <div className="flex-1 flex flex-col items-center justify-center gap-4 bg-white">
-                <div className="w-10 h-10 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
-                <div className="text-sm text-slate-600">正在載入聊天與語音...</div>
-              </div>
-            ) : (
-              <>
+          <div className="relative w-full max-w-6xl h-[88vh] md:h-[85vh] bg-white rounded-3xl shadow-2xl overflow-hidden">
+            <div
+              className={`h-full w-full flex flex-col md:flex-row transition-opacity duration-300 ${
+                shouldShowBooting ? "opacity-0" : "opacity-100"
+              }`}
+            >
             {/* mobile header */}
             <div className="md:hidden order-2 bg-white border-b p-4 flex justify-between items-center">
               <div className="min-w-0">
@@ -1158,7 +1156,13 @@ const startSpeechInput = () => {
                 </div>
               </div>
             </div>
-              </>
+            </div>
+
+            {shouldShowBooting && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-white">
+                <div className="w-10 h-10 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
+                <div className="text-sm text-slate-600">正在載入聊天與語音...</div>
+              </div>
             )}
           </div>
 

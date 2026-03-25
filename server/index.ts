@@ -76,6 +76,13 @@ app.use(
       if (filePath.endsWith(".mp4")) res.set("Content-Type", "video/mp4");
       if (filePath.endsWith(".webm")) res.set("Content-Type", "video/webm");
       if (filePath.endsWith(".mov")) res.set("Content-Type", "video/quicktime");
+
+      // Sequence assets are immutable; strong cache helps remote playback smoothness.
+      if (/\/sequences\//.test(filePath) && /\.(png|json)$/i.test(filePath)) {
+        res.set("Cache-Control", "public, max-age=31536000, immutable");
+      } else if (/\.(png|jpg|jpeg|webp|mp4|webm|mov)$/i.test(filePath)) {
+        res.set("Cache-Control", "public, max-age=86400");
+      }
     },
   })
 );
