@@ -58,8 +58,6 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [isBooting, setIsBooting] = useState(false);
   const [openingReady, setOpeningReady] = useState(false);
   const [mediaReady, setMediaReady] = useState(false);
-  const [permissionReady, setPermissionReady] = useState(false);
-  const [permissionError, setPermissionError] = useState("");
   const [isMobileClient, setIsMobileClient] = useState(false);
 
   const [showDropdown, setShowDropdown] = useState(false);
@@ -91,7 +89,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     Boolean(url && /\/manifest\.json(\?|$)/i.test(url));
   const hasAnyVideo = Boolean(safeVideoIdle || safeVideoThinking || safeVideoTalking);
   const shouldShowBooting = isOpen && (!openingReady || !mediaReady);
-  const shouldBlockChat = shouldShowBooting || !permissionReady;
+  const shouldBlockChat = shouldShowBooting;
   const visualState =
     botState === "speaking"
       ? safeVideoTalking
@@ -326,6 +324,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const playing = useRef(false);
   const activeAudioUrl = useRef<string | null>(null);
   const ttsPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const audioPrimedRef = useRef(false);
   const activeRequestController = useRef<AbortController | null>(null);
   const ttsRequestControllers = useRef<Set<AbortController>>(new Set());
   const ttsSessionRef = useRef(0);
@@ -635,6 +634,7 @@ const stopAllSpeech = () => {
 
 const sendMessage = async (forcedText?: string) => {
   if (shouldBlockChat) return;
+  void unlockAudioPlayback();
   const textToSend = (forcedText ?? inputText).trim();
   if (!textToSend) return;
 
@@ -824,6 +824,7 @@ const stopSpeechInput = (forceAbort = false) => {
 
 const startSpeechInput = async () => {
   if (shouldBlockChat) return;
+  await unlockAudioPlayback();
   const SR =
     (window as any).SpeechRecognition ||
     (window as any).webkitSpeechRecognition;
@@ -861,7 +862,8 @@ const startSpeechInput = async () => {
 
   const recognition = new SR();
   speechRecognitionRef.current = recognition;
-  recognition.lang = /^zh/i.test(navigator.language) ? navigator.language : "zh-HK";
+  const preferredLangs = ["yue-Hant-HK", "zh-HK", "zh-TW"];
+  recognition.lang = preferredLangs[0];
   recognition.continuous = false;
   recognition.interimResults = true;
   recognition.maxAlternatives = 1;
@@ -996,6 +998,7 @@ const handleMobilePressStart = (e: React.SyntheticEvent) => {
   if (!isMobileClient) return;
   e.preventDefault();
   if (isListeningRef.current) return;
+  void unlockAudioPlayback();
   void startSpeechInput();
 };
 
@@ -1006,14 +1009,10 @@ const handleMobilePressEnd = (e: React.SyntheticEvent) => {
   stopSpeechInput(false);
 };
 
-const unlockAudioAndMic = async () => {
-  setPermissionError("");
+const unlockAudioPlayback = async () => {
   if (typeof window === "undefined") return;
+  if (audioPrimedRef.current) return;
   try {
-    if (navigator.mediaDevices?.getUserMedia) {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((t) => t.stop());
-    }
     const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (AudioCtx) {
       const ctx = new AudioCtx();
@@ -1038,15 +1037,9 @@ const unlockAudioAndMic = async () => {
     await ttsPlayerRef.current.play().catch(() => {});
     ttsPlayerRef.current.pause();
     ttsPlayerRef.current.muted = false;
-    window.sessionStorage.setItem("chat_audio_unlocked", "1");
-    setPermissionReady(true);
-  } catch (e: any) {
-    const name = e?.name || "UnknownError";
-    if (name === "NotAllowedError") {
-      setPermissionError("你拒絕了麥克風權限，請在瀏覽器設定中允許後再試。");
-    } else {
-      setPermissionError("授權失敗，請檢查手機瀏覽器麥克風與音訊權限。");
-    }
+    audioPrimedRef.current = true;
+  } catch {
+    // ignore; will retry on next user gesture
   }
 };
 
@@ -1056,21 +1049,6 @@ const unlockAudioAndMic = async () => {
     setMessages([]);
     setOpeningReady(false);
   }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    if (!voiceId) {
-      setPermissionReady(true);
-      setPermissionError("");
-      return;
-    }
-    if (typeof window !== "undefined" && window.sessionStorage.getItem("chat_audio_unlocked") === "1") {
-      setPermissionReady(true);
-      setPermissionError("");
-      return;
-    }
-    setPermissionReady(false);
-  }, [isOpen, voiceId]);
 
   useEffect(() => {
     return () => {
@@ -1400,19 +1378,19 @@ const unlockAudioAndMic = async () => {
                       }
                       void startSpeechInput();
                     }}
-                    onTouchStart={handleMobilePressStart}
-                    onTouchEnd={handleMobilePressEnd}
-                    onTouchCancel={handleMobilePressEnd}
-                    onMouseDown={handleMobilePressStart}
-                    onMouseUp={handleMobilePressEnd}
-                    onMouseLeave={handleMobilePressEnd}
+                    onPointerDown={handleMobilePressStart}
+                    onPointerUp={handleMobilePressEnd}
+                    onPointerCancel={handleMobilePressEnd}
+                    onPointerLeave={handleMobilePressEnd}
+                    onContextMenu={(e) => e.preventDefault()}
                     disabled={shouldBlockChat}
-                    className={`p-3 mr-2 rounded-full border ${
+                    className={`p-3 mr-2 rounded-full border select-none touch-manipulation ${
                       isListening
                         ? "bg-red-50 border-red-300 text-red-600"
                         : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100"
                     } disabled:opacity-40`}
                     title={isListening ? "點擊停止語音輸入" : "語音輸入（廣東話）"}
+                    style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
                   >
                     <Mic size={16} />
                   </button>
@@ -1450,25 +1428,6 @@ const unlockAudioAndMic = async () => {
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-white">
                 <div className="w-10 h-10 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
                 <div className="text-sm text-slate-600">正在載入聊天與語音...</div>
-              </div>
-            )}
-            {!shouldShowBooting && !permissionReady && (
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-white/95 px-6 text-center">
-                <div className="text-xl font-semibold text-slate-800">開始體驗前需要一次授權</div>
-                <div className="text-sm text-slate-600">
-                  點一次即可啟用麥克風與語音播放，之後此頁面會自動語音回覆。
-                </div>
-                <button
-                  onClick={() => {
-                    void unlockAudioAndMic();
-                  }}
-                  className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-medium text-white hover:bg-indigo-700"
-                >
-                  開始體驗並授權
-                </button>
-                {permissionError && (
-                  <div className="max-w-md text-xs text-red-600">{permissionError}</div>
-                )}
               </div>
             )}
           </div>
