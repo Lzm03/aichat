@@ -54,6 +54,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     "idle"
   );
   const [isStopAvailable, setIsStopAvailable] = useState(false);
+  const [awaitingAudioGesture, setAwaitingAudioGesture] = useState(false);
   const [isBooting, setIsBooting] = useState(false);
   const [openingReady, setOpeningReady] = useState(false);
   const [mediaReady, setMediaReady] = useState(false);
@@ -417,7 +418,8 @@ const waitForAudioReady = (seq: number, timeoutMs = 1000) =>
 const tryPlayInOrder = () => {
   if (playing.current) return;
 
-  const audio = ttsAudioMap.current.get(nextPlaySeq.current);
+  const seq = nextPlaySeq.current;
+  const audio = ttsAudioMap.current.get(seq);
   if (!audio) {
     if (ttsInflight.current === 0 && ttsAudioMap.current.size === 0) {
       setBotState("idle");
@@ -426,16 +428,22 @@ const tryPlayInOrder = () => {
     return;
   }
 
-  ttsAudioMap.current.delete(nextPlaySeq.current);
   playing.current = true;
   activeAudio.current = audio;
   setBotState("speaking");
-  void audio.play().catch((e) => {
-    console.error("Audio play blocked:", e);
-    playing.current = false;
-    activeAudio.current = null;
-    setBotState("idle");
-  });
+  void audio.play()
+    .then(() => {
+      ttsAudioMap.current.delete(seq);
+      setAwaitingAudioGesture(false);
+    })
+    .catch((e) => {
+      console.error("Audio play blocked:", e);
+      playing.current = false;
+      activeAudio.current = null;
+      setAwaitingAudioGesture(true);
+      setBotState("idle");
+      setIsStopAvailable(true);
+    });
 
   audio.onended = () => {
     URL.revokeObjectURL(audio.src);
@@ -452,6 +460,22 @@ const tryPlayInOrder = () => {
     tryPlayInOrder();
   };
 };
+
+useEffect(() => {
+  if (!isOpen) return;
+  const resumeAudio = () => {
+    if (!awaitingAudioGesture) return;
+    tryPlayInOrder();
+  };
+  document.addEventListener("pointerdown", resumeAudio);
+  document.addEventListener("touchstart", resumeAudio, { passive: true });
+  document.addEventListener("keydown", resumeAudio);
+  return () => {
+    document.removeEventListener("pointerdown", resumeAudio);
+    document.removeEventListener("touchstart", resumeAudio);
+    document.removeEventListener("keydown", resumeAudio);
+  };
+}, [isOpen, awaitingAudioGesture]);
 
 const pumpTTSRequests = () => {
   const sessionId = ttsSessionRef.current;
@@ -735,7 +759,7 @@ const stopSpeechInput = () => {
   setIsListening(false);
 };
 
-const startSpeechInput = () => {
+const startSpeechInput = async () => {
   if (shouldShowBooting) return;
   const SR =
     (window as any).SpeechRecognition ||
@@ -754,6 +778,24 @@ const startSpeechInput = () => {
   // Mic acts as an interrupt: stop current AI speech/stream first, then listen.
   stopAllSpeech();
 
+  if (!navigator.mediaDevices?.getUserMedia) {
+    alert("目前環境不支援麥克風權限請求。");
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((t) => t.stop());
+  } catch (e: any) {
+    const name = e?.name || "UnknownError";
+    if (name === "NotAllowedError") {
+      alert("麥克風權限被拒絕，請在瀏覽器設定中允許麥克風。");
+      return;
+    }
+    alert("無法使用麥克風，請檢查系統與瀏覽器權限。");
+    return;
+  }
+
   const recognition = new SR();
   speechRecognitionRef.current = recognition;
   recognition.lang = "zh-HK";
@@ -761,7 +803,17 @@ const startSpeechInput = () => {
   recognition.interimResults = false;
 
   recognition.onstart = () => setIsListening(true);
-  recognition.onerror = () => setIsListening(false);
+  recognition.onerror = (event: any) => {
+    console.error("STT error:", event?.error || event);
+    setIsListening(false);
+    if (event?.error === "not-allowed") {
+      alert("語音輸入權限被拒絕，請允許麥克風後再試。");
+    } else if (event?.error === "no-speech") {
+      alert("未偵測到語音，請再說一次。");
+    } else if (event?.error === "audio-capture") {
+      alert("找不到可用麥克風裝置。");
+    }
+  };
   recognition.onend = () => setIsListening(false);
 
   recognition.onresult = (event: any) => {
@@ -1115,6 +1167,11 @@ const startSpeechInput = () => {
 
               {/* input */}
               <div className="p-4 bg-white border-t">
+                {awaitingAudioGesture && (
+                  <div className="mb-2 text-xs text-amber-600">
+                    已收到回覆語音，請點一下畫面以恢復播放。
+                  </div>
+                )}
                 <div className="flex items-center bg-slate-100 rounded-full p-2">
                   <button
                     onClick={startSpeechInput}
