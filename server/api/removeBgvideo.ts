@@ -8,8 +8,7 @@ import fetch from "node-fetch";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { execFile } from "child_process";
-import { promisify } from "util";
+import AdmZip from "adm-zip";
 import { uploadsDir } from "../lib/uploads-dir.ts";
 
 const router = express.Router();
@@ -17,7 +16,6 @@ const upload = multer({ dest: uploadsDir });
 
 const API_KEY = process.env.VIDEO_BG_REMOVER_KEY;
 const PUBLIC_BASE = process.env.BACKEND_URL; // e.g. https://xxxx.ngrok-free.app
-const execFileAsync = promisify(execFile);
 
 if (!API_KEY) console.error("❌ Missing VIDEO_BG_REMOVER_KEY");
 if (!PUBLIC_BASE) console.error("❌ Missing BACKEND_URL");
@@ -114,11 +112,10 @@ async function downloadZipAndExtractToSequence(url: string, publicBase: string) 
   fs.writeFileSync(zipPath, buffer);
 
   try {
-    await execFileAsync("unzip", ["-o", zipPath, "-d", framesDir]);
+    const zip = new AdmZip(zipPath);
+    zip.extractAllTo(framesDir, true);
   } catch (e) {
-    throw new Error(
-      `unzip failed (ensure unzip installed): ${e instanceof Error ? e.message : "unknown"}`
-    );
+    throw new Error(`zip extract failed: ${e instanceof Error ? e.message : "unknown"}`);
   }
 
   const frameFiles = fs
