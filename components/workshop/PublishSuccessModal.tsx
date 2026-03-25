@@ -994,17 +994,29 @@ const startSpeechInput = async () => {
   }
 };
 
-const handleMobilePressStart = (e: React.SyntheticEvent) => {
+const handleMobilePressStart = (e: React.PointerEvent<HTMLButtonElement>) => {
   if (!isMobileClient) return;
   e.preventDefault();
+  e.stopPropagation();
+  try {
+    e.currentTarget.setPointerCapture(e.pointerId);
+  } catch {
+    // ignore
+  }
   if (isListeningRef.current) return;
   void unlockAudioPlayback();
   void startSpeechInput();
 };
 
-const handleMobilePressEnd = (e: React.SyntheticEvent) => {
+const handleMobilePressEnd = (e: React.PointerEvent<HTMLButtonElement>) => {
   if (!isMobileClient) return;
   e.preventDefault();
+  e.stopPropagation();
+  try {
+    e.currentTarget.releasePointerCapture(e.pointerId);
+  } catch {
+    // ignore
+  }
   if (!isListeningRef.current) return;
   stopSpeechInput(false);
 };
@@ -1383,14 +1395,20 @@ const unlockAudioPlayback = async () => {
                     onPointerCancel={handleMobilePressEnd}
                     onPointerLeave={handleMobilePressEnd}
                     onContextMenu={(e) => e.preventDefault()}
+                    onDragStart={(e) => e.preventDefault()}
                     disabled={shouldBlockChat}
-                    className={`p-3 mr-2 rounded-full border select-none touch-manipulation ${
+                    className={`p-3 mr-2 rounded-full border select-none ${
                       isListening
                         ? "bg-red-50 border-red-300 text-red-600"
                         : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100"
                     } disabled:opacity-40`}
                     title={isListening ? "點擊停止語音輸入" : "語音輸入（廣東話）"}
-                    style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
+                    style={{
+                      WebkitTouchCallout: "none",
+                      WebkitUserSelect: "none",
+                      userSelect: "none",
+                      touchAction: "none",
+                    }}
                   >
                     <Mic size={16} />
                   </button>
