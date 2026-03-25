@@ -325,6 +325,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const ttsAudioMap = useRef<Map<number, HTMLAudioElement>>(new Map());
   const maxTtsInflight = 3;
   const speechRecognitionRef = useRef<any>(null);
+  const sttStartingRef = useRef(false);
   const sttWatchdogRef = useRef<number | null>(null);
   const sttSilenceTimerRef = useRef<number | null>(null);
   const sttTypingTokenRef = useRef(0);
@@ -765,8 +766,9 @@ const sendMessage = async (forcedText?: string) => {
   }
 };
 
-const stopSpeechInput = () => {
+const stopSpeechInput = (forceAbort = false) => {
   sttTypingTokenRef.current += 1;
+  sttStartingRef.current = false;
   if (sttWatchdogRef.current) {
     window.clearTimeout(sttWatchdogRef.current);
     sttWatchdogRef.current = null;
@@ -782,10 +784,13 @@ const stopSpeechInput = () => {
   if (speechRecognitionRef.current) {
     try {
       speechRecognitionRef.current.stop();
-      speechRecognitionRef.current.abort?.();
+      if (forceAbort) {
+        speechRecognitionRef.current.abort?.();
+      }
     } catch {
       // ignore
     }
+    speechRecognitionRef.current = null;
   }
   setIsListening(false);
 };
@@ -802,9 +807,12 @@ const startSpeechInput = async () => {
   }
 
   if (isListening) {
-    stopSpeechInput();
+    stopSpeechInput(false);
     return;
   }
+
+  if (sttStartingRef.current) return;
+  sttStartingRef.current = true;
 
   // Mic acts as an interrupt: stop current AI speech/stream first, then listen.
   stopAllSpeech();
@@ -818,6 +826,7 @@ const startSpeechInput = async () => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     stream.getTracks().forEach((t) => t.stop());
   } catch (e: any) {
+    sttStartingRef.current = false;
     const name = e?.name || "UnknownError";
     if (name === "NotAllowedError") {
       alert("麥克風權限被拒絕，請在瀏覽器設定中允許麥克風。");
@@ -860,6 +869,7 @@ const startSpeechInput = async () => {
   };
 
   recognition.onstart = () => {
+    sttStartingRef.current = false;
     setIsListening(true);
     clearSttTimers();
     // Auto-stop if no result comes back, avoiding "stuck listening" state.
@@ -885,6 +895,7 @@ const startSpeechInput = async () => {
     }
   };
   recognition.onerror = (event: any) => {
+    sttStartingRef.current = false;
     console.error("STT error:", event?.error || event);
     setIsListening(false);
     clearSttTimers();
@@ -897,8 +908,10 @@ const startSpeechInput = async () => {
     }
   };
   recognition.onend = () => {
+    sttStartingRef.current = false;
     setIsListening(false);
     clearSttTimers();
+    speechRecognitionRef.current = null;
   };
 
   recognition.onresult = (event: any) => {
@@ -953,6 +966,7 @@ const startSpeechInput = async () => {
   try {
     recognition.start();
   } catch (e) {
+    sttStartingRef.current = false;
     console.error("STT start error:", e);
     setIsListening(false);
     clearSttTimers();
@@ -973,13 +987,13 @@ const startSpeechInput = async () => {
         window.clearTimeout(audioRetryTimerRef.current);
         audioRetryTimerRef.current = null;
       }
-      stopSpeechInput();
+      stopSpeechInput(true);
       stopAllSpeech();
     };
   }, []);
 
   const handleCloseWithInterrupt = () => {
-    stopSpeechInput();
+    stopSpeechInput(true);
     stopAllSpeech();
     onClose();
   };
