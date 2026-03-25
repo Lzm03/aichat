@@ -241,7 +241,13 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    if (voiceId && !permissionReady) return;
+    if (voiceId && !permissionReady) {
+      stopAllSpeech();
+      setMessages([]);
+      setBotState("idle");
+      setIsStopAvailable(false);
+      return;
+    }
 
     clearProactiveTimer();
     botTurnsSinceUserRef.current = 0;
@@ -434,6 +440,7 @@ const waitForAudioReady = (seq: number, timeoutMs = 1000) =>
   });
 
 const tryPlayInOrder = () => {
+  if (!permissionReady) return;
   if (playing.current) return;
   if (!ttsPlayerRef.current) {
     ttsPlayerRef.current = new Audio();
