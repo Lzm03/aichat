@@ -316,7 +316,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   };
 
   const playing = useRef(false);
-  const activeAudio = useRef<HTMLAudioElement | null>(null);
+  const activeAudioUrl = useRef<string | null>(null);
+  const ttsPlayerRef = useRef<HTMLAudioElement | null>(null);
   const activeRequestController = useRef<AbortController | null>(null);
   const ttsRequestControllers = useRef<Set<AbortController>>(new Set());
   const ttsSessionRef = useRef(0);
@@ -325,7 +326,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const nextPlaySeq = useRef(0);
   const ttsInflight = useRef(0);
   const ttsTextQueue = useRef<{ seq: number; text: string }[]>([]);
-  const ttsAudioMap = useRef<Map<number, HTMLAudioElement>>(new Map());
+  const ttsAudioMap = useRef<Map<number, string>>(new Map());
   const maxTtsInflight = 3;
   const speechRecognitionRef = useRef<any>(null);
   const sttWatchdogRef = useRef<number | null>(null);
@@ -389,9 +390,7 @@ const requestTTSAudio = async (text: string, sessionId: number) => {
     const blob = await res.blob();
     if (sessionId !== ttsSessionRef.current) return;
 
-    const audio = new Audio(URL.createObjectURL(blob));
-    audio.playbackRate = 1.12;
-    return audio;
+    return URL.createObjectURL(blob);
 
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") return;
@@ -424,10 +423,12 @@ const waitForAudioReady = (seq: number, timeoutMs = 1000) =>
 
 const tryPlayInOrder = () => {
   if (playing.current) return;
+  const player = ttsPlayerRef.current;
+  if (!player) return;
 
   const seq = nextPlaySeq.current;
-  const audio = ttsAudioMap.current.get(seq);
-  if (!audio) {
+  const audioUrl = ttsAudioMap.current.get(seq);
+  if (!audioUrl) {
     if (ttsInflight.current === 0 && ttsAudioMap.current.size === 0) {
       setBotState("idle");
       setIsStopAvailable(false);
@@ -436,9 +437,11 @@ const tryPlayInOrder = () => {
   }
 
   playing.current = true;
-  activeAudio.current = audio;
+  activeAudioUrl.current = audioUrl;
+  player.src = audioUrl;
+  player.playbackRate = 1.12;
   setBotState("speaking");
-  void audio.play()
+  void player.play()
     .then(() => {
       ttsAudioMap.current.delete(seq);
       setAwaitingAudioGesture(false);
@@ -450,7 +453,7 @@ const tryPlayInOrder = () => {
     .catch((e) => {
       console.error("Audio play blocked:", e);
       playing.current = false;
-      activeAudio.current = null;
+      activeAudioUrl.current = null;
       setAwaitingAudioGesture(true);
       setBotState("idle");
       setIsStopAvailable(true);
@@ -465,16 +468,20 @@ const tryPlayInOrder = () => {
       }
     });
 
-  audio.onended = () => {
-    URL.revokeObjectURL(audio.src);
-    activeAudio.current = null;
+  player.onended = () => {
+    if (activeAudioUrl.current) {
+      URL.revokeObjectURL(activeAudioUrl.current);
+      activeAudioUrl.current = null;
+    }
     playing.current = false;
     nextPlaySeq.current += 1;
     tryPlayInOrder();
   };
-  audio.onerror = () => {
-    URL.revokeObjectURL(audio.src);
-    activeAudio.current = null;
+  player.onerror = () => {
+    if (activeAudioUrl.current) {
+      URL.revokeObjectURL(activeAudioUrl.current);
+      activeAudioUrl.current = null;
+    }
     playing.current = false;
     nextPlaySeq.current += 1;
     tryPlayInOrder();
@@ -508,13 +515,13 @@ const pumpTTSRequests = () => {
     ttsInflight.current += 1;
 
     requestTTSAudio(item.text, sessionId)
-      .then((audio) => {
-        if (!audio) return;
+      .then((audioUrl) => {
+        if (!audioUrl) return;
         if (sessionId !== ttsSessionRef.current) {
-          URL.revokeObjectURL(audio.src);
+          URL.revokeObjectURL(audioUrl);
           return;
         }
-        ttsAudioMap.current.set(item.seq, audio);
+        ttsAudioMap.current.set(item.seq, audioUrl);
         tryPlayInOrder();
       })
       .finally(() => {
@@ -592,15 +599,19 @@ const stopAllSpeech = () => {
   ttsRequestControllers.current.forEach((controller) => controller.abort());
   ttsRequestControllers.current.clear();
 
-  if (activeAudio.current) {
-    activeAudio.current.pause();
-    URL.revokeObjectURL(activeAudio.current.src);
-    activeAudio.current = null;
+  if (ttsPlayerRef.current) {
+    ttsPlayerRef.current.pause();
+    ttsPlayerRef.current.currentTime = 0;
+    ttsPlayerRef.current.onended = null;
+    ttsPlayerRef.current.onerror = null;
+  }
+  if (activeAudioUrl.current) {
+    URL.revokeObjectURL(activeAudioUrl.current);
+    activeAudioUrl.current = null;
   }
 
-  ttsAudioMap.current.forEach((audio) => {
-    audio.pause();
-    URL.revokeObjectURL(audio.src);
+  ttsAudioMap.current.forEach((audioUrl) => {
+    URL.revokeObjectURL(audioUrl);
   });
 
   ttsTextQueue.current = [];
@@ -784,11 +795,19 @@ const stopSpeechInput = () => {
   }
   if (speechRecognitionRef.current) {
     try {
+      speechRecognitionRef.current.onstart = null;
+      speechRecognitionRef.current.onresult = null;
+      speechRecognitionRef.current.onerror = null;
+      speechRecognitionRef.current.onend = null;
+      speechRecognitionRef.current.onspeechstart = null;
+      speechRecognitionRef.current.onspeechend = null;
+      speechRecognitionRef.current.onsoundstart = null;
       speechRecognitionRef.current.stop();
       speechRecognitionRef.current.abort?.();
     } catch {
       // ignore
     }
+    speechRecognitionRef.current = null;
   }
   setIsListening(false);
 };
@@ -901,6 +920,7 @@ const startSpeechInput = async () => {
   recognition.onend = () => {
     setIsListening(false);
     clearSttTimers();
+    speechRecognitionRef.current = null;
   };
 
   recognition.onresult = (event: any) => {
@@ -953,7 +973,7 @@ const startSpeechInput = async () => {
   };
 
   try {
-  recognition.start();
+    recognition.start();
   } catch (e) {
     console.error("STT start error:", e);
     setIsListening(false);
@@ -984,14 +1004,16 @@ const unlockAudioAndMic = async () => {
       setTimeout(() => {
         void ctx.close();
       }, 30);
-    } else {
-      const a = new Audio();
-      a.muted = true;
-      a.src =
-        "data:audio/mp3;base64,SUQzAwAAAAAAFlRFTkMAAAANAAADTGF2ZjU2LjI0LjEwNAAAAAAAAAAAAAAA//uQxAADBzQAAkAAABEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV";
-      await a.play().catch(() => {});
-      a.pause();
     }
+    if (!ttsPlayerRef.current) {
+      ttsPlayerRef.current = new Audio();
+      ttsPlayerRef.current.preload = "auto";
+      ttsPlayerRef.current.playsInline = true;
+    }
+    ttsPlayerRef.current.muted = true;
+    await ttsPlayerRef.current.play().catch(() => {});
+    ttsPlayerRef.current.pause();
+    ttsPlayerRef.current.muted = false;
     window.sessionStorage.setItem("chat_audio_unlocked", "1");
     setPermissionReady(true);
   } catch (e: any) {
