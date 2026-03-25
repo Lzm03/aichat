@@ -814,6 +814,12 @@ const startSpeechInput = async () => {
   if (sttStartingRef.current) return;
   sttStartingRef.current = true;
 
+  // Chrome mobile can keep an internal stale session; hard-reset before each new start.
+  if (speechRecognitionRef.current) {
+    stopSpeechInput(true);
+    await new Promise((r) => window.setTimeout(r, 120));
+  }
+
   // Mic acts as an interrupt: stop current AI speech/stream first, then listen.
   stopAllSpeech();
 
@@ -968,9 +974,17 @@ const startSpeechInput = async () => {
   } catch (e) {
     sttStartingRef.current = false;
     console.error("STT start error:", e);
-    setIsListening(false);
-    clearSttTimers();
-    alert("語音輸入啟動失敗，請稍後再試。");
+    // Retry once after a short cooldown for Chrome's intermittent InvalidState cases.
+    try {
+      await new Promise((r) => window.setTimeout(r, 180));
+      recognition.start();
+      return;
+    } catch (retryErr) {
+      console.error("STT retry start error:", retryErr);
+      setIsListening(false);
+      clearSttTimers();
+      alert("語音輸入啟動失敗，請稍後再試。");
+    }
   }
 };
 
