@@ -269,7 +269,10 @@ export default function VideoStudioModal({
       { headers: { "Content-Type": "application/json" } }
     );
 
-    return res.data.sequenceManifestUrl || res.data.transparentUrl; // manifest.json or webm
+    if (!res.data?.sequenceManifestUrl) {
+      throw new Error("Missing sequenceManifestUrl from remove-bg API");
+    }
+    return res.data.sequenceManifestUrl; // manifest.json only
   }
 
   /* ========= Step 4: 完整流程 一键生成所有动画 ========= */

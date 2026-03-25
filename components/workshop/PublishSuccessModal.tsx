@@ -13,6 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { SequencePngPlayer } from "./SequencePngPlayer";
+import { API_BASE } from "../../utils/api";
 
 interface PublishSuccessModalProps {
   isOpen: boolean;
@@ -55,6 +56,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [isStopAvailable, setIsStopAvailable] = useState(false);
   const [isBooting, setIsBooting] = useState(false);
   const [openingReady, setOpeningReady] = useState(false);
+  const [mediaReady, setMediaReady] = useState(false);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -84,7 +86,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const isSeqManifest = (url?: string | null) =>
     Boolean(url && /\/manifest\.json(\?|$)/i.test(url));
   const hasAnyVideo = Boolean(safeVideoIdle || safeVideoThinking || safeVideoTalking);
-  const shouldShowBooting = isOpen && !openingReady;
+  const shouldShowBooting = isOpen && (!openingReady || !mediaReady);
   const visualState =
     botState === "speaking"
       ? safeVideoTalking
@@ -130,6 +132,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
+    setMediaReady(false);
     const loadManifest = async (url: string, setter: (v: any) => void) => {
       try {
         const res = await fetch(url);
@@ -143,6 +146,68 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     if (isSeqManifest(safeVideoIdle)) void loadManifest(safeVideoIdle!, setSeqIdle);
     if (isSeqManifest(safeVideoThinking)) void loadManifest(safeVideoThinking!, setSeqThinking);
     if (isSeqManifest(safeVideoTalking)) void loadManifest(safeVideoTalking!, setSeqTalking);
+  }, [isOpen, safeVideoIdle, safeVideoThinking, safeVideoTalking]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const preloadVideo = (url: string) =>
+      new Promise<void>((resolve) => {
+        const v = document.createElement("video");
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          v.onloadeddata = null;
+          v.onerror = null;
+          resolve();
+        };
+        v.preload = "auto";
+        v.muted = true;
+        v.src = url;
+        v.onloadeddata = finish;
+        v.onerror = finish;
+        window.setTimeout(finish, 1500);
+      });
+
+    const preloadSequenceFirstFrame = async (manifestUrl: string) => {
+      try {
+        const res = await fetch(manifestUrl);
+        if (!res.ok) return;
+        const manifest = await res.json();
+        const firstFrame = `${manifest.folderUrl}/${String(manifest.pattern || "frame_%04d.png").replace("%04d", "0001")}`;
+        await new Promise<void>((resolve) => {
+          const img = new Image();
+          let done = false;
+          const finish = () => {
+            if (done) return;
+            done = true;
+            resolve();
+          };
+          img.onload = finish;
+          img.onerror = finish;
+          img.src = firstFrame;
+          window.setTimeout(finish, 1500);
+        });
+      } catch {
+        // ignore
+      }
+    };
+
+    (async () => {
+      const tasks: Promise<void>[] = [];
+      [safeVideoIdle, safeVideoThinking, safeVideoTalking]
+        .filter((u): u is string => Boolean(u))
+        .forEach((url) => {
+          if (isSeqManifest(url)) {
+            tasks.push(preloadSequenceFirstFrame(url));
+          } else {
+            tasks.push(preloadVideo(url));
+          }
+        });
+      await Promise.all(tasks);
+      setMediaReady(true);
+    })();
   }, [isOpen, safeVideoIdle, safeVideoThinking, safeVideoTalking]);
 
   useLayoutEffect(() => {
@@ -284,7 +349,7 @@ const requestTTSAudio = async (text: string, sessionId: number) => {
   if (!voiceId || !text.trim()) return;
   if (sessionId !== ttsSessionRef.current) return;
 
-  const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+  const baseUrl = API_BASE;
   const controller = new AbortController();
   ttsRequestControllers.current.add(controller);
 
@@ -520,7 +585,7 @@ const sendMessage = async (forcedText?: string) => {
   setMessages(prev => [...prev, { role: "user", content: userMsg }]);
   setBotState("thinking");
 
-  const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+  const baseUrl = API_BASE;
   const currentGenId = generationIdRef.current;
 
   try {

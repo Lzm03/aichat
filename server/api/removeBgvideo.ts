@@ -134,7 +134,7 @@ async function downloadZipAndExtractToSequence(url: string, publicBase: string) 
 
   const manifest = {
     id: seqId,
-    fps: 15,
+    fps: 12,
     frameCount: frameFiles.length,
     folderUrl: `${publicBase}/uploads/sequences/${seqId}/frames`,
     pattern: "frame_%04d.png",
@@ -197,7 +197,7 @@ router.post("/remove-bg", upload.single("file"), async (req, res) => {
 
     const jobId = jobJson.id;
 
-    /* ---------- 开始处理（先试 png_sequence，失败回退 webm） ---------- */
+    /* ---------- 开始处理（僅使用 png_sequence） ---------- */
     const startJob = async (transparentFormat: string) => {
       const r = await fetch(`https://api.videobgremover.com/v1/jobs/${jobId}/start`, {
         method: "POST",
@@ -222,13 +222,8 @@ router.post("/remove-bg", upload.single("file"), async (req, res) => {
       return { ok: r.ok, status: r.status, json };
     };
 
-    let mode: "png_sequence" | "webm_vp9" = "png_sequence";
-    let startResp = await startJob(mode);
-    if (!startResp.ok) {
-      console.log("⚠️ png_sequence start failed, fallback to webm_vp9", startResp);
-        mode = "webm_vp9";
-        startResp = await startJob(mode);
-      }
+    const mode: "png_sequence" = "png_sequence";
+    const startResp = await startJob(mode);
     if (!startResp.ok) {
       return res.status(500).json({
         error: "Failed to start processing",
@@ -244,16 +239,15 @@ router.post("/remove-bg", upload.single("file"), async (req, res) => {
       temporaryUrl = await pollStatus(jobId);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
-      if (msg === "uploaded_stuck" && mode === "png_sequence") {
-        console.log("⚠️ uploaded stuck in zip mode, retry start with webm_vp9");
-        const retry = await startJob("webm_vp9");
+      if (msg === "uploaded_stuck") {
+        console.log("⚠️ uploaded stuck in png_sequence mode, retry start with png_sequence");
+        const retry = await startJob(mode);
         if (!retry.ok) {
           return res.status(500).json({
             error: "Processing stuck and fallback start failed",
             detail: retry,
           });
         }
-        mode = "webm_vp9";
         temporaryUrl = await pollStatus(jobId, 120000, 25);
       } else {
         throw e;
@@ -274,14 +268,9 @@ router.post("/remove-bg", upload.single("file"), async (req, res) => {
       return res.json({ sequenceManifestUrl, transparentUrl: "" });
     }
 
-    if (mode === "png_sequence") {
-      // Some providers return a folder/listing endpoint for png sequence.
-      // Persist as-is so frontend can request manifest/sequence conversion if needed.
-      return res.json({ sequenceManifestUrl: temporaryUrl, transparentUrl: "" });
-    }
-
-    const permanentUrl = await downloadToLocal(temporaryUrl);
-    return res.json({ transparentUrl: permanentUrl, sequenceManifestUrl: null });
+    // Some providers return a folder/listing endpoint for png sequence.
+    // Persist as-is so frontend can request manifest/sequence conversion if needed.
+    return res.json({ sequenceManifestUrl: temporaryUrl, transparentUrl: "" });
   } catch (err) {
     console.error("❌ Remove background failed:", err);
     res.status(500).json({ error: "Remove background failed" });

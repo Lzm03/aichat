@@ -18,7 +18,7 @@ router.get("/", async (req, res) => {
 
 /* -------------------- GET SINGLE BOT -------------------- */
 router.post("/precompute-sequences/all", async (req, res) => {
-  const fps = Number(req.body?.fps || 15);
+  const fps = Number(req.body?.fps || 12);
   try {
     const result = await pool.query("SELECT * FROM bots ORDER BY created_at DESC");
     const base = getPublicBase(req);
@@ -55,7 +55,7 @@ router.post("/precompute-sequences/all", async (req, res) => {
 
 router.post("/:id/precompute-sequences", async (req, res) => {
   const { id } = req.params;
-  const fps = Number(req.body?.fps || 15);
+  const fps = Number(req.body?.fps || 12);
   try {
     const result = await pool.query("SELECT * FROM bots WHERE id=$1", [id]);
     if (result.rows.length === 0) {
