@@ -829,7 +829,8 @@ const startSpeechInput = async () => {
 
   const recognition = new SR();
   speechRecognitionRef.current = recognition;
-  recognition.lang = /^zh/i.test(navigator.language) ? navigator.language : "zh-HK";
+  // Cantonese first for mobile Chrome; fallback handled by browser engine.
+  recognition.lang = "yue-Hant-HK";
   recognition.continuous = false;
   recognition.interimResults = true;
   recognition.maxAlternatives = 1;
