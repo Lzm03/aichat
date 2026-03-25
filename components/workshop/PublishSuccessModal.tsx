@@ -58,6 +58,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [isBooting, setIsBooting] = useState(false);
   const [openingReady, setOpeningReady] = useState(false);
   const [mediaReady, setMediaReady] = useState(false);
+  const [permissionReady, setPermissionReady] = useState(false);
+  const [permissionError, setPermissionError] = useState("");
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -88,6 +90,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     Boolean(url && /\/manifest\.json(\?|$)/i.test(url));
   const hasAnyVideo = Boolean(safeVideoIdle || safeVideoThinking || safeVideoTalking);
   const shouldShowBooting = isOpen && (!openingReady || !mediaReady);
+  const shouldBlockChat = shouldShowBooting || !permissionReady;
   const visualState =
     botState === "speaking"
       ? safeVideoTalking
@@ -214,6 +217,15 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   useLayoutEffect(() => {
     if (!isOpen) return;
     setOpeningReady(false);
+    if (voiceId && !permissionReady) {
+      // Wait for explicit user authorization before booting opening voice.
+      setIsBooting(false);
+      setMessages([]);
+      setBotState("idle");
+      setIsStopAvailable(false);
+      setOpeningReady(true);
+      return;
+    }
     if (voiceId) {
       // Set loading state before first paint to avoid chat UI flashing for 1-2 frames.
       setIsBooting(true);
@@ -224,10 +236,11 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       setIsBooting(false);
       setOpeningReady(true);
     }
-  }, [isOpen, voiceId]);
+  }, [isOpen, voiceId, permissionReady]);
 
   useEffect(() => {
     if (!isOpen) return;
+    if (voiceId && !permissionReady) return;
 
     clearProactiveTimer();
     botTurnsSinceUserRef.current = 0;
@@ -299,7 +312,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
           setOpeningReady(true);
         }
       });
-  }, [botName, isOpen, voiceId]);
+  }, [botName, isOpen, voiceId, permissionReady]);
   
   
 
@@ -483,6 +496,7 @@ useEffect(() => {
   if (!isOpen) return;
   const resumeAudio = () => {
     lastUserGestureRef.current = Date.now();
+    if (isListeningRef.current || sttStartingRef.current) return;
     if (!awaitingAudioGesture) return;
     tryPlayInOrder();
   };
@@ -613,7 +627,7 @@ const stopAllSpeech = () => {
 };
 
 const sendMessage = async (forcedText?: string) => {
-  if (shouldShowBooting) return;
+  if (shouldBlockChat) return;
   const textToSend = (forcedText ?? inputText).trim();
   if (!textToSend) return;
 
@@ -796,7 +810,7 @@ const stopSpeechInput = (forceAbort = false) => {
 };
 
 const startSpeechInput = async () => {
-  if (shouldShowBooting) return;
+  if (shouldBlockChat) return;
   const SR =
     (window as any).SpeechRecognition ||
     (window as any).webkitSpeechRecognition;
@@ -814,6 +828,11 @@ const startSpeechInput = async () => {
 
   if (sttStartingRef.current) return;
   sttStartingRef.current = true;
+  setAwaitingAudioGesture(false);
+  if (audioRetryTimerRef.current) {
+    window.clearTimeout(audioRetryTimerRef.current);
+    audioRetryTimerRef.current = null;
+  }
 
   // Chrome mobile can keep an internal stale session; hard-reset before each new start.
   if (speechRecognitionRef.current) {
@@ -989,12 +1008,62 @@ const startSpeechInput = async () => {
   }
 };
 
+const unlockAudioAndMic = async () => {
+  setPermissionError("");
+  if (typeof window === "undefined") return;
+  try {
+    if (navigator.mediaDevices?.getUserMedia) {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((t) => t.stop());
+    }
+    const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (AudioCtx) {
+      const ctx = new AudioCtx();
+      await ctx.resume();
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.start();
+      oscillator.stop(ctx.currentTime + 0.01);
+      setTimeout(() => {
+        void ctx.close();
+      }, 30);
+    }
+    window.sessionStorage.setItem("chat_audio_unlocked_v2", "1");
+    setPermissionReady(true);
+  } catch (e: any) {
+    const name = e?.name || "UnknownError";
+    if (name === "NotAllowedError") {
+      setPermissionError("你拒絕了麥克風權限，請在瀏覽器設定中允許後再試。");
+    } else {
+      setPermissionError("授權失敗，請檢查手機瀏覽器麥克風與音訊權限。");
+    }
+  }
+};
+
   useEffect(() => {
     if (isOpen) return;
     stopAllSpeech();
     setMessages([]);
     setOpeningReady(false);
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!voiceId) {
+      setPermissionReady(true);
+      setPermissionError("");
+      return;
+    }
+    if (typeof window !== "undefined" && window.sessionStorage.getItem("chat_audio_unlocked_v2") === "1") {
+      setPermissionReady(true);
+      setPermissionError("");
+      return;
+    }
+    setPermissionReady(false);
+  }, [isOpen, voiceId]);
 
   useEffect(() => {
     return () => {
@@ -1313,7 +1382,7 @@ const startSpeechInput = async () => {
                 <div className="flex items-center bg-slate-100 rounded-full p-2">
                   <button
                     onClick={startSpeechInput}
-                    disabled={shouldShowBooting}
+                    disabled={shouldBlockChat}
                     className={`p-3 mr-2 rounded-full border ${
                       isListening
                         ? "bg-red-50 border-red-300 text-red-600"
@@ -1328,7 +1397,7 @@ const startSpeechInput = async () => {
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                    disabled={shouldShowBooting}
+                    disabled={shouldBlockChat}
                     placeholder="先回答機器人的提問..."
                   />
                   <button
@@ -1343,7 +1412,7 @@ const startSpeechInput = async () => {
                     onClick={() => {
                       void sendMessage();
                     }}
-                    disabled={shouldShowBooting || !inputText.trim()}
+                    disabled={shouldBlockChat || !inputText.trim()}
                     className="p-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-40"
                   >
                     <Send size={16} />
@@ -1357,6 +1426,25 @@ const startSpeechInput = async () => {
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-white">
                 <div className="w-10 h-10 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
                 <div className="text-sm text-slate-600">正在載入聊天與語音...</div>
+              </div>
+            )}
+            {!shouldShowBooting && !permissionReady && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-white/95 px-6 text-center">
+                <div className="text-xl font-semibold text-slate-800">開始體驗前需要一次授權</div>
+                <div className="text-sm text-slate-600">
+                  點一次即可啟用麥克風與語音播放，之後同一會話可自動語音回覆。
+                </div>
+                <button
+                  onClick={() => {
+                    void unlockAudioAndMic();
+                  }}
+                  className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-medium text-white hover:bg-indigo-700"
+                >
+                  開始體驗並授權
+                </button>
+                {permissionError && (
+                  <div className="max-w-md text-xs text-red-600">{permissionError}</div>
+                )}
               </div>
             )}
           </div>
