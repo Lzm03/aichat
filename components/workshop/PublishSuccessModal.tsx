@@ -58,7 +58,6 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [isBooting, setIsBooting] = useState(false);
   const [openingReady, setOpeningReady] = useState(false);
   const [mediaReady, setMediaReady] = useState(false);
-  const [isMobileClient, setIsMobileClient] = useState(false);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -89,7 +88,6 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     Boolean(url && /\/manifest\.json(\?|$)/i.test(url));
   const hasAnyVideo = Boolean(safeVideoIdle || safeVideoThinking || safeVideoTalking);
   const shouldShowBooting = isOpen && (!openingReady || !mediaReady);
-  const shouldBlockChat = shouldShowBooting;
   const visualState =
     botState === "speaking"
       ? safeVideoTalking
@@ -132,13 +130,6 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       behavior: "smooth",
     });
   }, [messages, botState]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const coarse = window.matchMedia?.("(pointer: coarse)")?.matches;
-    const uaMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-    setIsMobileClient(Boolean(coarse || uaMobile));
-  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -322,9 +313,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   };
 
   const playing = useRef(false);
-  const activeAudioUrl = useRef<string | null>(null);
-  const ttsPlayerRef = useRef<HTMLAudioElement | null>(null);
-  const audioPrimedRef = useRef(false);
+  const activeAudio = useRef<HTMLAudioElement | null>(null);
   const activeRequestController = useRef<AbortController | null>(null);
   const ttsRequestControllers = useRef<Set<AbortController>>(new Set());
   const ttsSessionRef = useRef(0);
@@ -333,7 +322,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const nextPlaySeq = useRef(0);
   const ttsInflight = useRef(0);
   const ttsTextQueue = useRef<{ seq: number; text: string }[]>([]);
-  const ttsAudioMap = useRef<Map<number, string>>(new Map());
+  const ttsAudioMap = useRef<Map<number, HTMLAudioElement>>(new Map());
   const maxTtsInflight = 3;
   const speechRecognitionRef = useRef<any>(null);
   const sttWatchdogRef = useRef<number | null>(null);
@@ -397,7 +386,9 @@ const requestTTSAudio = async (text: string, sessionId: number) => {
     const blob = await res.blob();
     if (sessionId !== ttsSessionRef.current) return;
 
-    return URL.createObjectURL(blob);
+    const audio = new Audio(URL.createObjectURL(blob));
+    audio.playbackRate = 1.12;
+    return audio;
 
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") return;
@@ -430,12 +421,10 @@ const waitForAudioReady = (seq: number, timeoutMs = 1000) =>
 
 const tryPlayInOrder = () => {
   if (playing.current) return;
-  const player = ttsPlayerRef.current;
-  if (!player) return;
 
   const seq = nextPlaySeq.current;
-  const audioUrl = ttsAudioMap.current.get(seq);
-  if (!audioUrl) {
+  const audio = ttsAudioMap.current.get(seq);
+  if (!audio) {
     if (ttsInflight.current === 0 && ttsAudioMap.current.size === 0) {
       setBotState("idle");
       setIsStopAvailable(false);
@@ -444,11 +433,9 @@ const tryPlayInOrder = () => {
   }
 
   playing.current = true;
-  activeAudioUrl.current = audioUrl;
-  player.src = audioUrl;
-  player.playbackRate = 1.12;
+  activeAudio.current = audio;
   setBotState("speaking");
-  void player.play()
+  void audio.play()
     .then(() => {
       ttsAudioMap.current.delete(seq);
       setAwaitingAudioGesture(false);
@@ -460,7 +447,7 @@ const tryPlayInOrder = () => {
     .catch((e) => {
       console.error("Audio play blocked:", e);
       playing.current = false;
-      activeAudioUrl.current = null;
+      activeAudio.current = null;
       setAwaitingAudioGesture(true);
       setBotState("idle");
       setIsStopAvailable(true);
@@ -475,20 +462,16 @@ const tryPlayInOrder = () => {
       }
     });
 
-  player.onended = () => {
-    if (activeAudioUrl.current) {
-      URL.revokeObjectURL(activeAudioUrl.current);
-      activeAudioUrl.current = null;
-    }
+  audio.onended = () => {
+    URL.revokeObjectURL(audio.src);
+    activeAudio.current = null;
     playing.current = false;
     nextPlaySeq.current += 1;
     tryPlayInOrder();
   };
-  player.onerror = () => {
-    if (activeAudioUrl.current) {
-      URL.revokeObjectURL(activeAudioUrl.current);
-      activeAudioUrl.current = null;
-    }
+  audio.onerror = () => {
+    URL.revokeObjectURL(audio.src);
+    activeAudio.current = null;
     playing.current = false;
     nextPlaySeq.current += 1;
     tryPlayInOrder();
@@ -522,13 +505,13 @@ const pumpTTSRequests = () => {
     ttsInflight.current += 1;
 
     requestTTSAudio(item.text, sessionId)
-      .then((audioUrl) => {
-        if (!audioUrl) return;
+      .then((audio) => {
+        if (!audio) return;
         if (sessionId !== ttsSessionRef.current) {
-          URL.revokeObjectURL(audioUrl);
+          URL.revokeObjectURL(audio.src);
           return;
         }
-        ttsAudioMap.current.set(item.seq, audioUrl);
+        ttsAudioMap.current.set(item.seq, audio);
         tryPlayInOrder();
       })
       .finally(() => {
@@ -606,19 +589,15 @@ const stopAllSpeech = () => {
   ttsRequestControllers.current.forEach((controller) => controller.abort());
   ttsRequestControllers.current.clear();
 
-  if (ttsPlayerRef.current) {
-    ttsPlayerRef.current.pause();
-    ttsPlayerRef.current.currentTime = 0;
-    ttsPlayerRef.current.onended = null;
-    ttsPlayerRef.current.onerror = null;
-  }
-  if (activeAudioUrl.current) {
-    URL.revokeObjectURL(activeAudioUrl.current);
-    activeAudioUrl.current = null;
+  if (activeAudio.current) {
+    activeAudio.current.pause();
+    URL.revokeObjectURL(activeAudio.current.src);
+    activeAudio.current = null;
   }
 
-  ttsAudioMap.current.forEach((audioUrl) => {
-    URL.revokeObjectURL(audioUrl);
+  ttsAudioMap.current.forEach((audio) => {
+    audio.pause();
+    URL.revokeObjectURL(audio.src);
   });
 
   ttsTextQueue.current = [];
@@ -633,8 +612,7 @@ const stopAllSpeech = () => {
 };
 
 const sendMessage = async (forcedText?: string) => {
-  if (shouldBlockChat) return;
-  void unlockAudioPlayback();
+  if (shouldShowBooting) return;
   const textToSend = (forcedText ?? inputText).trim();
   if (!textToSend) return;
 
@@ -787,7 +765,7 @@ const sendMessage = async (forcedText?: string) => {
   }
 };
 
-const stopSpeechInput = (forceAbort = false) => {
+const stopSpeechInput = () => {
   sttTypingTokenRef.current += 1;
   if (sttWatchdogRef.current) {
     window.clearTimeout(sttWatchdogRef.current);
@@ -803,28 +781,17 @@ const stopSpeechInput = (forceAbort = false) => {
   }
   if (speechRecognitionRef.current) {
     try {
-      speechRecognitionRef.current.onstart = null;
-      speechRecognitionRef.current.onresult = null;
-      speechRecognitionRef.current.onerror = null;
-      speechRecognitionRef.current.onend = null;
-      speechRecognitionRef.current.onspeechstart = null;
-      speechRecognitionRef.current.onspeechend = null;
-      speechRecognitionRef.current.onsoundstart = null;
       speechRecognitionRef.current.stop();
-      if (forceAbort) {
-        speechRecognitionRef.current.abort?.();
-      }
+      speechRecognitionRef.current.abort?.();
     } catch {
       // ignore
     }
-    speechRecognitionRef.current = null;
   }
   setIsListening(false);
 };
 
 const startSpeechInput = async () => {
-  if (shouldBlockChat) return;
-  await unlockAudioPlayback();
+  if (shouldShowBooting) return;
   const SR =
     (window as any).SpeechRecognition ||
     (window as any).webkitSpeechRecognition;
@@ -862,8 +829,7 @@ const startSpeechInput = async () => {
 
   const recognition = new SR();
   speechRecognitionRef.current = recognition;
-  const preferredLangs = ["yue-Hant-HK", "zh-HK", "zh-TW"];
-  recognition.lang = preferredLangs[0];
+  recognition.lang = /^zh/i.test(navigator.language) ? navigator.language : "zh-HK";
   recognition.continuous = false;
   recognition.interimResults = true;
   recognition.maxAlternatives = 1;
@@ -932,7 +898,6 @@ const startSpeechInput = async () => {
   recognition.onend = () => {
     setIsListening(false);
     clearSttTimers();
-    speechRecognitionRef.current = null;
   };
 
   recognition.onresult = (event: any) => {
@@ -994,67 +959,6 @@ const startSpeechInput = async () => {
   }
 };
 
-const handleMobilePressStart = (e: React.PointerEvent<HTMLButtonElement>) => {
-  if (!isMobileClient) return;
-  e.preventDefault();
-  e.stopPropagation();
-  try {
-    e.currentTarget.setPointerCapture(e.pointerId);
-  } catch {
-    // ignore
-  }
-  if (isListeningRef.current) return;
-  void unlockAudioPlayback();
-  void startSpeechInput();
-};
-
-const handleMobilePressEnd = (e: React.PointerEvent<HTMLButtonElement>) => {
-  if (!isMobileClient) return;
-  e.preventDefault();
-  e.stopPropagation();
-  try {
-    e.currentTarget.releasePointerCapture(e.pointerId);
-  } catch {
-    // ignore
-  }
-  if (!isListeningRef.current) return;
-  stopSpeechInput(false);
-};
-
-const unlockAudioPlayback = async () => {
-  if (typeof window === "undefined") return;
-  if (audioPrimedRef.current) return;
-  try {
-    const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
-    if (AudioCtx) {
-      const ctx = new AudioCtx();
-      await ctx.resume();
-      const oscillator = ctx.createOscillator();
-      const gain = ctx.createGain();
-      gain.gain.value = 0;
-      oscillator.connect(gain);
-      gain.connect(ctx.destination);
-      oscillator.start();
-      oscillator.stop(ctx.currentTime + 0.01);
-      setTimeout(() => {
-        void ctx.close();
-      }, 30);
-    }
-    if (!ttsPlayerRef.current) {
-      ttsPlayerRef.current = new Audio();
-      ttsPlayerRef.current.preload = "auto";
-      ttsPlayerRef.current.playsInline = true;
-    }
-    ttsPlayerRef.current.muted = true;
-    await ttsPlayerRef.current.play().catch(() => {});
-    ttsPlayerRef.current.pause();
-    ttsPlayerRef.current.muted = false;
-    audioPrimedRef.current = true;
-  } catch {
-    // ignore; will retry on next user gesture
-  }
-};
-
   useEffect(() => {
     if (isOpen) return;
     stopAllSpeech();
@@ -1068,13 +972,13 @@ const unlockAudioPlayback = async () => {
         window.clearTimeout(audioRetryTimerRef.current);
         audioRetryTimerRef.current = null;
       }
-      stopSpeechInput(true);
+      stopSpeechInput();
       stopAllSpeech();
     };
   }, []);
 
   const handleCloseWithInterrupt = () => {
-    stopSpeechInput(true);
+    stopSpeechInput();
     stopAllSpeech();
     onClose();
   };
@@ -1376,39 +1280,16 @@ const unlockAudioPlayback = async () => {
                     已收到回覆語音，請點一下畫面以恢復播放。
                   </div>
                 )}
-                {isMobileClient && (
-                  <div className="mb-2 text-xs text-slate-500">
-                    手機模式：按住麥克風說話，鬆開自動發送。
-                  </div>
-                )}
                 <div className="flex items-center bg-slate-100 rounded-full p-2">
                   <button
-                    onClick={(e) => {
-                      if (isMobileClient) {
-                        e.preventDefault();
-                        return;
-                      }
-                      void startSpeechInput();
-                    }}
-                    onPointerDown={handleMobilePressStart}
-                    onPointerUp={handleMobilePressEnd}
-                    onPointerCancel={handleMobilePressEnd}
-                    onPointerLeave={handleMobilePressEnd}
-                    onContextMenu={(e) => e.preventDefault()}
-                    onDragStart={(e) => e.preventDefault()}
-                    disabled={shouldBlockChat}
-                    className={`p-3 mr-2 rounded-full border select-none ${
+                    onClick={startSpeechInput}
+                    disabled={shouldShowBooting}
+                    className={`p-3 mr-2 rounded-full border ${
                       isListening
                         ? "bg-red-50 border-red-300 text-red-600"
                         : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100"
                     } disabled:opacity-40`}
                     title={isListening ? "點擊停止語音輸入" : "語音輸入（廣東話）"}
-                    style={{
-                      WebkitTouchCallout: "none",
-                      WebkitUserSelect: "none",
-                      userSelect: "none",
-                      touchAction: "none",
-                    }}
                   >
                     <Mic size={16} />
                   </button>
@@ -1417,7 +1298,7 @@ const unlockAudioPlayback = async () => {
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                    disabled={shouldBlockChat}
+                    disabled={shouldShowBooting}
                     placeholder="先回答機器人的提問..."
                   />
                   <button
@@ -1432,7 +1313,7 @@ const unlockAudioPlayback = async () => {
                     onClick={() => {
                       void sendMessage();
                     }}
-                    disabled={shouldBlockChat || !inputText.trim()}
+                    disabled={shouldShowBooting || !inputText.trim()}
                     className="p-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-40"
                   >
                     <Send size={16} />
