@@ -807,8 +807,9 @@ const startSpeechInput = async () => {
   }
 
   if (isListening) {
-    stopSpeechInput(false);
-    return;
+    // If state is stuck on mobile Chrome, force restart instead of just stopping.
+    stopSpeechInput(true);
+    await new Promise((r) => window.setTimeout(r, 120));
   }
 
   if (sttStartingRef.current) return;
