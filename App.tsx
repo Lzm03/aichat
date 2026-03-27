@@ -50,7 +50,6 @@ const App: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    let failedCount = 0;
     const envBase = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
     const base = envBase || "";
 
@@ -60,17 +59,14 @@ const App: React.FC = () => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json().catch(() => ({}));
         if (data?.maintenance === true) {
-          failedCount = 0;
           if (!cancelled) setIsUpdating(true);
           return;
         }
-        failedCount = 0;
         if (!cancelled) setIsUpdating(false);
-      } catch {
-        failedCount += 1;
-        if (!cancelled && failedCount >= 2) {
-          setIsUpdating(true);
-        }
+      } catch (err) {
+        // Network/CORS/temporary backend issues should not force maintenance overlay.
+        console.warn("Health check failed:", err);
+        if (!cancelled) setIsUpdating(false);
       }
     };
 

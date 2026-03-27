@@ -90,6 +90,19 @@ app.use(
 // ⭐ Railway 會動態提供 PORT
 const PORT = process.env.PORT || 4000;
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Backend running at http://localhost:${PORT}`);
 });
+
+const gracefulShutdown = (signal: NodeJS.Signals) => {
+  console.log(`Received ${signal}, shutting down gracefully...`);
+  server.close(() => {
+    process.exit(0);
+  });
+  setTimeout(() => {
+    process.exit(1);
+  }, 10000).unref();
+};
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
