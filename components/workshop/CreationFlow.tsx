@@ -328,17 +328,25 @@ const handleDeleteBot = async () => {
         maxReachableStep={maxReachableStep}
       />
 
-      <div className="mt-8 grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
+      <div
+        className={`mt-8 grid grid-cols-1 gap-8 items-start ${
+          currentStep === 4 ? "lg:grid-cols-1" : "lg:grid-cols-5"
+        }`}
+      >
 
         {/* 左侧内容 */}
-        <div className="lg:col-span-3">
+        <div className={currentStep === 4 ? "lg:col-span-1" : "lg:col-span-3"}>
           <div className="bg-white p-6 md:p-8 rounded-3xl shadow min-h-[600px]">
             {renderStep()}
           </div>
         </div>
 
         {/* 右侧 ChatPreview */}
-        <div className="hidden lg:block lg:col-span-2 lg:sticky top-28">
+        <div
+          className={`hidden lg:block lg:col-span-2 lg:sticky top-28 ${
+            currentStep === 4 ? "lg:hidden" : ""
+          }`}
+        >
           <ChatPreview
             currentStep={currentStep}
             botConfig={{

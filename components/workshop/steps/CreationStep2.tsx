@@ -23,6 +23,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated }) => 
 
   const [characterBackground, setCharacterBackground] = useState("");
   const [knowledgeSummary, setKnowledgeSummary] = useState("");
+  const [progress, setProgress] = useState(0);
 
   const baseUrl = import.meta.env.VITE_API_URL;
 
@@ -65,7 +66,19 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated }) => 
     setCharacterBackground("");
     setKnowledgeSummary("");
     setStatus("idle");
+    setProgress(0);
   };
+
+  useEffect(() => {
+    if (status !== "processing") return;
+    const timer = setInterval(() => {
+      setProgress((p) => {
+        if (p >= 92) return p;
+        return p + (p < 60 ? 6 : 2);
+      });
+    }, 500);
+    return () => clearInterval(timer);
+  }, [status]);
 
   // --------------------------
   // 🔥 處理文件拖拽
@@ -180,6 +193,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated }) => 
     if (uploadMethod !== "file" && !inputValue.trim()) return;
 
     setStatus("processing");
+    setProgress(12);
 
     try {
       let result;
@@ -197,11 +211,13 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated }) => 
       setCharacterBackground(bg);
       setKnowledgeSummary(ks);
       onGenerated({ characterBackground: bg, knowledgeSummary: ks });
+      setProgress(100);
       setStatus("complete");
     } catch (error) {
       console.error("知識解析失敗:", error);
       setCharacterBackground("解析失敗，請重試。");
       setKnowledgeSummary("- 目前未能整理內容\n- 請檢查 API 設定或稍後重試");
+      setProgress(100);
       setStatus("complete");
     }
   };
@@ -287,49 +303,220 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated }) => 
   // --------------------------
   const renderStatus = () => {
     if (status === "processing") {
+      const steps = [
+        { label: "資料解析", pct: 30 },
+        { label: "重點抽取", pct: 60 },
+        { label: "索引建立", pct: 85 },
+        { label: "入庫完成", pct: 100 },
+      ];
+      const isDone = (pct: number) => progress >= pct;
       return (
-        <div className="p-8 bg-indigo-50 rounded-2xl text-center border">
-          <Icons.brain className="w-10 h-10 mx-auto text-indigo-600 animate-pulse" />
-          <p className="mt-3 font-semibold text-indigo-700">
-            AI 正在分析內容…
-          </p>
+        <div className="space-y-4">
+          <div className="rounded-2xl border bg-gradient-to-br from-slate-50 to-blue-50 p-5">
+            <h4 className="text-lg font-bold text-slate-800 mb-4">
+              正在為您提取知識庫內容...
+            </h4>
+            <div className="grid gap-4 md:grid-cols-[1fr_260px]">
+              <div className="rounded-xl bg-white p-4 border shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold text-slate-700">系統處理進度</p>
+                  <span className="text-sm font-bold text-blue-600">{progress}%</span>
+                </div>
+                <div className="h-2.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                  <motion.div
+                    className="h-full bg-blue-500"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${progress}%` }}
+                    transition={{ duration: 0.4 }}
+                  />
+                </div>
+                <div className="mt-4 space-y-2">
+                  {steps.map((s) => (
+                    <div key={s.label} className="flex items-center justify-between text-sm">
+                      <span className={`${isDone(s.pct) ? "text-emerald-700" : "text-slate-600"}`}>
+                        {isDone(s.pct) ? "✓" : "•"} {s.label}
+                      </span>
+                      <span className={`${isDone(s.pct) ? "text-emerald-700" : "text-slate-400"}`}>
+                        {isDone(s.pct) ? "已完成" : "處理中"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-xl bg-white p-4 border shadow-sm">
+                <p className="text-sm font-semibold text-slate-700 mb-2">實時處理日誌</p>
+                <div className="space-y-1.5 text-xs text-slate-500">
+                  <p>• 內容載入中...</p>
+                  <p>• 正在解析段落結構...</p>
+                  <p>• 正在抽取知識重點...</p>
+                  <p>• 1-2 mins remaining</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       );
     }
 
     if (status === "complete") {
+      const summaryLines = knowledgeSummary
+        .split("\n")
+        .map((l) => l.replace(/^-+\s*/, "").trim())
+        .filter(Boolean);
+      const bgText = characterBackground.replace(/\s+/g, " ").trim();
+      const nameMatch = bgText.match(/我(?:是|叫|係)\s*([^\s，。,.!！?？]{1,20})/);
+      const traitLine =
+        summaryLines.find((l) => /性格|特質|風格|個性|語氣/.test(l)) ||
+        bgText.split(/[。.!！?？]/).find((l) => /性格|習慣|風格|個性|喜歡|擅長/.test(l || "")) ||
+        "友善、專業、可互動";
+      const abilityLine =
+        summaryLines.find((l) => /擅長|能力|技能|會|可/.test(l)) ||
+        "可根據知識庫進行對話回答";
+      const knowledgeLine =
+        summaryLines[0] || "已完成知識點抽取";
+      const scenarioLine =
+        summaryLines.find((l) => /適用|場景|應用|教學|客服|銷售/.test(l)) ||
+        "聊天互動、教學解說、問答輔助";
+
+      const mindmapBranches = [
+        { title: "人物名字", value: nameMatch?.[1] || "未明確命名" },
+        { title: "人物性格", value: traitLine },
+        { title: "核心能力", value: abilityLine },
+        { title: "關鍵知識", value: knowledgeLine },
+        { title: "應用場景", value: scenarioLine },
+      ];
+
       return (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-          {/* Source block */}
-          <div className="bg-slate-50 p-4 rounded-xl flex justify-between border">
-            <p className="text-sm font-medium text-slate-700">
-              來源：{uploadMethod === "file" ? file?.name : "內容"}
+          <div className="rounded-2xl border bg-white p-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xl font-bold text-slate-800">提取成功</h4>
+              <button onClick={resetState}>
+                <Icons.delete className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <p className="mt-2 text-sm text-slate-600">
+              來源：{uploadMethod === "file" ? file?.name : uploadMethod === "url" ? "網址內容" : "貼上文字"}
             </p>
-            <button onClick={resetState}>
-              <Icons.delete className="w-5 h-5 text-slate-500" />
-            </button>
+            <div className="mt-3 h-2.5 w-full rounded-full bg-slate-100 overflow-hidden">
+              <div className="h-full w-full bg-emerald-500" />
+            </div>
           </div>
 
-          {/* Background */}
-          <div className="bg-emerald-50 p-4 rounded-xl border">
-            <h4 className="font-bold text-emerald-800 mb-2">✨ 人物背景設定</h4>
-            <textarea
-              readOnly
-              rows={4}
-              value={characterBackground}
-              className="w-full bg-white/60 p-2 rounded-lg"
-            />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="bg-emerald-50 p-4 rounded-xl border">
+              <h4 className="font-bold text-emerald-800 mb-2">人物背景設定</h4>
+              <textarea
+                readOnly
+                rows={8}
+                value={characterBackground}
+                className="w-full bg-white/70 p-3 rounded-lg border border-emerald-100"
+              />
+            </div>
+            <div className="bg-blue-50 p-4 rounded-xl border">
+              <h4 className="font-bold text-blue-800 mb-2">知識庫摘要</h4>
+              <textarea
+                readOnly
+                rows={8}
+                value={knowledgeSummary}
+                className="w-full bg-white/70 p-3 rounded-lg border border-blue-100"
+              />
+            </div>
           </div>
 
-          {/* Knowledge Summary */}
-          <div className="bg-blue-50 p-4 rounded-xl border">
-            <h4 className="font-bold text-blue-800 mb-2">📚 知識庫摘要</h4>
-            <textarea
-              readOnly
-              rows={6}
-              value={knowledgeSummary}
-              className="w-full bg-white/60 p-2 rounded-lg"
-            />
+          <div className="rounded-2xl border bg-white p-4">
+            <h4 className="font-bold text-slate-800 mb-3">知識提取關聯圖</h4>
+            <div className="rounded-xl border border-slate-200 bg-gradient-to-b from-[#f8fbff] to-white p-4">
+              <div className="hidden md:block pb-2 overflow-x-auto">
+                <div className="relative h-[300px] w-[860px] min-w-[860px] rounded-xl mx-auto">
+                  <svg
+                    className="absolute inset-0 h-full w-full pointer-events-none"
+                    viewBox="0 0 860 280"
+                    preserveAspectRatio="none"
+                  >
+                    <defs>
+                      <linearGradient id="knowledgeFlowLeft" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#93c5fd" />
+                        <stop offset="100%" stopColor="#60a5fa" />
+                      </linearGradient>
+                      <linearGradient id="knowledgeFlowRight" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#60a5fa" />
+                        <stop offset="100%" stopColor="#818cf8" />
+                      </linearGradient>
+                    </defs>
+                    <path d="M 388 140 C 332 140, 292 66, 210 66" stroke="url(#knowledgeFlowLeft)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+                    <path d="M 388 140 C 332 140, 292 214, 210 214" stroke="url(#knowledgeFlowLeft)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+                    <path d="M 472 140 C 536 140, 576 54, 650 54" stroke="url(#knowledgeFlowRight)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+                    <path d="M 472 140 C 536 140, 586 132, 650 132" stroke="url(#knowledgeFlowRight)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+                    <path d="M 472 140 C 536 140, 576 226, 650 226" stroke="url(#knowledgeFlowRight)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+                  </svg>
+
+                  <div className="absolute left-[24px] top-[18px] w-[186px] min-h-[72px] rounded-xl border border-blue-100 bg-white p-2.5 shadow-sm">
+                    <p className="text-xs font-semibold text-blue-700">{mindmapBranches[0].title}</p>
+                    <p className="text-[13px] text-slate-700 leading-5 max-h-[84px] overflow-y-auto break-words whitespace-pre-wrap pr-1">
+                      {mindmapBranches[0].value}
+                    </p>
+                  </div>
+
+                  <div className="absolute left-[24px] top-[188px] w-[186px] min-h-[72px] rounded-xl border border-blue-100 bg-white p-2.5 shadow-sm">
+                    <p className="text-xs font-semibold text-blue-700">{mindmapBranches[1].title}</p>
+                    <p className="text-[13px] text-slate-700 leading-5 max-h-[84px] overflow-y-auto break-words whitespace-pre-wrap pr-1">
+                      {mindmapBranches[1].value}
+                    </p>
+                  </div>
+
+                  <div className="absolute left-1/2 top-1/2 w-[84px] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white border-2 border-blue-300 shadow-lg px-2 py-3 text-center">
+                    <p className="text-xs text-slate-500">中心主題</p>
+                    <p className="text-base font-extrabold text-slate-800 leading-5">人物知識庫</p>
+                    <p className="text-xs text-blue-600 mt-1 font-semibold">提取完成</p>
+                  </div>
+
+                  <div className="absolute right-[24px] top-[6px] w-[186px] min-h-[72px] rounded-xl border border-indigo-100 bg-white p-2.5 shadow-sm">
+                    <p className="text-xs font-semibold text-indigo-700">{mindmapBranches[2].title}</p>
+                    <p className="text-[13px] text-slate-700 leading-5 max-h-[84px] overflow-y-auto break-words whitespace-pre-wrap pr-1">
+                      {mindmapBranches[2].value}
+                    </p>
+                  </div>
+
+                  <div className="absolute right-[24px] top-[116px] w-[186px] min-h-[58px] rounded-xl border border-indigo-100 bg-white p-2.5 shadow-sm">
+                    <p className="text-xs font-semibold text-indigo-700">{mindmapBranches[3].title}</p>
+                    <p className="text-[13px] text-slate-700 leading-5 max-h-[64px] overflow-y-auto break-words whitespace-pre-wrap pr-1">
+                      {mindmapBranches[3].value}
+                    </p>
+                  </div>
+
+                  <div className="absolute right-[24px] top-[216px] w-[186px] min-h-[72px] rounded-xl border border-indigo-100 bg-white p-2.5 shadow-sm">
+                    <p className="text-xs font-semibold text-indigo-700">{mindmapBranches[4].title}</p>
+                    <p className="text-[13px] text-slate-700 leading-5 max-h-[84px] overflow-y-auto break-words whitespace-pre-wrap pr-1">
+                      {mindmapBranches[4].value}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="md:hidden space-y-2.5">
+                <div className="rounded-xl border-2 border-blue-300 bg-white px-3 py-2 text-center">
+                  <p className="text-[11px] text-slate-500">中心主題</p>
+                  <p className="text-sm font-bold text-slate-800">人物知識庫</p>
+                </div>
+                {mindmapBranches.map((b) => (
+                  <div key={b.title} className="rounded-xl border border-slate-200 bg-white p-2.5">
+                    <p className="text-[11px] font-semibold text-blue-700">{b.title}</p>
+                    <p className="text-xs text-slate-600 leading-5">{b.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="mt-3 rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2 text-sm text-emerald-700">
+              系統已從知識庫自動篩選關鍵欄位，可直接用於聊天回覆。
+            </div>
+          </div>
+
+          <div className="bg-slate-50 p-4 rounded-xl border">
+            <h4 className="font-bold text-slate-800 mb-2">Preview & Activate</h4>
+            <p className="text-sm text-slate-600">
+              已完成知識提取，下一步可進入互動預覽並啟用對話。
+            </p>
           </div>
         </motion.div>
       );
