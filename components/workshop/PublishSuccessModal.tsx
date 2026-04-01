@@ -74,11 +74,19 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [seqThinking, setSeqThinking] = useState<any>(null);
   const [seqTalking, setSeqTalking] = useState<any>(null);
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
+  const backgroundImageRef = useRef<HTMLImageElement | null>(null);
+  const idleVideoRef = useRef<HTMLVideoElement | null>(null);
+  const thinkingVideoRef = useRef<HTMLVideoElement | null>(null);
+  const talkingVideoRef = useRef<HTMLVideoElement | null>(null);
+  const idleSequenceRef = useRef<HTMLDivElement | null>(null);
+  const thinkingSequenceRef = useRef<HTMLDivElement | null>(null);
+  const talkingSequenceRef = useRef<HTMLDivElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const cameraRequestTokenRef = useRef(0);
   const screenRecorderRef = useRef<MediaRecorder | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const screenChunksRef = useRef<BlobPart[]>([]);
+  const renderLoopRef = useRef<number | null>(null);
   const mobileDropdownRef = useRef<HTMLDivElement | null>(null);
   const desktopDropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -169,6 +177,10 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     screenChunksRef.current = [];
     screenStreamRef.current?.getTracks().forEach((track) => track.stop());
     screenStreamRef.current = null;
+    if (renderLoopRef.current != null) {
+      window.cancelAnimationFrame(renderLoopRef.current);
+      renderLoopRef.current = null;
+    }
     setIsRecordingScreen(false);
   }, []);
 
@@ -183,8 +195,9 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
   const startScreenRecording = React.useCallback(async () => {
     if (
-      typeof navigator === "undefined" ||
-      !navigator.mediaDevices?.getDisplayMedia
+      typeof window === "undefined" ||
+      typeof HTMLCanvasElement === "undefined" ||
+      typeof MediaRecorder === "undefined"
     ) {
       setRecordingError("當前瀏覽器不支援畫面錄製");
       return;
@@ -197,12 +210,186 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     }
 
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          frameRate: 30,
-        },
-        audio: false,
-      });
+      const canvas = document.createElement("canvas");
+      canvas.width = 1080;
+      canvas.height = 1920;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        throw new Error("無法建立錄製畫布");
+      }
+
+      const drawRoundedRect = (
+        x: number,
+        y: number,
+        width: number,
+        height: number,
+        radius: number,
+        fillStyle: string
+      ) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.arcTo(x + width, y, x + width, y + height, radius);
+        ctx.arcTo(x + width, y + height, x, y + height, radius);
+        ctx.arcTo(x, y + height, x, y, radius);
+        ctx.arcTo(x, y, x + width, y, radius);
+        ctx.closePath();
+        ctx.fillStyle = fillStyle;
+        ctx.fill();
+        ctx.restore();
+      };
+
+      const wrapText = (text: string, maxWidth: number) => {
+        const chars = text.split("");
+        const lines: string[] = [];
+        let current = "";
+        chars.forEach((char) => {
+          const next = current + char;
+          if (ctx.measureText(next).width > maxWidth && current) {
+            lines.push(current);
+            current = char;
+          } else {
+            current = next;
+          }
+        });
+        if (current) lines.push(current);
+        return lines;
+      };
+
+      const getActiveVisualSource = () => {
+        const activeSequenceRoot =
+          visualState === "idle"
+            ? idleSequenceRef.current
+            : visualState === "thinking"
+            ? thinkingSequenceRef.current
+            : talkingSequenceRef.current;
+        const activeSequenceImg = activeSequenceRoot?.querySelector("img");
+        if (activeSequenceImg instanceof HTMLImageElement) return activeSequenceImg;
+
+        if (visualState === "idle" && idleVideoRef.current) return idleVideoRef.current;
+        if (visualState === "thinking" && thinkingVideoRef.current) return thinkingVideoRef.current;
+        if (visualState === "speaking" && talkingVideoRef.current) return talkingVideoRef.current;
+        return null;
+      };
+
+      const drawFrame = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const leftWidth = Math.floor(canvas.width * 0.6);
+        const rightX = leftWidth;
+
+        if (cameraBackgroundReady && cameraVideoRef.current) {
+          ctx.drawImage(cameraVideoRef.current, 0, 0, leftWidth, canvas.height);
+        } else if (backgroundImageRef.current) {
+          ctx.drawImage(backgroundImageRef.current, 0, 0, leftWidth, canvas.height);
+        } else {
+          ctx.fillStyle = "#cbd5e1";
+          ctx.fillRect(0, 0, leftWidth, canvas.height);
+        }
+
+        const visualSource = getActiveVisualSource();
+        if (visualSource) {
+          const sourceWidth =
+            visualSource instanceof HTMLVideoElement ? visualSource.videoWidth : visualSource.naturalWidth;
+          const sourceHeight =
+            visualSource instanceof HTMLVideoElement ? visualSource.videoHeight : visualSource.naturalHeight;
+
+          if (sourceWidth && sourceHeight) {
+            const maxWidth = leftWidth * 0.92;
+            const maxHeight = canvas.height * 0.78;
+            const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight);
+            const drawWidth = sourceWidth * scale;
+            const drawHeight = sourceHeight * scale;
+            const x = (leftWidth - drawWidth) / 2;
+            const y = canvas.height - drawHeight - 120;
+            ctx.drawImage(visualSource, x, y, drawWidth, drawHeight);
+          }
+        }
+
+        ctx.fillStyle = "rgba(15, 23, 42, 0.18)";
+        ctx.fillRect(0, 0, leftWidth, canvas.height);
+        ctx.fillStyle = "rgba(248, 250, 252, 1)";
+        ctx.fillRect(rightX, 0, canvas.width - rightX, canvas.height);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(rightX, 0, canvas.width - rightX, 96);
+        ctx.strokeStyle = "rgba(226,232,240,1)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(rightX, 96);
+        ctx.lineTo(canvas.width, 96);
+        ctx.stroke();
+
+        ctx.fillStyle = "#0f172a";
+        ctx.font = "700 34px sans-serif";
+        ctx.fillText(botName, rightX + 32, 54);
+        ctx.fillStyle = "#059669";
+        ctx.font = "500 20px sans-serif";
+        ctx.fillText("已發佈上線", rightX + 32, 82);
+
+        let y = 140;
+        const visibleMessages = messages.slice(-8);
+        visibleMessages.forEach((message) => {
+          ctx.font = "500 24px sans-serif";
+          const maxBubbleWidth = canvas.width - rightX - 96;
+          const textLines = wrapText(message.content, maxBubbleWidth - 40);
+          const lineHeight = 34;
+          const bubbleHeight = textLines.length * lineHeight + 34;
+          const bubbleWidth = Math.min(
+            maxBubbleWidth,
+            Math.max(...textLines.map((line) => ctx.measureText(line).width), 120) + 40
+          );
+          const x =
+            message.role === "user"
+              ? canvas.width - bubbleWidth - 28
+              : rightX + 28;
+
+          drawRoundedRect(
+            x,
+            y,
+            bubbleWidth,
+            bubbleHeight,
+            24,
+            message.role === "user" ? "#4f46e5" : "#ffffff"
+          );
+          if (message.role !== "user") {
+            ctx.strokeStyle = "#e2e8f0";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, bubbleWidth, bubbleHeight);
+          }
+
+          ctx.fillStyle = message.role === "user" ? "#ffffff" : "#0f172a";
+          textLines.forEach((line, index) => {
+            ctx.fillText(line, x + 20, y + 30 + index * lineHeight);
+          });
+          y += bubbleHeight + 20;
+        });
+
+        if (botState === "thinking") {
+          drawRoundedRect(rightX + 28, y, 92, 48, 24, "#ffffff");
+          ctx.fillStyle = "#a5b4fc";
+          [0, 1, 2].forEach((idx) => {
+            ctx.beginPath();
+            ctx.arc(rightX + 50 + idx * 18, y + 24, 5, 0, Math.PI * 2);
+            ctx.fill();
+          });
+        }
+
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(rightX, canvas.height - 130, canvas.width - rightX, 130);
+        drawRoundedRect(rightX + 20, canvas.height - 100, canvas.width - rightX - 40, 64, 32, "#f1f5f9");
+        ctx.fillStyle = "#64748b";
+        ctx.font = "500 24px sans-serif";
+        ctx.fillText(inputText || "輸入訊息測試...", rightX + 52, canvas.height - 58);
+      };
+
+      const loop = () => {
+        drawFrame();
+        renderLoopRef.current = window.requestAnimationFrame(loop);
+      };
+
+      loop();
+
+      const stream = canvas.captureStream(30);
 
       const recorder = new MediaRecorder(stream, {
         mimeType: MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
@@ -237,13 +424,6 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
         setRecordingError("錄製失敗，請重新嘗試");
         cleanupScreenRecording();
       };
-
-      const [videoTrack] = stream.getVideoTracks();
-      if (videoTrack) {
-        videoTrack.onended = () => {
-          stopScreenRecording();
-        };
-      }
 
       recorder.start(1000);
       setIsRecordingScreen(true);
@@ -1507,6 +1687,7 @@ const unlockAudioAndMic = async () => {
 
               {!cameraBackgroundReady && background && background.trim() !== "" ? (
                 <img
+                  ref={backgroundImageRef}
                   src={background}
                   className="absolute inset-0 w-full h-full object-cover opacity-80"
                 />
@@ -1582,18 +1763,24 @@ const unlockAudioAndMic = async () => {
                 {hasAnyVideo ? (
                   <div className="relative h-full md:h-[80%] w-full">
                     {seqIdle ? (
-                      <SequencePngPlayer
-                        folderUrl={seqIdle.folderUrl}
-                        pattern={seqIdle.pattern}
-                        frameCount={seqIdle.frameCount}
-                        fps={seqIdle.fps}
-                        className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                      <div
+                        ref={idleSequenceRef}
+                        className={`absolute inset-0 h-full w-full ${
                           visualState === "idle" ? "block" : "hidden"
                         }`}
-                        active={visualState === "idle"}
-                      />
+                      >
+                        <SequencePngPlayer
+                          folderUrl={seqIdle.folderUrl}
+                          pattern={seqIdle.pattern}
+                          frameCount={seqIdle.frameCount}
+                          fps={seqIdle.fps}
+                          className="h-full w-full object-contain drop-shadow-xl"
+                          active={visualState === "idle"}
+                        />
+                      </div>
                     ) : safeVideoIdle && (
                       <video
+                        ref={idleVideoRef}
                         src={safeVideoIdle}
                         autoPlay
                         loop
@@ -1606,18 +1793,24 @@ const unlockAudioAndMic = async () => {
                       />
                     )}
                     {seqThinking ? (
-                      <SequencePngPlayer
-                        folderUrl={seqThinking.folderUrl}
-                        pattern={seqThinking.pattern}
-                        frameCount={seqThinking.frameCount}
-                        fps={seqThinking.fps}
-                        className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                      <div
+                        ref={thinkingSequenceRef}
+                        className={`absolute inset-0 h-full w-full ${
                           visualState === "thinking" ? "block" : "hidden"
                         }`}
-                        active={visualState === "thinking"}
-                      />
+                      >
+                        <SequencePngPlayer
+                          folderUrl={seqThinking.folderUrl}
+                          pattern={seqThinking.pattern}
+                          frameCount={seqThinking.frameCount}
+                          fps={seqThinking.fps}
+                          className="h-full w-full object-contain drop-shadow-xl"
+                          active={visualState === "thinking"}
+                        />
+                      </div>
                     ) : safeVideoThinking && (
                       <video
+                        ref={thinkingVideoRef}
                         src={safeVideoThinking}
                         autoPlay
                         loop
@@ -1630,18 +1823,24 @@ const unlockAudioAndMic = async () => {
                       />
                     )}
                     {seqTalking ? (
-                      <SequencePngPlayer
-                        folderUrl={seqTalking.folderUrl}
-                        pattern={seqTalking.pattern}
-                        frameCount={seqTalking.frameCount}
-                        fps={seqTalking.fps}
-                        className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                      <div
+                        ref={talkingSequenceRef}
+                        className={`absolute inset-0 h-full w-full ${
                           visualState === "speaking" ? "block" : "hidden"
                         }`}
-                        active={visualState === "speaking"}
-                      />
+                      >
+                        <SequencePngPlayer
+                          folderUrl={seqTalking.folderUrl}
+                          pattern={seqTalking.pattern}
+                          frameCount={seqTalking.frameCount}
+                          fps={seqTalking.fps}
+                          className="h-full w-full object-contain drop-shadow-xl"
+                          active={visualState === "speaking"}
+                        />
+                      </div>
                     ) : safeVideoTalking && (
                       <video
+                        ref={talkingVideoRef}
                         src={safeVideoTalking}
                         autoPlay
                         loop
