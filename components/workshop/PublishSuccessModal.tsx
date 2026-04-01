@@ -65,6 +65,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [cameraBackgroundReady, setCameraBackgroundReady] = useState(false);
   const [cameraBackgroundError, setCameraBackgroundError] = useState("");
   const [cameraBackgroundLoading, setCameraBackgroundLoading] = useState(false);
+  const [isRecordingScreen, setIsRecordingScreen] = useState(false);
+  const [recordingError, setRecordingError] = useState("");
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -74,6 +76,9 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const cameraRequestTokenRef = useRef(0);
+  const screenRecorderRef = useRef<MediaRecorder | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  const screenChunksRef = useRef<BlobPart[]>([]);
   const mobileDropdownRef = useRef<HTMLDivElement | null>(null);
   const desktopDropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -158,6 +163,97 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     }
     setCameraBackgroundReady(false);
   }, []);
+
+  const cleanupScreenRecording = React.useCallback(() => {
+    screenRecorderRef.current = null;
+    screenChunksRef.current = [];
+    screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current = null;
+    setIsRecordingScreen(false);
+  }, []);
+
+  const stopScreenRecording = React.useCallback(() => {
+    const recorder = screenRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+      return;
+    }
+    cleanupScreenRecording();
+  }, [cleanupScreenRecording]);
+
+  const startScreenRecording = React.useCallback(async () => {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getDisplayMedia
+    ) {
+      setRecordingError("當前瀏覽器不支援畫面錄製");
+      return;
+    }
+
+    setRecordingError("");
+    if (isRecordingScreen) {
+      stopScreenRecording();
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          frameRate: 30,
+        },
+        audio: false,
+      });
+
+      const recorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+          ? "video/webm;codecs=vp9"
+          : "video/webm",
+      });
+
+      screenStreamRef.current = stream;
+      screenRecorderRef.current = recorder;
+      screenChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          screenChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(screenChunksRef.current, { type: recorder.mimeType || "video/webm" });
+        if (blob.size > 0) {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `${botName || "chat-preview"}-${Date.now()}.webm`;
+          a.click();
+          window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+        cleanupScreenRecording();
+      };
+
+      recorder.onerror = () => {
+        setRecordingError("錄製失敗，請重新嘗試");
+        cleanupScreenRecording();
+      };
+
+      const [videoTrack] = stream.getVideoTracks();
+      if (videoTrack) {
+        videoTrack.onended = () => {
+          stopScreenRecording();
+        };
+      }
+
+      recorder.start(1000);
+      setIsRecordingScreen(true);
+    } catch (error) {
+      setRecordingError(
+        error instanceof Error ? error.message : "無法開始錄製畫面"
+      );
+      cleanupScreenRecording();
+    }
+  }, [botName, cleanupScreenRecording, isRecordingScreen, stopScreenRecording]);
 
   const startCameraBackground = React.useCallback(async () => {
     if (
@@ -307,15 +403,18 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   useEffect(() => {
     if (!isOpen) {
       stopCameraBackground();
+      stopScreenRecording();
       setCameraBackgroundLoading(false);
       setCameraBackgroundError("");
+      setRecordingError("");
       return;
     }
 
     return () => {
       stopCameraBackground();
+      stopScreenRecording();
     };
-  }, [isOpen, stopCameraBackground]);
+  }, [isOpen, stopCameraBackground, stopScreenRecording]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1360,6 +1459,16 @@ const unlockAudioAndMic = async () => {
                       </button>
 
                       <button
+                        className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded-lg w-full"
+                        onClick={() => {
+                          setShowDropdown(false);
+                          void startScreenRecording();
+                        }}
+                      >
+                        <Copy size={16} /> {isRecordingScreen ? "結束錄製並下載" : "錄製畫面"}
+                      </button>
+
+                      <button
                         className="flex items-center gap-2 p-2 hover:bg-red-50 text-red-600 rounded-lg w-full"
                         onClick={() => {
                           setShowDropdown(false);
@@ -1449,6 +1558,21 @@ const unlockAudioAndMic = async () => {
                       : "目前使用原本背景圖，點擊上方按鈕可切換為電腦相機畫面。"}
                   </div>
                 )}
+                <button
+                  onClick={() => {
+                    void startScreenRecording();
+                  }}
+                  className={`rounded-full px-4 py-2 text-xs font-semibold text-white backdrop-blur ${
+                    isRecordingScreen ? "bg-red-600/85 hover:bg-red-700/90" : "bg-black/45 hover:bg-black/60"
+                  }`}
+                >
+                  {isRecordingScreen ? "結束錄製並下載" : "開始錄製畫面"}
+                </button>
+                {recordingError ? (
+                  <div className="max-w-[280px] rounded-2xl bg-black/35 px-3 py-2 text-[11px] leading-5 text-white/90 backdrop-blur">
+                    錄製未啟用：{recordingError}
+                  </div>
+                ) : null}
               </div>
 
               <motion.div
@@ -1583,6 +1707,16 @@ const unlockAudioAndMic = async () => {
                         >
                           {copied ? <Check size={16} /> : <LinkIcon size={16} />}
                           {copied ? "已複製" : "複製分享連結"}
+                        </button>
+
+                        <button
+                          className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded-lg w-full"
+                          onClick={() => {
+                            setShowDropdown(false);
+                            void startScreenRecording();
+                          }}
+                        >
+                          <Copy size={16} /> {isRecordingScreen ? "結束錄製並下載" : "錄製畫面"}
                         </button>
 
                         <button
