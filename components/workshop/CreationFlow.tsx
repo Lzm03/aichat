@@ -395,7 +395,7 @@ const handleDeleteBot = async () => {
 
               <button
                 onClick={() => setIsPreviewModalOpen(false)}
-                className="absolute top-4 right-4 bg-black/20 rounded-full w-8 h-8"
+                className="absolute z-20 top-4 right-4 bg-black/30 backdrop-blur rounded-full w-10 h-10 flex items-center justify-center"
               >
                 <Icons.close className="w-5 h-5 text-white" />
               </button>
