@@ -62,12 +62,18 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [permissionReady, setPermissionReady] = useState(false);
   const [permissionError, setPermissionError] = useState("");
   const [isUnlocking, setIsUnlocking] = useState(false);
+  const [cameraBackgroundReady, setCameraBackgroundReady] = useState(false);
+  const [cameraBackgroundError, setCameraBackgroundError] = useState("");
+  const [cameraBackgroundLoading, setCameraBackgroundLoading] = useState(false);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [seqIdle, setSeqIdle] = useState<any>(null);
   const [seqThinking, setSeqThinking] = useState<any>(null);
   const [seqTalking, setSeqTalking] = useState<any>(null);
+  const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const cameraRequestTokenRef = useRef(0);
   const mobileDropdownRef = useRef<HTMLDivElement | null>(null);
   const desktopDropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -143,6 +149,173 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     const uaMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
     setIsMobileClient(Boolean(coarse || uaMobile));
   }, []);
+
+  const stopCameraBackground = React.useCallback(() => {
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+    if (cameraVideoRef.current) {
+      cameraVideoRef.current.srcObject = null;
+    }
+    setCameraBackgroundReady(false);
+  }, []);
+
+  const startCameraBackground = React.useCallback(async () => {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      setCameraBackgroundError("當前環境不支援相機背景");
+      setCameraBackgroundReady(false);
+      return;
+    }
+
+    setCameraBackgroundLoading(true);
+    setCameraBackgroundError("");
+    const requestToken = cameraRequestTokenRef.current + 1;
+    cameraRequestTokenRef.current = requestToken;
+
+    try {
+      stopCameraBackground();
+      let permissionState = "unknown";
+      try {
+        const perm = await navigator.permissions?.query?.({
+          name: "camera" as PermissionName,
+        });
+        permissionState = perm?.state || "unknown";
+      } catch {
+        permissionState = "unsupported";
+      }
+
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = devices.filter((d) => d.kind === "videoinput");
+
+      if (!videoInputs.length) {
+        throw new Error("沒有找到可用攝像頭裝置");
+      }
+
+      if (permissionState === "denied") {
+        throw new Error("瀏覽器已封鎖相機權限");
+      }
+
+      const preferredVideoConstraints = isMobileClient
+        ? {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          }
+        : {
+            deviceId: videoInputs[0]?.deviceId
+              ? { ideal: videoInputs[0].deviceId }
+              : undefined,
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          };
+
+      const fallbackVideoConstraints = {
+        deviceId: videoInputs[0]?.deviceId
+          ? { ideal: videoInputs[0].deviceId }
+          : undefined,
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      };
+
+      const getStream = async () => {
+        try {
+          return await navigator.mediaDevices.getUserMedia({
+            video: preferredVideoConstraints,
+            audio: false,
+          });
+        } catch (error) {
+          if (!isMobileClient) throw error;
+          return await navigator.mediaDevices.getUserMedia({
+            video: fallbackVideoConstraints,
+            audio: false,
+          });
+        }
+      };
+
+      const stream = await Promise.race([
+        getStream(),
+        new Promise<never>((_, reject) =>
+          window.setTimeout(() => reject(new Error("相機權限請求逾時，請檢查瀏覽器權限設定")), 8000)
+        ),
+      ]);
+
+      if (cameraRequestTokenRef.current !== requestToken) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
+      cameraStreamRef.current = stream;
+
+      if (!cameraVideoRef.current) {
+        stopCameraBackground();
+        return;
+      }
+
+      const videoEl = cameraVideoRef.current;
+      videoEl.srcObject = stream;
+
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const timeout = window.setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          reject(new Error("相機串流已取得，但畫面未成功載入"));
+        }, 5000);
+
+        const cleanup = () => {
+          window.clearTimeout(timeout);
+          videoEl.onloadedmetadata = null;
+          videoEl.oncanplay = null;
+          videoEl.onerror = null;
+        };
+
+        const markReady = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve();
+        };
+
+        videoEl.onloadedmetadata = () => {
+          void videoEl.play().catch(() => undefined);
+          markReady();
+        };
+        videoEl.oncanplay = markReady;
+        videoEl.onerror = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          reject(new Error("相機畫面初始化失敗"));
+        };
+      });
+
+      setCameraBackgroundReady(true);
+      setCameraBackgroundLoading(false);
+    } catch (error) {
+      setCameraBackgroundReady(false);
+      setCameraBackgroundLoading(false);
+      setCameraBackgroundError(
+        error instanceof Error ? error.message : "相機權限被拒絕或裝置不可用"
+      );
+      stopCameraBackground();
+    }
+  }, [isMobileClient, stopCameraBackground]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      stopCameraBackground();
+      setCameraBackgroundLoading(false);
+      setCameraBackgroundError("");
+      return;
+    }
+
+    return () => {
+      stopCameraBackground();
+    };
+  }, [isOpen, stopCameraBackground]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1211,16 +1384,72 @@ const unlockAudioAndMic = async () => {
             {/* 左侧背景 + 动画 */}
             {/* 左侧背景 + 动画 */}
             <div className="relative order-1 md:order-none w-full md:w-3/5 h-[42vh] md:h-full bg-slate-200">
+              <video
+                ref={cameraVideoRef}
+                autoPlay
+                muted
+                playsInline
+                className={`absolute inset-0 w-full h-full object-cover ${
+                  cameraBackgroundReady && !isMobileClient ? "scale-x-[-1]" : ""
+                } ${
+                  cameraBackgroundReady ? "block" : "hidden"
+                }`}
+              />
 
-              {/* ⭐ 背景圖片：如為空 → 不渲染 img，改用灰底 */}
-              {background && background.trim() !== "" ? (
+              {!cameraBackgroundReady && background && background.trim() !== "" ? (
                 <img
                   src={background}
                   className="absolute inset-0 w-full h-full object-cover opacity-80"
                 />
               ) : (
-                <div className="absolute inset-0 w-full h-full bg-slate-300 opacity-80" />
+                !cameraBackgroundReady && (
+                  <div className="absolute inset-0 w-full h-full bg-slate-300 opacity-80" />
+                )
               )}
+
+              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.08),rgba(15,23,42,0.28))]" />
+              {cameraBackgroundReady && (
+                <>
+                  <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-red-500/90 px-2.5 py-1 text-[10px] font-semibold tracking-[0.24em] text-white shadow-[0_0_12px_rgba(239,68,68,0.45)]">
+                    REC
+                  </div>
+                  <div className="pointer-events-none absolute right-4 top-4 text-[10px] font-medium tracking-[0.24em] text-white/90">
+                    LIVE CAMERA
+                  </div>
+                  <div className="pointer-events-none absolute inset-0 hidden md:block">
+                    <div className="absolute left-5 top-5 h-10 w-10 rounded-tl-2xl border-l-2 border-t-2 border-white/70" />
+                    <div className="absolute right-5 top-5 h-10 w-10 rounded-tr-2xl border-r-2 border-t-2 border-white/70" />
+                    <div className="absolute bottom-5 left-5 h-10 w-10 rounded-bl-2xl border-b-2 border-l-2 border-white/70" />
+                    <div className="absolute bottom-5 right-5 h-10 w-10 rounded-br-2xl border-b-2 border-r-2 border-white/70" />
+                  </div>
+                </>
+              )}
+
+              <div className="absolute left-4 bottom-4 z-10 flex flex-col gap-2">
+                <button
+                  onClick={() => {
+                    void startCameraBackground();
+                  }}
+                  className="rounded-full bg-black/45 px-4 py-2 text-xs font-semibold text-white backdrop-blur hover:bg-black/60"
+                >
+                  {cameraBackgroundLoading
+                    ? "相機背景啟動中..."
+                    : cameraBackgroundReady
+                    ? "重新連接相機背景"
+                    : isMobileClient
+                    ? "開啟手機相機背景"
+                    : "開啟相機背景"}
+                </button>
+                {!cameraBackgroundReady && (
+                  <div className="max-w-[280px] rounded-2xl bg-black/35 px-3 py-2 text-[11px] leading-5 text-white/90 backdrop-blur">
+                    {cameraBackgroundError
+                      ? `相機未啟用：${cameraBackgroundError}`
+                      : cameraBackgroundLoading
+                      ? "正在請求相機權限..."
+                      : "目前使用原本背景圖，點擊上方按鈕可切換為電腦相機畫面。"}
+                  </div>
+                )}
+              </div>
 
               <motion.div
                 className="absolute inset-0 flex items-end justify-center pb-12"
