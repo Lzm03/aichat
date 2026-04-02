@@ -246,6 +246,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const handleCharacterTouchStart = React.useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
       if (!cameraBackgroundReady || !isMobileClient) return;
+      event.preventDefault();
+
       if (event.touches.length === 2) {
         const [a, b] = Array.from(event.touches);
         pinchStateRef.current = {
@@ -1783,23 +1785,24 @@ const unlockAudioAndMic = async () => {
               </div>
 
               {cameraBackgroundReady ? (
-                <div ref={arStageRef} className="absolute inset-0">
+                <div ref={arStageRef} className="absolute inset-0 overscroll-none touch-none">
                   <motion.div
-                    className="absolute left-1/2 bottom-12 h-[80%] w-full md:w-[80%] cursor-grab active:cursor-grabbing"
+                    className="absolute left-1/2 bottom-12 h-[80%] w-full cursor-grab touch-none select-none active:cursor-grabbing md:w-[80%]"
                     transition={{ duration: 0.2 }}
                     style={{
                       transform: `translate(calc(-50% + ${characterOffset.x}px), ${characterOffset.y}px) scale(${characterScale})`,
                       transformOrigin: "center bottom",
+                      touchAction: "none",
                     }}
-                  onPointerDown={handleCharacterPointerDown}
-                  onPointerMove={handleCharacterPointerMove}
-                  onPointerUp={handleCharacterPointerUp}
-                  onPointerCancel={handleCharacterPointerUp}
-                  onTouchStart={handleCharacterTouchStart}
-                  onTouchMove={handleCharacterTouchMove}
-                  onTouchEnd={handleCharacterTouchEnd}
-                  onTouchCancel={handleCharacterTouchEnd}
-                >
+                    onPointerDown={handleCharacterPointerDown}
+                    onPointerMove={handleCharacterPointerMove}
+                    onPointerUp={handleCharacterPointerUp}
+                    onPointerCancel={handleCharacterPointerUp}
+                    onTouchStart={handleCharacterTouchStart}
+                    onTouchMove={handleCharacterTouchMove}
+                    onTouchEnd={handleCharacterTouchEnd}
+                    onTouchCancel={handleCharacterTouchEnd}
+                  >
                     {hasAnyVideo ? (
                       <div className="relative h-full w-full">
                         {seqIdle ? (
