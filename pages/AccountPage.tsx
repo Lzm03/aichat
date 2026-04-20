@@ -266,14 +266,10 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
         <p className="mt-3 text-sm leading-7 text-slate-600">
           如果你希望提供產品意見、了解付費方案，或購買我們的機器人創建服務，可以直接聯絡我們。
         </p>
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <div className="mt-5">
           <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Email</div>
-            <div className="mt-2 text-base font-bold text-slate-900">hello@chopreality.com</div>
-          </div>
-          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">WhatsApp</div>
-            <div className="mt-2 text-base font-bold text-slate-900">+852 0000 0000</div>
+            <div className="mt-2 text-base font-bold text-slate-900">Mandy@chopreality.com</div>
           </div>
         </div>
       </div>

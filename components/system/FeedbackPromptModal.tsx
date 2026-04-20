@@ -38,16 +38,11 @@ export const FeedbackPromptModal: React.FC<FeedbackPromptModalProps> = ({
               </p>
             </div>
 
-            <div className="grid gap-4 px-7 py-6 md:grid-cols-2">
+            <div className="grid gap-4 px-7 py-6">
               <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Email</div>
-                <div className="mt-2 text-lg font-bold text-slate-900">hello@chopreality.com</div>
+                <div className="mt-2 text-lg font-bold text-slate-900">Mandy@chopreality.com</div>
                 <p className="mt-2 text-sm text-slate-500">歡迎提交產品意見、合作需求或購買方案查詢。</p>
-              </div>
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">WhatsApp</div>
-                <div className="mt-2 text-lg font-bold text-slate-900">+852 0000 0000</div>
-                <p className="mt-2 text-sm text-slate-500">如需更快聯絡，可直接透過 WhatsApp 與我們對接。</p>
               </div>
             </div>
 

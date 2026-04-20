@@ -181,9 +181,8 @@ export const AuthPage: React.FC = () => {
             </p>
             <div className="mt-6 rounded-[24px] border border-slate-200 bg-white/80 p-4 shadow-sm backdrop-blur">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-500">聯絡方式</div>
-              <div className="mt-3 space-y-2 text-sm text-slate-600">
-                <div>hello@chopreality.com</div>
-                <div>+852 0000 0000</div>
+              <div className="mt-3 text-sm text-slate-600">
+                <div>Mandy@chopreality.com</div>
               </div>
             </div>
           </motion.div>
