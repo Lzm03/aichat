@@ -27,6 +27,12 @@ interface Props {
   }) => void;
 }
 
+const HINT_VIDEO_SLOTS = {
+  idle: "/hint-videos/idle.mp4",
+  speaking: "/hint-videos/speaking.mp4",
+  thinking: "/hint-videos/thinking.mp4",
+} as const;
+
 /* Convert blob: URL → Base64 */
 async function blobUrlToBase64(blobUrl: string): Promise<string> {
   const response = await fetch(blobUrl);
