@@ -14,6 +14,9 @@ import {
 } from "lucide-react";
 import { SequencePngPlayer } from "./SequencePngPlayer";
 import { API_BASE } from "../../utils/api";
+import { usePlatformDialog } from "../../hooks/usePlatformDialog";
+import { PlatformDialog } from "../system/PlatformDialog";
+import { markTrialEndedPopupPending } from "../../utils/trial-popup";
 
 interface PublishSuccessModalProps {
   isOpen: boolean;
@@ -61,6 +64,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [isMobileClient, setIsMobileClient] = useState(false);
   const [permissionReady, setPermissionReady] = useState(false);
   const [permissionError, setPermissionError] = useState("");
+  const [voiceLimitMessage, setVoiceLimitMessage] = useState("");
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [cameraBackgroundReady, setCameraBackgroundReady] = useState(false);
   const [cameraBackgroundError, setCameraBackgroundError] = useState("");
@@ -72,6 +76,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const { dialog, closeDialog, showAlert } = usePlatformDialog();
   const [seqIdle, setSeqIdle] = useState<any>(null);
   const [seqThinking, setSeqThinking] = useState<any>(null);
   const [seqTalking, setSeqTalking] = useState<any>(null);
@@ -99,6 +104,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   } | null>(null);
   const mobileDropdownRef = useRef<HTMLDivElement | null>(null);
   const desktopDropdownRef = useRef<HTMLDivElement | null>(null);
+  const voicePlaybackEnabledRef = useRef(Boolean(voiceId));
+  const voiceLimitNoticeShownRef = useRef(false);
 
   const shareUrl =
     typeof window !== "undefined"
@@ -121,7 +128,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     Boolean(url && /\/manifest\.json(\?|$)/i.test(url));
   const hasAnyVideo = Boolean(safeVideoIdle || safeVideoThinking || safeVideoTalking);
   const shouldShowBooting = isOpen && (!openingReady || !mediaReady);
-  const shouldRequirePermission = Boolean(voiceId) && isMobileClient;
+  const shouldRequirePermission = Boolean(voiceId) && !voiceLimitMessage && isMobileClient;
   const shouldBlockChat = shouldShowBooting || (shouldRequirePermission && !permissionReady);
   const visualState =
     botState === "speaking"
@@ -171,6 +178,22 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     const coarse = window.matchMedia?.("(pointer: coarse)")?.matches;
     const uaMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
     setIsMobileClient(Boolean(coarse || uaMobile));
+  }, []);
+
+  useEffect(() => {
+    voicePlaybackEnabledRef.current = Boolean(voiceId) && !voiceLimitMessage;
+  }, [voiceId, voiceLimitMessage]);
+
+  const disableVoicePlayback = React.useCallback((message?: string) => {
+    const nextMessage = message?.trim() || "免費語音功能已用完，已自動切換為純文字回覆。";
+    voicePlaybackEnabledRef.current = false;
+    setVoiceLimitMessage(nextMessage);
+    setAwaitingAudioGesture(false);
+    setBotState((current) => (current === "speaking" ? "idle" : current));
+    if (!voiceLimitNoticeShownRef.current) {
+      voiceLimitNoticeShownRef.current = true;
+      setMessages((prev) => [...prev, { role: "bot", content: nextMessage }]);
+    }
   }, []);
 
   const resetArCharacterPose = React.useCallback(() => {
@@ -713,7 +736,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     const openingMessage = `你好！我是 ${botName}，你現在最想解決什麼？`;
     const sessionId = ttsSessionRef.current;
 
-    if (!voiceId) {
+    if (!voicePlaybackEnabledRef.current) {
       setIsBooting(false);
       setBotState("idle");
       setMessages([
@@ -821,7 +844,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
 const requestTTSAudio = async (text: string, sessionId: number) => {
 
-  if (!voiceId || !text.trim()) return;
+  if (!voicePlaybackEnabledRef.current || !voiceId || !text.trim()) return;
   if (sessionId !== ttsSessionRef.current) return;
 
   const baseUrl = API_BASE;
@@ -847,15 +870,23 @@ const requestTTSAudio = async (text: string, sessionId: number) => {
       body: JSON.stringify({
         text,
         voiceId,
+        usageType: "chat_voice",
       }),
       signal: controller.signal,
     });
-    if (!res.ok) throw new Error(`TTS failed: ${res.status}`);
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      const message = data?.error || `TTS failed: ${res.status}`;
+      if (res.status === 402) {
+        disableVoicePlayback(message);
+        return;
+      }
+      throw new Error(message);
+    }
     if (sessionId !== ttsSessionRef.current) return;
 
     const blob = await res.blob();
     if (sessionId !== ttsSessionRef.current) return;
-
     return URL.createObjectURL(blob);
 
   } catch (e) {
@@ -867,7 +898,7 @@ const requestTTSAudio = async (text: string, sessionId: number) => {
 };
 
 const enqueueSpeak = (text: string) => {
-  if (!voiceId || !text.trim()) return;
+  if (!voicePlaybackEnabledRef.current || !voiceId || !text.trim()) return;
   const seq = ttsSeq.current++;
   ttsTextQueue.current.push({ seq, text });
   pumpTTSRequests();
@@ -876,6 +907,10 @@ const enqueueSpeak = (text: string) => {
 
 const waitForAudioReady = (seq: number, timeoutMs = 1000) =>
   new Promise<void>((resolve) => {
+    if (!voicePlaybackEnabledRef.current) {
+      resolve();
+      return;
+    }
     const start = Date.now();
     const timer = setInterval(() => {
       const ready = ttsAudioMap.current.has(seq) || seq < nextPlaySeq.current;
@@ -1022,7 +1057,7 @@ const pushProactiveQuestion = () => {
   ];
   const text = candidates[proactiveCountRef.current % candidates.length];
   setMessages((prev) => [...prev, { role: "bot", content: text }]);
-  if (voiceId) {
+  if (voicePlaybackEnabledRef.current) {
     setIsStopAvailable(true);
     enqueueSpeak(text);
   }
@@ -1132,10 +1167,21 @@ const sendMessage = async (forcedText?: string) => {
           "\n" +
           chatStyleRules,
         userPrompt: userMsg,
+        usageType: "chat_message",
       }),
       signal: controller.signal,
     });
     activeRequestController.current = null;
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      const errorMessage = data?.error || `聊天請求失敗：${response.status}`;
+      if (response.status === 402 || /對話次數已用完|請升級到付費版|功能使用次數不足/.test(String(errorMessage))) {
+        markTrialEndedPopupPending();
+        window.location.href = "/";
+        return;
+      }
+      throw new Error(errorMessage);
+    }
 
     const reader = response.body?.getReader();
     const decoder = new TextDecoder();
@@ -1169,7 +1215,7 @@ const sendMessage = async (forcedText?: string) => {
           const sentence = segmentBuffer.trim();
           const segmentText = segmentBuffer;
 
-          if (voiceId && sentence.length > 0) {
+          if (voicePlaybackEnabledRef.current && sentence.length > 0) {
             const seq = enqueueSpeak(sentence);
             displayChain = displayChain.then(async () => {
               if (currentGenId !== generationIdRef.current) return;
@@ -1207,7 +1253,7 @@ const sendMessage = async (forcedText?: string) => {
     // 最后一段（未遇到句号的尾巴）
     if (segmentBuffer.trim()) {
       const tail = segmentBuffer;
-      if (voiceId) {
+      if (voicePlaybackEnabledRef.current) {
         const seq = enqueueSpeak(segmentBuffer.trim());
         displayChain = displayChain.then(async () => {
           if (currentGenId !== generationIdRef.current) return;
@@ -1243,11 +1289,21 @@ const sendMessage = async (forcedText?: string) => {
     if (committedReply.trim()) {
       handleBotTurnCommitted(committedReply);
     }
-
+    setBotState((current) => (current === "thinking" ? "idle" : current));
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") return;
     console.error(err);
     setBotState("idle");
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "bot",
+        content:
+          err instanceof Error
+            ? err.message
+            : "目前無法完成回覆，請稍後再試。",
+      },
+    ]);
   }
 };
 
@@ -1287,7 +1343,10 @@ const startSpeechInput = async () => {
     (window as any).webkitSpeechRecognition;
 
   if (!SR) {
-    alert("此瀏覽器不支援語音輸入（建議使用 Chrome）。");
+    showAlert({
+      title: "不支援語音輸入",
+      message: "此瀏覽器暫不支援語音輸入，建議使用 Chrome。",
+    });
     return;
   }
 
@@ -1315,7 +1374,11 @@ const startSpeechInput = async () => {
   stopAllSpeech();
 
   if (!navigator.mediaDevices?.getUserMedia) {
-    alert("目前環境不支援麥克風權限請求。");
+    showAlert({
+      title: "麥克風不可用",
+      message: "目前環境不支援麥克風權限請求。",
+      tone: "danger",
+    });
     return;
   }
 
@@ -1326,10 +1389,18 @@ const startSpeechInput = async () => {
     sttStartingRef.current = false;
     const name = e?.name || "UnknownError";
     if (name === "NotAllowedError") {
-      alert("麥克風權限被拒絕，請在瀏覽器設定中允許麥克風。");
+      showAlert({
+        title: "麥克風權限被拒絕",
+        message: "請在瀏覽器設定中允許麥克風後再試。",
+        tone: "danger",
+      });
       return;
     }
-    alert("無法使用麥克風，請檢查系統與瀏覽器權限。");
+    showAlert({
+      title: "無法使用麥克風",
+      message: "請檢查系統與瀏覽器權限後再試。",
+      tone: "danger",
+    });
     return;
   }
 
@@ -1397,11 +1468,22 @@ const startSpeechInput = async () => {
     setIsListening(false);
     clearSttTimers();
     if (event?.error === "not-allowed") {
-      alert("語音輸入權限被拒絕，請允許麥克風後再試。");
+      showAlert({
+        title: "語音輸入權限被拒絕",
+        message: "請允許麥克風後再試。",
+        tone: "danger",
+      });
     } else if (event?.error === "no-speech") {
-      alert("未偵測到語音，請再說一次。");
+      showAlert({
+        title: "未偵測到語音",
+        message: "請再說一次。",
+      });
     } else if (event?.error === "audio-capture") {
-      alert("找不到可用麥克風裝置。");
+      showAlert({
+        title: "找不到麥克風",
+        message: "目前找不到可用的麥克風裝置。",
+        tone: "danger",
+      });
     }
   };
   recognition.onend = () => {
@@ -1474,7 +1556,11 @@ const startSpeechInput = async () => {
       console.error("STT retry start error:", retryErr);
       setIsListening(false);
       clearSttTimers();
-      alert("語音輸入啟動失敗，請稍後再試。");
+      showAlert({
+        title: "語音輸入啟動失敗",
+        message: "請稍後再試。",
+        tone: "danger",
+      });
     }
   }
 };
@@ -1536,6 +1622,8 @@ const unlockAudioAndMic = async () => {
     stopAllSpeech();
     setMessages([]);
     setOpeningReady(false);
+    setVoiceLimitMessage("");
+    voiceLimitNoticeShownRef.current = false;
   }, [isOpen]);
 
   useEffect(() => {
@@ -1611,8 +1699,9 @@ const unlockAudioAndMic = async () => {
                   {showDropdown && (
                     <div className="absolute right-0 top-10 z-30 bg-white rounded-xl shadow-xl border p-2 w-56">
                       <button
-                        className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded-lg w-full"
-                        onClick={onEdit}
+                        type="button"
+                        disabled
+                        className="flex items-center gap-2 rounded-lg w-full p-2 text-slate-300 cursor-not-allowed"
                       >
                         <Edit size={16} /> 編輯機器人
                       </button>
@@ -2016,8 +2105,9 @@ const unlockAudioAndMic = async () => {
                     {showDropdown && (
                       <div className="absolute right-0 top-10 z-30 bg-white rounded-xl shadow-xl border p-2 w-56">
                         <button
-                          className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded-lg w-full"
-                          onClick={onEdit}
+                          type="button"
+                          disabled
+                          className="flex items-center gap-2 rounded-lg w-full p-2 text-slate-300 cursor-not-allowed"
                         >
                           <Edit size={16} /> 編輯機器人
                         </button>
@@ -2084,7 +2174,7 @@ const unlockAudioAndMic = async () => {
                 ))}
 
                 {/* thinking bubble */}
-                {botState === "thinking" && (
+                {botState === "thinking" && !voiceLimitMessage && (
                   <div className="flex">
                     <div className="bg-white border border-slate-200 p-3 rounded-2xl flex gap-1">
                       <span className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce"></span>
@@ -2106,6 +2196,11 @@ const unlockAudioAndMic = async () => {
                 {awaitingAudioGesture && (
                   <div className="mb-2 text-xs text-amber-600">
                     已收到回覆語音，請點一下畫面以恢復播放。
+                  </div>
+                )}
+                {voiceLimitMessage && (
+                  <div className="mb-2 text-xs text-amber-700">
+                    {voiceLimitMessage}
                   </div>
                 )}
                 <div className="flex items-center bg-slate-100 rounded-full p-2">
@@ -2203,6 +2298,16 @@ const unlockAudioAndMic = async () => {
               </div>
             </div>
           )}
+          <PlatformDialog
+            open={dialog.open}
+            title={dialog.title}
+            message={dialog.message}
+            confirmText={dialog.confirmText}
+            cancelText={dialog.cancelText}
+            tone={dialog.tone}
+            onClose={closeDialog}
+            onConfirm={dialog.onConfirm || undefined}
+          />
         </div>
       )}
     </>

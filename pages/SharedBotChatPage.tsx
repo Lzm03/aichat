@@ -9,6 +9,7 @@ export const SharedBotChatPage: React.FC<SharedBotChatPageProps> = ({ botId }) =
   const [botConfig, setBotConfig] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isChatOpen, setIsChatOpen] = useState(true);
 
   useEffect(() => {
     const loadBot = async () => {
@@ -65,11 +66,22 @@ export const SharedBotChatPage: React.FC<SharedBotChatPageProps> = ({ botId }) =
     );
   }
 
+  if (!isChatOpen) {
+    return (
+      <div className="w-screen min-h-screen bg-slate-900 flex items-center justify-center text-slate-100 p-6">
+        <div className="rounded-3xl border border-slate-700 bg-slate-800/80 px-6 py-5 text-center shadow-2xl">
+          <div className="text-lg font-semibold">聊天視窗已關閉</div>
+          <div className="mt-2 text-sm text-slate-300">重新整理頁面即可再次打開這個分享聊天。</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <PublishSuccessModal
-      isOpen={true}
+      isOpen={isChatOpen}
       onClose={() => {
-        window.location.href = "/";
+        setIsChatOpen(false);
       }}
       botConfig={botConfig}
       onEdit={() => {}}

@@ -3,6 +3,14 @@ import type { Request, Response } from "express";
 import fetch from "node-fetch";
 import { createRequire } from "module";
 import multer from "multer";
+import {
+  assertUserCanSpend,
+  consumeUserCredits,
+  ensureFeatureAvailable,
+  getAuthUser,
+  recordFeatureUsage,
+  requireAuth,
+} from "../lib/platform-auth.ts";
 
 const require = createRequire(import.meta.url);
 const pdfParse = require("pdf-parse");
@@ -112,8 +120,10 @@ async function askDeepSeekOnce(
 /* ============================================================
    3) PDF 上传分析
 ============================================================ */
-router.post("/ask-file", upload.single("file"), async (req: Request, res: Response) => {
+router.post("/ask-file", requireAuth, upload.single("file"), async (req: Request, res: Response) => {
   try {
+    const authUser = getAuthUser(req);
+    await assertUserCanSpend(authUser!.id, 4);
     const file = req.file;
     if (!file) return res.status(400).json({ error: "缺少文件" });
 
@@ -131,6 +141,11 @@ router.post("/ask-file", upload.single("file"), async (req: Request, res: Respon
       reply += token;
     });
 
+    await consumeUserCredits(authUser!.id, "ask_file", 4, {
+      fileName: file.originalname,
+      extractedLength: pdfText.length,
+    });
+
     return res.json({
       reply,
       extractedText: pdfText,
@@ -138,15 +153,17 @@ router.post("/ask-file", upload.single("file"), async (req: Request, res: Respon
 
   } catch (err: any) {
     console.error("❌ PDF 解析錯誤:", err);
-    res.status(500).json({ error: err.message });
+    res.status(err?.status || 500).json({ error: err.message });
   }
 });
 
 /* ============================================================
    4) URL 抓取并分析
 ============================================================ */
-router.post("/ask-url", async (req: Request, res: Response) => {
+router.post("/ask-url", requireAuth, async (req: Request, res: Response) => {
   try {
+    const authUser = getAuthUser(req);
+    await assertUserCanSpend(authUser!.id, 2);
     const { systemPrompt = "", url = "" } = req.body as any;
     if (!url || typeof url !== "string") {
       return res.status(400).json({ error: "缺少網址" });
@@ -171,6 +188,7 @@ router.post("/ask-url", async (req: Request, res: Response) => {
     }
 
     const reply = await askDeepSeekOnce(systemPrompt, pageText);
+    await consumeUserCredits(authUser!.id, "ask_url", 2, { url: targetUrl });
     return res.json({
       reply,
       extractedText: pageText,
@@ -178,19 +196,31 @@ router.post("/ask-url", async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error("❌ URL 解析錯誤:", err);
-    return res.status(500).json({ error: err.message });
+    return res.status(err?.status || 500).json({ error: err.message });
   }
 });
 
 /* ============================================================
    5) Chat Streaming
 ============================================================ */
-router.post("/ask", async (req: Request, res: Response) => {
+router.post("/ask", requireAuth, async (req: Request, res: Response) => {
   try {
-    const { systemPrompt, userPrompt, stream = true } = req.body;
+    const authUser = getAuthUser(req);
+    await assertUserCanSpend(authUser!.id, 1);
+    const { systemPrompt, userPrompt, stream = true, usageType = "general" } = req.body;
+    if (usageType === "chat_message") {
+      await ensureFeatureAvailable(authUser!.id, "chat_messages", 1);
+    }
 
     if (!stream) {
       const reply = await askDeepSeekOnce(systemPrompt, userPrompt);
+      if (usageType === "chat_message") {
+        await recordFeatureUsage(authUser!.id, "chat_messages", 1, { usageType });
+      }
+      await consumeUserCredits(authUser!.id, "ask", 1, {
+        streaming: false,
+        promptLength: String(userPrompt || "").length,
+      });
       return res.json({ reply });
     }
 
@@ -202,11 +232,18 @@ router.post("/ask", async (req: Request, res: Response) => {
       res.write(`data:${token}\n\n`);
     });
 
+    if (usageType === "chat_message") {
+      await recordFeatureUsage(authUser!.id, "chat_messages", 1, { usageType });
+    }
+    await consumeUserCredits(authUser!.id, "ask", 1, {
+      streaming: true,
+      promptLength: String(userPrompt || "").length,
+    });
     res.end();
 
   } catch (err: any) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(err?.status || 500).json({ error: err.message });
   }
 });
 

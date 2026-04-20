@@ -18,11 +18,7 @@ const colorMap: Record<string, string> = {
 export const BotCard: React.FC<BotCardProps> = ({ bot, onEdit }) => {
   return (
     <div
-      className="
-        bg-white p-6 rounded-3xl shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)]
-        hover:-translate-y-1 hover:shadow-xl transition-all duration-300
-        flex flex-col cursor-pointer group
-      "
+      className="bg-white p-6 rounded-3xl shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] transition-all duration-300 flex flex-col group cursor-pointer hover:-translate-y-1 hover:shadow-xl"
       onClick={onEdit}
     >
       {/* 顶部：头像 + 可见开关 */}

@@ -1,6 +1,13 @@
 import express from "express";
 import type { Request, Response } from "express";
 import fetch from "node-fetch";
+import { assertUserCanSpend, consumeUserCredits, getAuthUser, requireAuth } from "../lib/platform-auth.ts";
+import {
+  createVideoStudioTask,
+  getLatestVideoStudioTask,
+  updateVideoStudioTaskSlot,
+  type VideoStudioSlotKey,
+} from "../lib/video-studio-tasks.ts";
 
 /* =======================================================
    类型定义
@@ -137,14 +144,73 @@ async function fetchVideoResult(requestId: string): Promise<GrokVideoResult> {
 ======================================================= */
 const router = express.Router();
 
+router.get("/studio-task/latest", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const authUser = getAuthUser(req);
+    const task = await getLatestVideoStudioTask(authUser!.id);
+    return res.json({ task });
+  } catch (err: any) {
+    console.error("❌ Studio task latest failed:", err.message);
+    return res.status(500).json({ error: "failed to load latest studio task" });
+  }
+});
+
+router.post("/studio-task", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const authUser = getAuthUser(req);
+    const sourceImageUrl = String(req.body?.sourceImageUrl || "").trim();
+    const preset = String(req.body?.preset || "cinematic").trim();
+    const sourceAspectRatio = String(req.body?.sourceAspectRatio || "").trim() || null;
+    if (!sourceImageUrl) {
+      return res.status(400).json({ error: "Missing sourceImageUrl" });
+    }
+    const task = await createVideoStudioTask({
+      userId: authUser!.id,
+      sourceImageUrl,
+      preset,
+      sourceAspectRatio,
+    });
+    return res.status(201).json({ task });
+  } catch (err: any) {
+    console.error("❌ Studio task create failed:", err.message);
+    return res.status(500).json({ error: "failed to create studio task" });
+  }
+});
+
+router.patch("/studio-task/:id/slot", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const authUser = getAuthUser(req);
+    const slotKey = String(req.body?.slotKey || "").trim() as VideoStudioSlotKey;
+    if (!["idle", "speaking", "thinking"].includes(slotKey)) {
+      return res.status(400).json({ error: "Invalid slotKey" });
+    }
+    const task = await updateVideoStudioTaskSlot({
+      taskId: req.params.id,
+      userId: authUser!.id,
+      slotKey,
+      patch: req.body?.patch || {},
+      taskStatus: req.body?.taskStatus,
+    });
+    if (!task) {
+      return res.status(404).json({ error: "task not found" });
+    }
+    return res.json({ task });
+  } catch (err: any) {
+    console.error("❌ Studio task patch failed:", err.message);
+    return res.status(500).json({ error: "failed to update studio task" });
+  }
+});
+
 /* -------------------------------------------------------
    POST /api/video/generate
    ⭐ 接收 JSON（不是 multipart）
 ------------------------------------------------------- */
 router.post(
   "/generate",
+  requireAuth,
   async (req: Request<{}, {}, CreateVideoParams>, res: Response) => {
     try {
+      const authUser = getAuthUser(req);
       console.log("📥 Incoming Generate Request:", req.body);
 
       const { prompt, duration, aspectRatio, resolution, imageUrl } = req.body;
@@ -152,6 +218,7 @@ router.post(
       if (!prompt) {
         return res.status(400).json({ error: "Missing prompt" });
       }
+      await assertUserCanSpend(authUser!.id, 30);
 
       const result = await createVideoRequest({
         prompt,
@@ -161,6 +228,12 @@ router.post(
         resolution,
       });
 
+      await consumeUserCredits(authUser!.id, "generate_video", 30, {
+        promptLength: String(prompt || "").length,
+        duration,
+        aspectRatio,
+        resolution,
+      });
       return res.json({
         success: true,
         request_id: result.request_id,
@@ -168,7 +241,7 @@ router.post(
 
     } catch (err: any) {
       console.error("❌ Video Generate Failed:", err.message);
-      return res.status(500).json({ error: err.message });
+      return res.status(err?.status || 500).json({ error: err.message });
     }
   }
 );

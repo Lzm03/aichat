@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Icons } from '../../icons';
+import type { FeatureEntitlement } from '../../../hooks/useFeatureEntitlements';
+import { usePlatformDialog } from '../../../hooks/usePlatformDialog';
+import { PlatformDialog } from '../../system/PlatformDialog';
 
 // -----------------------------
 // Section Wrapper
@@ -81,11 +84,13 @@ const FilterCard: React.FC<{
 export const CreationStep4: React.FC<{
   onSecurityChange?: (securityPrompt: string) => void;
   botId?: string | null;
-}> = ({ onSecurityChange, botId }) => {
+  securityFeature?: FeatureEntitlement;
+}> = ({ onSecurityChange, botId, securityFeature }) => {
   const [sharingMode, setSharingMode] = useState<SharingMode>('link');
   const [filterLevel, setFilterLevel] = useState<FilterLevel>('standard');
   const [customWords, setCustomWords] = useState('');
   const [isCopied, setIsCopied] = useState(false);
+  const { dialog, closeDialog, showAlert } = usePlatformDialog();
 
   const shareableLink =
     botId && typeof window !== "undefined"
@@ -228,21 +233,53 @@ ${customWords
             title="標準"
             description="教育場景預設濾網，適度引導學生"
             isSelected={filterLevel === 'standard'}
-            onClick={() => setFilterLevel('standard')}
+            onClick={() => {
+              if (securityFeature?.locked) {
+                showAlert({
+                  title: "安全過濾已用完",
+                  message: securityFeature.upgradeMessage,
+                });
+                return;
+              }
+              setFilterLevel('standard');
+            }}
           />
           <FilterCard
             title="嚴格"
             description="偵測到敏感內容將停止回答"
             isSelected={filterLevel === 'strict'}
-            onClick={() => setFilterLevel('strict')}
+            onClick={() => {
+              if (securityFeature?.locked) {
+                showAlert({
+                  title: "安全過濾已用完",
+                  message: securityFeature.upgradeMessage,
+                });
+                return;
+              }
+              setFilterLevel('strict');
+            }}
           />
           <FilterCard
             title="自定義"
             description="輸入你額外想封鎖的詞彙"
             isSelected={filterLevel === 'custom'}
-            onClick={() => setFilterLevel('custom')}
+            onClick={() => {
+              if (securityFeature?.locked) {
+                showAlert({
+                  title: "安全過濾已用完",
+                  message: securityFeature.upgradeMessage,
+                });
+                return;
+              }
+              setFilterLevel('custom');
+            }}
           />
         </div>
+        {securityFeature && (
+          <p className={`text-xs ${securityFeature.locked ? "text-rose-600" : "text-slate-500"}`}>
+            {securityFeature.label} {securityFeature.used}/{securityFeature.limit}
+          </p>
+        )}
 
         {filterLevel === 'custom' && (
           <motion.div
@@ -254,9 +291,18 @@ ${customWords
               rows={4}
               maxLength={500}
               value={customWords}
-              onChange={(e) => setCustomWords(e.target.value)}
+              onChange={(e) => {
+                if (securityFeature?.locked) {
+                  showAlert({
+                    title: "安全過濾已用完",
+                    message: securityFeature.upgradeMessage,
+                  });
+                  return;
+                }
+                setCustomWords(e.target.value);
+              }}
               placeholder="例如：暴力, 色情, 烏煙瘴氣（使用逗號分隔）"
-              className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition resize-none"
+              className={`w-full px-4 py-3 border rounded-xl transition resize-none ${securityFeature?.locked ? "border-slate-200 bg-slate-100 text-slate-400" : "border-slate-300 focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400"}`}
             />
             <p className="text-right text-xs text-slate-500 mt-1">
               {customWords.length} / 500
@@ -264,6 +310,16 @@ ${customWords
           </motion.div>
         )}
       </Section>
+      <PlatformDialog
+        open={dialog.open}
+        title={dialog.title}
+        message={dialog.message}
+        confirmText={dialog.confirmText}
+        cancelText={dialog.cancelText}
+        tone={dialog.tone}
+        onClose={closeDialog}
+        onConfirm={dialog.onConfirm || undefined}
+      />
     </div>
   );
 };

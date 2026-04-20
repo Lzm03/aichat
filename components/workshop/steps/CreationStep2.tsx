@@ -2,6 +2,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Icons } from "../../icons";
 import { motion } from "framer-motion";
+import type { FeatureEntitlement } from "../../../hooks/useFeatureEntitlements";
+import { usePlatformDialog } from "../../../hooks/usePlatformDialog";
+import { PlatformDialog } from "../../system/PlatformDialog";
 
 type UploadMethod = "file" | "url" | "text";
 
@@ -10,9 +13,11 @@ interface CreationStep2Props {
     characterBackground: string;
     knowledgeSummary: string;
   }) => void;
+  knowledgeFeature?: FeatureEntitlement;
 }
 
-export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated }) => {
+export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, knowledgeFeature }) => {
+  const KNOWLEDGE_TEXT_LIMIT = 100;
   const [uploadMethod, setUploadMethod] = useState<UploadMethod>("file");
   const [file, setFile] = useState<File | null>(null);
   const [inputValue, setInputValue] = useState("");
@@ -24,6 +29,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated }) => 
   const [characterBackground, setCharacterBackground] = useState("");
   const [knowledgeSummary, setKnowledgeSummary] = useState("");
   const [progress, setProgress] = useState(0);
+  const { dialog, closeDialog, showAlert } = usePlatformDialog();
 
   const baseUrl = import.meta.env.VITE_API_URL;
 
@@ -189,6 +195,13 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated }) => 
   // 🔥 主解析流程
   // --------------------------
   const handleProcess = async () => {
+    if (knowledgeFeature?.locked) {
+      showAlert({
+        title: "知識餵養已用完",
+        message: knowledgeFeature.upgradeMessage,
+      });
+      return;
+    }
     if (uploadMethod === "file" && !file) return;
     if (uploadMethod !== "file" && !inputValue.trim()) return;
 
@@ -262,16 +275,16 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated }) => 
     if (uploadMethod === "url") {
       return (
         <div className="flex items-center space-x-2">
-          <input
-            type="url"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+           <input
+              type="url"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
             placeholder="https://example.com/knowledge-source"
             className="flex-1 px-4 py-2 border rounded-lg"
           />
           <button
             onClick={handleProcess}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg"
+            className={`px-4 py-2 rounded-lg ${knowledgeFeature?.locked ? "bg-slate-200 text-slate-500" : "bg-indigo-600 text-white"}`}
           >
             解析
           </button>
@@ -284,16 +297,25 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated }) => 
         <textarea
           rows={5}
           value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
+          onChange={(e) => setInputValue(e.target.value.slice(0, KNOWLEDGE_TEXT_LIMIT))}
           placeholder="貼上需要解析的內容…"
           className="w-full p-4 border rounded-lg"
+          maxLength={KNOWLEDGE_TEXT_LIMIT}
         />
+        <div className="text-right text-xs text-slate-500">
+          {inputValue.length}/{KNOWLEDGE_TEXT_LIMIT}
+        </div>
         <button
           onClick={handleProcess}
-          className="w-full py-2 bg-indigo-600 text-white rounded-lg"
+          className={`w-full py-2 rounded-lg ${knowledgeFeature?.locked ? "bg-slate-200 text-slate-500" : "bg-indigo-600 text-white"}`}
         >
           解析
         </button>
+        {knowledgeFeature && (
+          <p className={`text-xs ${knowledgeFeature.locked ? "text-rose-600" : "text-slate-500"}`}>
+            {knowledgeFeature.label} {knowledgeFeature.used}/{knowledgeFeature.limit}
+          </p>
+        )}
       </div>
     );
   };
@@ -553,6 +575,16 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated }) => 
       )}
 
       <div className="min-h-[180px]">{renderStatus()}</div>
+      <PlatformDialog
+        open={dialog.open}
+        title={dialog.title}
+        message={dialog.message}
+        confirmText={dialog.confirmText}
+        cancelText={dialog.cancelText}
+        tone={dialog.tone}
+        onClose={closeDialog}
+        onConfirm={dialog.onConfirm || undefined}
+      />
     </div>
   );
 };

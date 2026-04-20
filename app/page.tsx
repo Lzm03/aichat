@@ -14,7 +14,15 @@ const PortalHeader = () => (
       </div>
       <h1 className="text-xl font-bold text-[#1E293B]">SmartEdu HK</h1>
     </div>
-    <TokenUsageMonitor used={3.8} total={5.0} resetDate="3月1日" />
+    <div className="flex items-center gap-3">
+      <Link
+        href="/auth"
+        className="rounded-full border border-slate-200/80 bg-white/85 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur hover:bg-white"
+      >
+        登入 / 註冊
+      </Link>
+      <TokenUsageMonitor used={3.8} total={5.0} resetDate="3月1日" />
+    </div>
   </header>
 );
 

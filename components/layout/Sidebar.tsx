@@ -65,7 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, for
         </nav>
       </div>
       <div className="p-2">
-        <NavItem icon={Icons.settings} label="設定" onClick={() => {}} />
+        <NavItem icon={Icons.settings} label="設定" onClick={() => { window.location.href = "/settings"; }} />
       </div>
     </aside>
   );

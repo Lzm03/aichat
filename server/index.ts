@@ -1,5 +1,10 @@
 import dotenv from "dotenv";
-dotenv.config();
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, ".env"), override: true });
 
 import express from "express";
 import cors from "cors";
@@ -9,6 +14,7 @@ import animationRoute from "./api/animation.ts";
 import generateImageRoute from "./api/generate-image.ts";
 import ttsRoute from "./api/tts.ts";
 import askRoute from "./api/ask.ts";
+import authRoute from "./api/auth.ts";
 import removeBgRoute from "./api/removeBgvideo.ts";
 import uploadImageRoute from "./api/upload-image.ts";
 import uploadVideoRoute from "./api/upload-video.ts";
@@ -16,6 +22,7 @@ import debugStorageRoute from "./api/debug-storage.ts";
 import tokenUsageRoute from "./api/token-usage.ts";
 import webmSequenceRoute from "./api/webm-sequence.ts";
 import { uploadsDir } from "./lib/uploads-dir.ts";
+import { ensurePlatformTables, maybeAssignLegacyDataByEmail } from "./lib/platform-auth.ts";
 
 const app = express();
 // ⭐ 專業 CORS 設定：允許所有 localhost 與 Railway
@@ -32,7 +39,7 @@ app.use(
 
       callback(new Error(`CORS blocked: ${origin}`));
     },
-    methods: "GET,POST,PUT,DELETE,OPTIONS",
+    methods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
     allowedHeaders: "Content-Type,Authorization",
     credentials: true,
   })
@@ -61,6 +68,7 @@ app.use("/api/video", animationRoute);
 app.use("/api/video", removeBgRoute);
 app.use("/api/video", webmSequenceRoute);
 app.use("/api", askRoute);
+app.use("/api/auth", authRoute);
 app.use("/api/upload-image", uploadImageRoute);
 app.use("/api/upload-video", uploadVideoRoute);
 app.use("/api/debug", debugStorageRoute);
@@ -90,19 +98,15 @@ app.use(
 // ⭐ Railway 會動態提供 PORT
 const PORT = process.env.PORT || 4000;
 
-const server = app.listen(PORT, () => {
-  console.log(`Backend running at http://localhost:${PORT}`);
-});
-
-const gracefulShutdown = (signal: NodeJS.Signals) => {
-  console.log(`Received ${signal}, shutting down gracefully...`);
-  server.close(() => {
-    process.exit(0);
+async function start() {
+  await ensurePlatformTables();
+  await maybeAssignLegacyDataByEmail("lzm200303@gmail.com");
+  app.listen(PORT, () => {
+    console.log(`Backend running at http://localhost:${PORT}`);
   });
-  setTimeout(() => {
-    process.exit(1);
-  }, 10000).unref();
-};
+}
 
-process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+start().catch((error) => {
+  console.error("Backend startup failed:", error);
+  process.exit(1);
+});

@@ -71,6 +71,16 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen
               </nav>
               
               <div className="p-6 border-t border-slate-100">
+                <button
+                  onClick={() => {
+                    setIsOpen(false);
+                    window.location.href = "/settings";
+                  }}
+                  className="mb-2 flex items-center gap-3 text-sm text-slate-500 hover:text-indigo-600 w-full p-2 rounded-lg hover:bg-slate-50"
+                >
+                  <Icons.settings className="w-5 h-5" />
+                  <span>設定</span>
+                </button>
                 <button className="flex items-center gap-3 text-sm text-slate-500 hover:text-indigo-600 w-full p-2 rounded-lg hover:bg-slate-50">
                   <Icons.languages className="w-5 h-5" />
                   <span>繁體中文 / EN</span>

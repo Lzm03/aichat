@@ -1,15 +1,20 @@
 // api/removeBgVideo.ts
 import dotenv from "dotenv";
-dotenv.config();
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, "../.env"), override: true });
 
 import express from "express";
 import multer from "multer";
 import fetch from "node-fetch";
 import fs from "fs";
-import path from "path";
 import crypto from "crypto";
 import AdmZip from "adm-zip";
 import { uploadsDir } from "../lib/uploads-dir.ts";
+import { assertUserCanSpend, consumeUserCredits, getAuthUser, requireAuth } from "../lib/platform-auth.ts";
 
 const router = express.Router();
 const upload = multer({ dest: uploadsDir });
@@ -146,8 +151,10 @@ async function downloadZipAndExtractToSequence(url: string, publicBase: string) 
 }
 
 /* ---------------- Main Upload Route ---------------- */
-router.post("/remove-bg", upload.single("file"), async (req, res) => {
+router.post("/remove-bg", requireAuth, upload.single("file"), async (req, res) => {
   try {
+    const authUser = getAuthUser(req);
+    await assertUserCanSpend(authUser!.id, 20);
     let videoUrl: string | null = null;
     let tempFilePath: string | null = null;
 
@@ -265,15 +272,21 @@ router.post("/remove-bg", upload.single("file"), async (req, res) => {
     const isZip = /\.zip($|\?)/i.test(temporaryUrl);
     if (isZip) {
       const sequenceManifestUrl = await downloadZipAndExtractToSequence(temporaryUrl, PUBLIC_BASE!);
+      await consumeUserCredits(authUser!.id, "remove_bg_video", 20, {
+        result: "sequence",
+      });
       return res.json({ sequenceManifestUrl, transparentUrl: "" });
     }
 
     // Some providers return a folder/listing endpoint for png sequence.
     // Persist as-is so frontend can request manifest/sequence conversion if needed.
+    await consumeUserCredits(authUser!.id, "remove_bg_video", 20, {
+      result: "remote_sequence",
+    });
     return res.json({ sequenceManifestUrl: temporaryUrl, transparentUrl: "" });
   } catch (err) {
     console.error("❌ Remove background failed:", err);
-    res.status(500).json({ error: "Remove background failed" });
+    res.status((err as any)?.status || 500).json({ error: (err as any)?.message || "Remove background failed" });
   }
 });
 

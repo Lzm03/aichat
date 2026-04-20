@@ -1,6 +1,14 @@
 import express from "express";
 import fetch from "node-fetch";
 import { recordMinimaxTtsUsage } from "../lib/minimax-usage.ts";
+import {
+  assertUserCanSpend,
+  consumeUserCredits,
+  ensureFeatureAvailable,
+  getAuthUser,
+  recordFeatureUsage,
+  requireAuth,
+} from "../lib/platform-auth.ts";
 
 const router = express.Router();
 
@@ -56,9 +64,16 @@ router.get("/voices", async (req, res) => {
   }
 });
 
-router.post("/tts", async (req, res) => {
+router.post("/tts", requireAuth, async (req, res) => {
   try {
-    const { text, voiceId } = req.body;
+    const authUser = getAuthUser(req);
+    const { text, voiceId, usageType = "chat_voice" } = req.body;
+    await assertUserCanSpend(authUser!.id, 2);
+    if (usageType === "preview_audition") {
+      await ensureFeatureAvailable(authUser!.id, "voice_audition_preview", 1);
+    } else {
+      await ensureFeatureAvailable(authUser!.id, "voice_messages", 1);
+    }
     const token = process.env.MINIMAX_TOKEN;
 
     const result = await fetch(
@@ -100,6 +115,15 @@ router.post("/tts", async (req, res) => {
 
     // Track MiniMax TTS usage for estimated balance visualization.
     recordMinimaxTtsUsage(String(text || ""));
+    if (usageType === "preview_audition") {
+      await recordFeatureUsage(authUser!.id, "voice_audition_preview", 1, { voiceId: String(voiceId || "") });
+    } else {
+      await recordFeatureUsage(authUser!.id, "voice_messages", 1, { voiceId: String(voiceId || "") });
+    }
+    await consumeUserCredits(authUser!.id, "tts", 2, {
+      voiceId: String(voiceId || ""),
+      textLength: String(text || "").length,
+    });
 
     const buffer = Buffer.from(data.data.audio, "hex");
     res.writeHead(200, {
@@ -108,7 +132,7 @@ router.post("/tts", async (req, res) => {
     });
     res.end(buffer);
   } catch (err) {
-    res.status(500).json({ error: "tts failed" });
+    res.status((err as any)?.status || 500).json({ error: (err as any)?.message || "tts failed" });
   }
 });
 

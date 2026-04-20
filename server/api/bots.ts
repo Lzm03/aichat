@@ -2,13 +2,26 @@ import express from "express";
 import { pool } from "../db.ts";
 import { toDb, toClient } from "../botMapper.js";
 import { getOrCreateWebmSequence, getPublicBase } from "./webm-sequence.ts";
+import {
+  ensureFeatureAvailable,
+  ensurePlatformTables,
+  getAuthUser,
+  optionalAuth,
+  recordFeatureUsage,
+  requireAuth,
+} from "../lib/platform-auth.ts";
 
 const router = express.Router();
 
 /* -------------------- GET ALL BOTS -------------------- */
-router.get("/", async (req, res) => {
+router.get("/", requireAuth, async (req, res) => {
   try {
-    const result = await pool.query("SELECT * FROM bots ORDER BY created_at DESC");
+    await ensurePlatformTables();
+    const user = getAuthUser(req);
+    const result = await pool.query(
+      "SELECT * FROM bots WHERE owner_id=$1 ORDER BY created_at DESC",
+      [user?.id]
+    );
     res.json(result.rows.map(toClient));
   } catch (err) {
     console.error("❌ GET / Failed:", err);
@@ -20,7 +33,10 @@ router.get("/", async (req, res) => {
 router.post("/precompute-sequences/all", async (req, res) => {
   const fps = Number(req.body?.fps || 25);
   try {
-    const result = await pool.query("SELECT * FROM bots ORDER BY created_at DESC");
+    await ensurePlatformTables();
+    const user = await optionalAuth(req);
+    if (!user) return res.status(401).json({ error: "missing bearer token" });
+    const result = await pool.query("SELECT * FROM bots WHERE owner_id=$1 ORDER BY created_at DESC", [user.id]);
     const base = getPublicBase(req);
     const report: Array<any> = [];
 
@@ -57,7 +73,10 @@ router.post("/:id/precompute-sequences", async (req, res) => {
   const { id } = req.params;
   const fps = Number(req.body?.fps || 25);
   try {
-    const result = await pool.query("SELECT * FROM bots WHERE id=$1", [id]);
+    await ensurePlatformTables();
+    const user = await optionalAuth(req);
+    if (!user) return res.status(401).json({ error: "missing bearer token" });
+    const result = await pool.query("SELECT * FROM bots WHERE id=$1 AND owner_id=$2", [id, user.id]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Bot not found" });
     }
@@ -91,9 +110,15 @@ router.post("/:id/precompute-sequences", async (req, res) => {
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
   try {
-    const result = await pool.query("SELECT * FROM bots WHERE id=$1", [id]);
-    if (result.rows.length === 0)
-      return res.status(404).json({ error: "Bot not found" });
+    await ensurePlatformTables();
+    const user = await optionalAuth(req);
+    const result = user
+      ? await pool.query(
+          "SELECT * FROM bots WHERE id=$1 AND (owner_id=$2 OR is_visible=true)",
+          [id, user.id]
+        )
+      : await pool.query("SELECT * FROM bots WHERE id=$1 AND is_visible=true", [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: "Bot not found" });
 
     res.json(toClient(result.rows[0]));
   } catch (err) {
@@ -103,18 +128,21 @@ router.get("/:id", async (req, res) => {
 });
 
 /* -------------------- CREATE BOT -------------------- */
-router.post("/", async (req, res) => {
+router.post("/", requireAuth, async (req, res) => {
   try {
+    await ensurePlatformTables();
     const bot = toDb(req.body);
+    const user = getAuthUser(req);
+    await ensureFeatureAvailable(user!.id, "bot_publish", 1);
 
     const query = `
       INSERT INTO bots (
         id, name, subject, subject_color, avatar_url,
         background, animation, knowledge_base, security_prompt,
         video_idle, video_thinking, video_talking, voice_id,
-        interactions, accuracy, is_visible
+        interactions, accuracy, is_visible, owner_id
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
       RETURNING *;
     `;
 
@@ -135,9 +163,11 @@ router.post("/", async (req, res) => {
       bot.interactions ?? 0,
       bot.accuracy ?? 0,
       bot.is_visible ?? true,
+      user?.id,
     ];
 
     const result = await pool.query(query, values);
+    await recordFeatureUsage(user!.id, "bot_publish", 1, { botId: bot.id });
     res.json(toClient(result.rows[0]));
   } catch (err) {
     console.error("❌ POST / Failed:", err);
@@ -146,11 +176,13 @@ router.post("/", async (req, res) => {
 });
 
 /* -------------------- UPDATE BOT -------------------- */
-router.put("/:id", async (req, res) => {
+router.put("/:id", requireAuth, async (req, res) => {
   const { id } = req.params;
 
   try {
+    await ensurePlatformTables();
     const bot = toDb(req.body);
+    const user = getAuthUser(req);
 
     const query = `
       UPDATE bots SET
@@ -159,7 +191,7 @@ router.put("/:id", async (req, res) => {
         video_idle=$9, video_thinking=$10, video_talking=$11, voice_id=$12,
         interactions=$13, accuracy=$14, is_visible=$15,
         updated_at=NOW()
-      WHERE id=$16
+      WHERE id=$16 AND owner_id=$17
       RETURNING *;
     `;
 
@@ -180,6 +212,7 @@ router.put("/:id", async (req, res) => {
       bot.accuracy ?? 0,
       bot.is_visible ?? true,
       id,
+      user?.id,
     ];
 
     const result = await pool.query(query, values);
@@ -194,9 +227,10 @@ router.put("/:id", async (req, res) => {
 });
 
 /* -------------------- DELETE BOT -------------------- */
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireAuth, async (req, res) => {
   try {
-    await pool.query("DELETE FROM bots WHERE id=$1", [req.params.id]);
+    const user = getAuthUser(req);
+    await pool.query("DELETE FROM bots WHERE id=$1 AND owner_id=$2", [req.params.id, user?.id]);
     res.json({ success: true });
   } catch (err) {
     console.error("❌ DELETE /:id Failed:", err);

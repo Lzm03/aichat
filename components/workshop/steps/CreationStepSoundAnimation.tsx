@@ -3,6 +3,10 @@ import React, { useMemo, useState, useEffect } from "react";
 import { Icons } from "../../icons";
 import VideoStudioModal from "../VideoStudioModal";
 import { SequencePngPlayer } from "../SequencePngPlayer";
+import { API_BASE } from "../../../utils/api";
+import type { FeatureEntitlement } from "../../../hooks/useFeatureEntitlements";
+import { usePlatformDialog } from "../../../hooks/usePlatformDialog";
+import { PlatformDialog } from "../../system/PlatformDialog";
 
 // ============ Section Wrapper ============
 const Section = ({ title, children }: any) => (
@@ -14,6 +18,8 @@ const Section = ({ title, children }: any) => (
 
 const isSequenceManifest = (url?: string | null) =>
   Boolean(url && /\/manifest\.json(\?|$)/i.test(url));
+
+const VIDEO_STUDIO_OPEN_KEY = "video-studio-modal-open";
 
 const StepMediaPreview = ({ src }: { src: string }) => {
   const [manifest, setManifest] = useState<any>(null);
@@ -439,10 +445,18 @@ export const CreationStepSoundAnimation = ({
   videoThinking,
   videoTalking,
   voiceId,
+  voicePreviewFeature,
+  videoStudioFeature,
+  consumeFeature,
+  onFeatureRefresh,
 }: any) => {
-  const baseUrl = import.meta.env.VITE_API_URL;
+  const baseUrl = API_BASE;
+  const { dialog, closeDialog, showAlert } = usePlatformDialog();
 
-  const [showStudio, setShowStudio] = useState(false);
+  const [showStudio, setShowStudio] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.sessionStorage.getItem(VIDEO_STUDIO_OPEN_KEY) === "1";
+  });
   const [voiceList, setVoiceList] = useState([]);
   const [selectedVoice, setSelectedVoice] = useState(voiceId || "");
 
@@ -465,6 +479,33 @@ export const CreationStepSoundAnimation = ({
     })();
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (showStudio) {
+      window.sessionStorage.setItem(VIDEO_STUDIO_OPEN_KEY, "1");
+    } else {
+      window.sessionStorage.removeItem(VIDEO_STUDIO_OPEN_KEY);
+    }
+  }, [showStudio]);
+
+  useEffect(() => {
+    console.debug("[VideoStudio] showStudio changed:", showStudio);
+  }, [showStudio]);
+
+  useEffect(() => {
+    console.debug("[VideoStudio] step component mounted");
+    return () => {
+      console.debug("[VideoStudio] step component unmounted");
+    };
+  }, []);
+
+  const closeStudio = () => {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(VIDEO_STUDIO_OPEN_KEY);
+    }
+    setShowStudio(false);
+  };
+
   // ============ 上传并 remove-bg 流程 ============
   async function uploadRemoveBgVideo(file: File, type: "idle" | "thinking" | "talking") {
     setUploadState((s) => ({ ...s, [type]: { loading: true, progress: 1 } }));
@@ -481,7 +522,11 @@ export const CreationStepSoundAnimation = ({
       const data = await res.json();
 
       if (!data.transparentUrl && !data.sequenceManifestUrl) {
-        alert("RemoveBG 处理失败");
+        showAlert({
+          title: "去背失敗",
+          message: "Remove BG 處理失敗，請稍後再試。",
+          tone: "danger",
+        });
         return;
       }
 
@@ -492,7 +537,11 @@ export const CreationStepSoundAnimation = ({
       if (type === "thinking") updateConfig("videoThinking", outputUrl);
       if (type === "talking") updateConfig("videoTalking", outputUrl);
     } catch (err) {
-      alert("上传失败");
+      showAlert({
+        title: "上傳失敗",
+        message: "影片上傳失敗，請稍後再試。",
+        tone: "danger",
+      });
       setUploadState((s) => ({ ...s, [type]: { loading: false, progress: 0 } }));
     }
   }
@@ -506,6 +555,13 @@ export const CreationStepSoundAnimation = ({
 
   // ============ 试听 TTS ============
   async function handleAudition() {
+    if (voicePreviewFeature?.locked) {
+      showAlert({
+        title: "聲音預覽已用完",
+        message: voicePreviewFeature.upgradeMessage,
+      });
+      return;
+    }
     if (!selectedVoice) return;
 
     setIsAuditioning(true);
@@ -514,11 +570,25 @@ export const CreationStepSoundAnimation = ({
       const res = await fetch(`${baseUrl}/api/tts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: auditionText, voiceId: selectedVoice }),
+        body: JSON.stringify({
+          text: auditionText,
+          voiceId: selectedVoice,
+          usageType: "preview_audition",
+        }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "試聽失敗");
+      }
 
       const audioBlob = await res.blob();
       new Audio(URL.createObjectURL(audioBlob)).play();
+    } catch (error) {
+      showAlert({
+        title: "試聽失敗",
+        message: error instanceof Error ? error.message : "聲音試聽失敗，請稍後再試。",
+        tone: "danger",
+      });
     } finally {
       setIsAuditioning(false);
     }
@@ -547,21 +617,50 @@ export const CreationStepSoundAnimation = ({
 
         <button
           onClick={handleAudition}
-          disabled={!selectedVoice}
-          className="w-full px-4 py-2 bg-white border rounded-xl text-sm mt-2"
+          className={`w-full px-4 py-2 border rounded-xl text-sm mt-2 ${
+            !selectedVoice || voicePreviewFeature?.locked
+              ? "bg-slate-100 border-slate-200 text-slate-400"
+              : "bg-white"
+          }`}
         >
           {isAuditioning ? "合成中…" : "試聽"}
         </button>
+        {voicePreviewFeature && (
+          <p className={`text-xs ${voicePreviewFeature.locked ? "text-rose-600" : "text-slate-500"}`}>
+            {voicePreviewFeature.label} {voicePreviewFeature.used}/{voicePreviewFeature.limit}
+          </p>
+        )}
       </Section>
 
       {/* ================== 动画 ================== */}
       <Section title="動畫設定">
         <button
-          onClick={() => setShowStudio(true)}
-          className="px-4 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700"
+          onClick={() => {
+            if (videoStudioFeature?.locked) {
+              showAlert({
+                title: "影片工作室已用完",
+                message: videoStudioFeature.upgradeMessage,
+              });
+              return;
+            }
+            if (typeof window !== "undefined") {
+              window.sessionStorage.setItem(VIDEO_STUDIO_OPEN_KEY, "1");
+            }
+            setShowStudio(true);
+          }}
+          className={`px-4 py-3 rounded-xl font-semibold ${
+            videoStudioFeature?.locked
+              ? "bg-slate-200 text-slate-500"
+              : "bg-blue-600 text-white hover:bg-blue-700"
+          }`}
         >
-          🎬 開啟 AI 影片工作室
+          開啟 AI 影片工作室
         </button>
+        {videoStudioFeature && (
+          <p className={`mt-2 text-xs ${videoStudioFeature.locked ? "text-rose-600" : "text-slate-500"}`}>
+            {videoStudioFeature.label} {videoStudioFeature.used}/{videoStudioFeature.limit}
+          </p>
+        )}
 
         <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
@@ -614,7 +713,15 @@ export const CreationStepSoundAnimation = ({
       {showStudio && (
         <VideoStudioModal
           avatarUrl={avatarUrl}
-          onClose={() => setShowStudio(false)}
+          feature={videoStudioFeature}
+          onConsumeFeature={consumeFeature}
+          onFeatureRefresh={onFeatureRefresh}
+          onClose={closeStudio}
+          onVideoProgress={(videos: any) => {
+            if (videos.idleUrl) updateConfig("videoIdle", videos.idleUrl);
+            if (videos.thinkingUrl) updateConfig("videoThinking", videos.thinkingUrl);
+            if (videos.speakingUrl) updateConfig("videoTalking", videos.speakingUrl);
+          }}
           onVideosGenerated={(videos: any) => {
             updateConfig("videoIdle", videos.idleUrl);
             updateConfig("videoThinking", videos.thinkingUrl);
@@ -622,6 +729,16 @@ export const CreationStepSoundAnimation = ({
           }}
         />
       )}
+      <PlatformDialog
+        open={dialog.open}
+        title={dialog.title}
+        message={dialog.message}
+        confirmText={dialog.confirmText}
+        cancelText={dialog.cancelText}
+        tone={dialog.tone}
+        onClose={closeDialog}
+        onConfirm={dialog.onConfirm || undefined}
+      />
     </div>
   );
 };

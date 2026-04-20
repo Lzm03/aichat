@@ -2,10 +2,15 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Icons } from "../../icons";
 import { BackgroundEditor } from "../editor/BackgroundEditor";
+import type { FeatureEntitlement } from "../../../hooks/useFeatureEntitlements";
+import { usePlatformDialog } from "../../../hooks/usePlatformDialog";
+import { PlatformDialog } from "../../system/PlatformDialog";
 
 interface CreationStep3Props {
   updateConfig: (key: "avatarUrl" | "background", value: string) => void;
   botConfig: { avatarUrl: string; background: string };
+  avatarAiFeature?: FeatureEntitlement;
+  backgroundAiFeature?: FeatureEntitlement;
 }
 
 const presetAvatars = [
@@ -42,8 +47,14 @@ const mockStyles = {
 /* -------------------------------------------
    ⭐ Avatar Generator (AI 生成)
 ------------------------------------------- */
-const AvatarGenerator: React.FC<{ onAvatarGenerated: (url: string) => void }> = ({
+const AvatarGenerator: React.FC<{
+  onAvatarGenerated: (url: string) => void;
+  feature?: FeatureEntitlement;
+  onLockedClick: (message: string) => void;
+}> = ({
   onAvatarGenerated,
+  feature,
+  onLockedClick,
 }) => {
   const [selectedStyle, setSelectedStyle] = useState("寫實風格");
   const [prompt, setPrompt] = useState("");
@@ -51,6 +62,10 @@ const AvatarGenerator: React.FC<{ onAvatarGenerated: (url: string) => void }> = 
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const handleGenerate = async () => {
+    if (feature?.locked) {
+      onLockedClick(feature.upgradeMessage);
+      return;
+    }
     if (!prompt.trim()) return;
 
     setIsGenerating(true);
@@ -63,7 +78,7 @@ const AvatarGenerator: React.FC<{ onAvatarGenerated: (url: string) => void }> = 
       const res = await fetch(`${baseUrl}/api/generate-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: fullPrompt }),
+        body: JSON.stringify({ prompt: fullPrompt, featureKey: "avatar_ai_generate" }),
       });
 
       const data = await res.json();
@@ -138,12 +153,20 @@ const AvatarGenerator: React.FC<{ onAvatarGenerated: (url: string) => void }> = 
 
       <button
         onClick={handleGenerate}
-        disabled={isGenerating}
-        className="w-full py-2.5 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-indigo-400 flex items-center justify-center space-x-2"
+        className={`w-full py-2.5 rounded-lg font-semibold flex items-center justify-center space-x-2 ${
+          feature?.locked
+            ? "bg-slate-200 text-slate-500"
+            : "bg-indigo-600 text-white hover:bg-indigo-700"
+        } ${isGenerating ? "opacity-70" : ""}`}
       >
         <Icons.sparkles className="w-4 h-4" />
         <span>{isGenerating ? "生成中..." : "開始生成"}</span>
       </button>
+      {feature && (
+        <p className={`text-xs ${feature.locked ? "text-rose-600" : "text-slate-500"}`}>
+          {feature.label} {feature.used}/{feature.limit}
+        </p>
+      )}
     </div>
   );
 };
@@ -209,10 +232,13 @@ const AvatarUploader: React.FC<{ onImageUploaded: (url: string) => void }> = ({
 export const CreationStep3: React.FC<CreationStep3Props> = ({
   updateConfig,
   botConfig,
+  avatarAiFeature,
+  backgroundAiFeature,
 }) => {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [avatarSource, setAvatarSource] =
     useState<"preset" | "upload" | "generate">("preset");
+  const { dialog, closeDialog, showAlert } = usePlatformDialog();
 
   const tabs = [
     { id: "preset", label: "預設角色" },
@@ -284,6 +310,10 @@ export const CreationStep3: React.FC<CreationStep3Props> = ({
 
           {avatarSource === "generate" && (
             <AvatarGenerator
+              feature={avatarAiFeature}
+              onLockedClick={(message) =>
+                showAlert({ title: "形象生成已用完", message })
+              }
               onAvatarGenerated={(url) => updateConfig("avatarUrl", url)}
             />
           )}
@@ -296,22 +326,36 @@ export const CreationStep3: React.FC<CreationStep3Props> = ({
 
         <div
           className="relative group cursor-pointer"
-          onClick={() => setIsEditorOpen(true)}
+          onClick={() => {
+            if (backgroundAiFeature?.locked) {
+              showAlert({
+                title: "背景生成已用完",
+                message: backgroundAiFeature.upgradeMessage,
+              });
+              return;
+            }
+            setIsEditorOpen(true);
+          }}
         >
           <img
             src={botConfig.background || "https://images.unsplash.com/photo-1580582932707-520aed937b7b?q=80&w=2832&auto=format&fit=crop"}
-            className="w-full h-32 object-cover rounded-2xl"
+            className={`w-full h-32 object-cover rounded-2xl ${backgroundAiFeature?.locked ? "grayscale opacity-70" : ""}`}
           />
 
-          <div className="absolute inset-0 bg-black/30 group-hover:bg-black/50 flex items-center justify-center rounded-2xl">
-            <div className="px-4 py-2 bg-white/20 backdrop-blur-sm text-white rounded-xl text-sm">
-              編輯背景
+          <div className={`absolute inset-0 flex items-center justify-center rounded-2xl ${backgroundAiFeature?.locked ? "bg-black/45" : "bg-black/30 group-hover:bg-black/50"}`}>
+            <div className={`px-4 py-2 backdrop-blur-sm rounded-xl text-sm ${backgroundAiFeature?.locked ? "bg-white/25 text-white" : "bg-white/20 text-white"}`}>
+              {backgroundAiFeature?.locked ? "背景生成已用完" : "編輯背景"}
             </div>
           </div>
         </div>
+        {backgroundAiFeature && (
+          <p className={`mt-2 text-xs ${backgroundAiFeature.locked ? "text-rose-600" : "text-slate-500"}`}>
+            {backgroundAiFeature.label} {backgroundAiFeature.used}/{backgroundAiFeature.limit}
+          </p>
+        )}
       </div>
 
-      {isEditorOpen && (
+      {isEditorOpen && !backgroundAiFeature?.locked && (
         <BackgroundEditor
           currentBackground={botConfig.background}
           onApply={async (localBlobUrl) => {
@@ -322,6 +366,16 @@ export const CreationStep3: React.FC<CreationStep3Props> = ({
           onCancel={() => setIsEditorOpen(false)}
         />
       )}
+      <PlatformDialog
+        open={dialog.open}
+        title={dialog.title}
+        message={dialog.message}
+        confirmText={dialog.confirmText}
+        cancelText={dialog.cancelText}
+        tone={dialog.tone}
+        onClose={closeDialog}
+        onConfirm={dialog.onConfirm || undefined}
+      />
     </div>
   );
 };

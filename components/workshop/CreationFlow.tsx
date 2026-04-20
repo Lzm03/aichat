@@ -9,16 +9,28 @@ import { CreationStepSoundAnimation } from './steps/CreationStepSoundAnimation';
 import { ChatPreview } from './ChatPreview';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PublishSuccessModal } from './PublishSuccessModal';
+import type { FeatureEntitlement } from '../../hooks/useFeatureEntitlements';
+import { usePlatformDialog } from '../../hooks/usePlatformDialog';
+import { PlatformDialog } from '../system/PlatformDialog';
 
 
 interface CreationFlowProps {
   onBack: () => void;
   botId: string | null;
+  featureEntitlements: FeatureEntitlement[];
+  refreshFeatureEntitlements: () => Promise<any>;
+  consumeFeature: (key: string, amount?: number, meta?: Record<string, unknown>) => Promise<any>;
 }
 
 const steps = ["基礎設定", "形象與人格", "聲音與動畫", "知識餵養", "安全與權限"];
 
-export const CreationFlow: React.FC<CreationFlowProps> = ({ onBack, botId }) => {
+export const CreationFlow: React.FC<CreationFlowProps> = ({
+  onBack,
+  botId,
+  featureEntitlements,
+  refreshFeatureEntitlements,
+  consumeFeature,
+}) => {
   const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
   // -------------------------------
@@ -94,6 +106,8 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({ onBack, botId }) => 
   const [isInitialPreviewOpen, setIsInitialPreviewOpen] = useState(!!botId);
   const [isPublishing, setIsPublishing] = useState(false);
   const [actionError, setActionError] = useState("");
+  const { dialog, closeDialog, showAlert } = usePlatformDialog();
+  const featureMap = new Map(featureEntitlements.map((item) => [item.key, item]));
 
   const updateConfig = <K extends keyof typeof botConfig>(key: K, value: typeof botConfig[K]) => {
     setBotConfig((prev) => ({ ...prev, [key]: value }));
@@ -170,10 +184,12 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({ onBack, botId }) => 
         body: JSON.stringify(newBot),
       });
       if (!response.ok) {
-        throw new Error("發布失敗，請稍後再試。");
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || "發布失敗，請稍後再試。");
       }
 
       const savedBot = await response.json();
+      await refreshFeatureEntitlements();
       setBotConfig((prev) => ({
         ...prev,
         id: savedBot?.id || newBot.id,
@@ -222,7 +238,14 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({ onBack, botId }) => 
         return <CreationStep1 updateConfig={updateConfig} botName={botConfig.name} />;
 
       case 2:
-        return <CreationStep3 updateConfig={updateConfig} botConfig={botConfig} />;
+        return (
+          <CreationStep3
+            updateConfig={updateConfig}
+            botConfig={botConfig}
+            avatarAiFeature={featureMap.get("avatar_ai_generate")}
+            backgroundAiFeature={featureMap.get("background_ai_generate")}
+          />
+        );
 
       case 3:
         return (
@@ -234,6 +257,10 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({ onBack, botId }) => 
             videoThinking={botConfig.videoThinking}
             videoTalking={botConfig.videoTalking}
             voiceId={botConfig.voiceId}
+            voicePreviewFeature={featureMap.get("voice_audition_preview")}
+            videoStudioFeature={featureMap.get("video_studio_generate")}
+            consumeFeature={consumeFeature}
+            onFeatureRefresh={refreshFeatureEntitlements}
           />
         );
 
@@ -253,6 +280,7 @@ ${data.knowledgeSummary}
 
               updateConfig("knowledgeBase", combined);
             }}
+            knowledgeFeature={featureMap.get("knowledge_points")}
           />
         );
 
@@ -261,6 +289,7 @@ ${data.knowledgeSummary}
           <CreationStep4
             onSecurityChange={(prompt) => updateConfig("securityPrompt", prompt)}
             botId={botConfig.id || botId}
+            securityFeature={featureMap.get("security_points")}
           />
         );
 
@@ -449,12 +478,30 @@ const handleDeleteBot = async () => {
         ) : (
           <div className="flex flex-col items-end gap-2">
             <button
-              onClick={handlePublish}
+              onClick={() => {
+                if (!botId && featureMap.get("bot_publish")?.locked) {
+                  showAlert({
+                    title: "創建角色已用完",
+                    message: featureMap.get("bot_publish")!.upgradeMessage,
+                  });
+                  return;
+                }
+                void handlePublish();
+              }}
               disabled={!isAllStepsValid || isPublishing}
-              className="px-6 py-3 rounded-xl text-sm font-semibold bg-emerald-600 text-white disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed"
+              className={`px-6 py-3 rounded-xl text-sm font-semibold disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed ${
+                !botId && featureMap.get("bot_publish")?.locked
+                  ? "bg-slate-200 text-slate-500"
+                  : "bg-emerald-600 text-white"
+              }`}
             >
               {isPublishing ? "發布中..." : botId ? '更新機器人' : '完成並發布'}
             </button>
+            {!botId && featureMap.get("bot_publish") && (
+              <p className={`text-xs ${featureMap.get("bot_publish")?.locked ? "text-rose-600" : "text-slate-500"}`}>
+                創建角色 {featureMap.get("bot_publish")?.used}/{featureMap.get("bot_publish")?.limit}
+              </p>
+            )}
             {!isAllStepsValid && (
               <p className="text-xs text-amber-600">
                 尚有未完成步驟，請先完成第 {firstInvalidStep} 步。
@@ -466,6 +513,16 @@ const handleDeleteBot = async () => {
       {actionError && (
         <p className="mt-3 text-sm text-rose-600">{actionError}</p>
       )}
+      <PlatformDialog
+        open={dialog.open}
+        title={dialog.title}
+        message={dialog.message}
+        confirmText={dialog.confirmText}
+        cancelText={dialog.cancelText}
+        tone={dialog.tone}
+        onClose={closeDialog}
+        onConfirm={dialog.onConfirm || undefined}
+      />
     </div>
   );
 };
