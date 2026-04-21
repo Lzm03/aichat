@@ -16,6 +16,7 @@ import { SequencePngPlayer } from "./SequencePngPlayer";
 import { API_BASE } from "../../utils/api";
 import { usePlatformDialog } from "../../hooks/usePlatformDialog";
 import { PlatformDialog } from "../system/PlatformDialog";
+import { readAuthSession } from "../../utils/auth";
 import { markTrialEndedPopupPending } from "../../utils/trial-popup";
 
 interface PublishSuccessModalProps {
@@ -94,6 +95,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     originX: number;
     originY: number;
   } | null>(null);
+  const canEditBot = readAuthSession()?.user?.email?.trim().toLowerCase() === "lzm200303@gmail.com";
   const pinchStateRef = useRef<{
     distance: number;
     scale: number;
@@ -1700,8 +1702,18 @@ const unlockAudioAndMic = async () => {
                     <div className="absolute right-0 top-10 z-30 bg-white rounded-xl shadow-xl border p-2 w-56">
                       <button
                         type="button"
-                        disabled
-                        className="flex items-center gap-2 rounded-lg w-full p-2 text-slate-300 cursor-not-allowed"
+                        onClick={() => {
+                          if (!canEditBot) return;
+                          setShowDropdown(false);
+                          onClose();
+                          onEdit();
+                        }}
+                        disabled={!canEditBot}
+                        className={`flex items-center gap-2 rounded-lg w-full p-2 ${
+                          canEditBot
+                            ? "text-slate-700 hover:bg-slate-100"
+                            : "text-slate-300 cursor-not-allowed"
+                        }`}
                       >
                         <Edit size={16} /> 編輯機器人
                       </button>
@@ -2106,8 +2118,18 @@ const unlockAudioAndMic = async () => {
                       <div className="absolute right-0 top-10 z-30 bg-white rounded-xl shadow-xl border p-2 w-56">
                         <button
                           type="button"
-                          disabled
-                          className="flex items-center gap-2 rounded-lg w-full p-2 text-slate-300 cursor-not-allowed"
+                          onClick={() => {
+                            if (!canEditBot) return;
+                            setShowDropdown(false);
+                            onClose();
+                            onEdit();
+                          }}
+                          disabled={!canEditBot}
+                          className={`flex items-center gap-2 rounded-lg w-full p-2 ${
+                            canEditBot
+                              ? "text-slate-700 hover:bg-slate-100"
+                              : "text-slate-300 cursor-not-allowed"
+                          }`}
                         >
                           <Edit size={16} /> 編輯機器人
                         </button>
