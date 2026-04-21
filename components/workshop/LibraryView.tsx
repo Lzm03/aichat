@@ -89,7 +89,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   useEffect(() => {
     const baseUrl = API_BASE;
     const session = readAuthSession();
-    const cacheKey = session ? `smartedu_bot_cache:${session.user.id}` : "";
+    const cacheKey = session ? `chopreality_bot_cache:${session.user.id}` : "";
     setBotsLoading(true);
 
     if (typeof window !== "undefined" && cacheKey) {
@@ -128,7 +128,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const deleteBot = async (botId: string) => {
     const baseUrl = API_BASE;
     const session = readAuthSession();
-    const cacheKey = session ? `smartedu_bot_cache:${session.user.id}` : "";
+    const cacheKey = session ? `chopreality_bot_cache:${session.user.id}` : "";
 
     await fetch(`${baseUrl}/api/bots/${botId}`, {
       method: "DELETE",
@@ -185,7 +185,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </p>
           {createBotFeature && (
             <p className={`mt-2 text-xs font-semibold ${createBotFeature.locked ? "text-rose-600" : "text-indigo-600"}`}>
-              {createBotFeature.used}/{createBotFeature.limit} {createBotFeature.countUnit}
+              {createBotFeature.unlimited
+                ? "無限制"
+                : `${createBotFeature.used}/${createBotFeature.limit} ${createBotFeature.countUnit}`}
             </p>
           )}
         </button>

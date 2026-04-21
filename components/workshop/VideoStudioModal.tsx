@@ -143,9 +143,9 @@ export default function VideoStudioModal({
   const { dialog, closeDialog, showAlert, showConfirm } = usePlatformDialog();
   const hintButtonRef = useRef<HTMLButtonElement | null>(null);
   const uploadHintButtonRef = useRef<HTMLButtonElement | null>(null);
+  const isUnlimitedFeature = Boolean(feature?.unlimited);
 
   const baseUrl = API_BASE;
-  const studioUsedCount = Math.min(feature?.limit || 1, (feature?.used || 0) + (featureConsumed && !feature?.locked ? 1 : 0));
   const SUPPORTED_ASPECTS = new Set(["16:9", "9:16", "1:1"]);
 
   function simplifyRatio(width: number, height: number): string {
@@ -178,8 +178,8 @@ export default function VideoStudioModal({
   }
 
   useEffect(() => {
-    setFeatureConsumed(Boolean(feature?.used));
-  }, [feature?.used]);
+    setFeatureConsumed(isUnlimitedFeature ? false : Boolean(feature?.used));
+  }, [feature?.used, isUnlimitedFeature]);
 
   useEffect(() => {
     let active = true;
@@ -658,7 +658,7 @@ export default function VideoStudioModal({
 
   /* ========= Step 4: 完整流程 一键生成所有动画 ========= */
   async function generateAll() {
-    if (feature?.locked || featureConsumed) {
+    if (!isUnlimitedFeature && (feature?.locked || featureConsumed)) {
       showAlert({
         title: "影片工作室已用完",
         message: feature?.upgradeMessage || "免費版影片工作室次數已用完，請升級到付費版。",
@@ -680,12 +680,6 @@ export default function VideoStudioModal({
       return;
     }
     cancelRef.current = false;
-    setMockPreviewActive(false);
-    setMockPreviewUrls({
-      idle: null,
-      speaking: null,
-      thinking: null,
-    });
     setLoading(true);
     setProgress(1);
     progressRef.current = 1;
@@ -714,7 +708,7 @@ export default function VideoStudioModal({
       await new Promise((resolve) => setTimeout(resolve, 800));
       setProgress(100);
       progressRef.current = 100;
-      if (!featureConsumed) {
+      if (!isUnlimitedFeature && !featureConsumed) {
         setFeatureConsumed(true);
       }
 
@@ -1065,7 +1059,7 @@ export default function VideoStudioModal({
             <button
               onClick={generateAll}
               className={`w-full py-3 rounded-xl font-semibold ${
-                loading || restoringTask || videoSourceUploading || featureConsumed || feature?.locked || !videoSourceImage
+                loading || restoringTask || videoSourceUploading || (!isUnlimitedFeature && (featureConsumed || feature?.locked)) || !videoSourceImage
                   ? "bg-slate-200 text-slate-500"
                   : "bg-[#2563EB] text-white shadow-[0_14px_28px_rgba(37,99,235,0.2)] hover:bg-[#1D4ED8]"
               }`}

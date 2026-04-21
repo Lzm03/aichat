@@ -277,7 +277,9 @@ ${customWords
         </div>
         {securityFeature && (
           <p className={`text-xs ${securityFeature.locked ? "text-rose-600" : "text-slate-500"}`}>
-            {securityFeature.label} {securityFeature.used}/{securityFeature.limit}
+            {securityFeature.unlimited
+              ? `${securityFeature.label} 無限制`
+              : `${securityFeature.label} ${securityFeature.used}/${securityFeature.limit}`}
           </p>
         )}
 

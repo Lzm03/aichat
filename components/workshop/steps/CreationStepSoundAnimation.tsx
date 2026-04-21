@@ -627,7 +627,9 @@ export const CreationStepSoundAnimation = ({
         </button>
         {voicePreviewFeature && (
           <p className={`text-xs ${voicePreviewFeature.locked ? "text-rose-600" : "text-slate-500"}`}>
-            {voicePreviewFeature.label} {voicePreviewFeature.used}/{voicePreviewFeature.limit}
+            {voicePreviewFeature.unlimited
+              ? `${voicePreviewFeature.label} 無限制`
+              : `${voicePreviewFeature.label} ${voicePreviewFeature.used}/${voicePreviewFeature.limit}`}
           </p>
         )}
       </Section>
@@ -658,7 +660,9 @@ export const CreationStepSoundAnimation = ({
         </button>
         {videoStudioFeature && (
           <p className={`mt-2 text-xs ${videoStudioFeature.locked ? "text-rose-600" : "text-slate-500"}`}>
-            {videoStudioFeature.label} {videoStudioFeature.used}/{videoStudioFeature.limit}
+            {videoStudioFeature.unlimited
+              ? `${videoStudioFeature.label} 無限制`
+              : `${videoStudioFeature.label} ${videoStudioFeature.used}/${videoStudioFeature.limit}`}
           </p>
         )}
 

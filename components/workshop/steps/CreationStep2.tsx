@@ -313,7 +313,9 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, knowl
         </button>
         {knowledgeFeature && (
           <p className={`text-xs ${knowledgeFeature.locked ? "text-rose-600" : "text-slate-500"}`}>
-            {knowledgeFeature.label} {knowledgeFeature.used}/{knowledgeFeature.limit}
+            {knowledgeFeature.unlimited
+              ? `${knowledgeFeature.label} 無限制`
+              : `${knowledgeFeature.label} ${knowledgeFeature.used}/${knowledgeFeature.limit}`}
           </p>
         )}
       </div>

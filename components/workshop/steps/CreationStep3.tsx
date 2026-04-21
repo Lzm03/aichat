@@ -164,7 +164,7 @@ const AvatarGenerator: React.FC<{
       </button>
       {feature && (
         <p className={`text-xs ${feature.locked ? "text-rose-600" : "text-slate-500"}`}>
-          {feature.label} {feature.used}/{feature.limit}
+          {feature.unlimited ? `${feature.label} 無限制` : `${feature.label} ${feature.used}/${feature.limit}`}
         </p>
       )}
     </div>
@@ -350,7 +350,9 @@ export const CreationStep3: React.FC<CreationStep3Props> = ({
         </div>
         {backgroundAiFeature && (
           <p className={`mt-2 text-xs ${backgroundAiFeature.locked ? "text-rose-600" : "text-slate-500"}`}>
-            {backgroundAiFeature.label} {backgroundAiFeature.used}/{backgroundAiFeature.limit}
+            {backgroundAiFeature.unlimited
+              ? `${backgroundAiFeature.label} 無限制`
+              : `${backgroundAiFeature.label} ${backgroundAiFeature.used}/${backgroundAiFeature.limit}`}
           </p>
         )}
       </div>
