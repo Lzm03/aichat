@@ -18,14 +18,15 @@ const NavItem: React.FC<NavItemProps> = ({ icon: Icon, label, active = false, on
         e.preventDefault();
         onClick();
       }}
-      className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+      className={`flex flex-col items-center justify-center px-2 py-4 rounded-xl transition-all duration-200 ${
         active
           ? 'bg-indigo-50 text-indigo-600 font-bold shadow-sm'
           : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
       }`}
+      title={label}
     >
-      <Icon className={`w-5 h-5 mr-4 ${active ? 'text-indigo-500' : ''}`} />
-      <span className="text-sm">{label}</span>
+      <Icon className={`w-6 h-6 mb-1 ${active ? 'text-indigo-500' : ''}`} />
+      <span className="text-[10px] text-center leading-tight">{label}</span>
     </a>
   </li>
 );
@@ -38,20 +39,22 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, forceHidden = false }) => {
   const navItems: { id: Page; label: string; icon: React.ElementType }[] = [
-    { id: 'dashboard', label: '教學指揮艙', icon: Icons.dashboard },
-    { id: 'workshop', label: 'AI 機器人工作坊', icon: Icons.bot },
+    { id: 'dashboard', label: '指揮倉', icon: Icons.dashboard },
+    { id: 'assessment', label: '智能評測', icon: Icons.assessment },
+    { id: 'workshop', label: 'AI工作坊', icon: Icons.bot },
     { id: 'tasks', label: '任務中心', icon: Icons.tasks },
   ];
 
   return (
-    <aside className={`w-64 bg-white border-r border-slate-200/80 p-4 flex-col justify-between ${forceHidden ? "hidden" : "hidden lg:flex"}`}>
+    <aside className={`w-28 bg-white border-r border-slate-200/80 flex-col justify-between transition-all duration-300 ${forceHidden ? "hidden" : "hidden lg:flex"}`}>
       <div>
-        <div className="flex items-center space-x-3 p-4 mb-6">
-          <img src="/choprealitylogo.png" alt="Logo" className="w-12 h-12 object-contain" />
-          <h1 className="text-xl font-bold text-[#1E293B] font-sans">CHOPREALITY</h1>
+        <div className="flex items-center justify-center mt-8 mb-16">
+          <div className="w-20 h-20 rounded-[24px] bg-white transition-all duration-300 flex items-center justify-center">
+            <img src="/choprealitylogo.png" alt="Logo" className="w-12 h-12 object-contain" />
+          </div>
         </div>
         <nav>
-          <ul className="space-y-2">
+          <ul className="space-y-4 px-2">
             {navItems.map((item) => (
               <NavItem
                 key={item.id}
@@ -64,7 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, for
           </ul>
         </nav>
       </div>
-      <div className="p-2">
+      <div className="p-2 mb-4">
         <NavItem icon={Icons.settings} label="設定" onClick={() => { window.location.href = "/settings"; }} />
       </div>
     </aside>

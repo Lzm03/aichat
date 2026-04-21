@@ -16,7 +16,7 @@ export type FeatureEntitlement = {
 };
 
 function getFeatureCacheKey(userId: string) {
-  return `smartedu_feature_cache:${userId}`;
+  return `chopreality_feature_cache:${userId}`;
 }
 
 export function useFeatureEntitlements() {

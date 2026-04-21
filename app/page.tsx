@@ -12,7 +12,7 @@ const PortalHeader = () => (
       <div className="bg-indigo-600 p-2 rounded-lg shadow-md shadow-indigo-500/20">
         <Icons.sparkles className="text-white w-6 h-6" />
       </div>
-      <h1 className="text-xl font-bold text-[#1E293B]">SmartEdu HK</h1>
+      <h1 className="text-xl font-bold text-[#1E293B]">Chopreality</h1>
     </div>
     <div className="flex items-center gap-3">
       <Link
@@ -97,7 +97,7 @@ export default function PortalSelectionPage() {
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="text-5xl font-black text-slate-800 tracking-tight">歡迎來到 SmartEdu HK</motion.h1>
+          className="text-5xl font-black text-slate-800 tracking-tight">歡迎來到 Chopreality</motion.h1>
         <motion.p 
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}

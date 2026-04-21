@@ -332,7 +332,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
               <div className="mt-5 grid gap-5 md:grid-cols-[160px_minmax(0,1fr)]">
                 <div className="flex flex-col items-center gap-3">
                   <img
-                    src={avatarUrl || "https://api.dicebear.com/9.x/adventurer/svg?seed=SmartEdu"}
+                    src={avatarUrl || "https://api.dicebear.com/9.x/adventurer/svg?seed=Chopreality"}
                     alt="avatar"
                     className="h-24 w-24 rounded-full border-4 border-white object-cover shadow-md"
                   />
@@ -643,7 +643,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Account Summary</div>
               <div className="mt-4 flex items-center gap-4">
                 <img
-                  src={avatarUrl || "https://api.dicebear.com/9.x/adventurer/svg?seed=SmartEdu"}
+                  src={avatarUrl || "https://api.dicebear.com/9.x/adventurer/svg?seed=Chopreality"}
                   alt="avatar"
                   className="h-16 w-16 rounded-full border border-slate-200 object-cover"
                 />

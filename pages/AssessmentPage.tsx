@@ -1,0 +1,218 @@
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { Icons } from '../components/icons';
+import { Edit3, FileText, Users, CheckCircle2, Clock, PenTool, AlertCircle, ArrowRight, ShieldAlert } from 'lucide-react';
+import { AssessmentWizard } from '../components/assessment/AssessmentWizard';
+import { AssessmentLibrary } from '../components/assessment/AssessmentLibrary';
+import { GradingWorkspaceHome } from '../components/assessment/GradingWorkspaceHome';
+import { AiAlertPlayground } from '../components/assessment/AiAlertPlayground';
+
+const mockDrafts = [
+  { id: 1, title: '中三古文練習', date: '2023-10-25', subject: '中文' },
+  { id: 2, title: '物理力學單元測驗', date: '2023-10-24', subject: '物理' },
+];
+
+const mockPublished = [
+  { id: 3, title: '常識科期中模擬考', status: '批改中', participants: 32, total: 35, subject: '常識' },
+  { id: 4, title: '英文閱讀理解 Week 4', status: '已發佈', participants: 40, total: 40, subject: '英文' },
+  { id: 5, title: '數學代數基礎', status: '已發佈', participants: 38, total: 40, subject: '數學' },
+];
+
+export const AssessmentPage: React.FC = () => {
+  const [view, setView] = useState<'dashboard' | 'wizard' | 'library' | 'grading' | 'alerts'>('dashboard');
+
+  if (view === 'wizard') {
+    return <AssessmentWizard onBack={() => setView('dashboard')} />;
+  }
+
+  if (view === 'library') {
+    return <AssessmentLibrary onBack={() => setView('dashboard')} />;
+  }
+
+  if (view === 'grading') {
+    return <GradingWorkspaceHome onBack={() => setView('dashboard')} />;
+  }
+
+  if (view === 'alerts') {
+    return (
+      <div className="h-full flex flex-col space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <button onClick={() => setView('dashboard')} className="flex items-center text-sm font-medium text-slate-600 hover:text-indigo-600 mb-2 transition-colors">
+              <Icons.back className="w-4 h-4 mr-2" />
+              返回智能評測
+            </button>
+            <h1 className="text-2xl font-bold text-slate-800">多維度 AI 異常警示展示</h1>
+          </div>
+        </div>
+        <AiAlertPlayground />
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full flex flex-col space-y-6">
+      {/* Header */}
+      <div className="mb-2 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 mb-2">智能評測</h1>
+          <p className="text-slate-500">運用 AI 技術快速生成測驗，並自動批改與分析學生表現。</p>
+        </div>
+        <button 
+          onClick={() => setView('alerts')}
+          className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+        >
+          <ShieldAlert className="w-4 h-4" />
+          AI 警示展示
+        </button>
+      </div>
+
+      {/* Bento Grid 2x2 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        {/* Top Left: AI 出題精靈 */}
+        <motion.div 
+          onClick={() => setView('wizard')}
+          whileHover={{ y: -4, boxShadow: '0 20px 25px -5px rgba(79, 70, 229, 0.1), 0 10px 10px -5px rgba(79, 70, 229, 0.04)' }}
+          className="bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-[24px] p-8 text-white shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] flex flex-col justify-between relative overflow-hidden group cursor-pointer min-h-[280px]"
+        >
+          <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
+          
+          <div className="relative z-10">
+            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-6 backdrop-blur-sm">
+              <Icons.sparkles className="w-6 h-6 text-white" />
+            </div>
+            <h2 className="text-2xl font-bold mb-2">AI 智能出題</h2>
+            <p className="text-indigo-100 text-sm leading-relaxed mb-8">
+              上傳教材或輸入主題，AI 將自動為您生成選擇題、填充題與問答題，大幅節省備課時間。
+            </p>
+          </div>
+          
+          <button className="relative z-10 w-full py-4 bg-white text-indigo-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-50 transition-colors shadow-sm">
+            <Icons.add className="w-5 h-5" />
+            創建新測驗
+          </button>
+        </motion.div>
+
+        {/* Top Right: 智能批改工作台 */}
+        <motion.div 
+          onClick={() => setView('grading')}
+          whileHover={{ y: -4, boxShadow: '0 20px 25px -5px rgba(244, 63, 94, 0.1), 0 10px 10px -5px rgba(244, 63, 94, 0.04)' }}
+          className="bg-gradient-to-br from-rose-500 to-rose-700 rounded-[24px] p-8 text-white shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] flex flex-col justify-between relative overflow-hidden group cursor-pointer min-h-[280px]"
+        >
+          <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
+          
+          <div className="relative z-10">
+            <div className="flex items-center justify-between mb-6">
+              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                <PenTool className="w-6 h-6 text-white" />
+              </div>
+              <div className="bg-amber-400 text-amber-900 font-bold px-3 py-1.5 rounded-full text-sm flex items-center gap-1.5 shadow-sm">
+                <AlertCircle className="w-4 h-4" />
+                12 份待批改
+              </div>
+            </div>
+            <h2 className="text-2xl font-bold mb-2">智能批改工作台</h2>
+            <p className="text-rose-100 text-sm leading-relaxed mb-8">
+              AI 輔助批改主觀題與作文，自動生成評語與得分建議，大幅提升批改效率。
+            </p>
+          </div>
+          
+          <button className="relative z-10 w-full py-4 bg-white text-rose-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-rose-50 transition-colors shadow-sm">
+            進入批改
+            <ArrowRight className="w-5 h-5" />
+          </button>
+        </motion.div>
+
+        {/* Bottom Left: 草稿箱 */}
+        <div className="bg-white rounded-[24px] p-6 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] flex flex-col min-h-[280px]">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-slate-400" />
+              草稿箱
+            </h2>
+            <span className="text-xs font-medium bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full">
+              {mockDrafts.length} 份
+            </span>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
+            {mockDrafts.slice(0, 2).map(draft => (
+              <div key={draft.id} className="group p-4 rounded-2xl border border-slate-100 hover:border-indigo-100 hover:bg-indigo-50/30 transition-all flex items-center justify-between cursor-pointer">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-700">
+                      草稿
+                    </span>
+                    <span className="text-xs text-slate-400">{draft.date}</span>
+                  </div>
+                  <h3 className="font-semibold text-slate-700 group-hover:text-indigo-700 transition-colors">{draft.title}</h3>
+                </div>
+                <button className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-white group-hover:text-indigo-600 group-hover:shadow-sm transition-all">
+                  <Edit3 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Bottom Right: 歷史題庫 */}
+        <div className="bg-white rounded-[24px] p-6 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] flex flex-col min-h-[280px]">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <Icons.task className="w-5 h-5 text-slate-400" />
+              歷史題庫
+            </h2>
+            <button 
+              onClick={() => setView('library')}
+              className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+            >
+              查看全部
+            </button>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
+            {mockPublished.slice(0, 2).map(item => (
+              <div 
+                key={item.id} 
+                onClick={() => setView('library')}
+                className="p-4 rounded-2xl border border-slate-100 hover:shadow-md transition-shadow cursor-pointer"
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <h3 className="font-semibold text-slate-700">{item.title}</h3>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0 ml-2 ${
+                    item.status === '已發佈' 
+                      ? 'bg-emerald-100 text-emerald-700' 
+                      : 'bg-sky-100 text-sky-700'
+                  }`}>
+                    {item.status}
+                  </span>
+                </div>
+                
+                <div className="flex items-center gap-4 mt-3">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <Users className="w-3.5 h-3.5" />
+                    <span>{item.participants} / {item.total} 人作答</span>
+                  </div>
+                  
+                  {item.status === '已發佈' ? (
+                    <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>批改完成</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-xs text-sky-600 font-medium">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>等待批改</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+};

@@ -52,7 +52,7 @@ const LEGACY_OWNER_EMAIL = (process.env.LEGACY_OWNER_EMAIL?.trim().toLowerCase()
 export const DEFAULT_MONTHLY_CREDIT_LIMIT = Number(process.env.DEFAULT_MONTHLY_CREDIT_LIMIT || 200);
 
 function getAuthSecret() {
-  return process.env.AUTH_SECRET?.trim() || "smartedu-dev-auth-secret";
+  return process.env.AUTH_SECRET?.trim() || "chopreality-dev-auth-secret";
 }
 
 function toBase64Url(input: Buffer | string) {

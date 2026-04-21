@@ -2,7 +2,7 @@ import React from 'react';
 import '../globals.css';
 
 export const metadata = {
-  title: 'SmartEdu HK',
+  title: 'Chopreality',
   description: 'The unified portal for teachers, students, and administrators.',
 };
 

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { Dashboard } from './pages/Dashboard';
+import { AssessmentPage } from './pages/AssessmentPage';
 import { AiBotWorkshopPage } from './pages/AiBotWorkshopPage';
 import { TaskCenter } from './pages/TaskCenter';
 import { SharedBotChatPage } from './pages/SharedBotChatPage';
@@ -23,16 +24,17 @@ import {
 import { DEFAULT_USER_PREFERENCES, getAppShellThemeClasses, normalizeUserPreferences } from './utils/userPreferences';
 import { useFeatureEntitlements } from './hooks/useFeatureEntitlements';
 
-export type Page = 'dashboard' | 'workshop' | 'tasks';
+export type Page = 'dashboard' | 'assessment' | 'workshop' | 'tasks';
 
 const pageConfig = {
   dashboard: { title: '教學指揮艙', component: <Dashboard /> },
+  assessment: { title: '智能評測', component: <AssessmentPage /> },
   workshop: { title: 'AI 機器人工作坊', component: <AiBotWorkshopPage /> },
   tasks: { title: '任務中心', component: <TaskCenter /> },
 };
 
 const App: React.FC = () => {
-  const [activePage, setActivePage] = useState<Page>('workshop');
+  const [activePage, setActivePage] = useState<Page>('dashboard');
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [sharedBotId, setSharedBotId] = useState<string | null>(null);
   const [isAuthRoute, setIsAuthRoute] = useState(false);

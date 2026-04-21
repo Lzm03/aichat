@@ -22,11 +22,11 @@ type AuthResponse = {
 
 const authModes: Array<{ id: AuthMode; label: string; helper: string }> = [
   { id: 'login', label: '登入', helper: '回到你的教學工作台與 AI 機器人。' },
-  { id: 'register', label: '註冊', helper: '建立新帳戶，開始你的 SmartEdu 工作流。' },
+  { id: 'register', label: '註冊', helper: '建立新帳戶，開始你的 Chopreality 工作流。' },
 ];
 
-const AUTH_TOKEN_KEY = 'smartedu_auth_token';
-const AUTH_USER_KEY = 'smartedu_auth_user';
+const AUTH_TOKEN_KEY = 'chopreality_auth_token';
+const AUTH_USER_KEY = 'chopreality_auth_user';
 
 export default function AuthPage() {
   const router = useRouter();
@@ -261,7 +261,7 @@ export default function AuthPage() {
               <span className="mb-2 block text-sm font-semibold text-slate-700">電郵</span>
               <input
                 type="email"
-                placeholder="hello@smartedu.hk"
+                placeholder="hello@chopreality.com"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-100"
@@ -328,7 +328,7 @@ export default function AuthPage() {
               disabled={loading}
               className="mt-2 inline-flex w-full items-center justify-center rounded-2xl bg-indigo-600 px-5 py-3.5 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-400"
             >
-              {loading ? '提交中...' : mode === 'login' ? '登入 SmartEdu HK' : '建立帳戶'}
+              {loading ? '提交中...' : mode === 'login' ? '登入 Chopreality' : '建立帳戶'}
             </button>
           </form>
 

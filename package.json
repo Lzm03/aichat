@@ -1,5 +1,5 @@
 {
-  "name": "smartedu-hk-teacher-portal",
+  "name": "chopreality",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -15,6 +15,7 @@
     "axios": "^1.13.5",
     "body-parser": "^2.2.2",
     "cors": "^2.8.6",
+    "d3-array": "^3.2.4",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "express-fileupload": "^1.5.2",
@@ -25,7 +26,8 @@
     "pdf-parse": "^2.4.5",
     "pdfjs-dist": "^5.4.624",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "recharts": "^3.8.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

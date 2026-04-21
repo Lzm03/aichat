@@ -46,6 +46,7 @@ import {
   UserCog,
   HelpCircle,
   LogOut,
+  GraduationCap,
 } from 'lucide-react';
 
 export const Icons = {
@@ -96,4 +97,5 @@ export const Icons = {
   userCog: UserCog,
   helpCircle: HelpCircle,
   logOut: LogOut,
+  assessment: GraduationCap,
 };

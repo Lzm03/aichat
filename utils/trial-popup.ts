@@ -2,7 +2,7 @@ export const TRIAL_ENDED_POPUP_TITLE = "感謝您試用我們的機器人平台�
 export const TRIAL_ENDED_POPUP_MESSAGE =
   "我們的開發團隊十分想聽到您的意見，如果有需要請聯絡我們提供意見﹑購買我們的機器人創建服務";
 
-export const TRIAL_ENDED_POPUP_STORAGE_KEY = "smartedu_trial_ended_popup";
+export const TRIAL_ENDED_POPUP_STORAGE_KEY = "chopreality_trial_ended_popup";
 
 export function markTrialEndedPopupPending() {
   if (typeof window === "undefined") return;

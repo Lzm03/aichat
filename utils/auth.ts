@@ -23,10 +23,10 @@ export type AuthSession = {
   user: StoredAuthUser;
 };
 
-export const AUTH_TOKEN_KEY = "smartedu_auth_token";
-export const AUTH_USER_KEY = "smartedu_auth_user";
-export const AUTH_CHANGED_EVENT = "smartedu-auth-changed";
-export const FEATURE_USAGE_CHANGED_EVENT = "smartedu-feature-usage-changed";
+export const AUTH_TOKEN_KEY = "chopreality_auth_token";
+export const AUTH_USER_KEY = "chopreality_auth_user";
+export const AUTH_CHANGED_EVENT = "chopreality-auth-changed";
+export const FEATURE_USAGE_CHANGED_EVENT = "chopreality-feature-usage-changed";
 
 let authBridgeInstalled = false;
 let axiosInterceptorInstalled = false;
