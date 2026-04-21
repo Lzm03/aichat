@@ -447,7 +447,7 @@ const handleDeleteBot = async () => {
         isOpen={isPublishSuccessModalOpen}
         onClose={handleClosePublishModal}
         botConfig={botConfig}
-        onEdit={() => {}}
+        onEdit={() => setIsPublishSuccessModalOpen(false)}
         onDelete={handleDeleteBot}
       />
 

@@ -1705,7 +1705,6 @@ const unlockAudioAndMic = async () => {
                         onClick={() => {
                           if (!canEditBot) return;
                           setShowDropdown(false);
-                          onClose();
                           onEdit();
                         }}
                         disabled={!canEditBot}
@@ -2121,7 +2120,6 @@ const unlockAudioAndMic = async () => {
                           onClick={() => {
                             if (!canEditBot) return;
                             setShowDropdown(false);
-                            onClose();
                             onEdit();
                           }}
                           disabled={!canEditBot}
