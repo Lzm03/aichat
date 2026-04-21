@@ -21,6 +21,20 @@ type SeqManifest = {
   pattern: string;
 };
 
+function normalizeManifestBase(manifest: SeqManifest, publicBase: string): SeqManifest {
+  const normalizedBase = publicBase.replace(/\/$/, "");
+  const nextFolderUrl = `${normalizedBase}/uploads/sequences/${manifest.id}/frames`;
+
+  if (manifest.folderUrl === nextFolderUrl) {
+    return manifest;
+  }
+
+  return {
+    ...manifest,
+    folderUrl: nextFolderUrl,
+  };
+}
+
 export function getPublicBase(req: express.Request) {
   const envBase = process.env.BACKEND_URL?.trim();
   if (envBase) return envBase.replace(/\/$/, "");
@@ -67,7 +81,12 @@ export async function getOrCreateWebmSequence(
 
   fs.mkdirSync(framesDir, { recursive: true });
   if (fs.existsSync(manifestPath)) {
-    return JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as SeqManifest;
+    const manifest = normalizeManifestBase(
+      JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as SeqManifest,
+      publicBase
+    );
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
+    return manifest;
   }
 
   const sourcePath = await ensureVideoLocal(videoUrl, seqRoot);

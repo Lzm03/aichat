@@ -8,6 +8,7 @@ dotenv.config({ path: path.resolve(__dirname, ".env"), override: true });
 
 import express from "express";
 import cors from "cors";
+import fs from "fs";
 
 import botsRoute from "./api/bots.ts";
 import animationRoute from "./api/animation.ts";
@@ -73,6 +74,24 @@ app.use("/api/upload-image", uploadImageRoute);
 app.use("/api/upload-video", uploadVideoRoute);
 app.use("/api/debug", debugStorageRoute);
 app.use("/api", tokenUsageRoute);
+app.get("/uploads/sequences/:id/manifest.json", (req, res, next) => {
+  const manifestPath = path.join(uploadsDir, "sequences", req.params.id, "manifest.json");
+  if (!fs.existsSync(manifestPath)) {
+    return next();
+  }
+
+  try {
+    const raw = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+    const publicBase = (process.env.BACKEND_URL?.trim() || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
+    res.json({
+      ...raw,
+      folderUrl: `${publicBase}/uploads/sequences/${req.params.id}/frames`,
+    });
+  } catch (error) {
+    console.error("Failed to serve sequence manifest:", error);
+    res.status(500).json({ error: "Failed to read sequence manifest" });
+  }
+});
 app.use(
   "/uploads",
   express.static(uploadsDir, {
