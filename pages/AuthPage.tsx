@@ -179,12 +179,6 @@ export const AuthPage: React.FC = () => {
             <p className="mt-5 text-base leading-7 text-slate-600 md:text-lg">
               Chopreality 是一個無需編程的AI 藝術創作平台，讓師生在零基礎下也能輕鬆一站式創作不同AI作品，製作出用於教學或展示的互動作品。
             </p>
-            <div className="mt-6 rounded-[24px] border border-slate-200 bg-white/80 p-4 shadow-sm backdrop-blur">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-500">聯絡方式</div>
-              <div className="mt-3 text-sm text-slate-600">
-                <div>Mandy@chopreality.com</div>
-              </div>
-            </div>
           </motion.div>
         </section>
 
