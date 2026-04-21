@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { Icons } from '../components/icons';
 import { IosToggle } from '../components/shared/IosToggle';
 import { Sparkles, Zap } from 'lucide-react';
+import { readAuthSession } from '../utils/auth';
 
 import { AssessmentQualityCard } from '../components/assessment/AssessmentQualityCard';
 import { StudentLearningReportCard } from '../components/dashboard/StudentLearningReportCard';
@@ -72,7 +73,7 @@ const TrendListItem: React.FC<{type: 'positive' | 'neutral' | 'warning', text: s
   );
 };
 
-const HeroBanner = () => (
+const HeroBanner: React.FC<{ teacherName: string }> = ({ teacherName }) => (
   <div className="w-full aspect-[4/1] rounded-[32px] overflow-hidden relative mb-6 shadow-md group">
     <img 
       src="https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=2560&auto=format&fit=crop" 
@@ -81,7 +82,7 @@ const HeroBanner = () => (
     />
     <div className="absolute inset-0 bg-gradient-to-r from-slate-900/60 to-transparent flex flex-col justify-center p-8 md:p-12">
       <div className="max-w-2xl text-white space-y-4">
-        <h2 className="text-2xl md:text-4xl font-bold tracking-tight">早安，李老師 👋</h2>
+        <h2 className="text-2xl md:text-4xl font-bold tracking-tight">早安，{teacherName} 👋</h2>
         <div className="bg-indigo-50/90 backdrop-blur-sm text-indigo-700 rounded-xl p-3 inline-block shadow-sm">
           <p className="text-sm font-medium">
             ✨ 本週 <span className="font-bold bg-white px-1.5 py-0.5 rounded-md mx-0.5 shadow-sm">2</span> 份測驗已批改完成 · 
@@ -95,9 +96,11 @@ const HeroBanner = () => (
 );
 
 export const Dashboard: React.FC = () => {
+  const teacherName = readAuthSession()?.user?.fullName?.trim() || '老師';
+
   return (
     <div className="h-full flex flex-col pb-32 md:pb-0">
-      <HeroBanner />
+      <HeroBanner teacherName={teacherName} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
         <div className="md:col-span-1">
           <StudentLearningReportCard />
