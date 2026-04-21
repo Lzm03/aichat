@@ -12,11 +12,12 @@ import { DEFAULT_ACCOUNT_AVATAR } from '../../utils/default-avatar';
 interface HeaderProps {
   pageTitle: string;
   onMenuClick: () => void;
+  onNotificationClick?: () => void;
   forceMobileMenu?: boolean;
   currentUser?: StoredAuthUser | null;
 }
 
-export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, forceMobileMenu = false, currentUser = null }) => {
+export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, onNotificationClick, forceMobileMenu = false, currentUser = null }) => {
   const { features } = useFeatureEntitlements();
   const primaryFeatures = features.filter((feature) => feature.key === "bot_publish" || feature.key === "chat_messages");
   const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
@@ -178,8 +179,9 @@ export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, forceMob
           </button>
         </div>
 
-        <button className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-slate-100 transition-colors">
+        <button onClick={onNotificationClick} className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-slate-100 transition-colors relative">
           <Icons.bell className="w-6 h-6 text-slate-500" />
+          <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-rose-500 rounded-full border border-white"></span>
         </button>
 
         <div className="relative" ref={userMenuTriggerRef}>

@@ -47,6 +47,7 @@ import {
   HelpCircle,
   LogOut,
   GraduationCap,
+  MoreHorizontal,
 } from 'lucide-react';
 
 export const Icons = {
@@ -98,4 +99,5 @@ export const Icons = {
   helpCircle: HelpCircle,
   logOut: LogOut,
   assessment: GraduationCap,
+  more: MoreHorizontal,
 };
