@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Icons } from '../../icons';
 import { ImageCropper } from './ImageCropper';
+import { useBodyScrollLock } from '../../../hooks/useBodyScrollLock';
 
 // FIX: Add 'currentBackground' prop to fix type error from parent component.
 interface BackgroundEditorProps {
@@ -39,6 +40,8 @@ export const BackgroundEditor: React.FC<BackgroundEditorProps> = ({ onApply, onC
     const [imageForCropper, setImageForCropper] = useState<string | null>(null);
     const [selectedStyle, setSelectedStyle] = useState('手繪畫風');
     const [isGenerating, setIsGenerating] = useState(false);
+
+    useBodyScrollLock(true);
     
     const checkIsRealistic = (file: File): boolean => {
         console.log("Simulating realism check for:", file.name);

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Icons } from '../../icons';
+import { useBodyScrollLock } from '../../../hooks/useBodyScrollLock';
 
 interface ImageCropperProps {
     imageUrl: string;
@@ -17,6 +18,8 @@ const aspectRatios: { [key: string]: number | undefined } = {
 export const ImageCropper: React.FC<ImageCropperProps> = ({ imageUrl, onApply, onCancel }) => {
     const [zoom, setZoom] = useState(1);
     const [aspect, setAspect] = useState<string>('16:9');
+
+    useBodyScrollLock(true);
     
     // This is a UI simulation. The actual crop box position/size would be managed here.
     const cropBoxStyle = {

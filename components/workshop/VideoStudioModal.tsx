@@ -6,6 +6,7 @@ import { SequencePngPlayer } from "./SequencePngPlayer";
 import { Icons } from "../icons";
 import type { FeatureEntitlement } from "../../hooks/useFeatureEntitlements";
 import { usePlatformDialog } from "../../hooks/usePlatformDialog";
+import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 import { PlatformDialog } from "../system/PlatformDialog";
 import { API_BASE } from "../../utils/api";
 
@@ -63,53 +64,26 @@ export default function VideoStudioModal({
   type PreviewSlotKey = "idle" | "speaking" | "thinking";
   const presetOptions = [
     {
-      id: "cinematic",
-      label: "電影感",
-      hint: "乾淨光影、商業質感",
-      stylePrompt: "整體風格偏高級電影感，燈光柔和、質感真實、構圖穩定、人物邊緣乾淨。",
+      id: "big_movement",
+      label: "Big Movement",
+      hint: "動作幅度更明顯",
+      stylePrompt: "動作風格採用大動作版本，肢體與表情變化更明顯，但人物位置、鏡頭和綠幕背景仍需保持穩定一致。",
     },
     {
-      id: "documentary",
-      label: "紀錄片",
-      hint: "自然寫實、少修飾",
-      stylePrompt: "整體風格偏紀錄片寫實感，自然光線、真實膚色、鏡頭克制、不做誇張特效。",
-    },
-    {
-      id: "dreamy",
-      label: "夢幻",
-      hint: "柔光、輕微唯美感",
-      stylePrompt: "整體風格帶有柔焦與夢幻氛圍，畫面柔和、細節乾淨，但保持人物真實可辨識。",
-    },
-    {
-      id: "studio",
-      label: "棚拍",
-      hint: "純淨、專業展示",
-      stylePrompt: "整體風格偏專業棚拍，光線均勻、主體突出、背景處理乾淨，像產品級展示視頻。",
-    },
-    {
-      id: "teacher",
-      label: "教學感",
-      hint: "適合教學助理形象",
-      stylePrompt: "整體風格偏教育與教學展示，親和、專業、穩定，適合作為老師或助教角色。",
-    },
-    {
-      id: "corporate",
-      label: "商務",
-      hint: "正式、穩重、簡潔",
-      stylePrompt: "整體風格偏商務正式感，專業穩重、服裝與人物姿態端正，適合解說與展示場景。",
+      id: "small_movement",
+      label: "Small Movement",
+      hint: "動作幅度更克制",
+      stylePrompt: "動作風格採用小動作版本，以細微表情、口型和輕度姿態變化為主，整體更穩定克制。",
     },
   ] as const;
   const phaseMilestones = [18, 33, 48, 63, 78, 93];
 
   // ===== 左侧面板 UI =====
-  const [preset, setPreset] = useState("cinematic");
+  const [preset, setPreset] = useState("big_movement");
   const [sourceAspectRatio, setSourceAspectRatio] = useState<string>("16:9");
   const [videoSourceImage, setVideoSourceImage] = useState<string>("");
   const [videoSourceRemoteUrl, setVideoSourceRemoteUrl] = useState<string>("");
-  const [videoSourceUploading, setVideoSourceUploading] = useState(false);
   const [studioTaskId, setStudioTaskId] = useState<string | null>(null);
-  const [restoringTask, setRestoringTask] = useState(true);
-  const videoSourceInputRef = useRef<HTMLInputElement | null>(null);
 
   // ===== Loading 状态 =====
   const [progress, setProgress] = useState(0);
@@ -137,13 +111,12 @@ export default function VideoStudioModal({
   const canSave = !!(idleWebm && speakingWebm && thinkingWebm);
   const [featureConsumed, setFeatureConsumed] = useState(Boolean(feature?.used));
   const [showHint, setShowHint] = useState(false);
-  const [showUploadHint, setShowUploadHint] = useState(false);
   const [hintPosition, setHintPosition] = useState({ top: 0, left: 0 });
-  const [uploadHintPosition, setUploadHintPosition] = useState({ top: 0, left: 0 });
   const { dialog, closeDialog, showAlert, showConfirm } = usePlatformDialog();
   const hintButtonRef = useRef<HTMLButtonElement | null>(null);
-  const uploadHintButtonRef = useRef<HTMLButtonElement | null>(null);
   const isUnlimitedFeature = Boolean(feature?.unlimited);
+
+  useBodyScrollLock(true);
 
   const baseUrl = API_BASE;
   const SUPPORTED_ASPECTS = new Set(["16:9", "9:16", "1:1"]);
@@ -182,67 +155,9 @@ export default function VideoStudioModal({
   }, [feature?.used, isUnlimitedFeature]);
 
   useEffect(() => {
-    let active = true;
-    const restoreTask = async () => {
-      setRestoringTask(true);
-      try {
-        const res = await fetch(`${API_BASE}/api/video/studio-task/latest`);
-        const data = await res.json().catch(() => null);
-        const task = data?.task;
-        if (!active || !task) return;
-
-        setStudioTaskId(task.id);
-        setVideoSourceImage(task.sourceImageUrl || "");
-        setVideoSourceRemoteUrl(task.sourceImageUrl || "");
-        setSourceAspectRatio(task.sourceAspectRatio || "16:9");
-
-        const nextIdle = task.slots?.idle?.resultUrl || null;
-        const nextSpeaking = task.slots?.speaking?.resultUrl || null;
-        const nextThinking = task.slots?.thinking?.resultUrl || null;
-
-        setIdleWebm(nextIdle);
-        setSpeakingWebm(nextSpeaking);
-        setThinkingWebm(nextThinking);
-        setPreviewStatus({
-          idle: task.slots?.idle?.status || "waiting",
-          speaking: task.slots?.speaking?.status || "waiting",
-          thinking: task.slots?.thinking?.status || "waiting",
-        });
-
-        const hasGeneratingSlot = ["idle", "speaking", "thinking"].some((key) => {
-          const slot = task.slots?.[key];
-          return slot?.status === "generating" && slot?.requestId;
-        });
-
-        if (hasGeneratingSlot) {
-          setLoading(true);
-          await continueTaskFlow(task.id, {
-            existingRequests: {
-              idle: task.slots?.idle?.status === "generating" ? task.slots?.idle?.requestId || null : null,
-              speaking:
-                task.slots?.speaking?.status === "generating" ? task.slots?.speaking?.requestId || null : null,
-              thinking:
-                task.slots?.thinking?.status === "generating" ? task.slots?.thinking?.requestId || null : null,
-            },
-          });
-          if (active) {
-            setProgress(100);
-            progressRef.current = 100;
-            setLoading(false);
-          }
-        }
-      } catch {
-        // ignore recovery failure
-      } finally {
-        if (active) setRestoringTask(false);
-      }
-    };
-
-    void restoreTask();
-    return () => {
-      active = false;
-    };
-  }, []);
+    setVideoSourceImage(avatarUrl || "");
+    setVideoSourceRemoteUrl(avatarUrl || "");
+  }, [avatarUrl]);
 
   useLayoutEffect(() => {
     if (!showHint || !hintButtonRef.current) return;
@@ -268,30 +183,6 @@ export default function VideoStudioModal({
     };
   }, [showHint]);
 
-  useLayoutEffect(() => {
-    if (!showUploadHint || !uploadHintButtonRef.current) return;
-
-    const updatePosition = () => {
-      const rect = uploadHintButtonRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const tooltipWidth = 320;
-      const gap = 10;
-      const maxLeft = window.innerWidth - tooltipWidth - 16;
-      setUploadHintPosition({
-        top: rect.bottom + gap,
-        left: Math.min(rect.left, Math.max(16, maxLeft)),
-      });
-    };
-
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
-    return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
-    };
-  }, [showUploadHint]);
-
   useEffect(() => {
     if (!showHint) return;
     const handleClickAway = (event: MouseEvent) => {
@@ -301,16 +192,6 @@ export default function VideoStudioModal({
     document.addEventListener("mousedown", handleClickAway);
     return () => document.removeEventListener("mousedown", handleClickAway);
   }, [showHint]);
-
-  useEffect(() => {
-    if (!showUploadHint) return;
-    const handleClickAway = (event: MouseEvent) => {
-      if (uploadHintButtonRef.current?.contains(event.target as Node)) return;
-      setShowUploadHint(false);
-    };
-    document.addEventListener("mousedown", handleClickAway);
-    return () => document.removeEventListener("mousedown", handleClickAway);
-  }, [showUploadHint]);
 
   useEffect(() => {
     let active = true;
@@ -672,13 +553,6 @@ export default function VideoStudioModal({
       });
       return;
     }
-    if (videoSourceUploading || !videoSourceRemoteUrl) {
-      showAlert({
-        title: "圖片仍在準備中",
-        message: "請先等待生成照片上傳完成，再開始生成影片。",
-      });
-      return;
-    }
     cancelRef.current = false;
     setLoading(true);
     setProgress(1);
@@ -780,91 +654,6 @@ export default function VideoStudioModal({
   const isSequenceManifest = (url?: string | null) =>
     Boolean(url && /\/manifest\.json(\?|$)/i.test(url));
 
-  function handleSelectVideoSource(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      showAlert({
-        title: "檔案格式不支援",
-        message: "請上傳 JPG、PNG 或 WEBP 等人物照片。",
-        tone: "danger",
-      });
-      event.target.value = "";
-      return;
-    }
-
-    setIdleWebm(null);
-    setSpeakingWebm(null);
-    setThinkingWebm(null);
-    setPreviewStatus({
-      idle: "waiting",
-      speaking: "waiting",
-      thinking: "waiting",
-    });
-    setProgress(0);
-    progressRef.current = 0;
-    setStudioTaskId(null);
-    setVideoSourceRemoteUrl("");
-
-    setVideoSourceImage((prev) => {
-      if (prev.startsWith("blob:")) {
-        URL.revokeObjectURL(prev);
-      }
-      return URL.createObjectURL(file);
-    });
-    setVideoSourceUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    fetch(`${API_BASE}/api/upload-image`, {
-      method: "POST",
-      body: formData,
-    })
-      .then(async (res) => {
-        const data = await res.json().catch(() => null);
-        if (!res.ok || !data?.url) {
-          throw new Error(data?.error || "upload failed");
-        }
-        setVideoSourceRemoteUrl(data.url);
-      })
-      .catch((error) => {
-        setVideoSourceRemoteUrl("");
-        showAlert({
-          title: "上傳失敗",
-          message: error instanceof Error ? error.message : "圖片上傳失敗，請重試。",
-          tone: "danger",
-        });
-      })
-      .finally(() => {
-        setVideoSourceUploading(false);
-      });
-    event.target.value = "";
-  }
-
-  function handleRemoveVideoSource() {
-    setVideoSourceImage((prev) => {
-      if (prev.startsWith("blob:")) {
-        URL.revokeObjectURL(prev);
-      }
-      return "";
-    });
-    setIdleWebm(null);
-    setSpeakingWebm(null);
-    setThinkingWebm(null);
-    setStudioTaskId(null);
-    setVideoSourceRemoteUrl("");
-    setPreviewStatus({
-      idle: "waiting",
-      speaking: "waiting",
-      thinking: "waiting",
-    });
-    setProgress(0);
-    progressRef.current = 0;
-    if (videoSourceInputRef.current) {
-      videoSourceInputRef.current.value = "";
-    }
-  }
-
   const SequenceOrVideo = ({ src }: { src: string }) => {
     const [manifest, setManifest] = useState<any>(null);
 
@@ -959,70 +748,26 @@ export default function VideoStudioModal({
 
           <div className="mt-6 rounded-[28px] border border-[#E2E8F0] bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-semibold tracking-[0.01em] text-[#334155]">生成照片</label>
-                <button
-                  ref={uploadHintButtonRef}
-                  type="button"
-                  onMouseEnter={() => setShowUploadHint(true)}
-                  onMouseLeave={() => setShowUploadHint(false)}
-                  className="flex h-4 w-4 items-center justify-center rounded-full border border-[#CBD5E1] bg-white text-[8px] font-bold text-[#64748B] transition hover:border-[#94A3B8] hover:text-[#475569]"
-                >
-                  i
-                </button>
-              </div>
+              <label className="text-sm font-semibold tracking-[0.01em] text-[#334155]">生成照片</label>
             </div>
-            <input
-              ref={videoSourceInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="hidden"
-              onChange={handleSelectVideoSource}
-            />
             <div className="mt-4 rounded-[24px] bg-[#F8FBFF] p-3">
               {videoSourceImage ? (
                 <div className="relative overflow-hidden rounded-[20px] bg-[#EEF4FB]">
-                  <button
-                    type="button"
-                    onClick={handleRemoveVideoSource}
-                    className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-white/80 bg-white/90 text-sm text-[#64748B] shadow-[0_8px_20px_rgba(15,23,42,0.12)] transition hover:bg-white hover:text-[#DC2626]"
-                    aria-label="刪除照片"
-                  >
-                    <Icons.delete className="h-4 w-4" />
-                  </button>
                   <img
                     src={videoSourceImage}
                     alt="生成照片預覽"
                     className="h-[220px] w-full object-contain bg-[#EAF1F8]"
                   />
                   <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-[#F8FBFF] via-[#F8FBFF]/92 to-transparent px-4 py-4">
-                    <div>
-                      <div className="mt-1 text-sm font-semibold text-[#1E293B]">本次影片生成照片</div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => videoSourceInputRef.current?.click()}
-                      className="pointer-events-auto rounded-full border border-[#DBEAFE] bg-white px-4 py-2 text-xs font-semibold text-[#2563EB] transition hover:bg-[#EFF6FF]"
-                    >
-                      更換照片
-                    </button>
                   </div>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => videoSourceInputRef.current?.click()}
-                  className="group flex h-[220px] w-full flex-col items-center justify-center rounded-[20px] border border-dashed border-[#BFDBFE] bg-white text-center transition hover:border-[#93C5FD] hover:bg-[#F8FBFF]"
-                >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EFF6FF] text-xl text-[#2563EB]">↑</div>
-                  <div className="mt-5 text-lg font-bold tracking-[-0.03em] text-[#1E293B]">上傳影片生成照片</div>
+                <div className="flex h-[220px] w-full flex-col items-center justify-center rounded-[20px] border border-dashed border-[#CBD5E1] bg-white px-6 text-center">
+                  <div className="text-lg font-bold tracking-[-0.03em] text-[#1E293B]">尚未設定 Avatar</div>
                   <div className="mt-2 text-sm leading-6 text-[#64748B]">
-                    將這張照片作為動畫生成來源
+                    請先回到第一步設定角色頭像，影片工作室會直接使用那張照片。
                   </div>
-                  <div className="mt-5 rounded-full border border-[#DBEAFE] bg-[#F8FBFF] px-4 py-2 text-xs font-semibold text-[#2563EB] transition group-hover:bg-[#EFF6FF]">
-                    選擇照片
-                  </div>
-                </button>
+                </div>
               )}
             </div>
           </div>
@@ -1059,12 +804,12 @@ export default function VideoStudioModal({
             <button
               onClick={generateAll}
               className={`w-full py-3 rounded-xl font-semibold ${
-                loading || restoringTask || videoSourceUploading || (!isUnlimitedFeature && (featureConsumed || feature?.locked)) || !videoSourceImage
+                loading || (!isUnlimitedFeature && (featureConsumed || feature?.locked)) || !videoSourceImage
                   ? "bg-slate-200 text-slate-500"
                   : "bg-[#2563EB] text-white shadow-[0_14px_28px_rgba(37,99,235,0.2)] hover:bg-[#1D4ED8]"
               }`}
             >
-            {videoSourceUploading ? "正在準備照片…" : "生成三種動畫"}
+            生成三種動畫
             </button>
             {!videoSourceImage && (
               <div className="mt-2 text-xs leading-5 text-[#64748B]">
@@ -1300,26 +1045,6 @@ export default function VideoStudioModal({
                     </div>
                   </div>
                 ))}
-              </div>
-            </div>,
-            document.body
-          )
-        : null}
-      {showUploadHint && typeof document !== "undefined"
-        ? createPortal(
-            <div
-              className="fixed z-[120] w-[260px] rounded-2xl border border-[#E2E8F0] bg-white p-3 text-[11px] leading-5 text-[#64748B] shadow-[0_18px_40px_rgba(15,23,42,0.12)]"
-              style={{
-                top: uploadHintPosition.top,
-                left: uploadHintPosition.left,
-              }}
-            >
-              <div className="text-xs font-bold text-[#1E293B]">建議上傳的照片</div>
-              <p className="mt-2">
-                請上傳單人、正面或接近正面、主體清晰的半身或全身人物照。避免多人入鏡、手臂遮臉、裁切過緊、背景太亂或照片過暗，這樣生成出來的 Idle、Speaking、Thinking 會更穩定。
-              </p>
-              <div className="mt-2 rounded-xl bg-[#F8FAFC] px-3 py-2 text-[10px] leading-4 text-[#64748B]">
-                這張照片只會作為影片工作室的生成來源，不會覆蓋你最開始設定的人物圖。
               </div>
             </div>,
             document.body

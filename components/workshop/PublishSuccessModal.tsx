@@ -722,10 +722,6 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       return;
     }
 
-    clearProactiveTimer();
-    botTurnsSinceUserRef.current = 0;
-    proactiveCountRef.current = 0;
-    hasUserSpokenRef.current = false;
     ttsSessionRef.current += 1;
     ttsSeq.current = 0;
     nextPlaySeq.current = 0;
@@ -826,15 +822,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const sttTypingTimerRef = useRef<number | null>(null);
   const audioRetryTimerRef = useRef<number | null>(null);
   const lastUserGestureRef = useRef(0);
-  const proactiveTimerRef = useRef<number | null>(null);
-  const botTurnsSinceUserRef = useRef(0);
-  const proactiveCountRef = useRef(0);
-  const hasUserSpokenRef = useRef(false);
   const isListeningRef = useRef(false);
   const botStateRef = useRef<"idle" | "thinking" | "speaking">("idle");
-  const PROACTIVE_INACTIVITY_MS = 15000;
-  const PROACTIVE_AFTER_BOT_TURNS = 1;
-  const PROACTIVE_MAX_PER_SESSION = 3;
 
   useEffect(() => {
     isListeningRef.current = isListening;
@@ -1044,63 +1033,7 @@ const isSentenceEnd = (text: string) => {
   return /[。！？.!?]/.test(text);
 };
 
-const clearProactiveTimer = () => {
-  if (proactiveTimerRef.current) {
-    window.clearTimeout(proactiveTimerRef.current);
-    proactiveTimerRef.current = null;
-  }
-};
-
-const pushProactiveQuestion = () => {
-  const candidates = [
-    "你想我先幫你整理重點，還是直接給你下一步建議？",
-    "如果你願意，我可以先問你兩個關鍵問題再給最貼合的答案。",
-    "我可以繼續幫你拆解，你想先從哪一部分開始？",
-  ];
-  const text = candidates[proactiveCountRef.current % candidates.length];
-  setMessages((prev) => [...prev, { role: "bot", content: text }]);
-  if (voicePlaybackEnabledRef.current) {
-    setIsStopAvailable(true);
-    enqueueSpeak(text);
-  }
-  proactiveCountRef.current += 1;
-  botTurnsSinceUserRef.current = PROACTIVE_AFTER_BOT_TURNS;
-  if (proactiveCountRef.current < PROACTIVE_MAX_PER_SESSION) {
-    scheduleProactiveCheck();
-  }
-};
-
-const scheduleProactiveCheck = () => {
-  clearProactiveTimer();
-  proactiveTimerRef.current = window.setTimeout(() => {
-    const shouldTrigger =
-      hasUserSpokenRef.current &&
-      botTurnsSinceUserRef.current >= PROACTIVE_AFTER_BOT_TURNS &&
-      proactiveCountRef.current < PROACTIVE_MAX_PER_SESSION &&
-      !shouldShowBooting &&
-      !isListeningRef.current &&
-      botStateRef.current !== "thinking";
-
-    if (!shouldTrigger) return;
-    pushProactiveQuestion();
-  }, PROACTIVE_INACTIVITY_MS);
-};
-
-const countSentenceLike = (text: string) => {
-  const matches = text.match(/[。！？.!?]/g);
-  return Math.max(1, matches ? matches.length : 0);
-};
-
-const handleBotTurnCommitted = (text: string) => {
-  if (!hasUserSpokenRef.current) return;
-  botTurnsSinceUserRef.current += countSentenceLike(text);
-  if (botTurnsSinceUserRef.current >= PROACTIVE_AFTER_BOT_TURNS) {
-    scheduleProactiveCheck();
-  }
-};
-
 const stopAllSpeech = () => {
-  clearProactiveTimer();
   generationIdRef.current += 1;
   ttsSessionRef.current += 1;
   activeRequestController.current?.abort();
@@ -1139,9 +1072,6 @@ const sendMessage = async (forcedText?: string) => {
   const textToSend = (forcedText ?? inputText).trim();
   if (!textToSend) return;
 
-  hasUserSpokenRef.current = true;
-  botTurnsSinceUserRef.current = 0;
-  clearProactiveTimer();
   stopAllSpeech();
   setIsStopAvailable(true);
   const userMsg = textToSend;
@@ -1288,9 +1218,6 @@ const sendMessage = async (forcedText?: string) => {
 
     await displayChain;
     if (currentGenId !== generationIdRef.current) return;
-    if (committedReply.trim()) {
-      handleBotTurnCommitted(committedReply);
-    }
     setBotState((current) => (current === "thinking" ? "idle" : current));
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") return;

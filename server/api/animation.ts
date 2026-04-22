@@ -159,7 +159,7 @@ router.post("/studio-task", requireAuth, async (req: Request, res: Response) => 
   try {
     const authUser = getAuthUser(req);
     const sourceImageUrl = String(req.body?.sourceImageUrl || "").trim();
-    const preset = String(req.body?.preset || "cinematic").trim();
+    const preset = String(req.body?.preset || "big_movement").trim();
     const sourceAspectRatio = String(req.body?.sourceAspectRatio || "").trim() || null;
     if (!sourceImageUrl) {
       return res.status(400).json({ error: "Missing sourceImageUrl" });
