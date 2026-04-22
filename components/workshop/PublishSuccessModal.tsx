@@ -95,7 +95,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     originX: number;
     originY: number;
   } | null>(null);
-  const canEditBot = readAuthSession()?.user?.email?.trim().toLowerCase() === "lzm200303@gmail.com";
+  const canEditBot = Boolean(readAuthSession()?.user?.id);
   const pinchStateRef = useRef<{
     distance: number;
     scale: number;
