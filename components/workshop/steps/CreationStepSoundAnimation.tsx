@@ -445,6 +445,8 @@ export const CreationStepSoundAnimation = ({
   videoThinking,
   videoTalking,
   voiceId,
+  videoStudioTask,
+  onVideoStudioTaskChange,
   voicePreviewFeature,
   videoStudioFeature,
   consumeFeature,
@@ -665,6 +667,13 @@ export const CreationStepSoundAnimation = ({
               : `${videoStudioFeature.label} ${videoStudioFeature.used}/${videoStudioFeature.limit}`}
           </p>
         )}
+        {videoStudioTask && videoStudioTask.status !== "ready" && (
+          <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+            {videoStudioTask.status === "failed"
+              ? "影片工作室任務失敗，重新打開後可再試一次。"
+              : "影片正在背景生成中，你可以先繼續後面的步驟，稍後再回來查看進度。"}
+          </div>
+        )}
 
         <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
@@ -717,14 +726,16 @@ export const CreationStepSoundAnimation = ({
       {showStudio && (
         <VideoStudioModal
           avatarUrl={avatarUrl}
+          task={videoStudioTask}
           feature={videoStudioFeature}
           onConsumeFeature={consumeFeature}
           onFeatureRefresh={onFeatureRefresh}
           onClose={closeStudio}
+          onTaskChange={onVideoStudioTaskChange}
           onVideoProgress={(videos: any) => {
-            if (videos.idleUrl) updateConfig("videoIdle", videos.idleUrl);
-            if (videos.thinkingUrl) updateConfig("videoThinking", videos.thinkingUrl);
-            if (videos.speakingUrl) updateConfig("videoTalking", videos.speakingUrl);
+            if ("idleUrl" in videos) updateConfig("videoIdle", videos.idleUrl || "");
+            if ("thinkingUrl" in videos) updateConfig("videoThinking", videos.thinkingUrl || "");
+            if ("speakingUrl" in videos) updateConfig("videoTalking", videos.speakingUrl || "");
           }}
           onVideosGenerated={(videos: any) => {
             updateConfig("videoIdle", videos.idleUrl);

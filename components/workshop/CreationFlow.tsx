@@ -13,6 +13,15 @@ import type { FeatureEntitlement } from '../../hooks/useFeatureEntitlements';
 import { usePlatformDialog } from '../../hooks/usePlatformDialog';
 import { PlatformDialog } from '../system/PlatformDialog';
 
+type VideoStudioTask = {
+  id: string;
+  status: "pending" | "generating" | "remove_bg_done" | "ready" | "failed";
+  slots?: {
+    idle?: { status?: string; resultUrl?: string | null };
+    speaking?: { status?: string; resultUrl?: string | null };
+    thinking?: { status?: string; resultUrl?: string | null };
+  };
+};
 
 interface CreationFlowProps {
   onBack: () => void;
@@ -106,12 +115,80 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   const [isInitialPreviewOpen, setIsInitialPreviewOpen] = useState(!!botId);
   const [isPublishing, setIsPublishing] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [videoStudioTask, setVideoStudioTask] = useState<VideoStudioTask | null>(null);
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
   const featureMap = new Map(featureEntitlements.map((item) => [item.key, item]));
+  const previousVideoTaskStatusRef = React.useRef<string | null>(null);
 
   const updateConfig = <K extends keyof typeof botConfig>(key: K, value: typeof botConfig[K]) => {
     setBotConfig((prev) => ({ ...prev, [key]: value }));
   };
+
+  const parseKnowledgeBase = (knowledgeBase: string) => {
+    const bgMatch = knowledgeBase.match(/【人物背景設定】([\s\S]*?)【人物知識庫摘要】/);
+    const ksMatch = knowledgeBase.match(/【人物知識庫摘要】([\s\S]*?)(?:請根據「人物背景設定」與「知識庫摘要」回答問題，不要捏造不存在的資訊。)?$/);
+    return {
+      characterBackground: bgMatch?.[1]?.trim() || "",
+      knowledgeSummary: ksMatch?.[1]?.trim() || "",
+    };
+  };
+
+  useEffect(() => {
+    if (!videoStudioTask) return;
+    const idleUrl = videoStudioTask.slots?.idle?.resultUrl || "";
+    const thinkingUrl = videoStudioTask.slots?.thinking?.resultUrl || "";
+    const talkingUrl = videoStudioTask.slots?.speaking?.resultUrl || "";
+
+    if (idleUrl && idleUrl !== botConfig.videoIdle) updateConfig("videoIdle", idleUrl);
+    if (thinkingUrl && thinkingUrl !== botConfig.videoThinking) updateConfig("videoThinking", thinkingUrl);
+    if (talkingUrl && talkingUrl !== botConfig.videoTalking) updateConfig("videoTalking", talkingUrl);
+  }, [videoStudioTask]);
+
+  useEffect(() => {
+    if (!videoStudioTask?.id) return;
+    if (videoStudioTask.status === "ready" || videoStudioTask.status === "failed") return;
+
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetch(`${baseUrl}/api/video/studio-task/${videoStudioTask.id}`);
+        const data = await res.json().catch(() => null);
+        if (!cancelled && data?.task) {
+          setVideoStudioTask(data.task);
+        }
+      } catch {
+        // ignore polling failure
+      }
+    };
+
+    void poll();
+    const timer = window.setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [baseUrl, videoStudioTask?.id, videoStudioTask?.status]);
+
+  useEffect(() => {
+    const previousStatus = previousVideoTaskStatusRef.current;
+    const currentStatus = videoStudioTask?.status || null;
+    if (currentStatus === "ready" && previousStatus && previousStatus !== "ready") {
+      showAlert({
+        title: "影片生成完成",
+        message: "三段動畫已全部完成，現在可以發布了。",
+      });
+    }
+    previousVideoTaskStatusRef.current = currentStatus;
+  }, [videoStudioTask?.status, showAlert]);
+
+  const videosReady =
+    botConfig.videoIdle.trim().length > 0 &&
+    botConfig.videoThinking.trim().length > 0 &&
+    botConfig.videoTalking.trim().length > 0;
+  const videoTaskInProgress =
+    Boolean(videoStudioTask?.id) &&
+    videoStudioTask?.status !== "ready" &&
+    videoStudioTask?.status !== "failed";
 
   const stepValidationRules = [
     {
@@ -125,10 +202,10 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
     {
       isValid:
         botConfig.voiceId.trim().length > 0 &&
-        botConfig.videoIdle.trim().length > 0 &&
-        botConfig.videoThinking.trim().length > 0 &&
-        botConfig.videoTalking.trim().length > 0,
-      reason: "請先完成音色與三段動畫影片。",
+        (videosReady || videoTaskInProgress),
+      reason: videoTaskInProgress
+        ? "動畫正在背景生成中，你可以先繼續下一步。"
+        : "請先完成音色與三段動畫影片。",
     },
     {
       isValid: botConfig.knowledgeBase.trim().length > 0,
@@ -146,9 +223,10 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   const currentStepRule = stepValidationRules[currentStep - 1];
   const canProceed = Boolean(currentStepRule?.isValid);
   const isAllStepsValid = firstInvalidStepIndex === -1;
+  const canPublish = isAllStepsValid && videosReady;
 
   const handlePublish = async () => {
-    if (!isAllStepsValid || isPublishing) return;
+    if (!canPublish || isPublishing) return;
     setActionError("");
     setIsPublishing(true);
     try {
@@ -257,6 +335,8 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
             videoThinking={botConfig.videoThinking}
             videoTalking={botConfig.videoTalking}
             voiceId={botConfig.voiceId}
+            videoStudioTask={videoStudioTask}
+            onVideoStudioTaskChange={setVideoStudioTask}
             voicePreviewFeature={featureMap.get("voice_audition_preview")}
             videoStudioFeature={featureMap.get("video_studio_generate")}
             consumeFeature={consumeFeature}
@@ -267,6 +347,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       case 4:
         return (
           <CreationStep2
+            initialData={parseKnowledgeBase(botConfig.knowledgeBase)}
             onGenerated={(data) => {
               const combined = `
 【人物背景設定】
@@ -488,7 +569,7 @@ const handleDeleteBot = async () => {
                 }
                 void handlePublish();
               }}
-              disabled={!isAllStepsValid || isPublishing}
+              disabled={!canPublish || isPublishing}
               className={`px-6 py-3 rounded-xl text-sm font-semibold disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed ${
                 !botId && featureMap.get("bot_publish")?.locked
                   ? "bg-slate-200 text-slate-500"
@@ -502,9 +583,11 @@ const handleDeleteBot = async () => {
                 創建角色 {featureMap.get("bot_publish")?.used}/{featureMap.get("bot_publish")?.limit}
               </p>
             )}
-            {!isAllStepsValid && (
+            {!canPublish && (
               <p className="text-xs text-amber-600">
-                尚有未完成步驟，請先完成第 {firstInvalidStep} 步。
+                {videoTaskInProgress
+                  ? "三段動畫仍在背景生成中，完成後才可發布。"
+                  : `尚有未完成步驟，請先完成第 ${firstInvalidStep} 步。`}
               </p>
             )}
           </div>

@@ -4,10 +4,12 @@ import fetch from "node-fetch";
 import { assertUserCanSpend, consumeUserCredits, getAuthUser, requireAuth } from "../lib/platform-auth.ts";
 import {
   createVideoStudioTask,
+  getVideoStudioTaskById,
   getLatestVideoStudioTask,
   updateVideoStudioTaskSlot,
   type VideoStudioSlotKey,
 } from "../lib/video-studio-tasks.ts";
+import { isVideoStudioTaskRunning, startVideoStudioTask } from "../lib/video-studio-runner.ts";
 
 /* =======================================================
    类型定义
@@ -155,6 +157,20 @@ router.get("/studio-task/latest", requireAuth, async (req: Request, res: Respons
   }
 });
 
+router.get("/studio-task/:id", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const authUser = getAuthUser(req);
+    const task = await getVideoStudioTaskById(req.params.id, authUser!.id);
+    if (!task) {
+      return res.status(404).json({ error: "task not found" });
+    }
+    return res.json({ task, running: isVideoStudioTaskRunning(task.id) });
+  } catch (err: any) {
+    console.error("❌ Studio task load failed:", err.message);
+    return res.status(500).json({ error: "failed to load studio task" });
+  }
+});
+
 router.post("/studio-task", requireAuth, async (req: Request, res: Response) => {
   try {
     const authUser = getAuthUser(req);
@@ -198,6 +214,29 @@ router.patch("/studio-task/:id/slot", requireAuth, async (req: Request, res: Res
   } catch (err: any) {
     console.error("❌ Studio task patch failed:", err.message);
     return res.status(500).json({ error: "failed to update studio task" });
+  }
+});
+
+router.post("/studio-task/:id/start", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const authUser = getAuthUser(req);
+    const testMode = Boolean(req.body?.testMode);
+    const task = await getVideoStudioTaskById(req.params.id, authUser!.id);
+    if (!task) {
+      return res.status(404).json({ error: "task not found" });
+    }
+    if (task.status === "ready") {
+      return res.json({ task, running: false });
+    }
+    startVideoStudioTask(task.id, authUser!.id, {
+      skipCreditConsumption: testMode,
+      simulateHintVideos: testMode,
+    });
+    const refreshed = await getVideoStudioTaskById(req.params.id, authUser!.id);
+    return res.status(202).json({ task: refreshed, running: true, testMode });
+  } catch (err: any) {
+    console.error("❌ Studio task start failed:", err.message);
+    return res.status(500).json({ error: "failed to start studio task" });
   }
 });
 

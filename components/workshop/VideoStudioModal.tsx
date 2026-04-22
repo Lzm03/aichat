@@ -13,9 +13,15 @@ import { API_BASE } from "../../utils/api";
 interface Props {
   onClose: () => void;
   avatarUrl: string;
+  task?: {
+    id: string;
+    status: string;
+    slots?: Record<string, any>;
+  } | null;
   feature?: FeatureEntitlement;
   onConsumeFeature?: (key: string, amount?: number, meta?: Record<string, unknown>) => Promise<any>;
   onFeatureRefresh?: () => Promise<any>;
+  onTaskChange?: (task: any) => void;
   onVideoProgress?: (videos: {
     idleUrl?: string;
     speakingUrl?: string;
@@ -34,6 +40,57 @@ const HINT_VIDEO_SLOTS = {
   thinking: "/hint-videos/thinking.mp4",
 } as const;
 
+const isSequenceManifest = (url?: string | null) =>
+  Boolean(url && /\/manifest\.json(\?|$)/i.test(url));
+
+const SequenceOrVideo: React.FC<{ src: string }> = ({ src }) => {
+  const [manifest, setManifest] = useState<any>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!isSequenceManifest(src)) {
+      setManifest(null);
+      return;
+    }
+    (async () => {
+      try {
+        const res = await fetch(src);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (active) setManifest(data);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [src]);
+
+  if (isSequenceManifest(src) && manifest) {
+    return (
+      <SequencePngPlayer
+        folderUrl={manifest.folderUrl}
+        pattern={manifest.pattern}
+        frameCount={manifest.frameCount}
+        fps={manifest.fps}
+        className="w-full h-[260px] object-contain rounded-xl"
+        active={true}
+      />
+    );
+  }
+
+  return (
+    <video
+      className="w-full h-[260px] object-contain rounded-xl"
+      autoPlay
+      muted
+      loop
+      src={src}
+    />
+  );
+};
+
 /* Convert blob: URL → Base64 */
 async function blobUrlToBase64(blobUrl: string): Promise<string> {
   const response = await fetch(blobUrl);
@@ -48,9 +105,11 @@ async function blobUrlToBase64(blobUrl: string): Promise<string> {
 export default function VideoStudioModal({
   onClose,
   avatarUrl,
+  task,
   feature,
   onConsumeFeature,
   onFeatureRefresh,
+  onTaskChange,
   onVideoProgress,
   onVideosGenerated,
 }: Props) {
@@ -62,28 +121,17 @@ export default function VideoStudioModal({
     | "remove_bg_done"
     | "ready";
   type PreviewSlotKey = "idle" | "speaking" | "thinking";
-  const presetOptions = [
-    {
-      id: "big_movement",
-      label: "Big Movement",
-      hint: "動作幅度更明顯",
-      stylePrompt: "動作風格採用大動作版本，肢體與表情變化更明顯，但人物位置、鏡頭和綠幕背景仍需保持穩定一致。",
-    },
-    {
-      id: "small_movement",
-      label: "Small Movement",
-      hint: "動作幅度更克制",
-      stylePrompt: "動作風格採用小動作版本，以細微表情、口型和輕度姿態變化為主，整體更穩定克制。",
-    },
-  ] as const;
+  const FIXED_PRESET = "small_movement";
+  const FIXED_STYLE_PROMPT =
+    "動作風格採用小動作版本，以細微表情、口型和輕度姿態變化為主，整體更穩定克制。";
   const phaseMilestones = [18, 33, 48, 63, 78, 93];
 
   // ===== 左侧面板 UI =====
-  const [preset, setPreset] = useState("big_movement");
   const [sourceAspectRatio, setSourceAspectRatio] = useState<string>("16:9");
   const [videoSourceImage, setVideoSourceImage] = useState<string>("");
   const [videoSourceRemoteUrl, setVideoSourceRemoteUrl] = useState<string>("");
   const [studioTaskId, setStudioTaskId] = useState<string | null>(null);
+  const [activeTask, setActiveTask] = useState<any>(task || null);
 
   // ===== Loading 状态 =====
   const [progress, setProgress] = useState(0);
@@ -114,9 +162,23 @@ export default function VideoStudioModal({
   const [hintPosition, setHintPosition] = useState({ top: 0, left: 0 });
   const { dialog, closeDialog, showAlert, showConfirm } = usePlatformDialog();
   const hintButtonRef = useRef<HTMLButtonElement | null>(null);
+  const lastTaskIdRef = useRef<string | null>(task?.id || null);
+  const onVideoProgressRef = useRef(onVideoProgress);
+  const onVideosGeneratedRef = useRef(onVideosGenerated);
   const isUnlimitedFeature = Boolean(feature?.unlimited);
+  const PROGRESS_REFRESH_MS = 300;
+  const SLOT_ESTIMATE_MS = 90000;
 
   useBodyScrollLock(true);
+
+  useEffect(() => {
+    const nextTaskId = task?.id || null;
+    if (nextTaskId !== lastTaskIdRef.current) {
+      setActiveTask(task || null);
+      setStudioTaskId(nextTaskId);
+      lastTaskIdRef.current = nextTaskId;
+    }
+  }, [task?.id]);
 
   const baseUrl = API_BASE;
   const SUPPORTED_ASPECTS = new Set(["16:9", "9:16", "1:1"]);
@@ -158,6 +220,83 @@ export default function VideoStudioModal({
     setVideoSourceImage(avatarUrl || "");
     setVideoSourceRemoteUrl(avatarUrl || "");
   }, [avatarUrl]);
+
+  useEffect(() => {
+    onVideoProgressRef.current = onVideoProgress;
+  }, [onVideoProgress]);
+
+  useEffect(() => {
+    onVideosGeneratedRef.current = onVideosGenerated;
+  }, [onVideosGenerated]);
+
+  useEffect(() => {
+    if (!activeTask) return;
+
+    const nextTaskId = activeTask.id || null;
+    setStudioTaskId((prev) => (prev === nextTaskId ? prev : nextTaskId));
+    const nextIdle = activeTask.slots?.idle?.resultUrl || null;
+    const nextSpeaking = activeTask.slots?.speaking?.resultUrl || null;
+    const nextThinking = activeTask.slots?.thinking?.resultUrl || null;
+
+    setIdleWebm((prev) => (prev === nextIdle ? prev : nextIdle));
+    setSpeakingWebm((prev) => (prev === nextSpeaking ? prev : nextSpeaking));
+    setThinkingWebm((prev) => (prev === nextThinking ? prev : nextThinking));
+    setPreviewStatus((prev) => {
+      const next = {
+        idle: activeTask.slots?.idle?.status || "waiting",
+        speaking: activeTask.slots?.speaking?.status || "waiting",
+        thinking: activeTask.slots?.thinking?.status || "waiting",
+      };
+      if (
+        prev.idle === next.idle &&
+        prev.speaking === next.speaking &&
+        prev.thinking === next.thinking
+      ) {
+        return prev;
+      }
+      return next;
+    });
+
+    onVideoProgressRef.current?.({
+      idleUrl: nextIdle || undefined,
+      speakingUrl: nextSpeaking || undefined,
+      thinkingUrl: nextThinking || undefined,
+    });
+
+    if (nextIdle && nextSpeaking && nextThinking && activeTask.status === "ready") {
+      onVideosGeneratedRef.current?.({
+        idleUrl: nextIdle,
+        speakingUrl: nextSpeaking,
+        thinkingUrl: nextThinking,
+      });
+    }
+  }, [activeTask]);
+
+  useEffect(() => {
+    if (!activeTask?.id) return;
+    if (activeTask.status === "ready" || activeTask.status === "failed") return;
+
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/video/studio-task/${activeTask.id}`);
+        const data = await res.json().catch(() => null);
+        if (!cancelled && data?.task) {
+          setActiveTask(data.task);
+          onTaskChange?.(data.task);
+        }
+      } catch {
+        // ignore polling failure
+      }
+    };
+
+    void poll();
+    const timer = window.setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [activeTask?.id, activeTask?.status, onTaskChange]);
 
   useLayoutEffect(() => {
     if (!showHint || !hintButtonRef.current) return;
@@ -231,6 +370,87 @@ export default function VideoStudioModal({
     progressRef.current = progress;
   }, [progress]);
 
+  const getLiveProgressFromTask = (taskData: any, nowTs = Date.now()) => {
+    const slots = taskData?.slots || {};
+    const slotOrder: PreviewSlotKey[] = ["idle", "speaking", "thinking"];
+    const perSlot = 33;
+    let nextProgress = 0;
+    let currentLabel = "準備中";
+
+    for (const key of slotOrder) {
+      const slot = slots[key];
+      const status = slot?.status;
+
+      if (status === "ready" || status === "remove_bg_done") {
+        nextProgress += perSlot;
+        continue;
+      }
+
+      if (status === "generating") {
+        const updatedAtTs = slot?.updatedAt ? new Date(slot.updatedAt).getTime() : nowTs;
+        const elapsed = Math.max(0, nowTs - updatedAtTs);
+        const t = Math.min(1, elapsed / SLOT_ESTIMATE_MS);
+        // generating phase advances smoothly within this slot, reserves final part for completion handoff
+        const inSlotProgress = Math.floor(6 + t * 24); // 6..30
+        nextProgress += inSlotProgress;
+        currentLabel = `正在生成 ${key} 動畫`;
+        break;
+      }
+
+      if (status === "failed") {
+        currentLabel = "生成失敗";
+        break;
+      }
+
+      currentLabel = `等待 ${key} 動畫`;
+      break;
+    }
+
+    if (taskData?.status === "ready") {
+      nextProgress = 100;
+      currentLabel = "三段動畫已完成";
+    } else if (taskData?.status === "failed") {
+      currentLabel = "背景任務失敗";
+    }
+
+    return {
+      progress: Math.max(0, Math.min(100, nextProgress)),
+      label: currentLabel,
+    };
+  };
+
+  useEffect(() => {
+    if (!activeTask) {
+      setLoading(false);
+      if (!(idleWebm || speakingWebm || thinkingWebm)) {
+        setProgress(0);
+        progressRef.current = 0;
+      }
+      return;
+    }
+
+    const initial = getLiveProgressFromTask(activeTask, Date.now());
+    setProgress(initial.progress);
+    progressRef.current = initial.progress;
+    setLoadingText(initial.label);
+    setLoading(activeTask.status !== "ready" && activeTask.status !== "failed");
+
+    if (activeTask.status === "ready" || activeTask.status === "failed") {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      const live = getLiveProgressFromTask(activeTask, Date.now());
+      setProgress((prev) => (live.progress === prev ? prev : live.progress));
+      progressRef.current = live.progress;
+      setLoadingText((prev) => (prev === live.label ? prev : live.label));
+    }, PROGRESS_REFRESH_MS);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [activeTask, idleWebm, speakingWebm, thinkingWebm]);
+
   function clearPhaseTimer() {
     if (phaseTimerRef.current) {
       clearInterval(phaseTimerRef.current);
@@ -295,7 +515,7 @@ export default function VideoStudioModal({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         sourceImageUrl: videoSourceRemoteUrl,
-        preset,
+        preset: FIXED_PRESET,
         sourceAspectRatio,
       }),
     });
@@ -327,9 +547,6 @@ export default function VideoStudioModal({
     thinking: "角色必須原地站定，雙腳固定在同一位置，禁止走動、踏步、位移、轉身移位。角色做出思考動作（抬頭、皱眉、輕微眼球運動）即可。相機固定鎖死，不前後移動、不左右平移、不縮放、不搖鏡。禁止鏡頭動畫，僅允許角色頭部小幅度動作。背景必須始終為純亮綠色綠幕（chroma key green, RGB 0,255,0 附近），整個背景單一純色、均勻填滿、無漸層、無紋理、無雜訊、無陰影、無反光、無光斑、無景深模糊、無任何背景物件。人物身上不得出現綠色溢色、綠色反射或綠邊。人物邊緣清晰完整，頭髮絲、手指、衣服輪廓清楚可分割。",
   };
 
-  const selectedPreset =
-    presetOptions.find((item) => item.id === preset) || presetOptions[0];
-
   /* ========= Step 1: 生成原始动画 ========= */
   async function requestOneVideo(type: "idle" | "speaking" | "thinking", taskId: string) {
     setLoadingText(`正在生成：${type} 原始視頻...`);
@@ -350,11 +567,11 @@ export default function VideoStudioModal({
     const selectedAspectRatio = normalizeAspectRatioForApi(rawAspectRatio);
 
     const payload = {
-      prompt: `${selectedPreset.stylePrompt} ${prompts[type]}`,
+      prompt: `${FIXED_STYLE_PROMPT} ${prompts[type]}`,
       duration: "2",
       aspectRatio: selectedAspectRatio,
       resolution: "480p",
-      preset,
+      preset: FIXED_PRESET,
       imageUrl: img,
     };
 
@@ -538,8 +755,8 @@ export default function VideoStudioModal({
   }
 
   /* ========= Step 4: 完整流程 一键生成所有动画 ========= */
-  async function generateAll() {
-    if (!isUnlimitedFeature && (feature?.locked || featureConsumed)) {
+  async function generateAll(testMode = false) {
+    if (!testMode && !isUnlimitedFeature && (feature?.locked || featureConsumed)) {
       showAlert({
         title: "影片工作室已用完",
         message: feature?.upgradeMessage || "免費版影片工作室次數已用完，請升級到付費版。",
@@ -553,11 +770,8 @@ export default function VideoStudioModal({
       });
       return;
     }
-    cancelRef.current = false;
     setLoading(true);
-    setProgress(1);
-    progressRef.current = 1;
-    setPhaseIndex(0);
+    setLoadingText(testMode ? "測試模式已啟動，不扣 token。" : "背景生成已啟動，稍後會持續更新進度。");
 
     try {
       const idleDone = isSlotFinished("idle", idleWebm, previewStatus.idle);
@@ -574,66 +788,46 @@ export default function VideoStudioModal({
           speaking: "waiting",
           thinking: "waiting",
         });
+        setActiveTask(null);
+        onTaskChange?.(null);
+        onVideoProgress?.({
+          idleUrl: "",
+          speakingUrl: "",
+          thinkingUrl: "",
+        });
       }
 
       const taskId = await ensureStudioTask(restartingFresh);
-      await continueTaskFlow(taskId, { resetFinished: restartingFresh });
-
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      setProgress(100);
-      progressRef.current = 100;
-      if (!isUnlimitedFeature && !featureConsumed) {
-        setFeatureConsumed(true);
+      const startRes = await fetch(`${API_BASE}/api/video/studio-task/${taskId}/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ testMode }),
+      });
+      const startData = await startRes.json().catch(() => null);
+      if (!startRes.ok || !startData?.task) {
+        throw new Error(startData?.error || "failed to start video studio task");
       }
 
+      setActiveTask(startData.task);
+      onTaskChange?.(startData.task);
+      setProgress(8);
+      progressRef.current = 8;
+      if (!testMode && !isUnlimitedFeature && !featureConsumed) {
+        setFeatureConsumed(true);
+      }
       setLoading(false);
     } catch (error) {
       console.error("生成失败", error);
-      clearPhaseTimer();
       setLoading(false);
-      if (!cancelRef.current) {
-        showAlert({
-          title: "生成失敗",
-          message: "影片生成失敗，請稍後再試。",
-          tone: "danger",
-        });
-      }
+      showAlert({
+        title: "生成失敗",
+        message: error instanceof Error ? error.message : "影片生成失敗，請稍後再試。",
+        tone: "danger",
+      });
     }
-  }
-
-  function handleCancelGenerating() {
-    cancelRef.current = true;
-    clearPhaseTimer();
-    setLoading(false);
-  }
-
-  function requestCancelGenerating() {
-    if (!loading) return;
-    showConfirm({
-      title: "取消生成？",
-      message: "目前正在生成影片，現在取消會中止這次流程，已完成的進度不會保留。",
-      confirmText: "確認取消",
-      cancelText: "繼續生成",
-      tone: "danger",
-      onConfirm: handleCancelGenerating,
-    });
   }
 
   function requestClose() {
-    if (loading) {
-      showConfirm({
-        title: "關閉影片工作室？",
-        message: "影片仍在生成中，現在關閉會中止這次流程。",
-        confirmText: "確認關閉",
-        cancelText: "繼續生成",
-        tone: "danger",
-        onConfirm: () => {
-          handleCancelGenerating();
-          onClose();
-        },
-      });
-      return;
-    }
     onClose();
   }
 
@@ -651,57 +845,6 @@ export default function VideoStudioModal({
     onClose();
   }
 
-  const isSequenceManifest = (url?: string | null) =>
-    Boolean(url && /\/manifest\.json(\?|$)/i.test(url));
-
-  const SequenceOrVideo = ({ src }: { src: string }) => {
-    const [manifest, setManifest] = useState<any>(null);
-
-    useEffect(() => {
-      let active = true;
-      if (!isSequenceManifest(src)) {
-        setManifest(null);
-        return;
-      }
-      (async () => {
-        try {
-          const res = await fetch(src);
-          if (!res.ok) return;
-          const data = await res.json();
-          if (active) setManifest(data);
-        } catch {
-          // ignore
-        }
-      })();
-      return () => {
-        active = false;
-      };
-    }, [src]);
-
-    if (isSequenceManifest(src) && manifest) {
-      return (
-        <SequencePngPlayer
-          folderUrl={manifest.folderUrl}
-          pattern={manifest.pattern}
-          frameCount={manifest.frameCount}
-          fps={manifest.fps}
-          className="w-full h-[260px] object-contain rounded-xl"
-          active={true}
-        />
-      );
-    }
-
-    return (
-      <video
-        className="w-full h-[260px] object-contain rounded-xl"
-        autoPlay
-        muted
-        loop
-        src={src}
-      />
-    );
-  };
-
   const previewCards: Array<{
     key: PreviewSlotKey;
     title: string;
@@ -712,7 +855,7 @@ export default function VideoStudioModal({
     { key: "thinking", title: "Thinking", src: thinkingWebm },
   ];
 
-  const hasPreviewStage = loading || Boolean(idleWebm || speakingWebm || thinkingWebm);
+  const hasPreviewStage = loading || Boolean(activeTask || idleWebm || speakingWebm || thinkingWebm);
 
   /* ========= UI ========= */
   return (
@@ -772,37 +915,10 @@ export default function VideoStudioModal({
             </div>
           </div>
 
-          {/* 风格 */}
-          <div className="mt-6">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <label className="text-sm font-semibold tracking-[0.01em] text-[#334155]">風格</label>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {presetOptions.map((option) => (
-                <button
-                  key={option.id}
-                  className={`rounded-[22px] px-4 py-4 text-left transition-all ${
-                    preset === option.id
-                      ? "border border-[#3B82F6] bg-[#2563EB] text-white shadow-[0_14px_28px_rgba(37,99,235,0.24)]"
-                      : "border border-[#E2E8F0] bg-white text-[#334155] shadow-[0_8px_18px_rgba(15,23,42,0.04)] hover:border-[#CBD5E1] hover:bg-[#F8FBFF]"
-                  }`}
-                  onClick={() => setPreset(option.id)}
-                >
-                  <div className="text-base font-bold tracking-[-0.02em] leading-5">{option.label}</div>
-                  <div className={`mt-1 text-xs leading-5 ${
-                    preset === option.id ? "text-white/85" : "text-[#64748B]"
-                  }`}>
-                    {option.hint}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* 按钮 */}
           <div className="mt-7 border-t border-[#E2E8F0] pt-5">
             <button
-              onClick={generateAll}
+              onClick={() => generateAll(false)}
               className={`w-full py-3 rounded-xl font-semibold ${
                 loading || (!isUnlimitedFeature && (featureConsumed || feature?.locked)) || !videoSourceImage
                   ? "bg-slate-200 text-slate-500"
@@ -811,6 +927,17 @@ export default function VideoStudioModal({
             >
             生成三種動畫
             </button>
+            {/* <button
+              onClick={() => generateAll(true)}
+              disabled={loading || !videoSourceImage}
+              className={`mt-3 w-full py-3 rounded-xl font-semibold ${
+                loading || !videoSourceImage
+                  ? "border border-slate-200 bg-slate-100 text-slate-400"
+                  : "border border-[#BFDBFE] bg-white text-[#2563EB] hover:bg-[#EFF6FF]"
+              }`}
+            >
+              測試後台生成（不扣 token）
+            </button> */}
             {!videoSourceImage && (
               <div className="mt-2 text-xs leading-5 text-[#64748B]">
                 請先在上方上傳一張專門用來生成影片的人物照片。
@@ -819,14 +946,13 @@ export default function VideoStudioModal({
 
             <button
               onClick={handleSaveAndClose}
-              disabled={loading}
               className={`mt-3 w-full py-3 rounded-xl font-semibold ${
                 canSave
                   ? "bg-emerald-600 text-white hover:bg-emerald-700"
                   : "border"
-              } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
+              }`}
             >
-              {canSave ? "保存並返回" : "關閉"}
+              {canSave ? "保存並返回" : loading ? "先關閉，去做別的步驟" : "關閉"}
             </button>
           </div>
         </aside>
@@ -843,12 +969,9 @@ export default function VideoStudioModal({
                     </div>
                     <div className="mt-1 text-xs text-[#64748B]">{loadingText}</div>
                   </div>
-                  <button
-                    onClick={requestCancelGenerating}
-                    className="rounded-full border border-[#E2E8F0] px-4 py-2 text-sm font-semibold text-[#475569] transition hover:bg-[#F8FAFC]"
-                  >
-                    取消
-                  </button>
+                  <div className="rounded-full border border-[#E2E8F0] px-4 py-2 text-sm font-semibold text-[#475569]">
+                    可先關閉，背景繼續生成
+                  </div>
                 </div>
               )}
 

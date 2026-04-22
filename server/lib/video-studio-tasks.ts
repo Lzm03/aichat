@@ -128,42 +128,59 @@ export async function updateVideoStudioTaskSlot(params: {
   patch: Partial<VideoStudioTaskSlot>;
   taskStatus?: VideoStudioTask["status"];
 }) {
-  const existing = await getVideoStudioTaskById(params.taskId, params.userId);
-  if (!existing) return null;
+  await ensurePlatformTables();
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const currentResult = await client.query(
+      `SELECT * FROM video_studio_tasks WHERE id=$1 AND user_id=$2 FOR UPDATE`,
+      [params.taskId, params.userId]
+    );
+    const existing = normalizeTask(currentResult.rows[0]);
+    if (!existing) {
+      await client.query("ROLLBACK");
+      return null;
+    }
 
-  const nextSlots = {
-    ...existing.slots,
-    [params.slotKey]: {
-      ...existing.slots[params.slotKey],
-      ...params.patch,
-      updatedAt: new Date().toISOString(),
-    },
-  };
+    const nextSlots = {
+      ...existing.slots,
+      [params.slotKey]: {
+        ...existing.slots[params.slotKey],
+        ...params.patch,
+        updatedAt: new Date().toISOString(),
+      },
+    };
 
-  const slotStatuses = Object.values(nextSlots).map((slot) => slot.status);
-  const inferredStatus =
-    params.taskStatus ||
-    (slotStatuses.every((status) => status === "ready" || status === "remove_bg_done")
-      ? "ready"
-      : slotStatuses.some((status) => status === "failed")
-      ? "failed"
-      : slotStatuses.some((status) => status === "remove_bg_done")
-      ? "remove_bg_done"
-      : slotStatuses.some((status) => status === "generating")
-      ? "generating"
-      : "pending");
+    const slotStatuses = Object.values(nextSlots).map((slot) => slot.status);
+    const inferredStatus =
+      params.taskStatus ||
+      (slotStatuses.every((status) => status === "ready" || status === "remove_bg_done")
+        ? "ready"
+        : slotStatuses.some((status) => status === "failed")
+        ? "failed"
+        : slotStatuses.some((status) => status === "remove_bg_done")
+        ? "remove_bg_done"
+        : slotStatuses.some((status) => status === "generating")
+        ? "generating"
+        : "pending");
 
-  const completedAt = inferredStatus === "ready" ? new Date().toISOString() : null;
-
-  const result = await pool.query(
-    `UPDATE video_studio_tasks
-     SET slots=$1::jsonb,
-         status=$2,
-         completed_at=$3,
-         updated_at=NOW()
-     WHERE id=$4 AND user_id=$5
-     RETURNING *`,
-    [JSON.stringify(nextSlots), inferredStatus, completedAt, params.taskId, params.userId]
-  );
-  return normalizeTask(result.rows[0]);
+    const completedAt = inferredStatus === "ready" ? new Date().toISOString() : null;
+    const result = await client.query(
+      `UPDATE video_studio_tasks
+       SET slots=$1::jsonb,
+           status=$2,
+           completed_at=$3,
+           updated_at=NOW()
+       WHERE id=$4 AND user_id=$5
+       RETURNING *`,
+      [JSON.stringify(nextSlots), inferredStatus, completedAt, params.taskId, params.userId]
+    );
+    await client.query("COMMIT");
+    return normalizeTask(result.rows[0]);
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }

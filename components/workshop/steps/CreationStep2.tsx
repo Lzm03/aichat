@@ -13,10 +13,14 @@ interface CreationStep2Props {
     characterBackground: string;
     knowledgeSummary: string;
   }) => void;
+  initialData?: {
+    characterBackground?: string;
+    knowledgeSummary?: string;
+  };
   knowledgeFeature?: FeatureEntitlement;
 }
 
-export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, knowledgeFeature }) => {
+export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, knowledgeFeature }) => {
   const KNOWLEDGE_TEXT_LIMIT = 100;
   const [uploadMethod, setUploadMethod] = useState<UploadMethod>("file");
   const [file, setFile] = useState<File | null>(null);
@@ -26,8 +30,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, knowl
     "idle"
   );
 
-  const [characterBackground, setCharacterBackground] = useState("");
-  const [knowledgeSummary, setKnowledgeSummary] = useState("");
+  const [characterBackground, setCharacterBackground] = useState(initialData?.characterBackground || "");
+  const [knowledgeSummary, setKnowledgeSummary] = useState(initialData?.knowledgeSummary || "");
   const [progress, setProgress] = useState(0);
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
 
@@ -74,6 +78,15 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, knowl
     setStatus("idle");
     setProgress(0);
   };
+
+  useEffect(() => {
+    setCharacterBackground(initialData?.characterBackground || "");
+    setKnowledgeSummary(initialData?.knowledgeSummary || "");
+    if (initialData?.characterBackground || initialData?.knowledgeSummary) {
+      setStatus("complete");
+      setProgress(100);
+    }
+  }, [initialData?.characterBackground, initialData?.knowledgeSummary]);
 
   useEffect(() => {
     if (status !== "processing") return;

@@ -12,6 +12,7 @@ interface ChatPreviewProps {
     avatarUrl?: string;
     background: string;
     knowledgeBase: string;
+    securityPrompt?: string;
   };
 }
 
@@ -53,10 +54,13 @@ export const ChatPreview: React.FC<ChatPreviewProps> = ({
     const r = await fetch(`${baseUrl}/api/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ systemPrompt, userPrompt }),
+      body: JSON.stringify({ systemPrompt, userPrompt, stream: false }),
     });
 
-    const data = await r.json();
+    const data = await r.json().catch(() => null);
+    if (!r.ok) {
+      throw new Error(data?.error || `聊天請求失敗：${r.status}`);
+    }
     return data.reply;
   }
 
@@ -69,10 +73,17 @@ async function sendMessage() {
   const userMsg = { role: "user" as const, text };
   setMessages((prev) => [...prev, userMsg]);
 
-  const reply = await askLLM(botConfig.knowledgeBase, text);
-  const botMsg = { role: "bot" as const, text: reply };
-
-  setMessages((prev) => [...prev, botMsg]);
+  try {
+    const systemPrompt = [botConfig.knowledgeBase, botConfig.securityPrompt]
+      .filter(Boolean)
+      .join("\n");
+    const reply = await askLLM(systemPrompt, text);
+    const botMsg = { role: "bot" as const, text: reply || "（未收到回覆）" };
+    setMessages((prev) => [...prev, botMsg]);
+  } catch (error: any) {
+    const errText = error?.message || "發送失敗，請稍後再試。";
+    setMessages((prev) => [...prev, { role: "bot", text: errText }]);
+  }
 }
 
   return (
