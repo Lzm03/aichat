@@ -115,7 +115,6 @@ export const AuthPage: React.FC = () => {
         >
           <div className="mt-6">
             <div className="text-2xl font-black tracking-tight text-slate-900">歡迎回來</div>
-            <p className="mt-2 text-sm leading-6 text-slate-500">請使用管理員分配的帳戶登入。</p>
           </div>
 
           <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
