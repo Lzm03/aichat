@@ -88,6 +88,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
   const [selectedUserId, setSelectedUserId] = useState("");
   const [featureDrafts, setFeatureDrafts] = useState<Record<string, { used: string; limit: string }>>({});
   const [loadingAccounts, setLoadingAccounts] = useState(false);
+  const [creatingAccount, setCreatingAccount] = useState(false);
+  const [newAccountFullName, setNewAccountFullName] = useState("");
+  const [newAccountEmail, setNewAccountEmail] = useState("");
+  const [newAccountPassword, setNewAccountPassword] = useState("");
+  const [newAccountRole, setNewAccountRole] = useState<"teacher" | "student" | "admin">("teacher");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -302,6 +307,54 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
 
     if (nextUsed !== compareUsed || nextLimit !== feature.limit) {
       await updateFeature(userId, feature.key, nextUsed, nextLimit);
+    }
+  }
+
+  async function createManagedAccount() {
+    const session = readAuthSession();
+    if (!session?.token) {
+      setError("登入狀態已失效，請重新登入");
+      return;
+    }
+    if (!newAccountFullName.trim() || !newAccountEmail.trim() || !newAccountPassword) {
+      setError("請填寫完整的新帳戶資料");
+      return;
+    }
+    if (newAccountPassword.length < 8) {
+      setError("新帳戶密碼至少需要 8 個字元");
+      return;
+    }
+
+    setCreatingAccount(true);
+    setError("");
+    setMessage("");
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/admin/accounts`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.token}`,
+        },
+        body: JSON.stringify({
+          fullName: newAccountFullName.trim(),
+          email: newAccountEmail.trim().toLowerCase(),
+          password: newAccountPassword,
+          role: newAccountRole,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "建立帳戶失敗");
+
+      setNewAccountFullName("");
+      setNewAccountEmail("");
+      setNewAccountPassword("");
+      setNewAccountRole("teacher");
+      setMessage("已建立新帳戶");
+      await loadAccounts();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "建立帳戶失敗");
+    } finally {
+      setCreatingAccount(false);
     }
   }
 
@@ -687,6 +740,51 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                 </div>
 
                 <div className="mt-5 grid gap-4">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="text-sm font-bold text-slate-900">新增帳戶（僅管理員）</div>
+                    <div className="mt-1 text-xs text-slate-500">新使用者只能由管理員建立，前台不提供自助註冊。</div>
+                    <div className="mt-3 grid gap-3">
+                      <input
+                        type="text"
+                        value={newAccountFullName}
+                        onChange={(event) => setNewAccountFullName(event.target.value)}
+                        placeholder="姓名"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      />
+                      <input
+                        type="email"
+                        value={newAccountEmail}
+                        onChange={(event) => setNewAccountEmail(event.target.value)}
+                        placeholder="email@example.com"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      />
+                      <input
+                        type="password"
+                        value={newAccountPassword}
+                        onChange={(event) => setNewAccountPassword(event.target.value)}
+                        placeholder="初始密碼（至少8位）"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      />
+                      <select
+                        value={newAccountRole}
+                        onChange={(event) => setNewAccountRole(event.target.value as "teacher" | "student" | "admin")}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                      >
+                        <option value="teacher">教師</option>
+                        <option value="student">學生</option>
+                        <option value="admin">管理員</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => void createManagedAccount()}
+                        disabled={creatingAccount}
+                        className="w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-400"
+                      >
+                        {creatingAccount ? "建立中..." : "建立帳戶"}
+                      </button>
+                    </div>
+                  </div>
+
                   <select
                     value={selectedUserId}
                     onChange={(event) => setSelectedUserId(event.target.value)}

@@ -42,57 +42,7 @@ function issueAuthResponse(row: any) {
 }
 
 router.post("/register", async (req, res) => {
-  const fullName = String(req.body?.fullName || "").trim();
-  const email = String(req.body?.email || "").trim().toLowerCase();
-  const password = String(req.body?.password || "");
-  const role = String(req.body?.role || "teacher").trim() as AppRole;
-  const avatarUrl = String(req.body?.avatarUrl || "").trim();
-
-  if (!fullName || !email || !password) {
-    return res.status(400).json({ error: "fullName, email and password are required" });
-  }
-  if (!["teacher", "student", "admin"].includes(role)) {
-    return res.status(400).json({ error: "role must be teacher, student or admin" });
-  }
-  if (password.length < 8) {
-    return res.status(400).json({ error: "password must be at least 8 characters" });
-  }
-
-  try {
-    await ensurePlatformTables();
-    const existing = await findUserByEmail(email);
-    if (existing) {
-      return res.status(409).json({ error: "email already registered" });
-    }
-
-    const result = await pool.query(
-      `
-        INSERT INTO users (
-          id, full_name, email, role, avatar_url, preferences_json, password_hash,
-          status, plan_name, monthly_credit_limit, credit_balance, credit_used
-        )
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, 'active', 'starter', $8, $8, 0)
-        RETURNING id, full_name, email, role, avatar_url, preferences_json, created_at, status, plan_name, monthly_credit_limit, credit_balance, credit_used
-      `,
-      [
-        crypto.randomUUID(),
-        fullName,
-        email,
-        role,
-        avatarUrl || null,
-        JSON.stringify(DEFAULT_USER_PREFERENCES),
-        hashPassword(password),
-        DEFAULT_MONTHLY_CREDIT_LIMIT,
-      ]
-    );
-
-    await maybeAssignLegacyDataByEmail(email);
-
-    return res.status(201).json(issueAuthResponse(result.rows[0]));
-  } catch (error) {
-    console.error("POST /api/auth/register failed:", error);
-    return res.status(500).json({ error: "failed to register user" });
-  }
+  return res.status(403).json({ error: "public registration is disabled. contact administrator." });
 });
 
 router.post("/login", async (req, res) => {
@@ -308,6 +258,68 @@ router.get("/admin/accounts", async (req, res) => {
     return res.json({ accounts: await listAccountsForAdmin(payload.sub) });
   } catch (error) {
     return res.status((error as any)?.status || 500).json({ error: (error as any)?.message || "failed to load accounts" });
+  }
+});
+
+router.post("/admin/accounts", async (req, res) => {
+  const token = getBearerToken(req);
+  if (!token) return res.status(401).json({ error: "missing bearer token" });
+  const payload = verifyToken(token);
+  if (!payload) return res.status(401).json({ error: "invalid or expired token" });
+
+  const fullName = String(req.body?.fullName || "").trim();
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const password = String(req.body?.password || "");
+  const role = String(req.body?.role || "teacher").trim() as AppRole;
+  const avatarUrl = String(req.body?.avatarUrl || "").trim();
+
+  if (!fullName || !email || !password) {
+    return res.status(400).json({ error: "fullName, email and password are required" });
+  }
+  if (!["teacher", "student", "admin"].includes(role)) {
+    return res.status(400).json({ error: "role must be teacher, student or admin" });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ error: "password must be at least 8 characters" });
+  }
+
+  try {
+    const admin = await findUserById(payload.sub);
+    if (!admin || admin.email.trim().toLowerCase() !== "lzm200303@gmail.com") {
+      return res.status(403).json({ error: "forbidden" });
+    }
+
+    await ensurePlatformTables();
+    const existing = await findUserByEmail(email);
+    if (existing) {
+      return res.status(409).json({ error: "email already registered" });
+    }
+
+    const result = await pool.query(
+      `
+        INSERT INTO users (
+          id, full_name, email, role, avatar_url, preferences_json, password_hash,
+          status, plan_name, monthly_credit_limit, credit_balance, credit_used
+        )
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, 'active', 'starter', $8, $8, 0)
+        RETURNING id, full_name, email, role, avatar_url, preferences_json, created_at, status, plan_name, monthly_credit_limit, credit_balance, credit_used
+      `,
+      [
+        crypto.randomUUID(),
+        fullName,
+        email,
+        role,
+        avatarUrl || null,
+        JSON.stringify(DEFAULT_USER_PREFERENCES),
+        hashPassword(password),
+        DEFAULT_MONTHLY_CREDIT_LIMIT,
+      ]
+    );
+
+    return res.status(201).json({ user: sanitizeUser(result.rows[0]) });
+  } catch (error) {
+    console.error("POST /api/auth/admin/accounts failed:", error);
+    return res.status(500).json({ error: "failed to create account" });
   }
 });
 

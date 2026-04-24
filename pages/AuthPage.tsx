@@ -1,10 +1,8 @@
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { Icons } from "../components/icons";
 import { API_BASE } from "../utils/api";
 import { saveAuthSession } from "../utils/auth";
 
-type AuthMode = "login" | "register";
 type AppRole = "teacher" | "student" | "admin";
 
 type AuthResponse = {
@@ -25,66 +23,18 @@ type AuthResponse = {
   };
 };
 
-const authModes: Array<{ id: AuthMode; label: string; helper: string }> = [
-  { id: "login", label: "登入", helper: "" },
-  { id: "register", label: "註冊", helper: "" },
-];
-
-const defaultAvatars = [
-  "https://api.dicebear.com/9.x/adventurer/svg?seed=Luna",
-  "https://api.dicebear.com/9.x/adventurer/svg?seed=Kai",
-  "https://api.dicebear.com/9.x/adventurer/svg?seed=Nova",
-  "https://api.dicebear.com/9.x/adventurer/svg?seed=Milo",
-  "https://api.dicebear.com/9.x/adventurer/svg?seed=Jade",
-  "https://api.dicebear.com/9.x/adventurer/svg?seed=Iris",
-];
-
 export const AuthPage: React.FC = () => {
-  const [mode, setMode] = useState<AuthMode>("login");
-  const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState<AppRole>("teacher");
-  const [avatarUrl, setAvatarUrl] = useState(defaultAvatars[0]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  function resetFeedback() {
-    setErrorMessage("");
-    setSuccessMessage("");
-  }
-
-  async function uploadAvatar(file: File) {
-    setUploadingAvatar(true);
-    setErrorMessage("");
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const response = await fetch(`${API_BASE}/api/upload-image`, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok || !data?.url) {
-        throw new Error(data?.error || "頭像上傳失敗");
-      }
-      setAvatarUrl(data.url);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "頭像上傳失敗");
-    } finally {
-      setUploadingAvatar(false);
-    }
-  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    resetFeedback();
+    setErrorMessage("");
+    setSuccessMessage("");
 
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail) {
@@ -96,38 +46,13 @@ export const AuthPage: React.FC = () => {
       return;
     }
 
-    if (mode === "register") {
-      if (!fullName.trim()) {
-        setErrorMessage("請輸入名字。");
-        return;
-      }
-      if (password.length < 8) {
-        setErrorMessage("密碼至少需要 8 個字元。");
-        return;
-      }
-      if (password !== confirmPassword) {
-        setErrorMessage("兩次輸入的密碼不一致。");
-        return;
-      }
-      if (!acceptedTerms) {
-        setErrorMessage("請先同意服務條款與隱私政策。");
-        return;
-      }
-    }
-
     setLoading(true);
 
     try {
-      const endpoint = mode === "login" ? "/api/auth/login" : "/api/auth/register";
-      const payload =
-        mode === "login"
-          ? { email: normalizedEmail, password }
-          : { fullName: fullName.trim(), email: normalizedEmail, password, role, avatarUrl };
-
-      const response = await fetch(`${API_BASE}${endpoint}`, {
+      const response = await fetch(`${API_BASE}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ email: normalizedEmail, password }),
       });
 
       const data = (await response.json().catch(() => null)) as AuthResponse | { error?: string } | null;
@@ -138,8 +63,8 @@ export const AuthPage: React.FC = () => {
         throw new Error("登入服務回傳格式異常。");
       }
 
-      saveAuthSession(data, mode === "register" ? true : rememberMe);
-      setSuccessMessage(mode === "login" ? "登入成功，正在進入工作台..." : "註冊成功，正在進入工作台...");
+      saveAuthSession(data, rememberMe);
+      setSuccessMessage("登入成功，正在進入工作台...");
 
       window.setTimeout(() => {
         window.location.href = "/";
@@ -188,103 +113,12 @@ export const AuthPage: React.FC = () => {
           transition={{ duration: 0.45, delay: 0.12 }}
           className="rounded-[2rem] border border-slate-200/80 bg-white/88 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.10)] backdrop-blur md:p-7"
         >
-          <div className="flex rounded-2xl bg-slate-100 p-1">
-            {authModes.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setMode(item.id)}
-                className={`flex-1 rounded-[1rem] px-4 py-3 text-sm font-bold transition ${
-                  mode === item.id ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-
           <div className="mt-6">
-            <div className="text-2xl font-black tracking-tight text-slate-900">
-              {mode === "login" ? "歡迎回來" : "建立你的帳戶"}
-            </div>
-            <p className="mt-2 text-sm leading-6 text-slate-500">{authModes.find((item) => item.id === mode)?.helper}</p>
+            <div className="text-2xl font-black tracking-tight text-slate-900">歡迎回來</div>
+            <p className="mt-2 text-sm leading-6 text-slate-500">請使用管理員分配的帳戶登入。</p>
           </div>
 
           <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
-            {mode === "register" && (
-              <div className="space-y-4 rounded-[28px] border border-slate-200 bg-slate-50/70 p-4">
-                <div className="flex items-center gap-4">
-                  <img
-                    src={avatarUrl || defaultAvatars[0]}
-                    alt="Register Avatar"
-                    className="h-16 w-16 rounded-full border-4 border-white object-cover shadow-sm"
-                  />
-                  <div className="flex-1">
-                    <div className="text-sm font-semibold text-slate-700">註冊頭像</div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                      >
-                        {uploadingAvatar ? "上傳中..." : "上傳照片"}
-                      </button>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          if (file) void uploadAvatar(file);
-                          event.currentTarget.value = "";
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
-                  {defaultAvatars.map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => setAvatarUrl(preset)}
-                      className={`rounded-2xl border p-1 transition ${
-                        avatarUrl === preset ? "border-indigo-500 bg-indigo-50" : "border-slate-200 bg-white"
-                      }`}
-                    >
-                      <img src={preset} alt="Preset Avatar" className="h-14 w-14 rounded-xl object-cover" />
-                    </button>
-                  ))}
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="mb-2 block text-sm font-semibold text-slate-700">名字</span>
-                    <input
-                      type="text"
-                      placeholder="陳老師"
-                      value={fullName}
-                      onChange={(event) => setFullName(event.target.value)}
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-2 block text-sm font-semibold text-slate-700">身份</span>
-                    <select
-                      value={role}
-                      onChange={(event) => setRole(event.target.value as AppRole)}
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
-                    >
-                      <option value="teacher">教師</option>
-                      <option value="student">學生</option>
-                      <option value="admin">管理員</option>
-                    </select>
-                  </label>
-                </div>
-              </div>
-            )}
-
             <label className="block">
               <span className="mb-2 block text-sm font-semibold text-slate-700">電郵</span>
               <input
@@ -307,30 +141,15 @@ export const AuthPage: React.FC = () => {
               />
             </label>
 
-            {mode === "register" && (
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-slate-700">確認密碼</span>
-                <input
-                  type="password"
-                  placeholder="再次輸入密碼"
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-100"
-                />
-              </label>
-            )}
-
             <div className="flex items-center justify-between pt-1 text-sm">
               <label className="flex items-center gap-2 text-slate-500">
                 <input
                   type="checkbox"
-                  checked={mode === "login" ? rememberMe : acceptedTerms}
-                  onChange={(event) =>
-                    mode === "login" ? setRememberMe(event.target.checked) : setAcceptedTerms(event.target.checked)
-                  }
+                  checked={rememberMe}
+                  onChange={(event) => setRememberMe(event.target.checked)}
                   className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                 />
-                <span>{mode === "login" ? "記住我" : "我同意服務條款與隱私政策"}</span>
+                <span>記住我</span>
               </label>
             </div>
 
@@ -348,10 +167,10 @@ export const AuthPage: React.FC = () => {
 
             <button
               type="submit"
-              disabled={loading || uploadingAvatar}
+              disabled={loading}
               className="mt-2 inline-flex w-full items-center justify-center rounded-2xl bg-indigo-600 px-5 py-3.5 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-400"
             >
-              {loading ? "提交中..." : mode === "login" ? "登入 Chopreality" : "建立帳戶"}
+              {loading ? "提交中..." : "登入 Chopreality"}
             </button>
           </form>
         </motion.section>

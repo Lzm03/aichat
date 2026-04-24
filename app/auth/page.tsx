@@ -4,9 +4,7 @@ import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Icons } from '@/components/icons';
 
-type AuthMode = 'login' | 'register';
 type AppRole = 'teacher' | 'student' | 'admin';
 
 type AuthResponse = {
@@ -20,23 +18,13 @@ type AuthResponse = {
   };
 };
 
-const authModes: Array<{ id: AuthMode; label: string; helper: string }> = [
-  { id: 'login', label: '登入', helper: '回到你的教學工作台與 AI 機器人。' },
-  { id: 'register', label: '註冊', helper: '建立新帳戶，開始你的 Chopreality 工作流。' },
-];
-
 const AUTH_TOKEN_KEY = 'chopreality_auth_token';
 const AUTH_USER_KEY = 'chopreality_auth_user';
 
 export default function AuthPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<AuthMode>('login');
-  const [fullName, setFullName] = useState('');
-  const [role, setRole] = useState<AppRole>('teacher');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -53,7 +41,7 @@ export default function AuthPage() {
   }
 
   function persistAuth(auth: AuthResponse) {
-    const storage = mode === 'login' && !rememberMe ? window.sessionStorage : window.localStorage;
+    const storage = !rememberMe ? window.sessionStorage : window.localStorage;
     const otherStorage = storage === window.localStorage ? window.sessionStorage : window.localStorage;
 
     otherStorage.removeItem(AUTH_TOKEN_KEY);
@@ -76,40 +64,15 @@ export default function AuthPage() {
       return;
     }
 
-    if (mode === 'register') {
-      if (!fullName.trim()) {
-        setErrorMessage('請輸入名字。');
-        return;
-      }
-      if (password.length < 8) {
-        setErrorMessage('密碼至少需要 8 個字元。');
-        return;
-      }
-      if (password !== confirmPassword) {
-        setErrorMessage('兩次輸入的密碼不一致。');
-        return;
-      }
-      if (!acceptedTerms) {
-        setErrorMessage('請先同意服務條款與隱私政策。');
-        return;
-      }
-    }
-
     setLoading(true);
 
     try {
-      const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
-      const payload =
-        mode === 'login'
-          ? { email: normalizedEmail, password }
-          : { fullName: fullName.trim(), email: normalizedEmail, password, role };
-
-      const response = await fetch(`${apiBase}${endpoint}`, {
+      const response = await fetch(`${apiBase}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ email: normalizedEmail, password }),
       });
 
       const data = (await response.json().catch(() => null)) as AuthResponse | { error?: string } | null;
@@ -121,7 +84,7 @@ export default function AuthPage() {
       }
 
       persistAuth(data);
-      setSuccessMessage(mode === 'login' ? '登入成功，正在進入工作台...' : '註冊成功，正在進入工作台...');
+      setSuccessMessage('登入成功，正在進入工作台...');
 
       window.setTimeout(() => {
         router.push('/');
@@ -206,57 +169,12 @@ export default function AuthPage() {
           transition={{ duration: 0.45, delay: 0.12 }}
           className="rounded-[2rem] border border-slate-200/80 bg-white/88 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.10)] backdrop-blur md:p-7"
         >
-          <div className="flex rounded-2xl bg-slate-100 p-1">
-            {authModes.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setMode(item.id)}
-                className={`flex-1 rounded-[1rem] px-4 py-3 text-sm font-bold transition ${
-                  mode === item.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-
           <div className="mt-6">
-            <div className="text-2xl font-black tracking-tight text-slate-900">
-              {mode === 'login' ? '歡迎回來' : '建立你的帳戶'}
-            </div>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              {authModes.find((item) => item.id === mode)?.helper}
-            </p>
+            <div className="text-2xl font-black tracking-tight text-slate-900">歡迎回來</div>
+            <p className="mt-2 text-sm leading-6 text-slate-500">請使用管理員分配的帳戶登入。</p>
           </div>
 
           <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
-            {mode === 'register' && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block">
-                  <span className="mb-2 block text-sm font-semibold text-slate-700">名字</span>
-                  <input
-                    type="text"
-                    placeholder="陳老師"
-                    value={fullName}
-                    onChange={(event) => setFullName(event.target.value)}
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-100"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-2 block text-sm font-semibold text-slate-700">身份</span>
-                  <select
-                    value={role}
-                    onChange={(event) => setRole(event.target.value as AppRole)}
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-100"
-                  >
-                    <option value="teacher">教師</option>
-                    <option value="student">學生</option>
-                    <option value="admin">管理員</option>
-                  </select>
-                </label>
-              </div>
-            )}
-
             <label className="block">
               <span className="mb-2 block text-sm font-semibold text-slate-700">電郵</span>
               <input
@@ -279,36 +197,19 @@ export default function AuthPage() {
               />
             </label>
 
-            {mode === 'register' && (
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-slate-700">確認密碼</span>
-                <input
-                  type="password"
-                  placeholder="再次輸入密碼"
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-100"
-                />
-              </label>
-            )}
-
             <div className="flex items-center justify-between pt-1 text-sm">
               <label className="flex items-center gap-2 text-slate-500">
                 <input
                   type="checkbox"
-                  checked={mode === 'login' ? rememberMe : acceptedTerms}
-                  onChange={(event) =>
-                    mode === 'login' ? setRememberMe(event.target.checked) : setAcceptedTerms(event.target.checked)
-                  }
+                  checked={rememberMe}
+                  onChange={(event) => setRememberMe(event.target.checked)}
                   className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                 />
-                <span>{mode === 'login' ? '記住我' : '我同意服務條款與隱私政策'}</span>
+                <span>記住我</span>
               </label>
-              {mode === 'login' && (
-                <button type="button" className="font-semibold text-indigo-600 hover:text-indigo-700">
-                  忘記密碼？
-                </button>
-              )}
+              <button type="button" className="font-semibold text-indigo-600 hover:text-indigo-700">
+                忘記密碼？
+              </button>
             </div>
 
             {(errorMessage || successMessage) && (
@@ -328,7 +229,7 @@ export default function AuthPage() {
               disabled={loading}
               className="mt-2 inline-flex w-full items-center justify-center rounded-2xl bg-indigo-600 px-5 py-3.5 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-400"
             >
-              {loading ? '提交中...' : mode === 'login' ? '登入 Chopreality' : '建立帳戶'}
+              {loading ? '提交中...' : '登入 Chopreality'}
             </button>
           </form>
 
