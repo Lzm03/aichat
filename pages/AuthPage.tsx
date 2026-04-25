@@ -77,21 +77,12 @@ export const AuthPage: React.FC = () => {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-slate-50 text-slate-800">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.18),transparent_36%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.14),transparent_34%)]" />
-      <div className="absolute inset-0 opacity-30 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]" />
+    <div className="relative min-h-screen overflow-hidden bg-white text-slate-800">
 
       <header className="relative z-10 flex items-center justify-between px-6 py-6 md:px-10">
         <a href="/" className="flex items-center gap-3">
           <img src="/choprealitylogo.png" alt="Logo" className="h-12 w-12 object-contain" />
           <div className="text-xl font-bold text-[#1E293B] font-sans">CHOPREALITY</div>
-        </a>
-
-        <a
-          href="/"
-          className="rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur hover:bg-white"
-        >
-          返回首頁
         </a>
       </header>
 
