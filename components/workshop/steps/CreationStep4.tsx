@@ -170,7 +170,6 @@ ${customWords
         </p>
       </div>
 
-      {/* Permission Sharing */}
       <Section title="權限分享模式">
         <div className="space-y-3">
           <PermissionCard

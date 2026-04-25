@@ -7,4 +7,5 @@ export interface AiBot {
   interactions: number;
   accuracy: number;
   isVisible: boolean;
+  openingMessage?: string;
 }

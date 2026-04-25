@@ -16,6 +16,7 @@ export function toDb(bot) {
     video_thinking: bot.videoThinking,
     video_talking: bot.videoTalking,
     voice_id: bot.voiceId,
+    opening_message: bot.openingMessage,
 
     interactions: bot.interactions,
     accuracy: bot.accuracy,
@@ -41,6 +42,7 @@ export function toClient(raw) {
     videoThinking: raw.video_thinking,
     videoTalking: raw.video_talking,
     voiceId: raw.voice_id,
+    openingMessage: raw.opening_message || "",
 
     interactions: raw.interactions,
     accuracy: raw.accuracy,

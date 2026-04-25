@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { pool } from "../db.ts";
 import { toDb, toClient } from "../botMapper.js";
 import { getOrCreateWebmSequence, getPublicBase } from "./webm-sequence.ts";
+import { canManageAllAccounts } from "../config/account-overrides.ts";
 import {
   ensureFeatureAvailable,
   ensurePlatformTables,
@@ -13,6 +14,65 @@ import {
 } from "../lib/platform-auth.ts";
 
 const router = express.Router();
+
+function fallbackOpeningMessage(name: string) {
+  const safeName = (name || "").trim() || "AI 助手";
+  return `你好，我是${safeName}，我們一起開始今天的學習吧。`;
+}
+
+async function generateOpeningMessage(bot: any) {
+  const apiKey = String(process.env.DEEPSEEK_API_KEY || "").trim();
+  if (!apiKey) {
+    return fallbackOpeningMessage(String(bot?.name || ""));
+  }
+
+  const name = String(bot?.name || "").trim() || "AI 助手";
+  const characterContext = [bot?.knowledge_base, bot?.security_prompt]
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 4000);
+
+  const systemPrompt =
+    "你是角色語氣設計助手。你必須根據角色背景與人設寫一句固定開場白。只輸出一句繁體中文，不要引號，不要換行，不要解釋。";
+  const userPrompt = `
+角色名稱：${name}
+角色背景與設定：
+${characterContext || "（未提供）"}
+
+請寫一句「固定開場句」，要求：
+1. 必須緊扣知識庫裡的人物特點與語氣，不可泛泛而談；
+2. 簡短，12-32字；
+3. 可直接用在每次對話開頭；
+4. 禁止模板句（例如「你好我是...有什麼可以幫你」）；
+5. 若角色屬古典人物（如孔子、陶淵明等），可用符合角色的文言或詩性語氣，但保持易懂。
+`.trim();
+
+  try {
+    const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "deepseek-chat",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+    });
+    if (!response.ok) {
+      return fallbackOpeningMessage(name);
+    }
+    const data: any = await response.json().catch(() => null);
+    const text = String(data?.choices?.[0]?.message?.content || "").replace(/\s+/g, " ").trim();
+    if (text) return text;
+    return fallbackOpeningMessage(name);
+  } catch {
+    return fallbackOpeningMessage(name);
+  }
+}
 
 /* -------------------- GET ALL BOTS -------------------- */
 router.get("/", requireAuth, async (req, res) => {
@@ -212,15 +272,16 @@ router.post("/", requireAuth, async (req, res) => {
     const bot = toDb(req.body);
     const user = getAuthUser(req);
     await ensureFeatureAvailable(user!.id, "bot_publish", 1);
+    const openingMessage = await generateOpeningMessage(bot);
 
     const query = `
       INSERT INTO bots (
         id, name, subject, subject_color, avatar_url,
         background, animation, knowledge_base, security_prompt,
         video_idle, video_thinking, video_talking, voice_id,
-        interactions, accuracy, is_visible, owner_id, owner_email
+        opening_message, interactions, accuracy, is_visible, owner_id, owner_email
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
       RETURNING *;
     `;
 
@@ -238,6 +299,7 @@ router.post("/", requireAuth, async (req, res) => {
       bot.video_thinking,
       bot.video_talking,
       bot.voice_id,
+      openingMessage,
       bot.interactions ?? 0,
       bot.accuracy ?? 0,
       bot.is_visible ?? true,
@@ -262,15 +324,16 @@ router.put("/:id", requireAuth, async (req, res) => {
     await ensurePlatformTables();
     const bot = toDb(req.body);
     const user = getAuthUser(req);
+    const openingMessage = await generateOpeningMessage(bot);
 
     const query = `
       UPDATE bots SET
         name=$1, subject=$2, subject_color=$3, avatar_url=$4,
         background=$5, animation=$6, knowledge_base=$7, security_prompt=$8,
         video_idle=$9, video_thinking=$10, video_talking=$11, voice_id=$12,
-        interactions=$13, accuracy=$14, is_visible=$15,
+        opening_message=$13, interactions=$14, accuracy=$15, is_visible=$16,
         updated_at=NOW()
-      WHERE id=$16 AND owner_id=$17
+      WHERE id=$17 AND owner_id=$18
       RETURNING *;
     `;
 
@@ -287,6 +350,7 @@ router.put("/:id", requireAuth, async (req, res) => {
       bot.video_thinking,
       bot.video_talking,
       bot.voice_id,
+      openingMessage,
       bot.interactions ?? 0,
       bot.accuracy ?? 0,
       bot.is_visible ?? true,
@@ -363,7 +427,7 @@ router.put("/admin/:id/owner", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "bot id and ownerId are required" });
     }
 
-    const ownerCheck = await pool.query("SELECT id FROM users WHERE id=$1", [ownerId]);
+    const ownerCheck = await pool.query("SELECT id, email FROM users WHERE id=$1", [ownerId]);
     if (!ownerCheck.rowCount) {
       return res.status(404).json({ error: "target owner not found" });
     }
@@ -371,11 +435,11 @@ router.put("/admin/:id/owner", requireAuth, async (req, res) => {
     const result = await pool.query(
       `
       UPDATE bots
-      SET owner_id=$1, updated_at=NOW()
-      WHERE id=$2
+      SET owner_id=$1, owner_email=$2, updated_at=NOW()
+      WHERE id=$3
       RETURNING *
       `,
-      [ownerId, botId]
+      [ownerId, ownerCheck.rows[0].email, botId]
     );
 
     if (!result.rowCount) {

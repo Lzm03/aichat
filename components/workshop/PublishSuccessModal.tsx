@@ -44,6 +44,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     videoThinking,
     videoTalking,
     voiceId, 
+    openingMessage: configuredOpeningMessage,
   } = botConfig;
 
   
@@ -115,6 +116,10 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     typeof window !== "undefined"
       ? `${window.location.origin}/bot/${botConfig.id || ""}`
       : `/bot/${botConfig.id || ""}`;
+
+  const buildDefaultOpeningMessage = React.useCallback(() => {
+    return `你好！我是 ${botName}，我們一起開始今天的學習吧。`;
+  }, [botName]);
   const chatStyleRules = `
 【回覆格式規則（強制）】
 1) 禁止輸出舞台描述或動作描寫，例如「（微笑）」「（拱手）」「*點頭*」。
@@ -751,7 +756,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     playing.current = false;
     setIsStopAvailable(false);
 
-    const openingMessage = `你好！我是 ${botName}，你現在最想解決什麼？`;
+    const openingMessage =
+      String(configuredOpeningMessage || "").trim() || buildDefaultOpeningMessage();
     const sessionId = ttsSessionRef.current;
 
     if (!voicePlaybackEnabledRef.current) {
@@ -808,7 +814,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
           setOpeningReady(true);
         }
       });
-  }, [botName, isOpen, voiceId, permissionReady, shouldRequirePermission]);
+  }, [botName, configuredOpeningMessage, isOpen, voiceId, permissionReady, shouldRequirePermission, buildDefaultOpeningMessage]);
   
   
 

@@ -278,6 +278,7 @@ export async function ensurePlatformTables() {
       `);
       await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS owner_id TEXT;`);
       await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS owner_email TEXT;`);
+      await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS opening_message TEXT;`);
       await pool.query(`CREATE INDEX IF NOT EXISTS bots_owner_id_idx ON bots(owner_id, created_at DESC);`);
       await pool.query(`CREATE INDEX IF NOT EXISTS bots_owner_email_idx ON bots(owner_email);`);
       await pool.query(`UPDATE bots SET owner_id=NULL WHERE owner_id IS NOT NULL AND BTRIM(owner_id)=''`);
@@ -292,6 +293,11 @@ export async function ensurePlatformTables() {
         UPDATE bots
         SET owner_email = NULL
         WHERE owner_id IS NULL
+      `);
+      await pool.query(`
+        UPDATE bots
+        SET opening_message = '你好！我是' || COALESCE(NULLIF(BTRIM(name), ''), 'AI 助手') || '，我們一起開始今天的學習吧。'
+        WHERE opening_message IS NULL OR BTRIM(opening_message) = ''
       `);
     })();
   }

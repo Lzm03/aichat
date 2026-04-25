@@ -63,6 +63,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         videoTalking: "",
 
         voiceId: "",
+        openingMessage: "",
       };
     }
 
@@ -78,6 +79,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       videoThinking: "",
       videoTalking: "",
       voiceId: "",
+      openingMessage: "",
     };
   };
 
@@ -102,6 +104,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       videoThinking: data.videoThinking,
       videoTalking: data.videoTalking,
       voiceId: data.voiceId,
+      openingMessage: data.openingMessage || "",
     });
   };
 
@@ -271,6 +274,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       setBotConfig((prev) => ({
         ...prev,
         id: savedBot?.id || newBot.id,
+        openingMessage: savedBot?.openingMessage || prev.openingMessage || "",
       }));
 
       setIsPublishSuccessModalOpen(true);
@@ -313,7 +317,12 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   const renderStep = () => {
     switch (currentStep) {
       case 1:
-        return <CreationStep1 updateConfig={updateConfig} botName={botConfig.name} />;
+        return (
+          <CreationStep1
+            updateConfig={updateConfig}
+            botName={botConfig.name}
+          />
+        );
 
       case 2:
         return (

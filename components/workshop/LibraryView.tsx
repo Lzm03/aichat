@@ -81,6 +81,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       videoThinking: raw.videoThinking,
       videoTalking: raw.videoTalking,
       voiceId: raw.voiceId,
+      openingMessage: raw.openingMessage || "",
       interactions: raw.interactions,
       accuracy: raw.accuracy,
       isVisible: raw.isVisible,
