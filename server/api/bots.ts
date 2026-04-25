@@ -1,4 +1,5 @@
 import express from "express";
+import crypto from "crypto";
 import { pool } from "../db.ts";
 import { toDb, toClient } from "../botMapper.js";
 import { getOrCreateWebmSequence, getPublicBase } from "./webm-sequence.ts";
@@ -107,6 +108,83 @@ router.post("/:id/precompute-sequences", async (req, res) => {
   }
 });
 
+router.get("/interactions/today", requireAuth, async (req, res) => {
+  try {
+    await ensurePlatformTables();
+    const rawIds = String(req.query?.ids || "").trim();
+    const ids = rawIds
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+
+    if (!ids.length) {
+      return res.json({ counts: {} });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT bot_id, COUNT(*)::int AS count
+      FROM bot_interaction_events
+      WHERE bot_id = ANY($1)
+        AND created_at >= date_trunc('day', NOW())
+      GROUP BY bot_id
+      `,
+      [ids]
+    );
+
+    const counts: Record<string, number> = {};
+    for (const row of result.rows) {
+      counts[String(row.bot_id)] = Number(row.count || 0);
+    }
+    return res.json({ counts });
+  } catch (err) {
+    console.error("❌ GET /interactions/today Failed:", err);
+    return res.status(500).json({ error: "Failed to fetch today interactions" });
+  }
+});
+
+router.post("/:id/interactions", async (req, res) => {
+  const botId = String(req.params.id || "").trim();
+  if (!botId) {
+    return res.status(400).json({ error: "bot id is required" });
+  }
+
+  try {
+    await ensurePlatformTables();
+    const botResult = await pool.query("SELECT id, owner_id FROM bots WHERE id=$1", [botId]);
+    if (!botResult.rowCount) {
+      return res.status(404).json({ error: "Bot not found" });
+    }
+
+    const authUser = await optionalAuth(req);
+    const source = String(req.body?.source || "chat_enter").slice(0, 32);
+
+    await pool.query(
+      `
+      INSERT INTO bot_interaction_events (id, bot_id, user_id, source)
+      VALUES ($1, $2, $3, $4)
+      `,
+      [crypto.randomUUID(), botId, authUser?.id || null, source]
+    );
+
+    const updateResult = await pool.query(
+      `
+      UPDATE bots
+      SET interactions = COALESCE(interactions, 0) + 1,
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING interactions
+      `,
+      [botId]
+    );
+
+    return res.json({ ok: true, interactions: Number(updateResult.rows[0]?.interactions || 0) });
+  } catch (err) {
+    console.error("❌ POST /:id/interactions Failed:", err);
+    return res.status(500).json({ error: "Failed to record interaction" });
+  }
+});
+
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
   try {
@@ -140,9 +218,9 @@ router.post("/", requireAuth, async (req, res) => {
         id, name, subject, subject_color, avatar_url,
         background, animation, knowledge_base, security_prompt,
         video_idle, video_thinking, video_talking, voice_id,
-        interactions, accuracy, is_visible, owner_id
+        interactions, accuracy, is_visible, owner_id, owner_email
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
       RETURNING *;
     `;
 
@@ -164,6 +242,7 @@ router.post("/", requireAuth, async (req, res) => {
       bot.accuracy ?? 0,
       bot.is_visible ?? true,
       user?.id,
+      user?.email || null,
     ];
 
     const result = await pool.query(query, values);
@@ -235,6 +314,78 @@ router.delete("/:id", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("❌ DELETE /:id Failed:", err);
     res.status(500).json({ error: "Failed to delete bot" });
+  }
+});
+
+router.get("/admin/all", requireAuth, async (req, res) => {
+  try {
+    const user = getAuthUser(req);
+    if (!user || !canManageAllAccounts(user.email)) {
+      return res.status(403).json({ error: "forbidden" });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        b.*,
+        u.email AS owner_email,
+        u.full_name AS owner_name
+      FROM bots b
+      LEFT JOIN users u ON u.id = b.owner_id
+      ORDER BY b.created_at DESC
+      `
+    );
+
+    return res.json(
+      result.rows.map((row) => ({
+        ...toClient(row),
+        ownerId: row.owner_id || "",
+        ownerEmail: row.owner_email || "",
+        ownerName: row.owner_name || "",
+      }))
+    );
+  } catch (err) {
+    console.error("❌ GET /admin/all Failed:", err);
+    return res.status(500).json({ error: "Failed to fetch admin bot list" });
+  }
+});
+
+router.put("/admin/:id/owner", requireAuth, async (req, res) => {
+  try {
+    const user = getAuthUser(req);
+    if (!user || !canManageAllAccounts(user.email)) {
+      return res.status(403).json({ error: "forbidden" });
+    }
+
+    const botId = String(req.params.id || "").trim();
+    const ownerId = String(req.body?.ownerId || "").trim();
+    if (!botId || !ownerId) {
+      return res.status(400).json({ error: "bot id and ownerId are required" });
+    }
+
+    const ownerCheck = await pool.query("SELECT id FROM users WHERE id=$1", [ownerId]);
+    if (!ownerCheck.rowCount) {
+      return res.status(404).json({ error: "target owner not found" });
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE bots
+      SET owner_id=$1, updated_at=NOW()
+      WHERE id=$2
+      RETURNING *
+      `,
+      [ownerId, botId]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ error: "bot not found" });
+    }
+
+    return res.json({ ok: true, bot: toClient(result.rows[0]) });
+  } catch (err) {
+    console.error("❌ PUT /admin/:id/owner Failed:", err);
+    return res.status(500).json({ error: "Failed to update bot owner" });
   }
 });
 

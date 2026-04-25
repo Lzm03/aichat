@@ -241,6 +241,16 @@ router.put("/profile", async (req, res) => {
       return res.status(404).json({ error: "user not found" });
     }
 
+    const updatedEmail = (result.rows[0] as any)?.email;
+    if (updatedEmail) {
+      await pool.query(
+        `UPDATE bots
+         SET owner_email=$1
+         WHERE owner_id=$2`,
+        [updatedEmail, payload.sub]
+      );
+    }
+
     return res.json({ user: sanitizeUser(result.rows[0]) });
   } catch (error) {
     console.error("PUT /api/auth/profile failed:", error);

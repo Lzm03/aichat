@@ -111,11 +111,33 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       .then(res => res.json())
       .then(data => {
         const normalized = normalizeBots(Array.isArray(data) ? data : []);
-        console.log("🔥 Normalized bots:", normalized);
-        setBots(normalized);
-        if (typeof window !== "undefined" && cacheKey) {
-          window.sessionStorage.setItem(cacheKey, JSON.stringify(normalized));
+        const ids = normalized.map((item) => item.id).filter(Boolean);
+        if (!ids.length) {
+          setBots(normalized);
+          if (typeof window !== "undefined" && cacheKey) {
+            window.sessionStorage.setItem(cacheKey, JSON.stringify(normalized));
+          }
+          return;
         }
+        fetch(`${baseUrl}/api/bots/interactions/today?ids=${encodeURIComponent(ids.join(","))}`)
+          .then((res) => res.json())
+          .then((payload) => {
+            const counts = payload?.counts || {};
+            const withTodayCounts = normalized.map((item) => ({
+              ...item,
+              interactions: Number(counts[item.id] || 0),
+            }));
+            setBots(withTodayCounts);
+            if (typeof window !== "undefined" && cacheKey) {
+              window.sessionStorage.setItem(cacheKey, JSON.stringify(withTodayCounts));
+            }
+          })
+          .catch(() => {
+            setBots(normalized);
+            if (typeof window !== "undefined" && cacheKey) {
+              window.sessionStorage.setItem(cacheKey, JSON.stringify(normalized));
+            }
+          });
       })
       .catch(() => {
         setBots([]);

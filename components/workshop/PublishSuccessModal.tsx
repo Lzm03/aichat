@@ -108,6 +108,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const desktopDropdownRef = useRef<HTMLDivElement | null>(null);
   const voicePlaybackEnabledRef = useRef(Boolean(voiceId));
   const voiceLimitNoticeShownRef = useRef(false);
+  const interactionRecordedRef = useRef(false);
+  const ttsErrorNoticeShownRef = useRef(false);
 
   const shareUrl =
     typeof window !== "undefined"
@@ -181,6 +183,24 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     const uaMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
     setIsMobileClient(Boolean(coarse || uaMobile));
   }, []);
+
+  useEffect(() => {
+    if (!isOpen || !botConfig?.id || interactionRecordedRef.current) return;
+    interactionRecordedRef.current = true;
+    const baseUrl = API_BASE;
+    void fetch(`${baseUrl}/api/bots/${botConfig.id}/interactions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: "chat_enter" }),
+    }).catch(() => undefined);
+  }, [isOpen, botConfig?.id]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      interactionRecordedRef.current = false;
+      return;
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     voicePlaybackEnabledRef.current = Boolean(voiceId) && !voiceLimitMessage;
@@ -872,6 +892,10 @@ const requestTTSAudio = async (text: string, sessionId: number) => {
         disableVoicePlayback(message);
         return;
       }
+      if (res.status === 401 || res.status === 403) {
+        disableVoicePlayback("語音回覆需要登入狀態，請重新登入後再試。");
+        return;
+      }
       throw new Error(message);
     }
     if (sessionId !== ttsSessionRef.current) return;
@@ -883,6 +907,13 @@ const requestTTSAudio = async (text: string, sessionId: number) => {
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") return;
     console.error("TTS error:", e);
+    if (!ttsErrorNoticeShownRef.current) {
+      ttsErrorNoticeShownRef.current = true;
+      showAlert({
+        title: "語音暫時不可用",
+        message: "目前語音服務發生錯誤，系統已先以文字回覆。請稍後再試。",
+      });
+    }
   } finally {
     ttsRequestControllers.current.delete(controller);
   }
@@ -1553,6 +1584,7 @@ const unlockAudioAndMic = async () => {
     setOpeningReady(false);
     setVoiceLimitMessage("");
     voiceLimitNoticeShownRef.current = false;
+    ttsErrorNoticeShownRef.current = false;
   }, [isOpen]);
 
   useEffect(() => {

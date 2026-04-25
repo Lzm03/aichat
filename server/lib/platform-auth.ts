@@ -263,8 +263,36 @@ export async function ensurePlatformTables() {
         CREATE INDEX IF NOT EXISTS video_studio_tasks_user_id_updated_at_idx
         ON video_studio_tasks(user_id, updated_at DESC);
       `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS bot_interaction_events (
+          id TEXT PRIMARY KEY,
+          bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+          user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+          source TEXT NOT NULL DEFAULT 'chat_enter',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS bot_interaction_events_bot_created_at_idx
+        ON bot_interaction_events(bot_id, created_at DESC);
+      `);
       await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS owner_id TEXT;`);
+      await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS owner_email TEXT;`);
       await pool.query(`CREATE INDEX IF NOT EXISTS bots_owner_id_idx ON bots(owner_id, created_at DESC);`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS bots_owner_email_idx ON bots(owner_email);`);
+      await pool.query(`UPDATE bots SET owner_id=NULL WHERE owner_id IS NOT NULL AND BTRIM(owner_id)=''`);
+      await pool.query(`
+        UPDATE bots b
+        SET owner_email = u.email
+        FROM users u
+        WHERE b.owner_id = u.id
+          AND COALESCE(b.owner_email, '') <> COALESCE(u.email, '')
+      `);
+      await pool.query(`
+        UPDATE bots
+        SET owner_email = NULL
+        WHERE owner_id IS NULL
+      `);
     })();
   }
   await ensurePlatformTablesPromise;

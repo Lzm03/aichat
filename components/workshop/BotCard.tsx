@@ -53,7 +53,7 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onEdit }) => {
 
       {/* 底部：互动次数 */}
       <div className="mt-auto pt-4 border-t border-slate-100">
-        <p className="text-sm text-slate-500">昨日互動 {bot.interactions} 次</p>
+        <p className="text-sm text-slate-500">今日互動 {bot.interactions} 次</p>
       </div>
     </div>
   );

@@ -40,6 +40,15 @@ type ManagedAccount = {
   features: ManagedFeature[];
 };
 
+type ManagedBotRecord = {
+  id: string;
+  name: string;
+  createdAt?: string;
+  ownerId?: string;
+  ownerEmail?: string;
+  ownerName?: string;
+};
+
 const backgroundChoices: Array<{ value: BackgroundStyle; label: string; hint: string }> = [
   { value: "sky", label: "天空藍", hint: "乾淨、明亮、偏產品感" },
   { value: "paper", label: "米紙白", hint: "柔和、通用、閱讀友好" },
@@ -93,6 +102,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [deletingAccountId, setDeletingAccountId] = useState("");
+  const [loadingManagedBots, setLoadingManagedBots] = useState(false);
+  const [managedBots, setManagedBots] = useState<ManagedBotRecord[]>([]);
+  const [selectedManagedBotId, setSelectedManagedBotId] = useState("");
+  const [targetOwnerId, setTargetOwnerId] = useState("");
+  const [transferringBotId, setTransferringBotId] = useState("");
   const [newAccountFullName, setNewAccountFullName] = useState("");
   const [newAccountEmail, setNewAccountEmail] = useState("");
   const [newAccountPassword, setNewAccountPassword] = useState("");
@@ -133,6 +147,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
   useEffect(() => {
     if (isDeveloperAccount) {
       void loadAccounts();
+      void loadManagedBots();
     }
   }, [isDeveloperAccount]);
 
@@ -359,6 +374,67 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
       setError(err instanceof Error ? err.message : "建立帳戶失敗");
     } finally {
       setCreatingAccount(false);
+    }
+  }
+
+  async function loadManagedBots() {
+    const session = readAuthSession();
+    if (!session?.token || !isDeveloperAccount) return;
+    setLoadingManagedBots(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_BASE}/api/bots/admin/all`, {
+        headers: { Authorization: `Bearer ${session.token}` },
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "載入 Bot 清單失敗");
+      const next = Array.isArray(data) ? data : [];
+      setManagedBots(next);
+      if (!selectedManagedBotId && next[0]?.id) {
+        setSelectedManagedBotId(next[0].id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "載入 Bot 清單失敗");
+    } finally {
+      setLoadingManagedBots(false);
+    }
+  }
+
+  const selectedManagedBot = useMemo(
+    () => managedBots.find((item) => item.id === selectedManagedBotId) || null,
+    [managedBots, selectedManagedBotId]
+  );
+
+  async function transferBotOwner() {
+    const session = readAuthSession();
+    if (!session?.token) {
+      setError("登入狀態已失效，請重新登入");
+      return;
+    }
+    if (!selectedManagedBotId || !targetOwnerId) {
+      setError("請先選擇 Bot 與目標帳戶");
+      return;
+    }
+    setTransferringBotId(selectedManagedBotId);
+    setError("");
+    setMessage("");
+    try {
+      const res = await fetch(`${API_BASE}/api/bots/admin/${selectedManagedBotId}/owner`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.token}`,
+        },
+        body: JSON.stringify({ ownerId: targetOwnerId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Bot 歸屬轉移失敗");
+      setMessage("Bot 歸屬已更新");
+      await loadManagedBots();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Bot 歸屬轉移失敗");
+    } finally {
+      setTransferringBotId("");
     }
   }
 
@@ -924,6 +1000,67 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                       暫無帳戶資料
                     </div>
                   )}
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-bold text-slate-900">Bot 歸屬整理</div>
+                      <div className="mt-1 text-xs text-slate-500">可把現有 Bot 轉移到正確帳戶，整理舊資料。</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void loadManagedBots()}
+                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      {loadingManagedBots ? "刷新中..." : "刷新 Bot"}
+                    </button>
+                  </div>
+
+                  <div className="mt-3 grid gap-3">
+                    <select
+                      value={selectedManagedBotId}
+                      onChange={(event) => {
+                        setSelectedManagedBotId(event.target.value);
+                        setTargetOwnerId("");
+                      }}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                    >
+                      {managedBots.map((bot) => (
+                        <option key={bot.id} value={bot.id}>
+                          {bot.name || "未命名 Bot"} ({bot.ownerEmail || "未分配帳戶"})
+                        </option>
+                      ))}
+                    </select>
+
+                    <select
+                      value={targetOwnerId}
+                      onChange={(event) => setTargetOwnerId(event.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                    >
+                      <option value="">選擇目標帳戶</option>
+                      {accounts.map((account) => (
+                        <option key={account.user.id} value={account.user.id}>
+                          {account.user.fullName} ({account.user.email})
+                        </option>
+                      ))}
+                    </select>
+
+                    {selectedManagedBot ? (
+                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                        目前歸屬：{selectedManagedBot.ownerName || "未知"} {selectedManagedBot.ownerEmail ? `(${selectedManagedBot.ownerEmail})` : ""}
+                      </div>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      onClick={() => void transferBotOwner()}
+                      disabled={!selectedManagedBotId || !targetOwnerId || transferringBotId === selectedManagedBotId}
+                      className="w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-400"
+                    >
+                      {transferringBotId === selectedManagedBotId ? "轉移中..." : "轉移 Bot 歸屬"}
+                    </button>
+                  </div>
                 </div>
               </section>
             )}
