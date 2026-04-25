@@ -73,6 +73,15 @@ const TrendListItem: React.FC<{type: 'positive' | 'neutral' | 'warning', text: s
   );
 };
 
+function getTimeGreeting(date = new Date()) {
+  const hour = date.getHours();
+  if (hour >= 5 && hour < 11) return "早安";
+  if (hour >= 11 && hour < 14) return "午安";
+  if (hour >= 14 && hour < 18) return "下午好";
+  if (hour >= 18 && hour < 24) return "晚上好";
+  return "夜深了";
+}
+
 const HeroBanner: React.FC<{ teacherName: string }> = ({ teacherName }) => (
   <div className="w-full aspect-[4/1] rounded-[32px] overflow-hidden relative mb-6 shadow-md group">
     <img 
@@ -82,10 +91,10 @@ const HeroBanner: React.FC<{ teacherName: string }> = ({ teacherName }) => (
     />
     <div className="absolute inset-0 bg-gradient-to-r from-slate-900/60 to-transparent flex flex-col justify-center p-8 md:p-12">
       <div className="max-w-2xl text-white space-y-4">
-        <h2 className="text-2xl md:text-4xl font-bold tracking-tight">早安，{teacherName} 👋</h2>
+        <h2 className="text-2xl md:text-4xl font-bold tracking-tight">{getTimeGreeting()}，{teacherName}</h2>
         <div className="bg-indigo-50/90 backdrop-blur-sm text-indigo-700 rounded-xl p-3 inline-block shadow-sm">
           <p className="text-sm font-medium">
-            ✨ 本週 <span className="font-bold bg-white px-1.5 py-0.5 rounded-md mx-0.5 shadow-sm">2</span> 份測驗已批改完成 · 
+            本週 <span className="font-bold bg-white px-1.5 py-0.5 rounded-md mx-0.5 shadow-sm">2</span> 份測驗已批改完成 · 
             <span className="font-bold bg-white px-1.5 py-0.5 rounded-md mx-0.5 shadow-sm">3</span> 名學生在「分析」層級持續落後 · 
             <span className="font-bold bg-white px-1.5 py-0.5 rounded-md mx-0.5 shadow-sm">1</span> 份 AI 評分偏差較高
           </p>
