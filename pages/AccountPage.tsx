@@ -127,7 +127,6 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
       <div className="rounded-[32px] border border-slate-200/80 bg-white p-6 shadow-sm md:p-8">
         <div className="flex flex-col gap-3 border-b border-slate-200 pb-6 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="text-sm font-semibold uppercase tracking-[0.18em] text-indigo-500">Account Center</div>
             <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-900">帳戶中心</h1>
             <p className="mt-2 text-sm leading-6 text-slate-500">更新你的頭像、名字和帳戶基本資料。</p>
           </div>
@@ -261,7 +260,6 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
       </div>
 
       <div className="mt-6 rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="text-sm font-semibold uppercase tracking-[0.18em] text-indigo-500">Contact</div>
         <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-900">聯絡我們</h2>
         <p className="mt-3 text-sm leading-7 text-slate-600">
           如果你希望提供產品意見、了解付費方案，或購買我們的機器人創建服務，可以直接聯絡我們。

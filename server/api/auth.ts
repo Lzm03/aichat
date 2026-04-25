@@ -336,6 +336,49 @@ router.post("/admin/accounts/:userId/reset-features", async (req, res) => {
   }
 });
 
+router.delete("/admin/accounts/:userId", async (req, res) => {
+  const token = getBearerToken(req);
+  if (!token) return res.status(401).json({ error: "missing bearer token" });
+  const payload = verifyToken(token);
+  if (!payload) return res.status(401).json({ error: "invalid or expired token" });
+
+  try {
+    const admin = await findUserById(payload.sub);
+    if (!admin || admin.email.trim().toLowerCase() !== "lzm200303@gmail.com") {
+      return res.status(403).json({ error: "forbidden" });
+    }
+    const targetUserId = String(req.params.userId || "").trim();
+    if (!targetUserId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+    if (targetUserId === payload.sub) {
+      return res.status(400).json({ error: "cannot delete current account" });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`DELETE FROM bots WHERE owner_id=$1`, [targetUserId]);
+      const result = await client.query(`DELETE FROM users WHERE id=$1`, [targetUserId]);
+      if (!result.rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "user not found" });
+      }
+      await client.query("COMMIT");
+    } catch (txError) {
+      await client.query("ROLLBACK");
+      throw txError;
+    } finally {
+      client.release();
+    }
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error("DELETE /api/auth/admin/accounts/:userId failed:", error);
+    return res.status((error as any)?.status || 500).json({ error: (error as any)?.message || "failed to delete account" });
+  }
+});
+
 router.put("/admin/accounts/:userId/features/:key", async (req, res) => {
   const token = getBearerToken(req);
   if (!token) return res.status(401).json({ error: "missing bearer token" });

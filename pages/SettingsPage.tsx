@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { PlatformDialog } from "../components/system/PlatformDialog";
+import { usePlatformDialog } from "../hooks/usePlatformDialog";
 import { API_BASE } from "../utils/api";
 import {
   isAuthPersistedInLocalStorage,
@@ -72,6 +74,7 @@ function SectionTitle({ title, desc }: { title: string; desc: string }) {
 }
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfileUpdated }) => {
+  const { dialog, closeDialog, showConfirm } = usePlatformDialog();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [fullName, setFullName] = useState(currentUser.fullName || "");
   const [email, setEmail] = useState(currentUser.email || "");
@@ -89,6 +92,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
   const [featureDrafts, setFeatureDrafts] = useState<Record<string, { used: string; limit: string }>>({});
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
+  const [deletingAccountId, setDeletingAccountId] = useState("");
   const [newAccountFullName, setNewAccountFullName] = useState("");
   const [newAccountEmail, setNewAccountEmail] = useState("");
   const [newAccountPassword, setNewAccountPassword] = useState("");
@@ -358,12 +362,52 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
     }
   }
 
+  async function deleteManagedAccount(userId: string) {
+    const session = readAuthSession();
+    if (!session?.token) {
+      setError("登入狀態已失效，請重新登入");
+      return;
+    }
+    if (userId === currentUser.id) {
+      setError("不能刪除目前登入中的管理員帳戶");
+      return;
+    }
+    showConfirm({
+      title: "刪除帳戶",
+      message: "確定要刪除此帳戶嗎？此操作無法撤銷。",
+      confirmText: "確認刪除",
+      cancelText: "取消",
+      tone: "danger",
+      onConfirm: () => {
+        void (async () => {
+          setDeletingAccountId(userId);
+          setError("");
+          setMessage("");
+          try {
+            const res = await fetch(`${API_BASE}/api/auth/admin/accounts/${userId}`, {
+              method: "DELETE",
+              headers: { Authorization: `Bearer ${session.token}` },
+            });
+            const data = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(data?.error || "刪除帳戶失敗");
+            setMessage("帳戶已刪除");
+            setSelectedUserId("");
+            await loadAccounts();
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "刪除帳戶失敗");
+          } finally {
+            setDeletingAccountId("");
+          }
+        })();
+      },
+    });
+  }
+
   return (
     <div className="mx-auto max-w-7xl px-6 py-8 lg:px-8">
       <div className="rounded-[32px] border border-slate-200/80 bg-white/90 p-6 shadow-sm backdrop-blur md:p-8">
         <div className="flex flex-col gap-3 border-b border-slate-200 pb-6 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-500">Settings</div>
             <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-900">帳戶與系統設定</h1>
             <p className="mt-2 text-sm text-slate-500">修改常見帳戶設定，包括電郵、密碼、網頁外觀、通知與使用偏好。</p>
           </div>
@@ -727,7 +771,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
               <section className="rounded-[28px] border border-slate-200 bg-white p-5">
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-500">Developer Tools</div>
                     <div className="mt-2 text-lg font-bold text-slate-900">帳戶使用次數管理</div>
                     <div className="mt-1 text-sm text-slate-500">只給開發者帳戶使用，可重置與修改其他帳戶使用次數。</div>
                   </div>
@@ -799,6 +842,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
 
                   {selectedAccount ? (
                     <div className="space-y-3">
+                      <button
+                        onClick={() => void deleteManagedAccount(selectedAccount.user.id)}
+                        disabled={deletingAccountId === selectedAccount.user.id || selectedAccount.user.id === currentUser.id}
+                        className="w-full rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {deletingAccountId === selectedAccount.user.id ? "刪除中..." : "刪除此帳戶"}
+                      </button>
                       <button
                         onClick={() => void resetFeatures(selectedAccount.user.id)}
                         className="w-full rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 hover:bg-amber-100"
@@ -880,6 +930,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
           </div>
         </div>
       </div>
+      <PlatformDialog
+        open={dialog.open}
+        title={dialog.title}
+        message={dialog.message}
+        confirmText={dialog.confirmText}
+        cancelText={dialog.cancelText}
+        tone={dialog.tone}
+        onClose={closeDialog}
+        onConfirm={dialog.onConfirm || undefined}
+      />
     </div>
   );
 };
