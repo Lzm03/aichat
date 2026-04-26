@@ -17,6 +17,15 @@ interface HeaderProps {
   currentUser?: StoredAuthUser | null;
 }
 
+function getTimeGreeting(date = new Date()) {
+  const hour = date.getHours();
+  if (hour >= 5 && hour < 11) return "早安";
+  if (hour >= 11 && hour < 14) return "午安";
+  if (hour >= 14 && hour < 18) return "下午好";
+  if (hour >= 18 && hour < 24) return "晚上好";
+  return "夜深了";
+}
+
 export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, onNotificationClick, forceMobileMenu = false, currentUser = null }) => {
   const { features } = useFeatureEntitlements();
   const primaryFeatures = features.filter((feature) => feature.key === "bot_publish" || feature.key === "chat_messages");
@@ -112,7 +121,7 @@ export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, onNotifi
           <Icons.menu className="w-6 h-6" />
         </button>
         <div>
-          <h2 className="text-sm text-slate-500">早安, {currentUser?.fullName || '老師'}!</h2>
+          <h2 className="text-sm text-slate-500">{getTimeGreeting()}, {currentUser?.fullName || '老師'}</h2>
           <p className="text-2xl font-bold text-[#1E293B]">{pageTitle}</p>
         </div>
       </div>
