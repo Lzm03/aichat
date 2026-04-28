@@ -87,7 +87,7 @@ async function sendMessage() {
 }
 
   return (
-    <div className="relative h-[600px] rounded-[2rem] shadow-lg overflow-hidden border border-white/20 bg-[#0a0f1a]">
+    <div className={`relative h-[600px] rounded-[2rem] shadow-lg overflow-hidden border ${currentStep <= 2 ? "border-slate-200 bg-white" : "border-white/20 bg-[#0a0f1a]"}`}>
       {/* Desktop background */}
       <div
         className="absolute inset-0 hidden md:block bg-cover bg-center bg-no-repeat"
@@ -147,8 +147,8 @@ async function sendMessage() {
 
         {/* Step1 */}
         {currentStep === 1 && (
-          <div className="flex-1 flex flex-col items-center justify-center text-white">
-            <Icons.bot className="w-12 h-12 opacity-70 mb-3" />
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-700">
+            <Icons.bot className="w-12 h-12 opacity-70 mb-3 text-slate-500" />
             <p className="text-base font-medium">角色構建中…</p>
           </div>
         )}

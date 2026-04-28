@@ -12,6 +12,7 @@ interface CreationStep2Props {
   onGenerated: (data: {
     characterBackground: string;
     knowledgeSummary: string;
+    personaProfile: string;
   }) => void;
   initialData?: {
     characterBackground?: string;
@@ -32,6 +33,10 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
 
   const [characterBackground, setCharacterBackground] = useState(initialData?.characterBackground || "");
   const [knowledgeSummary, setKnowledgeSummary] = useState(initialData?.knowledgeSummary || "");
+  const [sourceLabel, setSourceLabel] = useState("");
+  const [personalityTraits, setPersonalityTraits] = useState<string[]>(["耐心"]);
+  const [speakingStyle, setSpeakingStyle] = useState("文言文");
+  const [answerMode, setAnswerMode] = useState("引導後再回答");
   const [progress, setProgress] = useState(0);
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
 
@@ -77,6 +82,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
     setKnowledgeSummary("");
     setStatus("idle");
     setProgress(0);
+    setSourceLabel("");
   };
 
   useEffect(() => {
@@ -222,6 +228,14 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
     setProgress(12);
 
     try {
+      const nextSourceLabel =
+        uploadMethod === "file"
+          ? `文件：${file?.name || "未命名文件"}`
+          : uploadMethod === "url"
+          ? `Web URL：${inputValue.trim()}`
+          : "Text";
+      setSourceLabel(nextSourceLabel);
+
       let result;
       if (uploadMethod === "file" && file) {
         result = await processFile(file);
@@ -236,7 +250,12 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
 
       setCharacterBackground(bg);
       setKnowledgeSummary(ks);
-      onGenerated({ characterBackground: bg, knowledgeSummary: ks });
+      const personaProfile = [
+        `【性格特質】${personalityTraits.join("、") || "未設定"}`,
+        `【說話風格】${speakingStyle}`,
+        `【答題策略】${answerMode}`,
+      ].join("\n");
+      onGenerated({ characterBackground: bg, knowledgeSummary: ks, personaProfile });
       setProgress(100);
       setStatus("complete");
     } catch (error) {
@@ -417,7 +436,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
 
       const mindmapBranches = [
         { title: "人物名字", value: nameMatch?.[1] || "未明確命名" },
-        { title: "人物性格", value: traitLine },
+        { title: "人物性格", value: traitLine.replace(/【性格特質】/g, "").trim() },
         { title: "核心能力", value: abilityLine },
         { title: "關鍵知識", value: knowledgeLine },
         { title: "應用場景", value: scenarioLine },
@@ -432,9 +451,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
                 <Icons.delete className="w-5 h-5 text-slate-500" />
               </button>
             </div>
-            <p className="mt-2 text-sm text-slate-600">
-              來源：{uploadMethod === "file" ? file?.name : uploadMethod === "url" ? "網址內容" : "貼上文字"}
-            </p>
+            <p className="mt-2 text-sm text-slate-600">{sourceLabel || "未知來源"}</p>
             <div className="mt-3 h-2.5 w-full rounded-full bg-slate-100 overflow-hidden">
               <div className="h-full w-full bg-emerald-500" />
             </div>
@@ -462,7 +479,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           </div>
 
           <div className="rounded-2xl border bg-white p-4">
-            <h4 className="font-bold text-slate-800 mb-3">知識提取關聯圖</h4>
+            <h4 className="font-bold text-slate-800 mb-3">角色關聯圖</h4>
             <div className="rounded-xl border border-slate-200 bg-gradient-to-b from-[#f8fbff] to-white p-4">
               <div className="hidden md:block pb-2 overflow-x-auto">
                 <div className="relative h-[300px] w-[860px] min-w-[860px] rounded-xl mx-auto">
@@ -502,9 +519,9 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
                     </p>
                   </div>
 
-                  <div className="absolute left-1/2 top-1/2 w-[84px] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white border-2 border-blue-300 shadow-lg px-2 py-3 text-center">
+                  <div className="absolute left-1/2 top-1/2 w-[96px] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white border-2 border-blue-300 shadow-lg px-2.5 py-3.5 text-center">
                     <p className="text-xs text-slate-500">中心主題</p>
-                    <p className="text-base font-extrabold text-slate-800 leading-5">人物知識庫</p>
+                    <p className="text-[13px] font-extrabold text-slate-800 leading-5 whitespace-nowrap">人物知識庫</p>
                     <p className="text-xs text-blue-600 mt-1 font-semibold">提取完成</p>
                   </div>
 
@@ -544,17 +561,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
                 ))}
               </div>
             </div>
-            <div className="mt-3 rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2 text-sm text-emerald-700">
-              系統已從知識庫自動篩選關鍵欄位，可直接用於聊天回覆。
-            </div>
           </div>
 
-          <div className="bg-slate-50 p-4 rounded-xl border">
-            <h4 className="font-bold text-slate-800 mb-2">Preview & Activate</h4>
-            <p className="text-sm text-slate-600">
-              已完成知識提取，下一步可進入互動預覽並啟用對話。
-            </p>
-          </div>
         </motion.div>
       );
     }
@@ -568,9 +576,72 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   return (
     <div className="space-y-6 animate-fade-in">
       <h3 className="text-xl font-bold">4. 知識餵養</h3>
-      <p className="text-sm text-slate-500">
-        上傳文件、網址或內容，AI 將自動整理人物背景設定 + 知識庫摘要。
-      </p>
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <h4 className="text-sm font-bold text-slate-800">性格特質</h4>
+        <div className="mt-3">
+          <p className="mb-2 text-xs font-semibold text-slate-700">角色性格（可多選）</p>
+          <div className="flex flex-wrap gap-2">
+            {["耐心", "嚴謹", "幽默", "溫柔", "直接"].map((trait) => (
+              <button
+                key={trait}
+                type="button"
+                onClick={() =>
+                  setPersonalityTraits((prev) =>
+                    prev.includes(trait) ? prev.filter((t) => t !== trait) : [...prev, trait]
+                  )
+                }
+                className={`rounded-full border px-3 py-1.5 text-xs ${
+                  personalityTraits.includes(trait)
+                    ? "border-indigo-300 bg-indigo-100 text-indigo-700"
+                    : "border-slate-200 bg-white text-slate-600"
+                }`}
+              >
+                {trait}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <p className="mb-1.5 text-xs font-semibold text-slate-700">說話風格</p>
+            <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2">
+              {["文言文", "西洋", "口語", "引導式"].map((style) => (
+                <button
+                  key={style}
+                  type="button"
+                  onClick={() => setSpeakingStyle(style)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                    speakingStyle === style
+                      ? "bg-indigo-600 text-white shadow-sm"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  {style}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-1.5 text-xs font-semibold text-slate-700">回答模式</p>
+            <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2">
+              {["直接給答案", "引導後再回答", "不直接給答案"].map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setAnswerMode(mode)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                    answerMode === mode
+                      ? "bg-indigo-600 text-white shadow-sm"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Upload method tabs */}
       {status === "idle" && (

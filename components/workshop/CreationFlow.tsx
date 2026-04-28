@@ -365,6 +365,9 @@ ${data.characterBackground}
 【人物知識庫摘要】
 ${data.knowledgeSummary}
 
+【角色對話策略】
+${data.personaProfile}
+
 請根據「人物背景設定」與「知識庫摘要」回答問題，不要捏造不存在的資訊。
               `.trim();
 

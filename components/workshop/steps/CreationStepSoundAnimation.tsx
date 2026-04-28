@@ -683,32 +683,47 @@ export const CreationStepSoundAnimation = ({
           ].map((item) => (
             <div
               key={item.key}
-              className="p-3 border rounded-2xl bg-white shadow-sm hover:shadow-md transition"
+              className="rounded-3xl border border-slate-200 bg-gradient-to-b from-white to-slate-50/80 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.06)] transition hover:shadow-[0_14px_30px_rgba(15,23,42,0.12)]"
             >
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs md:text-sm font-semibold">{item.label}</span>
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-800">{item.label}</span>
 
                 {/* 狀態小點點 */}
                 {uploadState[item.key].loading ? (
-                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600">
+                    <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
+                    上傳中
+                  </span>
                 ) : item.value ? (
-                  <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                    已完成
+                  </span>
                 ) : (
-                  <span className="w-2 h-2 rounded-full bg-gray-300"></span>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                    <span className="h-2 w-2 rounded-full bg-slate-300"></span>
+                    未上傳
+                  </span>
                 )}
               </div>
 
               {/* 上傳按鈕 */}
-              <input
-                type="file"
-                accept="video/*"
-                onChange={(e) => handleUpload(e, item.key)}
-                className="mb-2 block text-xs"
-              />
+              <label className="mb-3 flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50/60 hover:text-indigo-700">
+                上傳影片
+                <input
+                  type="file"
+                  accept="video/*"
+                  onChange={(e) => handleUpload(e, item.key)}
+                  className="hidden"
+                />
+              </label>
+              <div className="mb-3 truncate text-[11px] text-slate-500">
+                {item.value ? "已選擇影片" : "尚未選擇檔案"}
+              </div>
 
               {/* Loading */}
               {uploadState[item.key].loading ? (
-                <div className="flex items-center gap-2 text-xs text-blue-600 mt-1">
+                <div className="mt-1 flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
                   <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
                   <span>正在上傳影片…</span>
                 </div>
