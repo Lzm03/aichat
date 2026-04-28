@@ -17,6 +17,9 @@ interface CreationStep2Props {
   initialData?: {
     characterBackground?: string;
     knowledgeSummary?: string;
+    personalityTraits?: string[];
+    speakingStyle?: string;
+    answerMode?: string;
   };
   knowledgeFeature?: FeatureEntitlement;
 }
@@ -34,9 +37,9 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   const [characterBackground, setCharacterBackground] = useState(initialData?.characterBackground || "");
   const [knowledgeSummary, setKnowledgeSummary] = useState(initialData?.knowledgeSummary || "");
   const [sourceLabel, setSourceLabel] = useState("");
-  const [personalityTraits, setPersonalityTraits] = useState<string[]>(["耐心"]);
-  const [speakingStyle, setSpeakingStyle] = useState("文言文");
-  const [answerMode, setAnswerMode] = useState("引導後再回答");
+  const [personalityTraits, setPersonalityTraits] = useState<string[]>(initialData?.personalityTraits || ["耐心"]);
+  const [speakingStyle, setSpeakingStyle] = useState(initialData?.speakingStyle || "文言文");
+  const [answerMode, setAnswerMode] = useState(initialData?.answerMode || "引導後再回答");
   const [progress, setProgress] = useState(0);
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
 
@@ -93,6 +96,16 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       setProgress(100);
     }
   }, [initialData?.characterBackground, initialData?.knowledgeSummary]);
+
+  useEffect(() => {
+    if (!characterBackground.trim() && !knowledgeSummary.trim()) return;
+    const personaProfile = [
+      `【性格特質】${personalityTraits.join("、") || "未設定"}`,
+      `【說話風格】${speakingStyle}`,
+      `【答題策略】${answerMode}`,
+    ].join("\n");
+    onGenerated({ characterBackground, knowledgeSummary, personaProfile });
+  }, [personalityTraits, speakingStyle, answerMode]);
 
   useEffect(() => {
     if (status !== "processing") return;

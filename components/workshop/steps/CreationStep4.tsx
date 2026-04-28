@@ -85,10 +85,15 @@ export const CreationStep4: React.FC<{
   onSecurityChange?: (securityPrompt: string) => void;
   botId?: string | null;
   securityFeature?: FeatureEntitlement;
-}> = ({ onSecurityChange, botId, securityFeature }) => {
-  const [sharingMode, setSharingMode] = useState<SharingMode>('link');
-  const [filterLevel, setFilterLevel] = useState<FilterLevel>('standard');
-  const [customWords, setCustomWords] = useState('');
+  initialConfig?: { sharingMode?: string; filterLevel?: string; customWords?: string };
+}> = ({ onSecurityChange, botId, securityFeature, initialConfig }) => {
+  const [sharingMode, setSharingMode] = useState<SharingMode>((initialConfig?.sharingMode === "group" ? "group" : "link"));
+  const [filterLevel, setFilterLevel] = useState<FilterLevel>(
+    initialConfig?.filterLevel === "strict" || initialConfig?.filterLevel === "custom"
+      ? (initialConfig.filterLevel as FilterLevel)
+      : "standard"
+  );
+  const [customWords, setCustomWords] = useState(initialConfig?.customWords || '');
   const [isCopied, setIsCopied] = useState(false);
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
 
@@ -152,13 +157,19 @@ ${customWords
 `;
     }
 
+    base += `
+【共享模式】${sharingMode}
+【過濾等級】${filterLevel}
+【自定義詞】${customWords.trim()}
+`;
+
     return base.trim();
   };
 
   // 回傳安全 prompt 給外層 CreationFlow
   useEffect(() => {
     if (onSecurityChange) onSecurityChange(buildSecurityPrompt());
-  }, [filterLevel, customWords]);
+  }, [sharingMode, filterLevel, customWords]);
 
   return (
     <div className="space-y-6 animate-fade-in">

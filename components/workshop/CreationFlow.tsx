@@ -129,11 +129,29 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
 
   const parseKnowledgeBase = (knowledgeBase: string) => {
     const bgMatch = knowledgeBase.match(/【人物背景設定】([\s\S]*?)【人物知識庫摘要】/);
-    const ksMatch = knowledgeBase.match(/【人物知識庫摘要】([\s\S]*?)(?:請根據「人物背景設定」與「知識庫摘要」回答問題，不要捏造不存在的資訊。)?$/);
+    const ksMatch = knowledgeBase.match(/【人物知識庫摘要】([\s\S]*?)(?:【角色對話策略】|請根據「人物背景設定」與「知識庫摘要」回答問題，不要捏造不存在的資訊。|$)/);
+    const personaMatch = knowledgeBase.match(/【角色對話策略】([\s\S]*?)(?:請根據「人物背景設定」與「知識庫摘要」回答問題，不要捏造不存在的資訊。|$)/);
+    const personaText = personaMatch?.[1] || "";
+    const traits = (personaText.match(/【性格特質】([^\n]+)/)?.[1] || "")
+      .split("、")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const speakingStyle = (personaText.match(/【說話風格】([^\n]+)/)?.[1] || "文言文").trim();
+    const answerMode = (personaText.match(/【答題策略】([^\n]+)/)?.[1] || "引導後再回答").trim();
     return {
       characterBackground: bgMatch?.[1]?.trim() || "",
       knowledgeSummary: ksMatch?.[1]?.trim() || "",
+      personalityTraits: traits.length ? traits : ["耐心"],
+      speakingStyle,
+      answerMode,
     };
+  };
+
+  const parseSecurityConfig = (securityPrompt: string) => {
+    const sharingMode = (securityPrompt.match(/【共享模式】([^\n]+)/)?.[1] || "link").trim();
+    const filterLevel = (securityPrompt.match(/【過濾等級】([^\n]+)/)?.[1] || "standard").trim();
+    const customWords = (securityPrompt.match(/【自定義詞】([^\n]*)/)?.[1] || "").trim();
+    return { sharingMode, filterLevel, customWords };
   };
 
   useEffect(() => {
@@ -383,6 +401,7 @@ ${data.personaProfile}
             onSecurityChange={(prompt) => updateConfig("securityPrompt", prompt)}
             botId={botConfig.id || botId}
             securityFeature={featureMap.get("security_points")}
+            initialConfig={parseSecurityConfig(botConfig.securityPrompt)}
           />
         );
 
