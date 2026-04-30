@@ -13,6 +13,7 @@ import {
   maybeAssignLegacyDataByEmail,
   normalizeUserPreferences,
   recordFeatureUsage,
+  ensureFeatureAvailable,
   resetOwnFeatureUsage,
   listAccountsForAdmin,
   sanitizeUser,
@@ -133,6 +134,7 @@ router.post("/features/:key/consume", async (req, res) => {
 
   try {
     const amount = Math.max(1, Number(req.body?.amount || 1));
+    await ensureFeatureAvailable(payload.sub, req.params.key as any, amount);
     const features = await recordFeatureUsage(payload.sub, req.params.key as any, amount, req.body?.meta || {});
     return res.json({ ok: true, features });
   } catch (error) {

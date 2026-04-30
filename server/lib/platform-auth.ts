@@ -472,8 +472,10 @@ export async function ensureFeatureAvailable(
   if (!definition || !current) {
     throw new Error(`unknown feature limit: ${featureKey}`);
   }
-  if (current.used + amount > definition.limit) {
-    const error = new Error(definition.upgradeMessage);
+  if (current.used + amount > current.limit) {
+    const error = new Error(
+      `${definition.label} 次數不足（目前 ${current.used}/${current.limit}，需要 ${amount}）`
+    );
     (error as any).status = 402;
     throw error;
   }
@@ -627,6 +629,13 @@ export async function setUserFeatureLimit(
       [targetUserId, featureKey, normalizedLimit]
     );
   }
+
+  // Admin expectation: changing limit should directly update usable quota.
+  // Clear existing usage for this feature so remaining count equals new limit.
+  await pool.query("DELETE FROM usage_events WHERE user_id=$1 AND action=$2", [
+    targetUserId,
+    featureActionName(featureKey),
+  ]);
 
   return getUserFeatureSummary(targetUserId);
 }
