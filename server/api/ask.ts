@@ -82,6 +82,7 @@ type EmailTeachingState = {
   category?: (typeof EMAIL_CATEGORIES)[number];
   scenario?: string;
   lastScenario?: string;
+  studentParts?: Record<string, string>;
 };
 
 function getTaskSteps(): string[] {
@@ -162,14 +163,14 @@ function pickScenario(category: (typeof EMAIL_CATEGORIES)[number], lastScenario?
 function buildInitialTeachingIntro() {
   return [
     "Step 1/7（郵件）",
-    "你好！我是你的中文電郵導師。寫電郵像拼圖，我們一起拆成小步驟。",
-    "先選類別，我會給你有趣情境：",
+    "你好！我是你的中文電郵導師。寫電郵像玩拼圖，我們一步步拼出完整電郵！",
+    "先選一個數字，我會變出超酷情境：",
     "1. 請求信",
     "2. 請假信",
     "3. 感謝信",
     "4. 邀請信",
     "5. 道歉信",
-    "請告訴我數字！",
+    "你想練習哪一個呢？",
   ].join("\n");
 }
 
@@ -453,24 +454,41 @@ router.post("/ask", requireAuth, async (req: Request, res: Response) => {
         return res.json({ reply: buildTeachingGuide(session.step_index, "step", teachingState), teachingMode: true, stepIndex: session.step_index, totalSteps: session.total_steps, taskType: session.task_type });
       }
       if (isNextCommand(normalized)) {
+        const savedParts = teachingState.studentParts || {};
+        const currentPart = savedParts[String(session.step_index)]?.trim();
+        if (session.step_index >= 2 && !currentPart) {
+          const hintMap: Record<number, string> = {
+            2: "例如：請假申請 5A 陳小明",
+            3: "例如：林老師：",
+            4: "例如：我寫這封電郵，是想向您請假一天。",
+            5: "例如：因為我要到醫院覆診，未能回校上課。",
+            6: "例如：祝 教安",
+            7: "例如：學生 陳小明 敬上",
+          };
+          return res.json({
+            reply: `先別急著跳步，你這一步還沒寫內容喔！你可以先試試：${hintMap[session.step_index] || "先寫這一步內容"}`,
+            teachingMode: true,
+            stepIndex: session.step_index,
+            totalSteps: session.total_steps,
+            taskType: session.task_type,
+          });
+        }
         const nextStep = session.step_index + 1;
         if (nextStep > session.total_steps) {
           await pool.query(`UPDATE teaching_sessions SET mode='completed', step_index=$2, updated_at=NOW() WHERE id=$1`, [session.id, session.total_steps]);
           const state = getTeachingState(session);
-          const draft = (session.last_student_draft || "（請貼上你的完整內容）").trim();
+          const parts = state.studentParts || {};
           const finalTemplate = [
             "太好了！你已完成這次中文電郵練習！",
-            "以下是全文範本：",
-            `【類別】${state.category || "未設定"}`,
-            `【情境】${state.scenario || "未設定"}`,
-            "主題：",
-            "稱呼：",
-            "正文：",
-            "祝頌語：",
-            "署名：",
+            "拼圖完成，這是你的完整電郵：",
+            `主題：${parts["2"] || ""}`,
+            `${parts["3"] || ""}`,
+            `${parts["4"] || ""}`,
+            `${parts["5"] || ""}`,
+            `${parts["6"] || ""}`,
+            `${parts["7"] || ""}`,
             "",
-            "你很棒，已經掌握電郵拼圖的每一塊！",
-            `（你最後一步內容：${draft}）`,
+            "超有創意！格式也越來越穩了！",
           ].join("\n");
           return res.json({ reply: finalTemplate, teachingMode: false });
         }
@@ -494,6 +512,7 @@ router.post("/ask", requireAuth, async (req: Request, res: Response) => {
           category,
           scenario,
           lastScenario: scenario,
+          studentParts: teachingState.studentParts || {},
         };
         await pool.query(
           `UPDATE teaching_sessions SET step_index=2, mode='guiding', last_student_draft=$2, last_feedback_json=$3::jsonb, updated_at=NOW() WHERE id=$1`,
@@ -521,9 +540,16 @@ router.post("/ask", requireAuth, async (req: Request, res: Response) => {
       }
 
       const evaluation = await evaluateStudentDraft(session, normalized);
+      const nextTeachingState: EmailTeachingState = {
+        ...teachingState,
+        studentParts: {
+          ...(teachingState.studentParts || {}),
+          [String(session.step_index)]: normalized,
+        },
+      };
       await pool.query(
         `UPDATE teaching_sessions SET mode='feedback', last_student_draft=$2, last_feedback_json=$3::jsonb, updated_at=NOW() WHERE id=$1`,
-        [session.id, normalized, JSON.stringify({ ...evaluation, teachingState })]
+        [session.id, normalized, JSON.stringify({ ...evaluation, teachingState: nextTeachingState })]
       );
       const composed = [
         `Step ${session.step_index}/${session.total_steps} 評估`,
