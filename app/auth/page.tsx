@@ -4,6 +4,7 @@ import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
+import { DemoNotice } from '@/components/system/DemoNotice';
 
 type AppRole = 'teacher' | 'student' | 'admin';
 
@@ -98,6 +99,7 @@ export default function AuthPage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-white text-slate-800">
+      <DemoNotice />
 
       <header className="relative z-10 flex items-center justify-between px-6 py-6 md:px-10">
         <Link href="/" className="flex items-center gap-3">

@@ -71,6 +71,14 @@ export const AiBotWorkshopPage: React.FC = () => {
     setEditingBotId(null);
   };
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.body.dataset.demoNoticeContext = view;
+    return () => {
+      delete document.body.dataset.demoNoticeContext;
+    };
+  }, [view]);
+
   return (
     <div className="transition-all duration-500">
       {view === 'library' && (

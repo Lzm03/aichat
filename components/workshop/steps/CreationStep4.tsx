@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Icons } from '../../icons';
-import type { FeatureEntitlement } from '../../../hooks/useFeatureEntitlements';
 import { usePlatformDialog } from '../../../hooks/usePlatformDialog';
 import { PlatformDialog } from '../../system/PlatformDialog';
 
@@ -84,9 +83,8 @@ const FilterCard: React.FC<{
 export const CreationStep4: React.FC<{
   onSecurityChange?: (securityPrompt: string) => void;
   botId?: string | null;
-  securityFeature?: FeatureEntitlement;
   initialConfig?: { sharingMode?: string; filterLevel?: string; customWords?: string };
-}> = ({ onSecurityChange, botId, securityFeature, initialConfig }) => {
+}> = ({ onSecurityChange, botId, initialConfig }) => {
   const [sharingMode, setSharingMode] = useState<SharingMode>((initialConfig?.sharingMode === "group" ? "group" : "link"));
   const [filterLevel, setFilterLevel] = useState<FilterLevel>(
     initialConfig?.filterLevel === "strict" || initialConfig?.filterLevel === "custom"
@@ -243,55 +241,21 @@ ${customWords
             title="標準"
             description="教育場景預設濾網，適度引導學生"
             isSelected={filterLevel === 'standard'}
-            onClick={() => {
-              if (securityFeature?.locked) {
-                showAlert({
-                  title: "安全過濾已用完",
-                  message: securityFeature.upgradeMessage,
-                });
-                return;
-              }
-              setFilterLevel('standard');
-            }}
+            onClick={() => setFilterLevel('standard')}
           />
           <FilterCard
             title="嚴格"
             description="偵測到敏感內容將停止回答"
             isSelected={filterLevel === 'strict'}
-            onClick={() => {
-              if (securityFeature?.locked) {
-                showAlert({
-                  title: "安全過濾已用完",
-                  message: securityFeature.upgradeMessage,
-                });
-                return;
-              }
-              setFilterLevel('strict');
-            }}
+            onClick={() => setFilterLevel('strict')}
           />
           <FilterCard
             title="自定義"
             description="輸入你額外想封鎖的詞彙"
             isSelected={filterLevel === 'custom'}
-            onClick={() => {
-              if (securityFeature?.locked) {
-                showAlert({
-                  title: "安全過濾已用完",
-                  message: securityFeature.upgradeMessage,
-                });
-                return;
-              }
-              setFilterLevel('custom');
-            }}
+            onClick={() => setFilterLevel('custom')}
           />
         </div>
-        {securityFeature && (
-          <p className={`text-xs ${securityFeature.locked ? "text-rose-600" : "text-slate-500"}`}>
-            {securityFeature.unlimited
-              ? `${securityFeature.label} 無限制`
-              : `${securityFeature.label} ${securityFeature.used}/${securityFeature.limit}`}
-          </p>
-        )}
 
         {filterLevel === 'custom' && (
           <motion.div
@@ -303,18 +267,9 @@ ${customWords
               rows={4}
               maxLength={500}
               value={customWords}
-              onChange={(e) => {
-                if (securityFeature?.locked) {
-                  showAlert({
-                    title: "安全過濾已用完",
-                    message: securityFeature.upgradeMessage,
-                  });
-                  return;
-                }
-                setCustomWords(e.target.value);
-              }}
+              onChange={(e) => setCustomWords(e.target.value)}
               placeholder="例如：暴力, 色情, 烏煙瘴氣（使用逗號分隔）"
-              className={`w-full px-4 py-3 border rounded-xl transition resize-none ${securityFeature?.locked ? "border-slate-200 bg-slate-100 text-slate-400" : "border-slate-300 focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400"}`}
+              className="w-full px-4 py-3 border rounded-xl transition resize-none border-slate-300 focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400"
             />
             <p className="text-right text-xs text-slate-500 mt-1">
               {customWords.length} / 500

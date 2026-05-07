@@ -9,7 +9,6 @@ import { PlatformDialog } from "../../system/PlatformDialog";
 interface CreationStep3Props {
   updateConfig: (key: "avatarUrl" | "background", value: string) => void;
   botConfig: { avatarUrl: string; background: string };
-  avatarAiFeature?: FeatureEntitlement;
   backgroundAiFeature?: FeatureEntitlement;
 }
 
@@ -44,132 +43,6 @@ const mockStyles = {
     return data.url;  // 永久 URL
   }
 
-/* -------------------------------------------
-   ⭐ Avatar Generator (AI 生成)
-------------------------------------------- */
-const AvatarGenerator: React.FC<{
-  onAvatarGenerated: (url: string) => void;
-  feature?: FeatureEntitlement;
-  onLockedClick: (message: string) => void;
-}> = ({
-  onAvatarGenerated,
-  feature,
-  onLockedClick,
-}) => {
-  const [selectedStyle, setSelectedStyle] = useState("寫實風格");
-  const [prompt, setPrompt] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
-
-  const handleGenerate = async () => {
-    if (feature?.locked) {
-      onLockedClick(feature.upgradeMessage);
-      return;
-    }
-    if (!prompt.trim()) return;
-
-    setIsGenerating(true);
-    setPreviewImage(null);
-
-    try {
-      const fullPrompt = `${selectedStyle}: ${prompt}`;
-      const baseUrl = import.meta.env.VITE_API_URL;
-
-      const res = await fetch(`${baseUrl}/api/generate-image`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: fullPrompt, featureKey: "avatar_ai_generate" }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data.image) {
-        console.error("Image generation API error:", data);
-        return;
-      }
-
-      setPreviewImage(data.image);
-      onAvatarGenerated(data.image);
-    } catch (err) {
-      console.error("Generation failed:", err);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  return (
-    <div className="space-y-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
-      {(isGenerating || previewImage) && (
-        <div className="relative w-full h-48 bg-slate-200 rounded-xl overflow-hidden flex items-center justify-center">
-          {previewImage && (
-            <img src={previewImage} className="w-full h-full object-cover" />
-          )}
-
-          {isGenerating && (
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center">
-              <Icons.loading className="w-8 h-8 text-white animate-spin" />
-              <p className="text-white text-sm mt-2">AI 形象生成中...</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 风格 */}
-      <div>
-        <p className="text-xs font-medium text-slate-600 mb-2">1. 風格選擇</p>
-        <div className="grid grid-cols-3 gap-2">
-          {Object.entries(mockStyles).map(([name, url]) => (
-            <div
-              key={name}
-              onClick={() => setSelectedStyle(name)}
-              className={`relative rounded-xl cursor-pointer ring-2 ${
-                selectedStyle === name ? "ring-indigo-500" : "ring-transparent"
-              }`}
-            >
-              <img src={url} className="w-full h-16 object-cover rounded-lg" />
-              <div className="absolute inset-0 bg-black/30 rounded-lg"></div>
-              <p className="absolute bottom-1 left-2 text-xs text-white font-bold">
-                {name}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* 提示詞 */}
-      <div>
-        <p className="text-xs font-medium text-slate-600 mb-2">2. 提示詞助手</p>
-        <div className="relative">
-          <Icons.wand className="absolute top-1/2 left-3 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="例如：戴著眼鏡的學者"
-            className="w-full pl-9 pr-3 py-2.5 bg-white rounded-lg text-sm border border-slate-300 focus:ring-2 focus:ring-indigo-300"
-          />
-        </div>
-      </div>
-
-      <button
-        onClick={handleGenerate}
-        className={`w-full py-2.5 rounded-lg font-semibold flex items-center justify-center space-x-2 ${
-          feature?.locked
-            ? "bg-slate-200 text-slate-500"
-            : "bg-indigo-600 text-white hover:bg-indigo-700"
-        } ${isGenerating ? "opacity-70" : ""}`}
-      >
-        <Icons.sparkles className="w-4 h-4" />
-        <span>{isGenerating ? "生成中..." : "開始生成"}</span>
-      </button>
-      {feature && (
-        <p className={`text-xs ${feature.locked ? "text-rose-600" : "text-slate-500"}`}>
-          {feature.unlimited ? `${feature.label} 無限制` : `${feature.label} ${feature.used}/${feature.limit}`}
-        </p>
-      )}
-    </div>
-  );
-};
 
 /* -------------------------------------------
    ⭐ Avatar Uploader（本地 + 實際 URL）
@@ -221,6 +94,7 @@ const AvatarUploader: React.FC<{ onImageUploaded: (url: string) => void }> = ({
       <label className="w-full h-48 p-4 bg-slate-50 border-2 border-dashed border-slate-300 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100">
         <Icons.upload className="w-8 h-8 text-slate-400" />
         <span className="text-sm text-slate-600">點擊或拖曳圖片上傳</span>
+        <span className="mt-1 text-xs text-slate-500 text-center">建議使用 3D 全身角色圖片，效果會更自然。</span>
         <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
       </label>
     );
@@ -232,18 +106,16 @@ const AvatarUploader: React.FC<{ onImageUploaded: (url: string) => void }> = ({
 export const CreationStep3: React.FC<CreationStep3Props> = ({
   updateConfig,
   botConfig,
-  avatarAiFeature,
   backgroundAiFeature,
 }) => {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [avatarSource, setAvatarSource] =
-    useState<"preset" | "upload" | "generate">("preset");
+    useState<"preset" | "upload">("preset");
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
 
   const tabs = [
     { id: "preset", label: "預設角色" },
     { id: "upload", label: "上傳圖片" },
-    { id: "generate", label: "AI 生成" },
   ] as const;
 
   return (
@@ -308,15 +180,6 @@ export const CreationStep3: React.FC<CreationStep3Props> = ({
             />
           )}
 
-          {avatarSource === "generate" && (
-            <AvatarGenerator
-              feature={avatarAiFeature}
-              onLockedClick={(message) =>
-                showAlert({ title: "形象生成已用完", message })
-              }
-              onAvatarGenerated={(url) => updateConfig("avatarUrl", url)}
-            />
-          )}
         </motion.div>
       </AnimatePresence>
 

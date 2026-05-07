@@ -246,6 +246,18 @@ export async function ensurePlatformTables() {
         ON user_feature_limits(user_id);
       `);
       await pool.query(`
+        INSERT INTO user_feature_limits (user_id, feature_key, limit_value, created_at, updated_at)
+        SELECT id, 'voice_messages', 50, NOW(), NOW()
+        FROM users
+        ON CONFLICT (user_id, feature_key)
+        DO UPDATE SET limit_value = 50, updated_at = NOW()
+      `);
+      await pool.query(`
+        UPDATE user_feature_limits
+        SET limit_value = 3, updated_at = NOW()
+        WHERE feature_key = 'voice_audition_preview' AND limit_value = 50
+      `);
+      await pool.query(`
         CREATE TABLE IF NOT EXISTS video_studio_tasks (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

@@ -391,7 +391,6 @@ ${data.personaProfile}
 
               updateConfig("knowledgeBase", combined);
             }}
-            knowledgeFeature={featureMap.get("knowledge_points")}
           />
         );
 
@@ -400,7 +399,6 @@ ${data.personaProfile}
           <CreationStep4
             onSecurityChange={(prompt) => updateConfig("securityPrompt", prompt)}
             botId={botConfig.id || botId}
-            securityFeature={featureMap.get("security_points")}
             initialConfig={parseSecurityConfig(botConfig.securityPrompt)}
           />
         );

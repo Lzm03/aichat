@@ -49,12 +49,13 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
   
   const lastTTS = useRef(0);
-  const [messages, setMessages] = useState<{ role: "user" | "bot"; content: string }[]>([]);
+  const [messages, setMessages] = useState<{ role: "user" | "bot"; content: string; guidedTitle?: string; guidedBody?: string }[]>([]);
 
   const [inputText, setInputText] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [copied, setCopied] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const [botState, setBotState] = useState<"idle" | "thinking" | "speaking">(
     "idle"
   );
@@ -78,6 +79,9 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [guidedMode, setGuidedMode] = useState(false);
+  const [guidedStepIndex, setGuidedStepIndex] = useState(0);
+  const [guidedTotalSteps, setGuidedTotalSteps] = useState(0);
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
   const [seqIdle, setSeqIdle] = useState<any>(null);
   const [seqThinking, setSeqThinking] = useState<any>(null);
@@ -181,6 +185,15 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       behavior: "smooth",
     });
   }, [messages, botState]);
+
+  useEffect(() => {
+    if (!inputRef.current) return;
+    inputRef.current.style.height = "0px";
+    const fullHeight = inputRef.current.scrollHeight;
+    const next = Math.min(fullHeight, 128);
+    inputRef.current.style.height = `${Math.max(24, next)}px`;
+    inputRef.current.style.overflowY = fullHeight > 128 ? "auto" : "hidden";
+  }, [inputText]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1136,6 +1149,9 @@ const sendMessage = async (forcedText?: string) => {
           "\n" +
           chatStyleRules,
         userPrompt: userMsg,
+        botId: botConfig.id,
+        stream: false,
+        teachingHint: guidedMode ? "continue" : "auto",
         usageType: "chat_message",
       }),
       signal: controller.signal,
@@ -1152,108 +1168,55 @@ const sendMessage = async (forcedText?: string) => {
       throw new Error(errorMessage);
     }
 
-    const reader = response.body?.getReader();
-    const decoder = new TextDecoder();
+    const data = await response.json();
+    const committedReply = String(data?.reply || "");
+    const parseGuidedCard = (text: string) => {
+      const normalized = text.trim();
+      const m = normalized.match(/^(Step\s+\d+(?:\/\d+)?(?:（[^）]+）)?(?:\s*評估)?)\s*[\n：:]\s*([\s\S]*)$/);
+      if (!m) return { title: "", body: normalized };
+      return { title: m[1].trim(), body: (m[2] || "").trim() };
+    };
+    const guidedCard = Boolean(data?.teachingMode) ? parseGuidedCard(committedReply) : { title: "", body: committedReply };
+    setGuidedMode(Boolean(data?.teachingMode));
+    setGuidedStepIndex(Number(data?.stepIndex || 0));
+    setGuidedTotalSteps(Number(data?.totalSteps || 0));
+    setMessages(prev => [...prev, { role: "bot", content: "", guidedTitle: guidedCard.title }]);
 
-    let committedReply = "";
-    let segmentBuffer = "";
-    let displayChain = Promise.resolve();
+    const ttsSource = guidedCard.body || committedReply;
+    const segments = ttsSource
+      .split(/(?<=[。！？!?；;\n])/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    let progressiveReply = "";
+    let progressiveChain = Promise.resolve();
 
-    setMessages(prev => [...prev, { role: "bot", content: "" }]);
-
-    while (true) {
-      const { done, value } = await reader!.read();
-      if (done) break;
-      if (currentGenId !== generationIdRef.current) return;
-
-      const chunk = decoder.decode(value);
-      const lines = chunk.split("\n");
-
-      for (const line of lines) {
-        if (!line.startsWith("data:")) continue;
-
-        const token = line.replace("data:", "");
-
-        if (!token.trim()) continue;
-
-        segmentBuffer += token;
-
-        const sentenceEnd = isSentenceEnd(segmentBuffer);
-
-        if (sentenceEnd) {
-          const sentence = segmentBuffer.trim();
-          const segmentText = segmentBuffer;
-
-          if (voicePlaybackEnabledRef.current && sentence.length > 0) {
-            const seq = enqueueSpeak(sentence);
-            displayChain = displayChain.then(async () => {
-              if (currentGenId !== generationIdRef.current) return;
-              if (typeof seq === "number") {
-                await waitForAudioReady(seq, 900);
-              }
-              if (currentGenId !== generationIdRef.current) return;
-              committedReply += segmentText;
-              setMessages(prev => {
-                const newMessages = [...prev];
-                newMessages[newMessages.length - 1] = {
-                  role: "bot",
-                  content: committedReply,
-                };
-                return newMessages;
-              });
-            });
-          } else {
-            committedReply += segmentText;
-            setMessages(prev => {
-              const newMessages = [...prev];
-              newMessages[newMessages.length - 1] = {
-                role: "bot",
-                content: committedReply,
-              };
-              return newMessages;
-            });
-          }
-
-          segmentBuffer = "";
-        }
-      }
-    }
-
-    // 最后一段（未遇到句号的尾巴）
-    if (segmentBuffer.trim()) {
-      const tail = segmentBuffer;
+    for (const segment of segments) {
       if (voicePlaybackEnabledRef.current) {
-        const seq = enqueueSpeak(segmentBuffer.trim());
-        displayChain = displayChain.then(async () => {
+        const seq = enqueueSpeak(segment);
+        progressiveChain = progressiveChain.then(async () => {
           if (currentGenId !== generationIdRef.current) return;
           if (typeof seq === "number") {
             await waitForAudioReady(seq, 900);
           }
           if (currentGenId !== generationIdRef.current) return;
-          committedReply += tail;
+          progressiveReply += (progressiveReply ? "\n" : "") + segment;
           setMessages(prev => {
             const newMessages = [...prev];
-            newMessages[newMessages.length - 1] = {
-              role: "bot",
-              content: committedReply,
-            };
+            newMessages[newMessages.length - 1] = { role: "bot", content: progressiveReply, guidedTitle: guidedCard.title, guidedBody: progressiveReply };
             return newMessages;
           });
         });
       } else {
-        committedReply += tail;
+        progressiveReply += (progressiveReply ? "\n" : "") + segment;
         setMessages(prev => {
           const newMessages = [...prev];
-          newMessages[newMessages.length - 1] = {
-            role: "bot",
-            content: committedReply,
-          };
+          newMessages[newMessages.length - 1] = { role: "bot", content: progressiveReply, guidedTitle: guidedCard.title, guidedBody: progressiveReply };
           return newMessages;
         });
       }
     }
 
-    await displayChain;
+    await progressiveChain;
     if (currentGenId !== generationIdRef.current) return;
     setBotState((current) => (current === "thinking" ? "idle" : current));
   } catch (err) {
@@ -2146,15 +2109,33 @@ const unlockAudioAndMic = async () => {
                       m.role === "user" ? "justify-end" : "justify-start"
                     }`}
                   >
-                    <div
-                      className={`max-w-[86%] md:max-w-[70%] p-3 rounded-2xl text-sm leading-relaxed ${
-                        m.role === "user"
-                          ? "bg-indigo-600 text-white rounded-br-sm"
-                          : "bg-white border border-slate-200 rounded-bl-sm"
-                      }`}
-                    >
-                      {m.content}
-                    </div>
+                    {m.role === "bot" && m.guidedTitle ? (
+                      <div className="max-w-[86%] md:max-w-[70%]">
+                        <div className="mb-1 text-xs font-semibold text-slate-500">{m.guidedTitle}</div>
+                        <div className="bg-white border border-slate-200 rounded-2xl rounded-bl-sm p-3 text-sm leading-relaxed text-slate-800 whitespace-pre-wrap">
+                          {(m.guidedBody || m.content).split("\n").map((line, idx) => {
+                            const trimmed = line.trim();
+                            const isHeading =
+                              trimmed === "做得好" || trimmed === "可改進" || trimmed === "下一步";
+                            return (
+                              <div key={idx} className={isHeading ? "font-semibold text-slate-900" : ""}>
+                                {line}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        className={`max-w-[86%] md:max-w-[70%] p-3 rounded-2xl text-sm leading-relaxed ${
+                          m.role === "user"
+                            ? "bg-indigo-600 text-white rounded-br-sm"
+                            : "bg-white border border-slate-200 rounded-bl-sm"
+                        }`}
+                      >
+                        {m.content}
+                      </div>
+                    )}
                   </div>
                 ))}
 
@@ -2178,6 +2159,19 @@ const unlockAudioAndMic = async () => {
 
               {/* input */}
               <div className="p-4 bg-white border-t">
+                {guidedMode && (
+                  <div className="mb-2 rounded-xl border border-indigo-100 bg-indigo-50 p-2">
+                    <div className="mb-2 text-xs text-indigo-700">
+                      引導模式進行中 {guidedStepIndex > 0 && guidedTotalSteps > 0 ? `(Step ${guidedStepIndex}/${guidedTotalSteps})` : ""}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={() => void sendMessage("下一步")} className="rounded-lg bg-white px-3 py-1 text-xs text-indigo-700 border border-indigo-200">下一步</button>
+                      <button onClick={() => void sendMessage("重複這一步")} className="rounded-lg bg-white px-3 py-1 text-xs text-indigo-700 border border-indigo-200">重複這一步</button>
+                      <button onClick={() => void sendMessage("給我示例")} className="rounded-lg bg-white px-3 py-1 text-xs text-indigo-700 border border-indigo-200">給我示例</button>
+                      <button onClick={() => void sendMessage("退出引導")} className="rounded-lg bg-white px-3 py-1 text-xs text-rose-700 border border-rose-200">退出引導</button>
+                    </div>
+                  </div>
+                )}
                 {awaitingAudioGesture && (
                   <div className="mb-2 text-xs text-amber-600">
                     已收到回覆語音，請點一下畫面以恢復播放。
@@ -2188,7 +2182,7 @@ const unlockAudioAndMic = async () => {
                     {voiceLimitMessage}
                   </div>
                 )}
-                <div className="flex items-center bg-slate-100 rounded-full p-2">
+                <div className="flex items-end bg-slate-100 rounded-2xl p-2">
                   <button
                     onClick={startSpeechInput}
                     disabled={shouldBlockChat}
@@ -2201,13 +2195,20 @@ const unlockAudioAndMic = async () => {
                   >
                     <Mic size={16} />
                   </button>
-                  <input
-                    className="flex-1 bg-transparent px-3 text-sm outline-none"
+                  <textarea
+                    ref={inputRef}
+                    className="flex-1 min-w-0 bg-transparent px-3 py-2 text-sm outline-none resize-none max-h-32 overflow-y-hidden leading-6"
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        void sendMessage();
+                      }
+                    }}
                     disabled={shouldBlockChat}
                     placeholder="先回答機器人的提問..."
+                    rows={1}
                   />
                   <button
                     onClick={stopAllSpeech}

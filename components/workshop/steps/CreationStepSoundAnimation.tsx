@@ -462,7 +462,7 @@ export const CreationStepSoundAnimation = ({
   const [voiceList, setVoiceList] = useState([]);
   const [selectedVoice, setSelectedVoice] = useState(voiceId || "");
 
-  const [auditionText, setAuditionText] = useState("你好，我係你嘅 AI 助手，好高興認識你。");
+  const auditionText = "你好，我係你嘅 AI 助手，好高興認識你。";
   const [isAuditioning, setIsAuditioning] = useState(false);
 
   // ============ 上传动画 loading 状态 ============
@@ -610,13 +610,6 @@ export const CreationStepSoundAnimation = ({
           }}
         />
 
-        <textarea
-          value={auditionText}
-          onChange={(e) => setAuditionText(e.target.value)}
-          className="w-full p-3 border rounded-xl mt-3"
-          rows={2}
-        />
-
         <button
           onClick={handleAudition}
           className={`w-full px-4 py-2 border rounded-xl text-sm mt-2 ${
@@ -625,15 +618,8 @@ export const CreationStepSoundAnimation = ({
               : "bg-white"
           }`}
         >
-          {isAuditioning ? "合成中…" : "試聽"}
+          {isAuditioning ? "試聽中…" : "試聽"}
         </button>
-        {voicePreviewFeature && (
-          <p className={`text-xs ${voicePreviewFeature.locked ? "text-rose-600" : "text-slate-500"}`}>
-            {voicePreviewFeature.unlimited
-              ? `${voicePreviewFeature.label} 無限制`
-              : `${voicePreviewFeature.label} ${voicePreviewFeature.used}/${voicePreviewFeature.limit}`}
-          </p>
-        )}
       </Section>
 
       {/* ================== 动画 ================== */}

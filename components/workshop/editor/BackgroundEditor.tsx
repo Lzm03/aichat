@@ -31,15 +31,14 @@ export const mockStyles = {
 };
 
 type Tab = 'templates' | 'upload';
-type WorkflowStage = 'select' | 'detect' | 'restyle' | 'cropping';
+type WorkflowStage = 'select' | 'detect' | 'cropping';
 
 export const BackgroundEditor: React.FC<BackgroundEditorProps> = ({ onApply, onCancel, currentBackground }) => {
     const [activeTab, setActiveTab] = useState<Tab>('templates');
     const [workflowStage, setWorkflowStage] = useState<WorkflowStage>('select');
     const [uploadedImage, setUploadedImage] = useState<{ url: string; isRealistic: boolean } | null>(null);
     const [imageForCropper, setImageForCropper] = useState<string | null>(null);
-    const [selectedStyle, setSelectedStyle] = useState('手繪畫風');
-    const [isGenerating, setIsGenerating] = useState(false);
+    const [isGenerating] = useState(false);
 
     useBodyScrollLock(true);
     
@@ -63,17 +62,6 @@ export const BackgroundEditor: React.FC<BackgroundEditorProps> = ({ onApply, onC
         }
     };
 
-    const handleGenerate = () => {
-        if (!uploadedImage) return;
-        setIsGenerating(true);
-        setTimeout(() => {
-            const generatedImage = 'https://images.unsplash.com/photo-1505028106030-e07ea1bd80c3?q=80&w=2940&auto=format&fit=crop';
-            setIsGenerating(false);
-            setImageForCropper(generatedImage);
-            setWorkflowStage('cropping');
-        }, 2500);
-    };
-    
     const handleCropCancel = () => {
         setImageForCropper(null);
         setWorkflowStage(uploadedImage ? 'detect' : 'select');
@@ -98,7 +86,6 @@ export const BackgroundEditor: React.FC<BackgroundEditorProps> = ({ onApply, onC
                     </div>
                 );
             case 'detect':
-            case 'restyle':
                 if (!uploadedImage) return null;
                 return (
                     <div className="flex flex-col items-center justify-start space-y-4 h-full">
@@ -116,30 +103,9 @@ export const BackgroundEditor: React.FC<BackgroundEditorProps> = ({ onApply, onC
                         </div>
                         {uploadedImage.isRealistic && workflowStage === 'detect' && (
                            <div className="w-full p-4 bg-[#FFFBEB] border border-[#F59E0B] rounded-xl space-y-3 animate-fade-in">
-                               <p className="text-sm text-amber-800 font-medium">建議重塑風格以匹配數字人</p>
-                               <div className="flex items-center space-x-2">
-                                   <button onClick={() => handleImageSelect(uploadedImage.url)} className="w-full py-2 text-sm font-semibold bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50">使用原圖</button>
-                                   <button onClick={() => setWorkflowStage('restyle')} className="w-full py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600">風格重塑</button>
-                               </div>
+                               <p className="text-sm text-amber-800 font-medium">已上傳圖片，確認後可直接使用。</p>
+                               <button onClick={() => handleImageSelect(uploadedImage.url)} className="w-full py-2 text-sm font-semibold bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50">使用原圖</button>
                            </div>
-                        )}
-                        {workflowStage === 'restyle' && (
-                            <div className="w-full space-y-4 animate-fade-in">
-                                <div className="grid grid-cols-3 gap-2">
-                                    {Object.entries(mockStyles).map(([name, url]) => (
-                                      <div key={name} onClick={() => setSelectedStyle(name)} className={`relative rounded-xl cursor-pointer ring-2 ${selectedStyle === name ? 'ring-indigo-500' : 'ring-transparent'}`}>
-                                        <img src={url} alt={name} className="w-full h-16 object-cover rounded-lg"/>
-                                        <div className="absolute inset-0 bg-black/30 rounded-lg"></div>
-                                        <p className="absolute bottom-1 left-2 text-xs font-bold text-white">{name}</p>
-                                      </div>
-                                    ))}
-                                </div>
-                                <div className="relative">
-                                    <Icons.wand className="absolute top-1/2 left-3 -translate-y-1/2 w-4 h-4 text-slate-400"/>
-                                    <input type="text" placeholder="提示詞助手，例如：傍晚，海邊" className="w-full bg-slate-100 pl-9 pr-3 py-2.5 rounded-lg text-sm focus:ring-2 focus:ring-indigo-300" />
-                                </div>
-                                <button onClick={handleGenerate} disabled={isGenerating} className="w-full py-2.5 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-indigo-400">生成</button>
-                            </div>
                         )}
                     </div>
                 );

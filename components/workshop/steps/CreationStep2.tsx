@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Icons } from "../../icons";
 import { motion } from "framer-motion";
-import type { FeatureEntitlement } from "../../../hooks/useFeatureEntitlements";
 import { usePlatformDialog } from "../../../hooks/usePlatformDialog";
 import { PlatformDialog } from "../../system/PlatformDialog";
 
@@ -21,11 +20,9 @@ interface CreationStep2Props {
     speakingStyle?: string;
     answerMode?: string;
   };
-  knowledgeFeature?: FeatureEntitlement;
 }
 
-export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, knowledgeFeature }) => {
-  const KNOWLEDGE_TEXT_LIMIT = 100;
+export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData }) => {
   const [uploadMethod, setUploadMethod] = useState<UploadMethod>("file");
   const [file, setFile] = useState<File | null>(null);
   const [inputValue, setInputValue] = useState("");
@@ -227,13 +224,6 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   // 🔥 主解析流程
   // --------------------------
   const handleProcess = async () => {
-    if (knowledgeFeature?.locked) {
-      showAlert({
-        title: "知識餵養已用完",
-        message: knowledgeFeature.upgradeMessage,
-      });
-      return;
-    }
     if (uploadMethod === "file" && !file) return;
     if (uploadMethod !== "file" && !inputValue.trim()) return;
 
@@ -329,7 +319,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           />
           <button
             onClick={handleProcess}
-            className={`px-4 py-2 rounded-lg ${knowledgeFeature?.locked ? "bg-slate-200 text-slate-500" : "bg-indigo-600 text-white"}`}
+            className="px-4 py-2 rounded-lg bg-indigo-600 text-white"
           >
             解析
           </button>
@@ -342,27 +332,16 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
         <textarea
           rows={5}
           value={inputValue}
-          onChange={(e) => setInputValue(e.target.value.slice(0, KNOWLEDGE_TEXT_LIMIT))}
+          onChange={(e) => setInputValue(e.target.value)}
           placeholder="貼上需要解析的內容…"
           className="w-full p-4 border rounded-lg"
-          maxLength={KNOWLEDGE_TEXT_LIMIT}
         />
-        <div className="text-right text-xs text-slate-500">
-          {inputValue.length}/{KNOWLEDGE_TEXT_LIMIT}
-        </div>
         <button
           onClick={handleProcess}
-          className={`w-full py-2 rounded-lg ${knowledgeFeature?.locked ? "bg-slate-200 text-slate-500" : "bg-indigo-600 text-white"}`}
+          className="w-full py-2 rounded-lg bg-indigo-600 text-white"
         >
           解析
         </button>
-        {knowledgeFeature && (
-          <p className={`text-xs ${knowledgeFeature.locked ? "text-rose-600" : "text-slate-500"}`}>
-            {knowledgeFeature.unlimited
-              ? `${knowledgeFeature.label} 無限制`
-              : `${knowledgeFeature.label} ${knowledgeFeature.used}/${knowledgeFeature.limit}`}
-          </p>
-        )}
       </div>
     );
   };

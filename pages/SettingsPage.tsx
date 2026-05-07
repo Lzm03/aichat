@@ -932,7 +932,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                         重置此帳戶次數
                       </button>
 
-                      {selectedAccount.features.map((feature) => (
+                      {selectedAccount.features
+                        .filter(
+                          (feature) =>
+                            feature.key !== "avatar_ai_generate" &&
+                            feature.key !== "background_ai_generate"
+                        )
+                        .map((feature) => (
                         <div key={feature.key} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                           <div className="text-sm font-bold text-slate-900">{feature.label}</div>
                           <div className="mt-1 text-xs text-slate-500">

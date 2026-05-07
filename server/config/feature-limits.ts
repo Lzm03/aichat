@@ -4,8 +4,6 @@ export type FeatureLimitKey =
   | "background_ai_generate"
   | "voice_audition_preview"
   | "video_studio_generate"
-  | "knowledge_points"
-  | "security_points"
   | "chat_messages"
   | "voice_messages";
 
@@ -59,22 +57,6 @@ export const FEATURE_LIMITS: Record<FeatureLimitKey, FeatureLimitDefinition> = {
     upgradeMessage: "免費版影片工作室生成次數已用完，請升級到付費版。",
     countUnit: "次",
   },
-  knowledge_points: {
-    key: "knowledge_points",
-    label: "知識喂養知識點",
-    limit: 10,
-    description: "知識喂養最多 10 個知識點。",
-    upgradeMessage: "免費版知識喂養上限為 10 個知識點，請升級到付費版。",
-    countUnit: "個",
-  },
-  security_points: {
-    key: "security_points",
-    label: "安全過濾詞條",
-    limit: 10,
-    description: "安全過濾最多 10 個條目。",
-    upgradeMessage: "免費版安全過濾上限為 10 個條目，請升級到付費版。",
-    countUnit: "個",
-  },
   chat_messages: {
     key: "chat_messages",
     label: "對話次數",
@@ -86,11 +68,13 @@ export const FEATURE_LIMITS: Record<FeatureLimitKey, FeatureLimitDefinition> = {
   voice_messages: {
     key: "voice_messages",
     label: "語音回覆次數",
-    limit: 10,
-    description: "免費版語音功能可用 10 次，之後僅保留文字對話。",
+    limit: 50,
+    description: "免費版語音功能可用 50 次，之後僅保留文字對話。",
     upgradeMessage: "免費版語音功能已用完，請升級到付費版。",
     countUnit: "次",
   },
 };
 
-export const FEATURE_LIMIT_LIST = Object.values(FEATURE_LIMITS);
+export const FEATURE_LIMIT_LIST = Object.values(FEATURE_LIMITS).filter(
+  (item) => item.key !== "avatar_ai_generate" && item.key !== "background_ai_generate"
+);
