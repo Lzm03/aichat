@@ -161,15 +161,15 @@ function pickScenario(category: (typeof EMAIL_CATEGORIES)[number], lastScenario?
 
 function buildInitialTeachingIntro() {
   return [
-    "Step 1",
-    "你好，我們會一步一步學寫中文電郵。",
-    "先選一個類別，我會給你一個有趣情境：",
+    "Step 1/7（郵件）",
+    "你好！我是你的中文電郵導師。寫電郵像拼圖，我們一起拆成小步驟。",
+    "先選類別，我會給你有趣情境：",
     "1. 請求信",
     "2. 請假信",
     "3. 感謝信",
     "4. 邀請信",
     "5. 道歉信",
-    "你想練習哪一個呢？",
+    "請告訴我數字！",
   ].join("\n");
 }
 
@@ -243,7 +243,8 @@ function buildTeachingGuide(stepIndex: number, mode: "step" | "example", state: 
     ],
     3: [
       "現在來寫稱呼。",
-      "請寫出正確稱呼，也記得加上標點。",
+      "可選：林老師：/ 王校長：/ 親愛的小明：",
+      "記得稱呼後一定要用冒號（：）。",
       "這一步只寫稱呼就可以。",
     ],
     4: [
@@ -258,12 +259,13 @@ function buildTeachingGuide(stepIndex: number, mode: "step" | "example", state: 
     ],
     6: [
       "現在來寫祝頌語。",
-      "請挑一個合適的祝福語句。",
+      "可選：祝 教安 / 祝 工作愉快 / 祝 生活愉快",
+      "教安：給老師；工作愉快：給大人；生活愉快：通用。",
       "這一步只寫祝頌語就可以。",
     ],
     7: [
       "最後我們來寫署名。",
-      "請寫出正確的自稱和姓名。",
+      "格式：自稱 + 姓名 + 末啟詞（如：學生 陳小明 敬上）。",
       "這一步只寫署名部分。",
     ],
   };
@@ -454,7 +456,23 @@ router.post("/ask", requireAuth, async (req: Request, res: Response) => {
         const nextStep = session.step_index + 1;
         if (nextStep > session.total_steps) {
           await pool.query(`UPDATE teaching_sessions SET mode='completed', step_index=$2, updated_at=NOW() WHERE id=$1`, [session.id, session.total_steps]);
-          return res.json({ reply: "太好了，你已完成這次中文電郵練習。下次再說「教我寫郵件」，我會再陪你一步一步練習。", teachingMode: false });
+          const state = getTeachingState(session);
+          const draft = (session.last_student_draft || "（請貼上你的完整內容）").trim();
+          const finalTemplate = [
+            "太好了！你已完成這次中文電郵練習！",
+            "以下是全文範本：",
+            `【類別】${state.category || "未設定"}`,
+            `【情境】${state.scenario || "未設定"}`,
+            "主題：",
+            "稱呼：",
+            "正文：",
+            "祝頌語：",
+            "署名：",
+            "",
+            "你很棒，已經掌握電郵拼圖的每一塊！",
+            `（你最後一步內容：${draft}）`,
+          ].join("\n");
+          return res.json({ reply: finalTemplate, teachingMode: false });
         }
         await pool.query(`UPDATE teaching_sessions SET step_index=$2, mode='guiding', updated_at=NOW() WHERE id=$1`, [session.id, nextStep]);
         return res.json({ reply: buildTeachingGuide(nextStep, "step", teachingState), teachingMode: true, stepIndex: nextStep, totalSteps: session.total_steps, taskType: session.task_type });

@@ -13,11 +13,11 @@ interface MobileSidebarDrawerProps {
 
 export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen, setIsOpen, activePage, setActivePage, forceVisible = false }) => {
   
-  const menuItems: { id: Page; label: string; icon: React.ElementType }[] = [
+  const menuItems: { id: Page; label: string; icon: React.ElementType; disabled?: boolean }[] = [
     { id: 'dashboard', label: '指揮倉', icon: Icons.dashboard },
-    { id: 'assessment', label: '智能評測', icon: Icons.assessment },
+    { id: 'assessment', label: '智能評測', icon: Icons.assessment, disabled: true },
     { id: 'workshop', label: 'AI工作坊', icon: Icons.bot },
-    { id: 'tasks', label: '任務中心', icon: Icons.tasks },
+    { id: 'tasks', label: '任務中心', icon: Icons.tasks, disabled: true },
   ];
 
   return (
@@ -56,14 +56,19 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen
                   <button
                     key={item.id}
                     onClick={() => {
+                      if (item.disabled) return;
                       setActivePage(item.id);
                       setIsOpen(false);
                     }}
                     className={`w-full flex items-center gap-4 px-4 py-3 rounded-2xl transition-all ${
-                      activePage === item.id 
+                      item.disabled
+                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                        : activePage === item.id 
                         ? 'bg-indigo-50 text-indigo-600 font-semibold' 
                         : 'text-slate-500 hover:bg-slate-50'
                     }`}
+                    disabled={item.disabled}
+                    aria-disabled={item.disabled}
                   >
                     <item.icon className="w-5 h-5" />
                     <span className="text-sm">{item.label}</span>
