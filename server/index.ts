@@ -26,7 +26,19 @@ import { uploadsDir } from "./lib/uploads-dir.ts";
 import { ensurePlatformTables, maybeAssignLegacyDataByEmail } from "./lib/platform-auth.ts";
 
 const app = express();
-// ⭐ 專業 CORS 設定：允許所有 localhost 與 Railway
+const allowedOrigins = new Set(
+  [
+    process.env.FRONTEND_URL,
+    process.env.FRONTEND_ORIGIN,
+    ...(process.env.FRONTEND_ORIGINS || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+    "https://aichat-lilac-six.vercel.app",
+  ].filter(Boolean)
+);
+
+// CORS: allow localhost plus configured production frontends.
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -35,7 +47,7 @@ app.use(
       if (origin.startsWith("http://localhost:"))
         return callback(null, true);
 
-      if (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL)
+      if (allowedOrigins.has(origin))
         return callback(null, true);
 
       callback(new Error(`CORS blocked: ${origin}`));
