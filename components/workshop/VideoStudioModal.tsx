@@ -39,6 +39,8 @@ const HINT_VIDEO_SLOTS = {
   speaking: "/hint-videos/speaking.mp4",
   thinking: "/hint-videos/thinking.mp4",
 } as const;
+const LOOP_PROMPT_SUFFIX =
+  "Create a seamless looping animation. The final frame must return as close as possible to the first frame, with matching body pose, head angle, character position, camera framing, subject scale, and overall composition. Motion must form a smooth closed cycle with no visible jump when the clip restarts. Do not end with a hold, stop, reset, or abrupt pose change. Keep the camera fully locked and keep body translation near zero so the ending flows naturally back into the beginning. Favor very small, smooth, low-amplitude motion over expressive or dramatic movement.";
 
 const isSequenceManifest = (url?: string | null) =>
   Boolean(url && /\/manifest\.json(\?|$)/i.test(url));
@@ -123,7 +125,7 @@ export default function VideoStudioModal({
   type PreviewSlotKey = "idle" | "speaking" | "thinking";
   const FIXED_PRESET = "small_movement";
   const FIXED_STYLE_PROMPT =
-    "動作風格採用小動作版本，以細微表情、口型和輕度姿態變化為主，整體更穩定克制。";
+    "Use the small-movement style. Keep the animation extremely restrained and natural. Allow only tiny micro-movements in the face, mouth, and head, with minimal pose variation. Avoid expressive gestures, large motion arcs, exaggerated acting, or noticeable body movement.";
   const phaseMilestones = [18, 33, 48, 63, 78, 93];
 
   // ===== 左侧面板 UI =====
@@ -542,9 +544,12 @@ export default function VideoStudioModal({
 
   // 动作对应的 prompts
   const prompts = {
-    idle: "角色必須原地站定，雙腳固定在同一位置，禁止走動、踏步、位移、轉身移位。嚴禁任何說話或口型動作：嘴巴全程閉合，不做發音口型，不朗讀、不說話。角色僅可有自然呼吸與微微眨眼。相機完全固定，不縮放、不前後移動、不平移、不搖晃。只允許角色本身的輕微動作，不要移動取景框。背景必須始終為純亮綠色綠幕（chroma key green，RGB 接近 0,255,0），整個背景單一純色、均勻填滿、無漸層、無紋理、無雜訊、無陰影、無反光、無光斑、無景深模糊、無任何背景物件。人物身上不得出現綠色溢色、綠色反射或綠邊。人物邊緣清晰完整，頭髮絲、手指、衣服輪廓清楚可分割。",
-    speaking: "角色必須原地站定，雙腳固定在同一位置，禁止走動、踏步、位移、轉身移位。角色自然張嘴說話，口型連貫、清晰。相機完全固定，不縮放、不推拉、不運鏡、不搖晃。保持角色在畫面中固定位置，只演示口型與表情。背景必須始終為純亮綠色綠幕（chroma key green, RGB 0,255,0 附近），整個背景單一純色、均勻填滿、無漸層、無紋理、無雜訊、無陰影、無反光、無光斑、無景深模糊、無任何背景物件。人物身上不得出現綠色溢色、綠色反射或綠邊。人物邊緣清晰完整，頭髮絲、手指、衣服輪廓清楚可分割。",
-    thinking: "角色必須原地站定，雙腳固定在同一位置，禁止走動、踏步、位移、轉身移位。角色做出思考動作（抬頭、皱眉、輕微眼球運動）即可。相機固定鎖死，不前後移動、不左右平移、不縮放、不搖鏡。禁止鏡頭動畫，僅允許角色頭部小幅度動作。背景必須始終為純亮綠色綠幕（chroma key green, RGB 0,255,0 附近），整個背景單一純色、均勻填滿、無漸層、無紋理、無雜訊、無陰影、無反光、無光斑、無景深模糊、無任何背景物件。人物身上不得出現綠色溢色、綠色反射或綠邊。人物邊緣清晰完整，頭髮絲、手指、衣服輪廓清楚可分割。",
+    idle:
+      "Silent idle only. Character stands in place with both feet planted at exactly the same position. No walking, no stepping, no body translation, and no turn-and-shift. Mouth must stay naturally closed for the entire clip: no speech, no lip-sync, no mouth opening, no visible teeth, no tongue, and no jaw rhythm. Keep the body almost perfectly still. Do not move the head, neck, shoulders, torso, arms, hands, or posture. Do not sway, nod, tilt, lean, gesture, or shift weight. The only allowed motion is tiny eye movement and occasional natural blinking. Breathing must be imperceptible or nearly imperceptible. Keep all motion extremely small and smooth, with no expressive acting. Camera must be fully locked: no zoom, no pan, no dolly, and no shake. Do not move the framing. Background must remain pure bright chroma key green, close to RGB 0,255,0, as a single uniform solid color with no gradient, no texture, no noise, no shadow, no reflection, no glare, no depth-of-field blur, and no background objects. The subject must have no green spill, no green reflection, and no green edge halo. Edges must stay crisp and clean for keying, including hair strands, fingers, and clothing contours.",
+    speaking:
+      "Speaking mode. Character stands in place with both feet planted at exactly the same position. No walking, no stepping, no body translation, and no turn-and-shift. Natural speech lip-sync is allowed with clear but restrained mouth articulation. Keep the performance minimal: only tiny head micro-movements, very small facial changes, and natural blinking are allowed. No expressive gestures, no large nods, no body sway, no shoulder movement, and no noticeable pose shifts. Camera must be fully locked: no zoom, no push-in, no pull-back, no pan, and no shake. Keep the character fixed in the frame and show only mouth movement and subtle facial expression changes. Background must remain pure bright chroma key green, close to RGB 0,255,0, as a single uniform solid color with no gradient, no texture, no noise, no shadow, no reflection, no glare, no depth-of-field blur, and no background objects. The subject must have no green spill, no green reflection, and no green edge halo. Edges must stay crisp and clean for keying, including hair strands, fingers, and clothing contours.",
+    thinking:
+      "Thinking mode, silent. Character stands in place with both feet planted at exactly the same position. No walking, no stepping, no body translation, and no turn-and-shift. Keep the body almost perfectly still. Do not move the shoulders, torso, arms, hands, or posture. Avoid dramatic pondering, large head turns, obvious nods, expressive gestures, or visible body motion. Allowed actions are only extremely subtle thinking cues: tiny eye movement, a very slight brow change, and a brief soft upward glance. Head movement should be absent or nearly absent, with no visible tilt unless absolutely minimal. Camera must be completely locked: no forward movement, no horizontal movement, no zoom, and no shake. No camera animation is allowed. Background must remain pure bright chroma key green, close to RGB 0,255,0, as a single uniform solid color with no gradient, no texture, no noise, no shadow, no reflection, no glare, no depth-of-field blur, and no background objects. The subject must have no green spill, no green reflection, and no green edge halo. Edges must stay crisp and clean for keying, including hair strands, fingers, and clothing contours.",
   };
 
   /* ========= Step 1: 生成原始动画 ========= */
@@ -567,7 +572,7 @@ export default function VideoStudioModal({
     const selectedAspectRatio = normalizeAspectRatioForApi(rawAspectRatio);
 
     const payload = {
-      prompt: `${FIXED_STYLE_PROMPT} ${prompts[type]}`,
+      prompt: `${FIXED_STYLE_PROMPT} ${prompts[type]} ${LOOP_PROMPT_SUFFIX}`,
       duration: "2",
       aspectRatio: selectedAspectRatio,
       resolution: "480p",

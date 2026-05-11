@@ -12,24 +12,26 @@ import {
 import { pool } from "../db.ts";
 
 const SUPPORTED_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"] as const;
-const HINTS_BY_PRESET: Record<string, string> = {
-  big_movement:
-    "動作風格採用大動作版本，肢體與表情變化更明顯，但人物位置、鏡頭和綠幕背景仍需保持穩定一致。",
-  small_movement:
-    "動作風格採用小動作版本，以細微表情、口型和輕度姿態變化為主，整體更穩定克制。",
-};
+const DEFAULT_STYLE_PROMPT =
+  "Use the small-movement style. Keep the animation extremely restrained and natural. Allow only tiny micro-movements in the face, mouth, and head, with minimal pose variation. Avoid expressive gestures, large motion arcs, exaggerated acting, or noticeable body movement.";
+const LOOP_PROMPT_SUFFIX =
+  "Create a seamless looping animation. The final frame must return as close as possible to the first frame, with matching body pose, head angle, character position, camera framing, subject scale, and overall composition. Motion must form a smooth closed cycle with no visible jump when the clip restarts. Do not end with a hold, stop, reset, or abrupt pose change. Keep the camera fully locked and keep body translation near zero so the ending flows naturally back into the beginning. Favor very small, smooth, low-amplitude motion over expressive or dramatic movement.";
 const SLOT_PROMPTS: Record<VideoStudioSlotKey, string> = {
   idle:
-    "Silent idle only. Character stands in place with both feet planted at exactly the same position. No walking, no stepping, no body translation, no turn-and-shift. Mouth must stay naturally closed for the entire clip: no speech, no lip-sync, no mouth opening, no visible teeth, no tongue, no jaw rhythm. Only subtle breathing and occasional natural blinking are allowed. Camera must be fully locked: no zoom, no pan, no dolly, no shake. Background must be pure bright chroma key green (RGB near 0,255,0), single uniform solid color, with no gradient, no texture, no shadow, no reflection, no noise, and no background objects. The subject must have no green spill and no green edge halo. Edges must be crisp and clean for keying, including hair strands, fingers, and clothing contours. If constraints conflict, priority order is: no speaking > no movement > locked camera > green screen purity.",
+    "Silent idle only. Character stands in place with both feet planted at exactly the same position. No walking, no stepping, no body translation, and no turn-and-shift. Mouth must stay naturally closed for the entire clip: no speech, no lip-sync, no mouth opening, no visible teeth, no tongue, and no jaw rhythm. Keep the body almost perfectly still. Do not move the head, neck, shoulders, torso, arms, hands, or posture. Do not sway, nod, tilt, lean, gesture, or shift weight. The only allowed motion is tiny eye movement and occasional natural blinking. Breathing must be imperceptible or nearly imperceptible. Keep all motion extremely small and smooth, with no expressive acting. Camera must be fully locked: no zoom, no pan, no dolly, and no shake. Background must be pure bright chroma key green, close to RGB 0,255,0, as a single uniform solid color with no gradient, no texture, no shadow, no reflection, no noise, and no background objects. The subject must have no green spill and no green edge halo. Edges must be crisp and clean for keying, including hair strands, fingers, and clothing contours. If constraints conflict, priority order is: no speaking > no body movement > eyes only > locked camera > green screen purity.",
   speaking:
-    "Speaking mode. Character stands in place with both feet planted at the same position. No walking, no stepping, no body translation, no turn-and-shift. Natural speech lip-sync is allowed with clear mouth articulation and subtle facial expression changes. Keep motion restrained: only tiny head micro-movements and natural blinking; no body relocation. Camera must be fully locked: no zoom, no pan, no dolly, no shake. Background must be pure bright chroma key green (RGB near 0,255,0), single uniform solid color, with no gradient, no texture, no shadow, no reflection, no noise, and no background objects. The subject must have no green spill and no green edge halo. Edges must be crisp and clean for keying, including hair strands, fingers, and clothing contours. If constraints conflict, priority order is: no speaking > no movement > locked camera > green screen purity.",
+    "Speaking mode. Character stands in place with both feet planted at exactly the same position. No walking, no stepping, no body translation, and no turn-and-shift. Natural speech lip-sync is allowed with clear but restrained mouth articulation. Keep the performance minimal: only tiny head micro-movements, very small facial changes, and natural blinking are allowed. No expressive gestures, no large nods, no body sway, no shoulder movement, and no noticeable pose shifts. Camera must be fully locked: no zoom, no pan, no dolly, and no shake. Background must be pure bright chroma key green, close to RGB 0,255,0, as a single uniform solid color with no gradient, no texture, no shadow, no reflection, no noise, and no background objects. The subject must have no green spill and no green edge halo. Edges must be crisp and clean for keying, including hair strands, fingers, and clothing contours. If constraints conflict, priority order is: stable framing > no body movement > subtle speech motion > green screen purity.",
   thinking:
-    "Thinking mode, silent. Character stands in place with both feet planted at exactly the same position. No walking, no stepping, no body translation, no turn-and-shift. No speech and no lip-sync. Mouth stays closed with no speaking-related jaw rhythm. Allowed actions: subtle thinking expressions only, such as slight brow movement, tiny eye movement, brief upward glance, and minimal head micro-tilt. Camera must be fully locked: no zoom, no pan, no dolly, no shake. Background must be pure bright chroma key green (RGB near 0,255,0), single uniform solid color, with no gradient, no texture, no shadow, no reflection, no noise, and no background objects. The subject must have no green spill and no green edge halo. Edges must be crisp and clean for keying, including hair strands, fingers, and clothing contours. If constraints conflict, priority order is: no speaking > no movement > locked camera > green screen purity.",
+    "Thinking mode, silent. Character stands in place with both feet planted at exactly the same position. No walking, no stepping, no body translation, and no turn-and-shift. No speech and no lip-sync. Mouth stays closed with no speaking-related jaw rhythm. Keep the body almost perfectly still. Do not move the shoulders, torso, arms, hands, or posture. Avoid dramatic pondering, large head turns, obvious nods, expressive gestures, or visible body motion. Allowed actions are only extremely subtle thinking cues: tiny eye movement, a very slight brow change, and a brief soft upward glance. Head movement should be absent or nearly absent, with no visible tilt unless absolutely minimal. Camera must be fully locked: no zoom, no pan, no dolly, and no shake. Background must be pure bright chroma key green, close to RGB 0,255,0, as a single uniform solid color with no gradient, no texture, no shadow, no reflection, no noise, and no background objects. The subject must have no green spill and no green edge halo. Edges must be crisp and clean for keying, including hair strands, fingers, and clothing contours. If constraints conflict, priority order is: no speaking > no body movement > tiny eye and brow motion only > locked camera > green screen purity.",
 };
 const TEST_HINT_VIDEOS: Record<VideoStudioSlotKey, string> = {
   idle: "/hint-videos/idle.mp4",
   speaking: "/hint-videos/speaking.mp4",
   thinking: "/hint-videos/thinking.mp4",
+};
+
+type VideoBgJobResponse = {
+  id?: string;
 };
 
 function toErrorMessage(error: unknown): string {
@@ -248,7 +250,7 @@ async function removeBgFromVideoUrl(sourceUrl: string, userId: string, options?:
     },
     body: JSON.stringify({ video_url: sourceUrl }),
   });
-  const jobJson = await jobRes.json();
+  const jobJson = (await jobRes.json()) as VideoBgJobResponse;
   if (!jobRes.ok || !jobJson?.id) throw new Error("failed to create remove bg job");
   const jobId = jobJson.id as string;
 
@@ -343,15 +345,15 @@ async function processSlot(
 
     if (!originalVideoUrl) {
       if (!requestId) {
-        const stylePrompt = HINTS_BY_PRESET[task.preset] || HINTS_BY_PRESET.big_movement;
+        const stylePrompt = DEFAULT_STYLE_PROMPT;
         const imageInput = options?.imageInput || (await ensureImageInputForGeneration(task.sourceImageUrl));
         requestId = await createVideoRequest({
-          prompt: `${stylePrompt} ${SLOT_PROMPTS[slotKey]}`,
+          prompt: `${stylePrompt} ${SLOT_PROMPTS[slotKey]} ${LOOP_PROMPT_SUFFIX}`,
           imageUrl: imageInput,
           aspectRatio: task.sourceAspectRatio,
           resolution: "480p",
           duration: "2",
-          preset: task.preset,
+          preset: "small_movement",
         });
         await updateVideoStudioTaskSlot({
           taskId,
