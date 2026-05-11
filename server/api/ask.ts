@@ -4,11 +4,6 @@ import fetch from "node-fetch";
 import { createRequire } from "module";
 import multer from "multer";
 import crypto from "crypto";
-import fs from "fs";
-import os from "os";
-import path from "path";
-import { execFile } from "child_process";
-import { promisify } from "util";
 import { pool } from "../db.ts";
 import {
   assertUserCanSpend,
@@ -25,7 +20,7 @@ import {
 
 const require = createRequire(import.meta.url);
 const pdfParse = require("pdf-parse");
-const execFileAsync = promisify(execFile);
+const AdmZip = require("adm-zip");
 const MAX_FILE_PROMPT_CHARS = 18000;
 
 const router = express.Router();
@@ -374,27 +369,39 @@ async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   return parsed.text.trim();
 }
 
-async function extractTextFromWordBuffer(
-  buffer: Buffer,
-  extension: ".doc" | ".docx"
-): Promise<string> {
-  const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "ask-file-"));
-  const sourcePath = path.join(tempDir, `source${extension}`);
-  const outputPath = path.join(tempDir, "output.txt");
+function decodeXmlEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) =>
+      String.fromCodePoint(Number.parseInt(hex, 16))
+    )
+    .replace(/&#(\d+);/g, (_, dec) =>
+      String.fromCodePoint(Number.parseInt(dec, 10))
+    );
+}
 
-  try {
-    await fs.promises.writeFile(sourcePath, buffer);
-    await execFileAsync("/usr/bin/textutil", [
-      "-convert",
-      "txt",
-      "-output",
-      outputPath,
-      sourcePath,
-    ]);
-    return (await fs.promises.readFile(outputPath, "utf-8")).trim();
-  } finally {
-    await fs.promises.rm(tempDir, { recursive: true, force: true });
+function extractTextFromDocxBuffer(buffer: Buffer): string {
+  const zip = new AdmZip(buffer);
+  const entry = zip.getEntry("word/document.xml");
+  if (!entry) {
+    throw new Error("DOCX 內容讀取失敗");
   }
+
+  const xml = entry.getData().toString("utf-8");
+  const text = xml
+    .replace(/<\/w:p>/g, "\n")
+    .replace(/<w:tab\/>/g, "\t")
+    .replace(/<w:br\/>/g, "\n")
+    .replace(/<w:cr\/>/g, "\n")
+    .replace(/<[^>]+>/g, "")
+    .trim();
+
+  return decodeXmlEntities(text).replace(/\n{3,}/g, "\n\n").trim();
 }
 
 async function extractTextFromUploadedFile(file: Express.Multer.File): Promise<string> {
@@ -408,10 +415,10 @@ async function extractTextFromUploadedFile(file: Express.Multer.File): Promise<s
     lowerName.endsWith(".docx") ||
     mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   ) {
-    return extractTextFromWordBuffer(file.buffer, ".docx");
+    return extractTextFromDocxBuffer(file.buffer);
   }
   if (lowerName.endsWith(".doc") || mimeType === "application/msword") {
-    return extractTextFromWordBuffer(file.buffer, ".doc");
+    throw new Error("目前線上環境僅支援 PDF 與 DOCX，舊版 DOC 請先另存為 DOCX 再上傳");
   }
 
   throw new Error(`不支援的文件格式：${file.originalname || "unknown"}`);

@@ -612,7 +612,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
           if (resolved.origin === window.location.origin || isLocalBackend) {
             return resolved.toString();
           }
-          return `/api/media-proxy?url=${encodeURIComponent(resolved.toString())}`;
+          return `${API_BASE}/api/media-proxy?url=${encodeURIComponent(resolved.toString())}`;
         } catch {
           return rawUrl;
         }
