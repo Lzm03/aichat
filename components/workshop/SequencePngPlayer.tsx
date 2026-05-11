@@ -13,6 +13,14 @@ function pad4(n: number) {
   return String(n).padStart(4, "0");
 }
 
+const LOOP_RESTART_FRAME = 10;
+
+function getNextLoopFrame(frame: number, safeCount: number) {
+  if (safeCount <= 1) return 1;
+  if (frame >= safeCount) return Math.min(LOOP_RESTART_FRAME, safeCount);
+  return frame + 1;
+}
+
 export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
   folderUrl,
   pattern = "frame_%04d.png",
@@ -101,12 +109,18 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
     const tick = (now: number) => {
       if (now - last >= frameDuration) {
         const steps = Math.floor((now - last) / frameDuration);
-        const desired = ((current - 1 + steps) % safeCount) + 1;
+        let desired = current;
+        for (let i = 0; i < steps; i += 1) {
+          desired = getNextLoopFrame(desired, safeCount);
+        }
         let nextFrame = desired;
         if (!loadedRef.current.has(desired)) {
           // Find nearest loaded frame to avoid network-stall pauses.
           for (let i = 1; i <= safeCount; i += 1) {
-            const candidate = ((desired - 1 + i) % safeCount) + 1;
+            let candidate = desired;
+            for (let j = 0; j < i; j += 1) {
+              candidate = getNextLoopFrame(candidate, safeCount);
+            }
             if (loadedRef.current.has(candidate)) {
               nextFrame = candidate;
               break;
