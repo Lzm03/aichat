@@ -73,6 +73,51 @@ app.get("/api/health", (_req, res) => {
     version: process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || "dev",
   });
 });
+app.get("/api/media-proxy", async (req, res) => {
+  const rawUrl = typeof req.query.url === "string" ? req.query.url.trim() : "";
+  if (!rawUrl) {
+    return res.status(400).json({ error: "Missing url" });
+  }
+
+  let target: URL;
+  try {
+    target = new URL(rawUrl);
+  } catch {
+    return res.status(400).json({ error: "Invalid url" });
+  }
+
+  if (!["http:", "https:"].includes(target.protocol)) {
+    return res.status(400).json({ error: "Unsupported protocol" });
+  }
+
+  try {
+    const upstream = await fetch(target.toString(), {
+      headers: {
+        "user-agent": req.get("user-agent") || "Mozilla/5.0",
+      },
+    });
+
+    if (!upstream.ok || !upstream.body) {
+      return res
+        .status(upstream.status || 502)
+        .json({ error: "Failed to fetch remote media" });
+    }
+
+    const contentType = upstream.headers.get("content-type");
+    const cacheControl = upstream.headers.get("cache-control");
+
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Cross-Origin-Resource-Policy", "cross-origin");
+    if (contentType) res.set("Content-Type", contentType);
+    res.set("Cache-Control", cacheControl || "public, max-age=3600");
+
+    const arrayBuffer = await upstream.arrayBuffer();
+    res.send(Buffer.from(arrayBuffer));
+  } catch (error) {
+    console.error("Failed to proxy media:", error);
+    res.status(502).json({ error: "Failed to proxy media" });
+  }
+});
 app.use("/api/bots", botsRoute);
 // Routes
 app.use("/api/generate-image", generateImageRoute);
@@ -93,6 +138,8 @@ app.get("/uploads/sequences/:id/manifest.json", (req, res, next) => {
   }
 
   try {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Cross-Origin-Resource-Policy", "cross-origin");
     const raw = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
     const publicBase = (process.env.BACKEND_URL?.trim() || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
     res.json({
@@ -108,6 +155,8 @@ app.use(
   "/uploads",
   express.static(uploadsDir, {
     setHeaders: (res, filePath) => {
+      res.set("Access-Control-Allow-Origin", "*");
+      res.set("Cross-Origin-Resource-Policy", "cross-origin");
       if (filePath.endsWith(".png")) res.set("Content-Type", "image/png");
       if (filePath.endsWith(".jpg") || filePath.endsWith(".jpeg"))
         res.set("Content-Type", "image/jpeg");

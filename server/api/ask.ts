@@ -4,18 +4,29 @@ import fetch from "node-fetch";
 import { createRequire } from "module";
 import multer from "multer";
 import crypto from "crypto";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { pool } from "../db.ts";
 import {
   assertUserCanSpend,
   consumeUserCredits,
+  ensurePlatformTables,
   ensureFeatureAvailable,
   getAuthUser,
+  getBearerToken,
   recordFeatureUsage,
+  verifyToken,
+  findUserById,
   requireAuth,
 } from "../lib/platform-auth.ts";
 
 const require = createRequire(import.meta.url);
 const pdfParse = require("pdf-parse");
+const execFileAsync = promisify(execFile);
+const MAX_FILE_PROMPT_CHARS = 18000;
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -279,21 +290,15 @@ function buildTeachingGuide(stepIndex: number, mode: "step" | "example", state: 
 }
 
 async function askDeepSeek(systemPrompt: string, userPrompt: string, onToken: (token: string) => void) {
-  const r = await fetch("https://api.deepseek.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "deepseek-chat",
-      stream: true,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    }),
-  });
+  const requestBody = {
+    model: "deepseek-chat",
+    stream: true,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+  };
+  const r = await fetchDeepSeekWithRetry(requestBody);
 
   const decoder = new TextDecoder();
   for await (const chunk of r.body as any) {
@@ -313,19 +318,12 @@ async function askDeepSeek(systemPrompt: string, userPrompt: string, onToken: (t
 }
 
 async function askDeepSeekOnce(systemPrompt: string, userPrompt: string): Promise<string> {
-  const r = await fetch("https://api.deepseek.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "deepseek-chat",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    }),
+  const r = await fetchDeepSeekWithRetry({
+    model: "deepseek-chat",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
   });
 
   if (!r.ok) throw new Error((await r.text()) || "DeepSeek request failed");
@@ -333,15 +331,140 @@ async function askDeepSeekOnce(systemPrompt: string, userPrompt: string): Promis
   return data?.choices?.[0]?.message?.content || "";
 }
 
+async function fetchDeepSeekWithRetry(body: Record<string, unknown>, retries = 2) {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok && response.status >= 500 && attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+        continue;
+      }
+
+      return response;
+    } catch (error: any) {
+      lastError = error;
+      const code = String(error?.code || "");
+      const shouldRetry =
+        attempt < retries &&
+        (code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ECONNREFUSED");
+
+      if (!shouldRetry) {
+        throw error;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("DeepSeek request failed");
+}
+
 async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   const parsed = await pdfParse(buffer);
   return parsed.text.trim();
+}
+
+async function extractTextFromWordBuffer(
+  buffer: Buffer,
+  extension: ".doc" | ".docx"
+): Promise<string> {
+  const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "ask-file-"));
+  const sourcePath = path.join(tempDir, `source${extension}`);
+  const outputPath = path.join(tempDir, "output.txt");
+
+  try {
+    await fs.promises.writeFile(sourcePath, buffer);
+    await execFileAsync("/usr/bin/textutil", [
+      "-convert",
+      "txt",
+      "-output",
+      outputPath,
+      sourcePath,
+    ]);
+    return (await fs.promises.readFile(outputPath, "utf-8")).trim();
+  } finally {
+    await fs.promises.rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+async function extractTextFromUploadedFile(file: Express.Multer.File): Promise<string> {
+  const lowerName = String(file.originalname || "").toLowerCase();
+  const mimeType = String(file.mimetype || "").toLowerCase();
+
+  if (lowerName.endsWith(".pdf") || mimeType === "application/pdf") {
+    return extractTextFromPDF(file.buffer);
+  }
+  if (
+    lowerName.endsWith(".docx") ||
+    mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ) {
+    return extractTextFromWordBuffer(file.buffer, ".docx");
+  }
+  if (lowerName.endsWith(".doc") || mimeType === "application/msword") {
+    return extractTextFromWordBuffer(file.buffer, ".doc");
+  }
+
+  throw new Error(`不支援的文件格式：${file.originalname || "unknown"}`);
 }
 
 function extractTextFromHtml(html: string): string {
   const noScript = html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ");
   return noScript.replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">")
     .replace(/\s+/g, " ").trim();
+}
+
+async function resolveChatActor(req: Request, sharedBotId?: string) {
+  const token = getBearerToken(req);
+  const payload = token ? verifyToken(token) : null;
+  if (payload?.sub) {
+    const user = await findUserById(payload.sub);
+    if (user) {
+      return { user, shared: false as const };
+    }
+  }
+
+  const normalizedBotId = String(sharedBotId || "").trim();
+  if (!normalizedBotId) {
+    const error = new Error("missing bearer token");
+    (error as any).status = 401;
+    throw error;
+  }
+
+  await ensurePlatformTables();
+  const result = await pool.query(
+    `SELECT owner_id
+     FROM bots
+     WHERE id=$1
+       AND is_visible=true
+       AND owner_id IS NOT NULL
+     LIMIT 1`,
+    [normalizedBotId]
+  );
+  const ownerId = String(result.rows[0]?.owner_id || "").trim();
+  if (!ownerId) {
+    const error = new Error("shared bot not found");
+    (error as any).status = 404;
+    throw error;
+  }
+
+  const user = await findUserById(ownerId);
+  if (!user) {
+    const error = new Error("shared bot owner not found");
+    (error as any).status = 404;
+    throw error;
+  }
+
+  return { user, shared: true as const };
 }
 
 async function evaluateStudentDraft(session: TeachingSessionRow, draft: string) {
@@ -382,22 +505,60 @@ ${draft}
   }
 }
 
-router.post("/ask-file", requireAuth, upload.single("file"), async (req: Request, res: Response) => {
+router.post("/ask-file", requireAuth, upload.any(), async (req: Request, res: Response) => {
   try {
     const authUser = getAuthUser(req);
     await assertUserCanSpend(authUser!.id, 4);
-    const file = req.file;
-    if (!file) return res.status(400).json({ error: "缺少文件" });
-    const pdfText = await extractTextFromPDF(file.buffer);
-    if (!pdfText) return res.json({ reply: "（PDF 沒有可解析文字）" });
+    const files = ((req.files as Express.Multer.File[] | undefined) || []).filter(Boolean);
+    if (!files.length) return res.status(400).json({ error: "缺少文件" });
+
+    const extractedParts = await Promise.all(
+      files.map(async (file) => {
+        const text = await extractTextFromUploadedFile(file);
+        return {
+          fileName: file.originalname,
+          extractedText: text.trim(),
+        };
+      })
+    );
+
+    const nonEmptyParts = extractedParts.filter((part) => part.extractedText);
+    if (!nonEmptyParts.length) {
+      return res.json({ reply: "（文件沒有可解析文字）" });
+    }
+
+    const combinedText = nonEmptyParts
+      .map((part) => `【文件：${part.fileName}】\n${part.extractedText}`)
+      .join("\n\n")
+      .trim();
+    const normalizedPromptText = combinedText.slice(0, MAX_FILE_PROMPT_CHARS);
     const systemPrompt: string = (req.body as any)?.systemPrompt || "";
-    let reply = "";
-    await askDeepSeek(systemPrompt, pdfText, (token: string) => { reply += token; });
-    await consumeUserCredits(authUser!.id, "ask_file", 4, { fileName: file.originalname, extractedLength: pdfText.length });
-    return res.json({ reply, extractedText: pdfText });
+    const reply = await askDeepSeekOnce(systemPrompt, normalizedPromptText);
+    await consumeUserCredits(authUser!.id, "ask_file", 4, {
+      fileNames: files.map((file) => file.originalname),
+      extractedLength: normalizedPromptText.length,
+      fileCount: files.length,
+    });
+    return res.json({
+      reply,
+      extractedText: normalizedPromptText,
+      files: nonEmptyParts.map((part) => ({
+        fileName: part.fileName,
+        extractedLength: part.extractedText.length,
+      })),
+    });
   } catch (err: any) {
-    console.error("❌ PDF 解析錯誤:", err);
-    res.status(err?.status || 500).json({ error: err.message });
+    console.error("❌ 文件解析錯誤:", err);
+    const code = String(err?.code || "");
+    const isNetworkReset =
+      code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ECONNREFUSED";
+    res.status(err?.status || 500).json({
+      error: isNetworkReset
+        ? "文件文字已提取，但 AI 解析服務連線中斷，請稍後重試。"
+        : err.message,
+      detail: err?.message || "unknown error",
+      code: code || undefined,
+    });
   }
 });
 
@@ -422,20 +583,24 @@ router.post("/ask-url", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-router.post("/ask", requireAuth, async (req: Request, res: Response) => {
+router.post("/ask", async (req: Request, res: Response) => {
   try {
-    const authUser = getAuthUser(req);
-    await assertUserCanSpend(authUser!.id, 1);
-    const { systemPrompt = "", userPrompt = "", stream = true, usageType = "general", botId = "default" } = req.body || {};
-    if (usageType === "chat_message") await ensureFeatureAvailable(authUser!.id, "chat_messages", 1);
+    const { systemPrompt = "", userPrompt = "", stream = true, usageType = "general", botId = "default", sharedBotId = "" } = req.body || {};
+    const actor = await resolveChatActor(req, String(sharedBotId || ""));
+    const authUser = actor.user;
+    await assertUserCanSpend(authUser.id, 1);
+    if (usageType === "chat_message") await ensureFeatureAvailable(authUser.id, "chat_messages", 1);
 
     const normalized = String(userPrompt || "").trim();
     const normalizedBotId = String(botId || "default");
-    const active = await getActiveTeachingSession(authUser!.id, normalizedBotId);
+    const active = actor.shared ? null : await getActiveTeachingSession(authUser.id, normalizedBotId);
 
     if (shouldStartTeaching(normalized)) {
+      if (actor.shared) {
+        return res.json({ reply: "分享聊天目前不支援引導教學模式。", teachingMode: false });
+      }
       const taskType = inferTeachingTask(normalized) || "email";
-      const created = await startTeachingSession(authUser!.id, normalizedBotId, taskType);
+      const created = await startTeachingSession(authUser.id, normalizedBotId, taskType);
       return res.json({ reply: buildTeachingGuide(1, "step"), teachingMode: true, stepIndex: 1, totalSteps: created.totalSteps, taskType: created.taskType });
     }
 
@@ -562,8 +727,8 @@ router.post("/ask", requireAuth, async (req: Request, res: Response) => {
 
     if (!stream) {
       const reply = await askDeepSeekOnce(systemPrompt, normalized);
-      if (usageType === "chat_message") await recordFeatureUsage(authUser!.id, "chat_messages", 1, { usageType });
-      await consumeUserCredits(authUser!.id, "ask", 1, { streaming: false, promptLength: normalized.length });
+      if (usageType === "chat_message") await recordFeatureUsage(authUser.id, "chat_messages", 1, { usageType, source: actor.shared ? "shared_bot" : "direct" });
+      await consumeUserCredits(authUser.id, "ask", 1, { streaming: false, promptLength: normalized.length, source: actor.shared ? "shared_bot" : "direct" });
       return res.json({ reply, teachingMode: false });
     }
 
@@ -573,8 +738,8 @@ router.post("/ask", requireAuth, async (req: Request, res: Response) => {
     await askDeepSeek(systemPrompt, normalized, (token: string) => {
       res.write(`data:${token}\n\n`);
     });
-    if (usageType === "chat_message") await recordFeatureUsage(authUser!.id, "chat_messages", 1, { usageType });
-    await consumeUserCredits(authUser!.id, "ask", 1, { streaming: true, promptLength: normalized.length });
+    if (usageType === "chat_message") await recordFeatureUsage(authUser.id, "chat_messages", 1, { usageType, source: actor.shared ? "shared_bot" : "direct" });
+    await consumeUserCredits(authUser.id, "ask", 1, { streaming: true, promptLength: normalized.length, source: actor.shared ? "shared_bot" : "direct" });
     res.end();
   } catch (err: any) {
     console.error(err);

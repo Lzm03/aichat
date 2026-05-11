@@ -1,16 +1,65 @@
 import express from "express";
 import fetch from "node-fetch";
+import { pool } from "../db.ts";
 import { recordMinimaxTtsUsage } from "../lib/minimax-usage.ts";
 import {
   assertUserCanSpend,
   consumeUserCredits,
   ensureFeatureAvailable,
   getAuthUser,
+  getBearerToken,
+  findUserById,
   recordFeatureUsage,
   requireAuth,
+  verifyToken,
+  ensurePlatformTables,
 } from "../lib/platform-auth.ts";
 
 const router = express.Router();
+
+async function resolveTtsActor(req: express.Request, sharedBotId?: string) {
+  const token = getBearerToken(req);
+  const payload = token ? verifyToken(token) : null;
+  if (payload?.sub) {
+    const user = await findUserById(payload.sub);
+    if (user) {
+      return { user, shared: false as const };
+    }
+  }
+
+  const normalizedBotId = String(sharedBotId || "").trim();
+  if (!normalizedBotId) {
+    const error = new Error("missing bearer token");
+    (error as any).status = 401;
+    throw error;
+  }
+
+  await ensurePlatformTables();
+  const result = await pool.query(
+    `SELECT owner_id
+     FROM bots
+     WHERE id=$1
+       AND is_visible=true
+       AND owner_id IS NOT NULL
+     LIMIT 1`,
+    [normalizedBotId]
+  );
+  const ownerId = String(result.rows[0]?.owner_id || "").trim();
+  if (!ownerId) {
+    const error = new Error("shared bot not found");
+    (error as any).status = 404;
+    throw error;
+  }
+
+  const user = await findUserById(ownerId);
+  if (!user) {
+    const error = new Error("shared bot owner not found");
+    (error as any).status = 404;
+    throw error;
+  }
+
+  return { user, shared: true as const };
+}
 
 const collectVoices = (node: any, bucket: any[]) => {
   if (!node) return;
@@ -64,15 +113,16 @@ router.get("/voices", async (req, res) => {
   }
 });
 
-router.post("/tts", requireAuth, async (req, res) => {
+router.post("/tts", async (req, res) => {
   try {
-    const authUser = getAuthUser(req);
-    const { text, voiceId, usageType = "chat_voice" } = req.body;
-    await assertUserCanSpend(authUser!.id, 2);
+    const { text, voiceId, usageType = "chat_voice", sharedBotId = "" } = req.body;
+    const actor = await resolveTtsActor(req, String(sharedBotId || ""));
+    const authUser = actor.user;
+    await assertUserCanSpend(authUser.id, 2);
     if (usageType === "preview_audition") {
-      await ensureFeatureAvailable(authUser!.id, "voice_audition_preview", 1);
+      await ensureFeatureAvailable(authUser.id, "voice_audition_preview", 1);
     } else {
-      await ensureFeatureAvailable(authUser!.id, "voice_messages", 1);
+      await ensureFeatureAvailable(authUser.id, "voice_messages", 1);
     }
     const token = process.env.MINIMAX_TOKEN;
 
@@ -116,13 +166,14 @@ router.post("/tts", requireAuth, async (req, res) => {
     // Track MiniMax TTS usage for estimated balance visualization.
     recordMinimaxTtsUsage(String(text || ""));
     if (usageType === "preview_audition") {
-      await recordFeatureUsage(authUser!.id, "voice_audition_preview", 1, { voiceId: String(voiceId || "") });
+      await recordFeatureUsage(authUser.id, "voice_audition_preview", 1, { voiceId: String(voiceId || ""), source: actor.shared ? "shared_bot" : "direct" });
     } else {
-      await recordFeatureUsage(authUser!.id, "voice_messages", 1, { voiceId: String(voiceId || "") });
+      await recordFeatureUsage(authUser.id, "voice_messages", 1, { voiceId: String(voiceId || ""), source: actor.shared ? "shared_bot" : "direct" });
     }
-    await consumeUserCredits(authUser!.id, "tts", 2, {
+    await consumeUserCredits(authUser.id, "tts", 2, {
       voiceId: String(voiceId || ""),
       textLength: String(text || "").length,
+      source: actor.shared ? "shared_bot" : "direct",
     });
 
     const buffer = Buffer.from(data.data.audio, "hex");

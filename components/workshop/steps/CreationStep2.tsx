@@ -24,7 +24,7 @@ interface CreationStep2Props {
 
 export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData }) => {
   const [uploadMethod, setUploadMethod] = useState<UploadMethod>("file");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [inputValue, setInputValue] = useState("");
 
   const [status, setStatus] = useState<"idle" | "processing" | "complete">(
@@ -76,7 +76,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
 `;
 
   const resetState = () => {
-    setFile(null);
+    setFiles([]);
     setInputValue("");
     setCharacterBackground("");
     setKnowledgeSummary("");
@@ -118,18 +118,19 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   // --------------------------
   // 🔥 處理文件拖拽
   // --------------------------
-  const handleFileDrop = useCallback((files: FileList | null) => {
-    if (files && files.length > 0) {
-      setFile(files[0]);
-    }
+  const handleFileDrop = useCallback((nextFiles: FileList | null) => {
+    if (!nextFiles || nextFiles.length === 0) return;
+    setFiles(Array.from(nextFiles));
   }, []);
 
   // --------------------------
   // 🔥 文件 → /api/ask-file
   // --------------------------
-  const processFile = async (file: File) => {
+  const processFiles = async (nextFiles: File[]) => {
     const form = new FormData();
-    form.append("file", file);
+    nextFiles.forEach((file) => {
+      form.append("file", file);
+    });
     form.append("systemPrompt", systemPrompt);
 
     const res = await fetch(`${baseUrl}/api/ask-file`, {
@@ -224,7 +225,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   // 🔥 主解析流程
   // --------------------------
   const handleProcess = async () => {
-    if (uploadMethod === "file" && !file) return;
+    if (uploadMethod === "file" && files.length === 0) return;
     if (uploadMethod !== "file" && !inputValue.trim()) return;
 
     setStatus("processing");
@@ -233,15 +234,15 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
     try {
       const nextSourceLabel =
         uploadMethod === "file"
-          ? `文件：${file?.name || "未命名文件"}`
+          ? `文件：${files.map((file) => file.name).join("、") || "未命名文件"}`
           : uploadMethod === "url"
           ? `Web URL：${inputValue.trim()}`
           : "Text";
       setSourceLabel(nextSourceLabel);
 
       let result;
-      if (uploadMethod === "file" && file) {
-        result = await processFile(file);
+      if (uploadMethod === "file" && files.length > 0) {
+        result = await processFiles(files);
       } else if (uploadMethod === "url") {
         result = await processUrl(inputValue.trim());
       } else {
@@ -271,13 +272,13 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   };
 
   // --------------------------
-  // 🔥 自動觸發 PDF 解析
+  // 🔥 自動觸發文件解析
   // --------------------------
   useEffect(() => {
-    if (uploadMethod === "file" && file && status === "idle") {
+    if (uploadMethod === "file" && files.length > 0 && status === "idle") {
       handleProcess();
     }
-  }, [file]);
+  }, [files]);
 
   // --------------------------
   // 🔧 UI：輸入區域
@@ -299,10 +300,19 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
             選擇文件
             <input
               type="file"
+              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              multiple
               className="hidden"
               onChange={(e) => handleFileDrop(e.target.files)}
             />
           </label>
+          <p className="mt-3 text-xs text-slate-500">支援 PDF、DOC、DOCX，可一次上傳多個文件</p>
+          {files.length > 0 ? (
+            <div className="mt-4 w-full max-w-xl rounded-xl bg-white/70 p-3 text-sm text-slate-600">
+              <p className="font-semibold text-slate-700">已選擇 {files.length} 個文件</p>
+              <p className="mt-1 break-words">{files.map((file) => file.name).join("、")}</p>
+            </div>
+          ) : null}
         </div>
       );
     }

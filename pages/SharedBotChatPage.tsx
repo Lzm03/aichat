@@ -84,6 +84,7 @@ export const SharedBotChatPage: React.FC<SharedBotChatPageProps> = ({ botId }) =
         setIsChatOpen(false);
       }}
       botConfig={botConfig}
+      isSharedView={true}
       onEdit={() => {}}
       onDelete={() => {}}
     />

@@ -1,12 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-interface SequencePngPlayerProps {
+interface SequencePngPlayerProps extends React.ImgHTMLAttributes<HTMLImageElement> {
   folderUrl: string;
   pattern?: string;
   frameCount: number;
   fps: number;
   active?: boolean;
-  className?: string;
 }
 
 function pad4(n: number) {
@@ -28,6 +27,7 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
   fps,
   active = true,
   className,
+  ...imgProps
 }) => {
   const [frame, setFrame] = useState(1);
   const [ready, setReady] = useState(false);
@@ -142,5 +142,5 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
     return frameUrls[Math.max(0, frame - 1)] || frameUrls[0] || "";
   }, [frameUrls, frame]);
 
-  return <img src={src} className={className} draggable={false} />;
+  return <img src={src} className={className} draggable={false} {...imgProps} />;
 };

@@ -11,6 +11,9 @@ import {
   Link as LinkIcon,
   Edit,
   Trash2,
+  MessageCircle,
+  ChevronDown,
+  Camera,
 } from "lucide-react";
 import { SequencePngPlayer } from "./SequencePngPlayer";
 import { API_BASE } from "../../utils/api";
@@ -25,6 +28,7 @@ interface PublishSuccessModalProps {
   botConfig: any;
   onEdit: () => void;
   onDelete: (botId: string) => void;
+  isSharedView?: boolean;
 }
 
 export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
@@ -33,6 +37,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   botConfig,
   onEdit,
   onDelete,
+  isSharedView = false,
 }) => {
   if (!botConfig) return null;
 
@@ -53,6 +58,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
   const [inputText, setInputText] = useState("");
   const [isListening, setIsListening] = useState(false);
+  const [voiceLevel, setVoiceLevel] = useState(0);
   const [copied, setCopied] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -76,9 +82,12 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [characterOffset, setCharacterOffset] = useState({ x: 0, y: 0 });
   const [isRecordingScreen, setIsRecordingScreen] = useState(false);
   const [recordingError, setRecordingError] = useState("");
+  const [stagePhotoError, setStagePhotoError] = useState("");
+  const [isCapturingStagePhoto, setIsCapturingStagePhoto] = useState(false);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [chatPanelOpen, setChatPanelOpen] = useState(false);
   const [guidedMode, setGuidedMode] = useState(false);
   const [guidedStepIndex, setGuidedStepIndex] = useState(0);
   const [guidedTotalSteps, setGuidedTotalSteps] = useState(0);
@@ -87,11 +96,17 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [seqThinking, setSeqThinking] = useState<any>(null);
   const [seqTalking, setSeqTalking] = useState<any>(null);
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
+  const stageCaptureRef = useRef<HTMLDivElement | null>(null);
+  const stageBackgroundImageRef = useRef<HTMLImageElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const cameraRequestTokenRef = useRef(0);
   const screenRecorderRef = useRef<MediaRecorder | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const screenChunksRef = useRef<BlobPart[]>([]);
+  const speechMeterStreamRef = useRef<MediaStream | null>(null);
+  const speechMeterAudioContextRef = useRef<AudioContext | null>(null);
+  const speechMeterAnalyserRef = useRef<AnalyserNode | null>(null);
+  const speechMeterFrameRef = useRef<number | null>(null);
   const arStageRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<{
     pointerId: number;
@@ -101,6 +116,14 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     originY: number;
   } | null>(null);
   const canEditBot = Boolean(readAuthSession()?.user?.id);
+  const requestHeaders = isSharedView
+    ? {
+        "Content-Type": "application/json",
+        Authorization: "",
+      }
+    : {
+        "Content-Type": "application/json",
+      };
   const pinchStateRef = useRef<{
     distance: number;
     scale: number;
@@ -201,6 +224,11 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     const uaMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
     setIsMobileClient(Boolean(coarse || uaMobile));
   }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setChatPanelOpen(false);
+  }, [isOpen, botConfig?.id]);
 
   useEffect(() => {
     if (!isOpen || !botConfig?.id || interactionRecordedRef.current) return;
@@ -482,6 +510,292 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       cleanupScreenRecording();
     }
   }, [botName, cleanupScreenRecording, isRecordingScreen, stopScreenRecording]);
+
+  const captureStagePhoto = React.useCallback(async () => {
+    if (isCapturingStagePhoto) return;
+    const stageEl = stageCaptureRef.current;
+    if (!stageEl || typeof document === "undefined") {
+      setStagePhotoError("目前無法拍照");
+      return;
+    }
+
+    try {
+      setIsCapturingStagePhoto(true);
+      setStagePhotoError("");
+      const rect = stageEl.getBoundingClientRect();
+      const width = Math.max(1, Math.round(rect.width));
+      const height = Math.max(1, Math.round(rect.height));
+      const canvas = document.createElement("canvas");
+      const scale = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.round(width * scale);
+      canvas.height = Math.round(height * scale);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("無法建立畫布");
+      ctx.scale(scale, scale);
+
+      const coverDraw = (
+        sourceWidth: number,
+        sourceHeight: number,
+        dx: number,
+        dy: number,
+        dw: number,
+        dh: number
+      ) => {
+        const srcRatio = sourceWidth / sourceHeight;
+        const dstRatio = dw / dh;
+        let sx = 0;
+        let sy = 0;
+        let sw = sourceWidth;
+        let sh = sourceHeight;
+        if (srcRatio > dstRatio) {
+          sw = sourceHeight * dstRatio;
+          sx = (sourceWidth - sw) / 2;
+        } else {
+          sh = sourceWidth / dstRatio;
+          sy = (sourceHeight - sh) / 2;
+        }
+        return { sx, sy, sw, sh, dx, dy, dw, dh };
+      };
+
+      const drawSourceCover = (
+        source: CanvasImageSource,
+        sourceWidth: number,
+        sourceHeight: number
+      ) => {
+        const box = coverDraw(sourceWidth, sourceHeight, 0, 0, width, height);
+        ctx.drawImage(
+          source,
+          box.sx,
+          box.sy,
+          box.sw,
+          box.sh,
+          box.dx,
+          box.dy,
+          box.dw,
+          box.dh
+        );
+      };
+
+      const getContainDrawBox = (
+        sourceWidth: number,
+        sourceHeight: number,
+        containerX: number,
+        containerY: number,
+        containerWidth: number,
+        containerHeight: number
+      ) => {
+        const srcRatio = sourceWidth / sourceHeight;
+        const dstRatio = containerWidth / containerHeight;
+
+        let drawWidth = containerWidth;
+        let drawHeight = containerHeight;
+
+        if (srcRatio > dstRatio) {
+          drawHeight = containerWidth / srcRatio;
+        } else {
+          drawWidth = containerHeight * srcRatio;
+        }
+
+        return {
+          dx: containerX + (containerWidth - drawWidth) / 2,
+          dy: containerY + (containerHeight - drawHeight) / 2,
+          dw: drawWidth,
+          dh: drawHeight,
+        };
+      };
+
+      const toCanvasSafeUrl = (rawUrl: string) => {
+        try {
+          const resolved = new URL(rawUrl, window.location.href);
+          const isLocalBackend =
+            resolved.hostname === "localhost" || resolved.hostname === "127.0.0.1";
+          if (resolved.origin === window.location.origin || isLocalBackend) {
+            return resolved.toString();
+          }
+          return `/api/media-proxy?url=${encodeURIComponent(resolved.toString())}`;
+        } catch {
+          return rawUrl;
+        }
+      };
+
+      const loadSafeImage = async (rawUrl: string) => {
+        const safeUrl = toCanvasSafeUrl(rawUrl);
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.decoding = "async";
+        img.src = safeUrl;
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error("圖片載入失敗"));
+        });
+        return img;
+      };
+
+      if (cameraBackgroundReady && cameraVideoRef.current) {
+        const video = cameraVideoRef.current;
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          if (!isMobileClient) {
+            ctx.save();
+            ctx.translate(width, 0);
+            ctx.scale(-1, 1);
+            drawSourceCover(video, video.videoWidth, video.videoHeight);
+            ctx.restore();
+          } else {
+            drawSourceCover(video, video.videoWidth, video.videoHeight);
+          }
+        }
+      } else if (stageBackgroundImageRef.current) {
+        const bgImg = stageBackgroundImageRef.current;
+        const bgSrc = bgImg.currentSrc || bgImg.src;
+        if (bgSrc) {
+          const safeBgImg = await loadSafeImage(bgSrc);
+          drawSourceCover(safeBgImg, safeBgImg.naturalWidth, safeBgImg.naturalHeight);
+        } else if (bgImg.naturalWidth > 0 && bgImg.naturalHeight > 0) {
+          drawSourceCover(bgImg, bgImg.naturalWidth, bgImg.naturalHeight);
+        }
+      } else {
+        ctx.fillStyle = "#cbd5e1";
+        ctx.fillRect(0, 0, width, height);
+      }
+
+      const gradient = ctx.createLinearGradient(0, 0, 0, height);
+      gradient.addColorStop(0, "rgba(15,23,42,0.08)");
+      gradient.addColorStop(1, "rgba(15,23,42,0.28)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+
+      const characterNode = Array.from(
+        stageEl.querySelectorAll('[data-stage-character="true"]')
+      ).find((node) => {
+        if (!(node instanceof HTMLElement)) return false;
+        const style = window.getComputedStyle(node);
+        const nodeRect = node.getBoundingClientRect();
+        return (
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          Number(style.opacity || "1") > 0 &&
+          nodeRect.width > 0 &&
+          nodeRect.height > 0
+        );
+      }) as HTMLElement | undefined;
+      if (characterNode) {
+        const characterRect = characterNode.getBoundingClientRect();
+        const containerX = characterRect.left - rect.left;
+        const containerY = characterRect.top - rect.top;
+        const containerWidth = characterRect.width;
+        const containerHeight = characterRect.height;
+
+        if (characterNode instanceof HTMLVideoElement) {
+          if (characterNode.videoWidth > 0 && characterNode.videoHeight > 0) {
+            const drawBox = getContainDrawBox(
+              characterNode.videoWidth,
+              characterNode.videoHeight,
+              containerX,
+              containerY,
+              containerWidth,
+              containerHeight
+            );
+            const safeVideoUrl = characterNode.currentSrc || characterNode.src;
+            if (safeVideoUrl) {
+              const tempVideo = document.createElement("video");
+              tempVideo.muted = true;
+              tempVideo.playsInline = true;
+              tempVideo.preload = "auto";
+              tempVideo.crossOrigin = "anonymous";
+              tempVideo.src = toCanvasSafeUrl(safeVideoUrl);
+
+              await new Promise<void>((resolve, reject) => {
+                tempVideo.onloadeddata = () => resolve();
+                tempVideo.onerror = () => reject(new Error("角色影片載入失敗"));
+              });
+
+              if (Number.isFinite(characterNode.currentTime) && characterNode.currentTime > 0) {
+                try {
+                  await new Promise<void>((resolve, reject) => {
+                    tempVideo.onseeked = () => resolve();
+                    tempVideo.onerror = () => reject(new Error("角色影片定位失敗"));
+                    tempVideo.currentTime = Math.min(
+                      characterNode.currentTime,
+                      Math.max(0, (tempVideo.duration || characterNode.currentTime) - 0.05)
+                    );
+                  });
+                } catch {
+                  // Ignore seek failure and use the closest ready frame.
+                }
+              }
+
+              if (tempVideo.videoWidth > 0 && tempVideo.videoHeight > 0) {
+                ctx.drawImage(
+                  tempVideo,
+                  drawBox.dx,
+                  drawBox.dy,
+                  drawBox.dw,
+                  drawBox.dh
+                );
+              }
+            } else {
+              ctx.drawImage(
+                characterNode,
+                drawBox.dx,
+                drawBox.dy,
+                drawBox.dw,
+                drawBox.dh
+              );
+            }
+          }
+        } else if (characterNode instanceof HTMLImageElement) {
+          const safeCharacterSrc = characterNode.currentSrc || characterNode.src;
+          if (safeCharacterSrc) {
+            const safeCharacterImg = await loadSafeImage(safeCharacterSrc);
+            const drawBox = getContainDrawBox(
+              safeCharacterImg.naturalWidth,
+              safeCharacterImg.naturalHeight,
+              containerX,
+              containerY,
+              containerWidth,
+              containerHeight
+            );
+            ctx.drawImage(
+              safeCharacterImg,
+              drawBox.dx,
+              drawBox.dy,
+              drawBox.dw,
+              drawBox.dh
+            );
+          } else if (characterNode.naturalWidth > 0 && characterNode.naturalHeight > 0) {
+            const drawBox = getContainDrawBox(
+              characterNode.naturalWidth,
+              characterNode.naturalHeight,
+              containerX,
+              containerY,
+              containerWidth,
+              containerHeight
+            );
+            ctx.drawImage(
+              characterNode,
+              drawBox.dx,
+              drawBox.dy,
+              drawBox.dw,
+              drawBox.dh
+            );
+          }
+        }
+      }
+
+      const url = canvas.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${botName || "stage-photo"}-${Date.now()}.png`;
+      a.click();
+    } catch (error) {
+      console.error("Stage capture failed:", error);
+      setStagePhotoError(error instanceof Error ? error.message : "拍照失敗");
+    } finally {
+      window.setTimeout(() => {
+        setIsCapturingStagePhoto(false);
+      }, 1200);
+    }
+  }, [botName, cameraBackgroundReady, isCapturingStagePhoto, isMobileClient]);
 
   const startCameraBackground = React.useCallback(async () => {
     if (
@@ -894,13 +1208,12 @@ const requestTTSAudio = async (text: string, sessionId: number) => {
 
     const res = await fetch(`${baseUrl}/api/tts`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: requestHeaders,
       body: JSON.stringify({
         text,
         voiceId,
         usageType: "chat_voice",
+        sharedBotId: isSharedView ? botConfig.id : undefined,
       }),
       signal: controller.signal,
     });
@@ -1138,9 +1451,7 @@ const sendMessage = async (forcedText?: string) => {
     activeRequestController.current = controller;
     const response = await fetch(`${baseUrl}/api/ask`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: requestHeaders,
       body: JSON.stringify({
         systemPrompt:
           botConfig.knowledgeBase +
@@ -1153,6 +1464,7 @@ const sendMessage = async (forcedText?: string) => {
         stream: false,
         teachingHint: guidedMode ? "continue" : "auto",
         usageType: "chat_message",
+        sharedBotId: isSharedView ? botConfig.id : undefined,
       }),
       signal: controller.signal,
     });
@@ -1262,6 +1574,20 @@ const stopSpeechInput = (forceAbort = false) => {
     }
     speechRecognitionRef.current = null;
   }
+  if (speechMeterFrameRef.current) {
+    window.cancelAnimationFrame(speechMeterFrameRef.current);
+    speechMeterFrameRef.current = null;
+  }
+  if (speechMeterStreamRef.current) {
+    speechMeterStreamRef.current.getTracks().forEach((track) => track.stop());
+    speechMeterStreamRef.current = null;
+  }
+  if (speechMeterAudioContextRef.current) {
+    void speechMeterAudioContextRef.current.close().catch(() => undefined);
+    speechMeterAudioContextRef.current = null;
+  }
+  speechMeterAnalyserRef.current = null;
+  setVoiceLevel(0);
   setIsListening(false);
 };
 
@@ -1313,7 +1639,36 @@ const startSpeechInput = async () => {
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    stream.getTracks().forEach((t) => t.stop());
+    speechMeterStreamRef.current = stream;
+    const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (AudioCtx) {
+      const audioContext = new AudioCtx();
+      speechMeterAudioContextRef.current = audioContext;
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.82;
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+      speechMeterAnalyserRef.current = analyser;
+      const dataArray = new Uint8Array(analyser.fftSize);
+
+      const updateLevel = () => {
+        const currentAnalyser = speechMeterAnalyserRef.current;
+        if (!currentAnalyser) return;
+        currentAnalyser.getByteTimeDomainData(dataArray);
+        let sumSquares = 0;
+        for (let i = 0; i < dataArray.length; i += 1) {
+          const normalized = (dataArray[i] - 128) / 128;
+          sumSquares += normalized * normalized;
+        }
+        const rms = Math.sqrt(sumSquares / dataArray.length);
+        const boosted = Math.min(1, rms * 4.2);
+        setVoiceLevel(boosted);
+        speechMeterFrameRef.current = window.requestAnimationFrame(updateLevel);
+      };
+
+      speechMeterFrameRef.current = window.requestAnimationFrame(updateLevel);
+    }
   } catch (e: any) {
     sttStartingRef.current = false;
     const name = e?.name || "UnknownError";
@@ -1601,98 +1956,25 @@ const unlockAudioAndMic = async () => {
           />
 
           {/* 主体 */}
-          <div className="relative w-full max-w-6xl h-[88vh] md:h-[85vh] bg-white rounded-3xl shadow-2xl overflow-hidden">
+          <div className="relative w-full max-w-7xl h-[92vh] bg-white rounded-3xl shadow-2xl overflow-hidden">
             <div
-              className={`h-full w-full flex flex-col md:flex-row transition-opacity duration-300 ${
+              className={`h-full w-full flex transition-all duration-300 ${
                 shouldShowBooting ? "opacity-0" : "opacity-100"
               }`}
             >
-            {/* mobile header */}
-            <div className="md:hidden order-2 bg-white border-b p-4 flex justify-between items-center">
-              <div className="min-w-0">
-                <div className="text-lg font-bold leading-tight break-words">{botName}</div>
-                <div className="text-xs text-emerald-600 flex items-center gap-1 mt-1">
-                  <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                  已發佈上線
-                </div>
-              </div>
-
-              <div className="flex items-center">
-                <div className="relative" ref={mobileDropdownRef}>
-                  <button
-                    className="p-2 rounded-full hover:bg-slate-200"
-                    onClick={() => setShowDropdown(!showDropdown)}
-                  >
-                    <MoreHorizontal size={18} />
-                  </button>
-
-                  {showDropdown && (
-                    <div className="absolute right-0 top-10 z-30 bg-white rounded-xl shadow-xl border p-2 w-56">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!canEditBot) return;
-                          setShowDropdown(false);
-                          onEdit();
-                        }}
-                        disabled={!canEditBot}
-                        className={`flex items-center gap-2 rounded-lg w-full p-2 ${
-                          canEditBot
-                            ? "text-slate-700 hover:bg-slate-100"
-                            : "text-slate-300 cursor-not-allowed"
-                        }`}
-                      >
-                        <Edit size={16} /> 編輯機器人
-                      </button>
-
-                      <button
-                        onClick={handleCopy}
-                        className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded-lg w-full"
-                      >
-                        {copied ? <Check size={16} /> : <LinkIcon size={16} />}
-                        {copied ? "已複製" : "複製分享連結"}
-                      </button>
-
-                      <button
-                        className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded-lg w-full"
-                        onClick={() => {
-                          setShowDropdown(false);
-                          void startScreenRecording();
-                        }}
-                      >
-                        <Copy size={16} /> {isRecordingScreen ? "結束錄製並下載" : "錄製畫面"}
-                      </button>
-
-                      <button
-                        className="flex items-center gap-2 p-2 hover:bg-red-50 text-red-600 rounded-lg w-full"
-                        onClick={() => {
-                          setShowDropdown(false);
-                          setShowDeleteConfirm(true);
-                        }}
-                      >
-                        <Trash2 size={16} /> 刪除機器人
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  className="ml-2 p-2 text-slate-500 hover:bg-slate-100 rounded-full"
-                  onClick={handleCloseWithInterrupt}
-                >
-                  <X size={20} />
-                </button>
-              </div>
-            </div>
-
             {/* 左侧背景 + 动画 */}
-            {/* 左侧背景 + 动画 */}
-            <div className="relative order-1 md:order-none w-full md:w-3/5 h-[42vh] md:h-full bg-slate-200">
+            <div
+              ref={stageCaptureRef}
+              className={`relative h-full bg-slate-200 transition-all duration-300 ${
+                chatPanelOpen ? "w-[56%]" : "w-full"
+              }`}
+            >
               <video
                 ref={cameraVideoRef}
                 autoPlay
                 muted
                 playsInline
+                crossOrigin="anonymous"
                 className={`absolute inset-0 w-full h-full object-cover ${
                   cameraBackgroundReady && !isMobileClient ? "scale-x-[-1]" : ""
                 } ${
@@ -1702,7 +1984,9 @@ const unlockAudioAndMic = async () => {
 
               {!cameraBackgroundReady && background && background.trim() !== "" ? (
                 <img
+                  ref={stageBackgroundImageRef}
                   src={background}
+                  crossOrigin="anonymous"
                   className="absolute inset-0 w-full h-full object-cover opacity-80"
                 />
               ) : (
@@ -1712,6 +1996,83 @@ const unlockAudioAndMic = async () => {
               )}
 
               <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.08),rgba(15,23,42,0.28))]" />
+              <div className="absolute right-6 top-6 z-30 flex items-center gap-3">
+                <button
+                  className={`flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-lg backdrop-blur transition-all duration-200 ${
+                    chatPanelOpen
+                      ? "bg-white/18 ring-2 ring-white/70 shadow-[0_8px_24px_rgba(59,130,246,0.28)]"
+                      : "bg-black/45 hover:bg-black/60"
+                  }`}
+                  onClick={() => setChatPanelOpen((prev) => !prev)}
+                  title={chatPanelOpen ? "隱藏聊天框" : "顯示聊天框"}
+                >
+                  <MessageCircle size={20} />
+                </button>
+                {!chatPanelOpen && (
+                  <>
+                    <div className="relative" ref={desktopDropdownRef}>
+                      <button
+                        className="flex h-12 w-12 items-center justify-center rounded-2xl bg-black/45 text-white shadow-lg backdrop-blur hover:bg-black/60"
+                        onClick={() => setShowDropdown(!showDropdown)}
+                      >
+                        <MoreHorizontal size={18} />
+                      </button>
+
+                      {showDropdown && (
+                        <div className="absolute right-0 top-16 z-30 bg-white rounded-xl shadow-xl border p-2 w-56 text-slate-700">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!canEditBot) return;
+                              setShowDropdown(false);
+                              onEdit();
+                            }}
+                            disabled={!canEditBot}
+                            className={`flex items-center gap-2 rounded-lg w-full p-2 ${
+                              canEditBot
+                                ? "hover:bg-slate-100"
+                                : "text-slate-300 cursor-not-allowed"
+                            }`}
+                          >
+                            <Edit size={16} /> 編輯機器人
+                          </button>
+                          <button
+                            onClick={handleCopy}
+                            className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded-lg w-full"
+                          >
+                            {copied ? <Check size={16} /> : <LinkIcon size={16} />}
+                            {copied ? "已複製" : "複製分享連結"}
+                          </button>
+                          <button
+                            className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded-lg w-full"
+                            onClick={() => {
+                              setShowDropdown(false);
+                              void startScreenRecording();
+                            }}
+                          >
+                            <Copy size={16} /> {isRecordingScreen ? "結束錄製並下載" : "錄製畫面"}
+                          </button>
+                          <button
+                            className="flex items-center gap-2 p-2 hover:bg-red-50 text-red-600 rounded-lg w-full"
+                            onClick={() => {
+                              setShowDropdown(false);
+                              setShowDeleteConfirm(true);
+                            }}
+                          >
+                            <Trash2 size={16} /> 刪除機器人
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/90 text-slate-700 shadow-lg hover:bg-white"
+                      onClick={handleCloseWithInterrupt}
+                    >
+                      <X size={18} />
+                    </button>
+                  </>
+                )}
+              </div>
               {cameraBackgroundReady && (
                 <>
                   <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-red-500/90 px-2.5 py-1 text-[10px] font-semibold tracking-[0.24em] text-white shadow-[0_0_12px_rgba(239,68,68,0.45)]">
@@ -1729,7 +2090,7 @@ const unlockAudioAndMic = async () => {
                 </>
               )}
 
-              <div className="absolute left-4 bottom-4 z-10 flex flex-col gap-2">
+              <div className="absolute bottom-4 left-4 z-10 flex flex-col gap-2">
                 <button
                   onClick={() => {
                     void startCameraBackground();
@@ -1839,6 +2200,7 @@ const unlockAudioAndMic = async () => {
                             pattern={seqIdle.pattern}
                             frameCount={seqIdle.frameCount}
                             fps={seqIdle.fps}
+                            data-stage-character="true"
                             className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
                               visualState === "idle" ? "block" : "hidden"
                             }`}
@@ -1846,12 +2208,14 @@ const unlockAudioAndMic = async () => {
                           />
                         ) : safeVideoIdle && (
                           <video
+                            data-stage-character="true"
                             src={safeVideoIdle}
                             autoPlay
                             loop
                             muted
                             playsInline
                             preload="auto"
+                            crossOrigin="anonymous"
                             className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
                               visualState === "idle" ? "block" : "hidden"
                             }`}
@@ -1863,6 +2227,7 @@ const unlockAudioAndMic = async () => {
                             pattern={seqThinking.pattern}
                             frameCount={seqThinking.frameCount}
                             fps={seqThinking.fps}
+                            data-stage-character="true"
                             className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
                               visualState === "thinking" ? "block" : "hidden"
                             }`}
@@ -1870,12 +2235,14 @@ const unlockAudioAndMic = async () => {
                           />
                         ) : safeVideoThinking && (
                           <video
+                            data-stage-character="true"
                             src={safeVideoThinking}
                             autoPlay
                             loop
                             muted
                             playsInline
                             preload="auto"
+                            crossOrigin="anonymous"
                             className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
                               visualState === "thinking" ? "block" : "hidden"
                             }`}
@@ -1887,6 +2254,7 @@ const unlockAudioAndMic = async () => {
                             pattern={seqTalking.pattern}
                             frameCount={seqTalking.frameCount}
                             fps={seqTalking.fps}
+                            data-stage-character="true"
                             className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
                               visualState === "speaking" ? "block" : "hidden"
                             }`}
@@ -1894,12 +2262,14 @@ const unlockAudioAndMic = async () => {
                           />
                         ) : safeVideoTalking && (
                           <video
+                            data-stage-character="true"
                             src={safeVideoTalking}
                             autoPlay
                             loop
                             muted
                             playsInline
                             preload="auto"
+                            crossOrigin="anonymous"
                             className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
                               visualState === "speaking" ? "block" : "hidden"
                             }`}
@@ -1914,7 +2284,9 @@ const unlockAudioAndMic = async () => {
                             : "https://via.placeholder.com/400";
                         return (
                           <img
+                            data-stage-character="true"
                             src={safeAvatar}
+                            crossOrigin="anonymous"
                             className="h-full w-full object-contain drop-shadow-xl"
                           />
                         );
@@ -1935,6 +2307,7 @@ const unlockAudioAndMic = async () => {
                           pattern={seqIdle.pattern}
                           frameCount={seqIdle.frameCount}
                           fps={seqIdle.fps}
+                          data-stage-character="true"
                           className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
                             visualState === "idle" ? "block" : "hidden"
                           }`}
@@ -1942,12 +2315,14 @@ const unlockAudioAndMic = async () => {
                         />
                       ) : safeVideoIdle && (
                         <video
+                          data-stage-character="true"
                           src={safeVideoIdle}
                           autoPlay
                           loop
                           muted
                           playsInline
                           preload="auto"
+                          crossOrigin="anonymous"
                           className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
                             visualState === "idle" ? "block" : "hidden"
                           }`}
@@ -1959,6 +2334,7 @@ const unlockAudioAndMic = async () => {
                           pattern={seqThinking.pattern}
                           frameCount={seqThinking.frameCount}
                           fps={seqThinking.fps}
+                          data-stage-character="true"
                           className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
                             visualState === "thinking" ? "block" : "hidden"
                           }`}
@@ -1966,12 +2342,14 @@ const unlockAudioAndMic = async () => {
                         />
                       ) : safeVideoThinking && (
                         <video
+                          data-stage-character="true"
                           src={safeVideoThinking}
                           autoPlay
                           loop
                           muted
                           playsInline
                           preload="auto"
+                          crossOrigin="anonymous"
                           className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
                             visualState === "thinking" ? "block" : "hidden"
                           }`}
@@ -1983,6 +2361,7 @@ const unlockAudioAndMic = async () => {
                           pattern={seqTalking.pattern}
                           frameCount={seqTalking.frameCount}
                           fps={seqTalking.fps}
+                          data-stage-character="true"
                           className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
                             visualState === "speaking" ? "block" : "hidden"
                           }`}
@@ -1990,12 +2369,14 @@ const unlockAudioAndMic = async () => {
                         />
                       ) : safeVideoTalking && (
                         <video
+                          data-stage-character="true"
                           src={safeVideoTalking}
                           autoPlay
                           loop
                           muted
                           playsInline
                           preload="auto"
+                          crossOrigin="anonymous"
                           className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
                             visualState === "speaking" ? "block" : "hidden"
                           }`}
@@ -2010,7 +2391,9 @@ const unlockAudioAndMic = async () => {
                           : "https://via.placeholder.com/400";
                       return (
                         <img
+                          data-stage-character="true"
                           src={safeAvatar}
+                          crossOrigin="anonymous"
                           className="h-[80%] object-contain drop-shadow-xl"
                         />
                       );
@@ -2020,10 +2403,100 @@ const unlockAudioAndMic = async () => {
               )}
             </div>
 
+            <div
+              className={`absolute bottom-2 left-1/2 z-20 -translate-x-1/2 transition-all duration-300 ${
+                chatPanelOpen ? "pointer-events-none opacity-0" : "pointer-events-auto opacity-100"
+              }`}
+            >
+              <div className="flex w-full max-w-[420px] items-end gap-2.5">
+                <button
+                  onClick={startSpeechInput}
+                  disabled={shouldBlockChat}
+                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[22px] border text-white backdrop-blur-md transition-all duration-200 ${
+                    isListening
+                      ? "bg-white/14 border-white/35 shadow-[0_10px_30px_rgba(255,255,255,0.14)]"
+                      : "bg-black/45 border-white/15 hover:bg-black/60"
+                  } disabled:opacity-40`}
+                  title={isListening ? "點擊停止語音輸入" : "語音輸入（廣東話）"}
+                >
+                  <Mic size={18} />
+                </button>
+                <div className="flex h-12 min-w-[120px] max-w-[180px] items-center justify-center rounded-[22px] bg-black/45 px-4 text-white/80 backdrop-blur-md">
+                  {botState === "thinking" ? (
+                    <div className="flex items-center gap-1.5">
+                      {Array.from({ length: 3 }).map((_, idx) => (
+                        <span
+                          key={idx}
+                          className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-bounce"
+                          style={{ animationDelay: `${idx * 0.16}s` }}
+                        />
+                      ))}
+                    </div>
+                  ) : isListening ? (
+                    <div className="flex h-5 items-center gap-[3px]">
+                      {Array.from({ length: 11 }).map((_, idx) => {
+                        const mid = Math.abs(5 - idx);
+                        const baseHeight = Math.max(6, 14 - mid * 1.4);
+                        const lift = Math.max(0, voiceLevel * (10 - mid * 0.9));
+                        return (
+                          <span
+                            key={idx}
+                            className="w-[3px] rounded-full bg-white/90 transition-[height] duration-75"
+                            style={{
+                              height: `${Math.max(4, Math.round(baseHeight + lift))}px`,
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      {Array.from({ length: 9 }).map((_, idx) => (
+                        <span key={idx} className="h-1 w-1 rounded-full bg-white/85" />
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    void captureStagePhoto();
+                  }}
+                  disabled={isCapturingStagePhoto}
+                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-slate-900 shadow-lg transition-all ${
+                    isCapturingStagePhoto
+                      ? "cursor-not-allowed bg-white/70 opacity-70"
+                      : "bg-white hover:bg-slate-100"
+                  }`}
+                  title={isCapturingStagePhoto ? "圖片保存中..." : "拍攝當前舞台"}
+                >
+                  <Camera size={18} />
+                </button>
+                {isStopAvailable ? (
+                  <button
+                    onClick={stopAllSpeech}
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[22px] bg-black/45 text-white backdrop-blur-md hover:bg-black/60"
+                    title="停止回覆與語音"
+                  >
+                    <ChevronDown size={18} />
+                  </button>
+                ) : null}
+              </div>
+              {stagePhotoError ? (
+                <div className="pointer-events-auto mt-2 text-center text-xs text-red-200">
+                  {stagePhotoError}
+                </div>
+              ) : null}
+            </div>
+
             {/* 右侧聊天 */}
-            <div className="order-3 w-full md:w-2/5 flex-1 min-h-0 md:h-full md:flex-none flex flex-col bg-slate-50">
+            <div
+              className={`h-full border-l border-slate-200 bg-slate-50 transition-all duration-300 ${
+                chatPanelOpen ? "w-[44%] opacity-100" : "w-0 opacity-0"
+              }`}
+            >
+              <div className={`flex h-full min-w-0 flex-col ${chatPanelOpen ? "" : "pointer-events-none"}`}>
               {/* header */}
-              <div className="hidden md:flex bg-white border-b p-4 justify-between items-center">
+              <div className="flex bg-white border-b p-4 justify-between items-center">
                   <div className="min-w-0">
                   <div className="text-lg font-bold leading-tight break-words">{botName}</div>
                   <div className="text-xs text-emerald-600 flex items-center gap-1">
@@ -2032,72 +2505,12 @@ const unlockAudioAndMic = async () => {
                   </div>
                 </div>
 
-                <div className="flex items-center">
-                  <div className="relative" ref={desktopDropdownRef}>
-                    <button
-                      className="p-2 rounded-full hover:bg-slate-200"
-                      onClick={() => setShowDropdown(!showDropdown)}
-                    >
-                      <MoreHorizontal size={18} />
-                    </button>
-
-                    {showDropdown && (
-                      <div className="absolute right-0 top-10 z-30 bg-white rounded-xl shadow-xl border p-2 w-56">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!canEditBot) return;
-                            setShowDropdown(false);
-                            onEdit();
-                          }}
-                          disabled={!canEditBot}
-                          className={`flex items-center gap-2 rounded-lg w-full p-2 ${
-                            canEditBot
-                              ? "text-slate-700 hover:bg-slate-100"
-                              : "text-slate-300 cursor-not-allowed"
-                          }`}
-                        >
-                          <Edit size={16} /> 編輯機器人
-                        </button>
-
-                        <button
-                          onClick={handleCopy}
-                          className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded-lg w-full"
-                        >
-                          {copied ? <Check size={16} /> : <LinkIcon size={16} />}
-                          {copied ? "已複製" : "複製分享連結"}
-                        </button>
-
-                        <button
-                          className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded-lg w-full"
-                          onClick={() => {
-                            setShowDropdown(false);
-                            void startScreenRecording();
-                          }}
-                        >
-                          <Copy size={16} /> {isRecordingScreen ? "結束錄製並下載" : "錄製畫面"}
-                        </button>
-
-                        <button
-                          className="flex items-center gap-2 p-2 hover:bg-red-50 text-red-600 rounded-lg w-full"
-                          onClick={() => {
-                            setShowDropdown(false);
-                            setShowDeleteConfirm(true);
-                          }}
-                        >
-                          <Trash2 size={16} /> 刪除機器人
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  <button
-                    className="ml-2 p-2 text-slate-500 hover:bg-slate-100 rounded-full"
-                    onClick={handleCloseWithInterrupt}
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
+                <button
+                  className="ml-2 p-2 text-slate-500 hover:bg-slate-100 rounded-full"
+                  onClick={() => setChatPanelOpen(false)}
+                >
+                  <X size={20} />
+                </button>
               </div>
 
               {/* messages */}
@@ -2229,6 +2642,7 @@ const unlockAudioAndMic = async () => {
                   </button>
                 </div>
               </div>
+            </div>
             </div>
             </div>
 
