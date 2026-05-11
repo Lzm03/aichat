@@ -21,6 +21,7 @@ import {
 const require = createRequire(import.meta.url);
 const pdfParse = require("pdf-parse");
 const AdmZip = require("adm-zip");
+const WordExtractor = require("word-extractor");
 const MAX_FILE_PROMPT_CHARS = 18000;
 
 const router = express.Router();
@@ -404,6 +405,30 @@ function extractTextFromDocxBuffer(buffer: Buffer): string {
   return decodeXmlEntities(text).replace(/\n{3,}/g, "\n\n").trim();
 }
 
+async function extractTextFromDocBuffer(buffer: Buffer): Promise<string> {
+  const extractor = new WordExtractor();
+  const document = await extractor.extract(buffer);
+  const body = typeof document?.getBody === "function" ? document.getBody() : "";
+  const footnotes =
+    typeof document?.getFootnotes === "function" ? document.getFootnotes() : "";
+  const endnotes =
+    typeof document?.getEndnotes === "function" ? document.getEndnotes() : "";
+  const headers =
+    typeof document?.getHeaders === "function" ? document.getHeaders() : "";
+  const text = [body, footnotes, endnotes, headers]
+    .filter(Boolean)
+    .join("\n")
+    .replace(/\r/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (!text) {
+    throw new Error("DOC 內容讀取失敗");
+  }
+
+  return text;
+}
+
 async function extractTextFromUploadedFile(file: Express.Multer.File): Promise<string> {
   const lowerName = String(file.originalname || "").toLowerCase();
   const mimeType = String(file.mimetype || "").toLowerCase();
@@ -418,7 +443,7 @@ async function extractTextFromUploadedFile(file: Express.Multer.File): Promise<s
     return extractTextFromDocxBuffer(file.buffer);
   }
   if (lowerName.endsWith(".doc") || mimeType === "application/msword") {
-    throw new Error("目前線上環境僅支援 PDF 與 DOCX，舊版 DOC 請先另存為 DOCX 再上傳");
+    return extractTextFromDocBuffer(file.buffer);
   }
 
   throw new Error(`不支援的文件格式：${file.originalname || "unknown"}`);

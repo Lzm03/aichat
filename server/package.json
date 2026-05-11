@@ -8,12 +8,13 @@
     "start": "tsx index.ts"
   },
   "dependencies": {
-    "adm-zip": "^0.5.16",
     "@railway/cli": "^4.30.5",
+    "adm-zip": "^0.5.16",
     "pdf-parse": "^1.1.1",
     "pg": "^8.19.0",
     "tsx": "^4.20.6",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "word-extractor": "^1.0.4"
   },
   "devDependencies": {
     "@types/pg": "^8.16.0",
