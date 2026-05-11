@@ -13,7 +13,7 @@ function pad4(n: number) {
   return String(n).padStart(4, "0");
 }
 
-const LOOP_RESTART_FRAME = 10;
+const LOOP_RESTART_FRAME = 5;
 
 function getNextLoopFrame(frame: number, safeCount: number) {
   if (safeCount <= 1) return 1;
