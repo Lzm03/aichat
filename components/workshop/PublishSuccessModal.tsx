@@ -1282,7 +1282,6 @@ const tryPlayInOrder = () => {
   if (!ttsPlayerRef.current) {
     ttsPlayerRef.current = new Audio();
     ttsPlayerRef.current.preload = "auto";
-    ttsPlayerRef.current.playsInline = true;
   }
   const player = ttsPlayerRef.current;
 
@@ -1882,7 +1881,6 @@ const unlockAudioAndMic = async () => {
     if (!ttsPlayerRef.current) {
       ttsPlayerRef.current = new Audio();
       ttsPlayerRef.current.preload = "auto";
-      ttsPlayerRef.current.playsInline = true;
     }
     ttsPlayerRef.current.muted = true;
     await ttsPlayerRef.current.play().catch(() => {});
@@ -1948,25 +1946,25 @@ const unlockAudioAndMic = async () => {
   return (
     <>
       {isOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center overflow-hidden bg-white p-4 md:bg-transparent md:p-4">
           {/* 背景 */}
           <div
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            className="absolute inset-0 bg-white md:bg-black/50 md:backdrop-blur-sm"
             onClick={handleCloseWithInterrupt}
           />
 
           {/* 主体 */}
-          <div className="relative w-full max-w-7xl h-[92vh] bg-white rounded-3xl shadow-2xl overflow-hidden">
+          <div className="relative h-[92svh] w-full max-w-[720px] overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_22px_80px_rgba(15,23,42,0.16)] md:h-[92vh] md:max-w-7xl md:rounded-3xl md:border-0 md:shadow-2xl">
             <div
-              className={`h-full w-full flex transition-all duration-300 ${
+              className={`relative h-full w-full overflow-hidden rounded-[1.5rem] bg-[#f8fafc] transition-all duration-300 md:flex md:rounded-3xl ${
                 shouldShowBooting ? "opacity-0" : "opacity-100"
               }`}
             >
             {/* 左侧背景 + 动画 */}
             <div
               ref={stageCaptureRef}
-              className={`relative h-full bg-slate-200 transition-all duration-300 ${
-                chatPanelOpen ? "w-[56%]" : "w-full"
+              className={`relative h-full w-full bg-slate-200 transition-all duration-300 ${
+                chatPanelOpen ? "md:w-[56%]" : "md:w-full"
               }`}
             >
               <video
@@ -1995,12 +1993,12 @@ const unlockAudioAndMic = async () => {
                 )
               )}
 
-              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.08),rgba(15,23,42,0.28))]" />
-              <div className="absolute right-6 top-6 z-30 flex items-center gap-3">
+              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(8,12,16,0.16)_0%,rgba(8,12,16,0.05)_34%,rgba(8,12,16,0.42)_100%)]" />
+              <div className="absolute right-4 top-5 z-30 flex flex-col items-center gap-2 md:right-6 md:top-6 md:flex-row md:gap-3">
                 <button
-                  className={`flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-lg backdrop-blur transition-all duration-200 ${
+                  className={`flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-lg backdrop-blur transition-all duration-200 ${
                     chatPanelOpen
-                      ? "bg-white/18 ring-2 ring-white/70 shadow-[0_8px_24px_rgba(59,130,246,0.28)]"
+                      ? "bg-white/22 ring-2 ring-white/65 shadow-[0_8px_24px_rgba(245,158,11,0.24)]"
                       : "bg-black/45 hover:bg-black/60"
                   }`}
                   onClick={() => setChatPanelOpen((prev) => !prev)}
@@ -2012,7 +2010,7 @@ const unlockAudioAndMic = async () => {
                   <>
                     <div className="relative" ref={desktopDropdownRef}>
                       <button
-                        className="flex h-12 w-12 items-center justify-center rounded-2xl bg-black/45 text-white shadow-lg backdrop-blur hover:bg-black/60"
+                        className="flex h-11 w-11 items-center justify-center rounded-2xl bg-black/45 text-white shadow-lg backdrop-blur hover:bg-black/60"
                         onClick={() => setShowDropdown(!showDropdown)}
                       >
                         <MoreHorizontal size={18} />
@@ -2065,7 +2063,7 @@ const unlockAudioAndMic = async () => {
                       )}
                     </div>
                     <button
-                      className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/90 text-slate-700 shadow-lg hover:bg-white"
+                      className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/90 text-slate-700 shadow-lg hover:bg-white"
                       onClick={handleCloseWithInterrupt}
                     >
                       <X size={18} />
@@ -2090,7 +2088,7 @@ const unlockAudioAndMic = async () => {
                 </>
               )}
 
-              <div className="absolute bottom-4 left-4 z-10 flex flex-col gap-2">
+              <div className="absolute bottom-4 left-4 z-10 hidden max-w-[280px] flex-col gap-2 md:flex">
                 <button
                   onClick={() => {
                     void startCameraBackground();
@@ -2404,11 +2402,11 @@ const unlockAudioAndMic = async () => {
             </div>
 
             <div
-              className={`absolute bottom-2 left-1/2 z-20 -translate-x-1/2 transition-all duration-300 ${
+              className={`absolute bottom-4 left-1/2 z-20 -translate-x-1/2 transition-all duration-300 ${
                 chatPanelOpen ? "pointer-events-none opacity-0" : "pointer-events-auto opacity-100"
               }`}
             >
-              <div className="flex w-full max-w-[420px] items-end gap-2.5">
+              <div className="flex w-[calc(100vw-52px)] max-w-[390px] items-end justify-center gap-2.5 md:w-full md:max-w-[420px]">
                 <button
                   onClick={startSpeechInput}
                   disabled={shouldBlockChat}
@@ -2421,7 +2419,7 @@ const unlockAudioAndMic = async () => {
                 >
                   <Mic size={18} />
                 </button>
-                <div className="flex h-12 min-w-[120px] max-w-[180px] items-center justify-center rounded-[22px] bg-black/45 px-4 text-white/80 backdrop-blur-md">
+                <div className="flex h-12 min-w-[118px] max-w-[168px] items-center justify-center rounded-[22px] bg-black/45 px-4 text-white/80 backdrop-blur-md">
                   {botState === "thinking" ? (
                     <div className="flex items-center gap-1.5">
                       {Array.from({ length: 3 }).map((_, idx) => (
@@ -2490,23 +2488,25 @@ const unlockAudioAndMic = async () => {
 
             {/* 右侧聊天 */}
             <div
-              className={`h-full border-l border-slate-200 bg-slate-50 transition-all duration-300 ${
-                chatPanelOpen ? "w-[44%] opacity-100" : "w-0 opacity-0"
+              className={`absolute inset-x-3 bottom-3 top-[38%] z-30 overflow-hidden rounded-[2rem] border border-white/18 bg-[#f7f1e6]/95 shadow-[0_24px_70px_rgba(0,0,0,0.34)] backdrop-blur-xl transition-all duration-300 md:relative md:inset-auto md:h-full md:rounded-none md:border-l md:border-r-0 md:border-t-0 md:border-b-0 md:border-slate-200 md:bg-slate-50 md:shadow-none md:backdrop-blur-0 ${
+                chatPanelOpen
+                  ? "translate-y-0 opacity-100 md:w-[44%]"
+                  : "pointer-events-none translate-y-8 opacity-0 md:pointer-events-auto md:w-0 md:translate-y-0"
               }`}
             >
-              <div className={`flex h-full min-w-0 flex-col ${chatPanelOpen ? "" : "pointer-events-none"}`}>
+              <div className={`flex h-full min-w-0 flex-col ${chatPanelOpen ? "" : "md:pointer-events-none"}`}>
               {/* header */}
-              <div className="flex bg-white border-b p-4 justify-between items-center">
+              <div className="flex items-center justify-between border-b border-[#decfb9] bg-[#fffaf1]/86 p-3.5">
                   <div className="min-w-0">
-                  <div className="text-lg font-bold leading-tight break-words">{botName}</div>
-                  <div className="text-xs text-emerald-600 flex items-center gap-1">
-                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                    已發佈上線
+                  <div className="text-base font-bold leading-tight text-[#241b12] break-words">{botName}</div>
+                  <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[#6f604c]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    對話艙已就緒
                   </div>
                 </div>
 
                 <button
-                  className="ml-2 p-2 text-slate-500 hover:bg-slate-100 rounded-full"
+                  className="ml-2 rounded-full p-2 text-[#6f604c] hover:bg-[#eadfce]"
                   onClick={() => setChatPanelOpen(false)}
                 >
                   <X size={20} />
@@ -2514,7 +2514,7 @@ const unlockAudioAndMic = async () => {
               </div>
 
               {/* messages */}
-                  <div ref={messagesRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+                  <div ref={messagesRef} className="custom-scroll flex-1 space-y-3 overflow-y-auto bg-[linear-gradient(180deg,rgba(255,250,241,0.6),rgba(247,241,230,0.92))] p-3.5">
                 {messages.map((m, i) => (
                   <div
                     key={i}
@@ -2523,9 +2523,9 @@ const unlockAudioAndMic = async () => {
                     }`}
                   >
                     {m.role === "bot" && m.guidedTitle ? (
-                      <div className="max-w-[86%] md:max-w-[70%]">
-                        <div className="mb-1 text-xs font-semibold text-slate-500">{m.guidedTitle}</div>
-                        <div className="bg-white border border-slate-200 rounded-2xl rounded-bl-sm p-3 text-sm leading-relaxed text-slate-800 whitespace-pre-wrap">
+                      <div className="max-w-[88%]">
+                        <div className="mb-1 text-xs font-semibold text-[#7c6a54]">{m.guidedTitle}</div>
+                        <div className="rounded-2xl rounded-bl-sm border border-[#e5d8c3] bg-white/88 p-3 text-sm leading-relaxed text-[#2b241b] shadow-sm whitespace-pre-wrap">
                           {(m.guidedBody || m.content).split("\n").map((line, idx) => {
                             const trimmed = line.trim();
                             const isHeading =
@@ -2540,10 +2540,10 @@ const unlockAudioAndMic = async () => {
                       </div>
                     ) : (
                       <div
-                        className={`max-w-[86%] md:max-w-[70%] p-3 rounded-2xl text-sm leading-relaxed ${
+                        className={`max-w-[88%] rounded-2xl p-3 text-sm leading-relaxed shadow-sm ${
                           m.role === "user"
-                            ? "bg-indigo-600 text-white rounded-br-sm"
-                            : "bg-white border border-slate-200 rounded-bl-sm"
+                            ? "rounded-br-sm bg-[#2e2418] text-white"
+                            : "rounded-bl-sm border border-[#e5d8c3] bg-white/88 text-[#2b241b]"
                         }`}
                       >
                         {m.content}
@@ -2555,14 +2555,14 @@ const unlockAudioAndMic = async () => {
                 {/* thinking bubble */}
                 {botState === "thinking" && !voiceLimitMessage && (
                   <div className="flex">
-                    <div className="bg-white border border-slate-200 p-3 rounded-2xl flex gap-1">
-                      <span className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce"></span>
+                    <div className="flex gap-1 rounded-2xl border border-[#e5d8c3] bg-white/88 p-3">
+                      <span className="w-2 h-2 bg-amber-400 rounded-full animate-bounce"></span>
                       <span
-                        className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce"
+                        className="w-2 h-2 bg-amber-400 rounded-full animate-bounce"
                         style={{ animationDelay: "0.2s" }}
                       ></span>
                       <span
-                        className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce"
+                        className="w-2 h-2 bg-amber-400 rounded-full animate-bounce"
                         style={{ animationDelay: "0.4s" }}
                       ></span>
                     </div>
@@ -2571,16 +2571,16 @@ const unlockAudioAndMic = async () => {
               </div>
 
               {/* input */}
-              <div className="p-4 bg-white border-t">
+              <div className="border-t border-[#decfb9] bg-[#fffaf1]/92 p-3">
                 {guidedMode && (
-                  <div className="mb-2 rounded-xl border border-indigo-100 bg-indigo-50 p-2">
-                    <div className="mb-2 text-xs text-indigo-700">
+                  <div className="mb-2 rounded-2xl border border-amber-200 bg-amber-50/80 p-2">
+                    <div className="mb-2 text-xs text-amber-800">
                       引導模式進行中 {guidedStepIndex > 0 && guidedTotalSteps > 0 ? `(Step ${guidedStepIndex}/${guidedTotalSteps})` : ""}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <button onClick={() => void sendMessage("下一步")} className="rounded-lg bg-white px-3 py-1 text-xs text-indigo-700 border border-indigo-200">下一步</button>
-                      <button onClick={() => void sendMessage("重複這一步")} className="rounded-lg bg-white px-3 py-1 text-xs text-indigo-700 border border-indigo-200">重複這一步</button>
-                      <button onClick={() => void sendMessage("給我示例")} className="rounded-lg bg-white px-3 py-1 text-xs text-indigo-700 border border-indigo-200">給我示例</button>
+                      <button onClick={() => void sendMessage("下一步")} className="rounded-lg bg-white px-3 py-1 text-xs text-amber-800 border border-amber-200">下一步</button>
+                      <button onClick={() => void sendMessage("重複這一步")} className="rounded-lg bg-white px-3 py-1 text-xs text-amber-800 border border-amber-200">重複這一步</button>
+                      <button onClick={() => void sendMessage("給我示例")} className="rounded-lg bg-white px-3 py-1 text-xs text-amber-800 border border-amber-200">給我示例</button>
                       <button onClick={() => void sendMessage("退出引導")} className="rounded-lg bg-white px-3 py-1 text-xs text-rose-700 border border-rose-200">退出引導</button>
                     </div>
                   </div>
@@ -2595,14 +2595,14 @@ const unlockAudioAndMic = async () => {
                     {voiceLimitMessage}
                   </div>
                 )}
-                <div className="flex items-end bg-slate-100 rounded-2xl p-2">
+                <div className="flex items-end rounded-[1.35rem] border border-[#e1d4bf] bg-[#ede2cf] p-2">
                   <button
                     onClick={startSpeechInput}
                     disabled={shouldBlockChat}
                     className={`p-3 mr-2 rounded-full border ${
                       isListening
                         ? "bg-red-50 border-red-300 text-red-600"
-                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100"
+                        : "bg-white border-[#e1d4bf] text-[#6f604c] hover:bg-[#fffaf1]"
                     } disabled:opacity-40`}
                     title={isListening ? "點擊停止語音輸入" : "語音輸入（廣東話）"}
                   >
@@ -2620,13 +2620,13 @@ const unlockAudioAndMic = async () => {
                       }
                     }}
                     disabled={shouldBlockChat}
-                    placeholder="先回答機器人的提問..."
+                    placeholder="輸入訊息，或按麥克風說話..."
                     rows={1}
                   />
                   <button
                     onClick={stopAllSpeech}
                     disabled={!isStopAvailable}
-                    className="p-3 mr-2 text-slate-600 bg-white rounded-full hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="p-3 mr-2 text-[#6f604c] bg-white rounded-full hover:bg-[#fffaf1] disabled:opacity-40 disabled:cursor-not-allowed"
                     title="停止回覆與語音"
                   >
                     <Square size={16} />
@@ -2636,7 +2636,7 @@ const unlockAudioAndMic = async () => {
                       void sendMessage();
                     }}
                     disabled={shouldBlockChat || !inputText.trim()}
-                    className="p-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-40"
+                    className="p-3 bg-[#2e2418] text-white rounded-full hover:bg-[#463727] disabled:opacity-40"
                   >
                     <Send size={16} />
                   </button>
