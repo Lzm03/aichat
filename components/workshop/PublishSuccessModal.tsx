@@ -231,6 +231,15 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   }, [isOpen, botConfig?.id]);
 
   useEffect(() => {
+    if (!chatPanelOpen || !isMobileClient) return;
+    window.requestAnimationFrame(() => {
+      if (document.activeElement === inputRef.current) {
+        inputRef.current?.blur();
+      }
+    });
+  }, [chatPanelOpen, isMobileClient]);
+
+  useEffect(() => {
     if (!isOpen || !botConfig?.id || interactionRecordedRef.current) return;
     interactionRecordedRef.current = true;
     const baseUrl = API_BASE;
@@ -1173,6 +1182,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const sttSilenceTimerRef = useRef<number | null>(null);
   const sttTypingTokenRef = useRef(0);
   const sttTypingTimerRef = useRef<number | null>(null);
+  const sttAutoSendTimerRef = useRef<number | null>(null);
   const audioRetryTimerRef = useRef<number | null>(null);
   const lastUserGestureRef = useRef(0);
   const isListeningRef = useRef(false);
@@ -1562,6 +1572,10 @@ const stopSpeechInput = (forceAbort = false) => {
     window.clearInterval(sttTypingTimerRef.current);
     sttTypingTimerRef.current = null;
   }
+  if (sttAutoSendTimerRef.current) {
+    window.clearTimeout(sttAutoSendTimerRef.current);
+    sttAutoSendTimerRef.current = null;
+  }
   if (speechRecognitionRef.current) {
     try {
       speechRecognitionRef.current.stop();
@@ -1799,9 +1813,24 @@ const startSpeechInput = async () => {
       window.clearInterval(sttTypingTimerRef.current);
       sttTypingTimerRef.current = null;
     }
+    if (sttAutoSendTimerRef.current) {
+      window.clearTimeout(sttAutoSendTimerRef.current);
+      sttAutoSendTimerRef.current = null;
+    }
 
     let i = 0;
     setInputText("");
+    sttAutoSendTimerRef.current = window.setTimeout(() => {
+      if (typingToken !== sttTypingTokenRef.current) return;
+      sttAutoSendTimerRef.current = null;
+      if (sttTypingTimerRef.current) {
+        window.clearInterval(sttTypingTimerRef.current);
+        sttTypingTimerRef.current = null;
+      }
+      setInputText(transcript);
+      void sendMessage(transcript);
+    }, Math.max(220, Math.min(transcript.length * 35 + 120, 900)));
+
     sttTypingTimerRef.current = window.setInterval(() => {
       if (typingToken !== sttTypingTokenRef.current) {
         if (sttTypingTimerRef.current) {
@@ -1819,6 +1848,10 @@ const startSpeechInput = async () => {
         if (sttTypingTimerRef.current) {
           window.clearInterval(sttTypingTimerRef.current);
           sttTypingTimerRef.current = null;
+        }
+        if (sttAutoSendTimerRef.current) {
+          window.clearTimeout(sttAutoSendTimerRef.current);
+          sttAutoSendTimerRef.current = null;
         }
         void sendMessage(transcript);
       }

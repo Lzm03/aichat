@@ -160,7 +160,8 @@ router.get("/studio-task/latest", requireAuth, async (req: Request, res: Respons
 router.get("/studio-task/:id", requireAuth, async (req: Request, res: Response) => {
   try {
     const authUser = getAuthUser(req);
-    const task = await getVideoStudioTaskById(req.params.id, authUser!.id);
+    const taskId = String(req.params.id);
+    const task = await getVideoStudioTaskById(taskId, authUser!.id);
     if (!task) {
       return res.status(404).json({ error: "task not found" });
     }
@@ -196,16 +197,17 @@ router.post("/studio-task", requireAuth, async (req: Request, res: Response) => 
 router.patch("/studio-task/:id/slot", requireAuth, async (req: Request, res: Response) => {
   try {
     const authUser = getAuthUser(req);
+    const taskId = String(req.params.id);
     const slotKey = String(req.body?.slotKey || "").trim() as VideoStudioSlotKey;
     if (!["idle", "speaking", "thinking"].includes(slotKey)) {
       return res.status(400).json({ error: "Invalid slotKey" });
     }
     const task = await updateVideoStudioTaskSlot({
-      taskId: req.params.id,
+      taskId,
       userId: authUser!.id,
       slotKey,
       patch: req.body?.patch || {},
-      taskStatus: req.body?.taskStatus,
+      taskStatus: typeof req.body?.taskStatus === "string" ? req.body.taskStatus : undefined,
     });
     if (!task) {
       return res.status(404).json({ error: "task not found" });
@@ -220,8 +222,9 @@ router.patch("/studio-task/:id/slot", requireAuth, async (req: Request, res: Res
 router.post("/studio-task/:id/start", requireAuth, async (req: Request, res: Response) => {
   try {
     const authUser = getAuthUser(req);
+    const taskId = String(req.params.id);
     const testMode = Boolean(req.body?.testMode);
-    const task = await getVideoStudioTaskById(req.params.id, authUser!.id);
+    const task = await getVideoStudioTaskById(taskId, authUser!.id);
     if (!task) {
       return res.status(404).json({ error: "task not found" });
     }
@@ -232,7 +235,7 @@ router.post("/studio-task/:id/start", requireAuth, async (req: Request, res: Res
       skipCreditConsumption: testMode,
       simulateHintVideos: testMode,
     });
-    const refreshed = await getVideoStudioTaskById(req.params.id, authUser!.id);
+    const refreshed = await getVideoStudioTaskById(taskId, authUser!.id);
     return res.status(202).json({ task: refreshed, running: true, testMode });
   } catch (err: any) {
     console.error("❌ Studio task start failed:", err.message);

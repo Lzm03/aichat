@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 interface IosToggleProps {
   initialValue?: boolean;
   label?: string;
+  botId?: string;
 }
 
 export const IosToggle: React.FC<IosToggleProps> = ({ initialValue = false, label }) => {

@@ -9,6 +9,7 @@ import { PlatformDialog } from "../../system/PlatformDialog";
 interface CreationStep3Props {
   updateConfig: (key: "avatarUrl" | "background", value: string) => void;
   botConfig: { avatarUrl: string; background: string };
+  avatarAiFeature?: FeatureEntitlement;
   backgroundAiFeature?: FeatureEntitlement;
 }
 
@@ -106,6 +107,7 @@ const AvatarUploader: React.FC<{ onImageUploaded: (url: string) => void }> = ({
 export const CreationStep3: React.FC<CreationStep3Props> = ({
   updateConfig,
   botConfig,
+  avatarAiFeature,
   backgroundAiFeature,
 }) => {
   const [isEditorOpen, setIsEditorOpen] = useState(false);

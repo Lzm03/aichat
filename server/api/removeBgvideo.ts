@@ -194,7 +194,7 @@ router.post("/remove-bg", requireAuth, upload.single("file"), async (req, res) =
       body: JSON.stringify({ video_url: videoUrl }),
     });
 
-    const jobJson = await jobRes.json();
+    const jobJson = (await jobRes.json()) as { id?: string; [key: string]: unknown };
     console.log("📥 Job Response:", jobJson);
 
     if (!jobRes.ok || !jobJson.id) {

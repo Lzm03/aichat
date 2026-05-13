@@ -20,6 +20,7 @@ const isSequenceManifest = (url?: string | null) =>
   Boolean(url && /\/manifest\.json(\?|$)/i.test(url));
 
 const VIDEO_STUDIO_OPEN_KEY = "video-studio-modal-open";
+type AnimationUploadKey = "idle" | "thinking" | "talking";
 
 const StepMediaPreview = ({ src }: { src: string }) => {
   const [manifest, setManifest] = useState<any>(null);
@@ -509,7 +510,7 @@ export const CreationStepSoundAnimation = ({
   };
 
   // ============ 上传并 remove-bg 流程 ============
-  async function uploadRemoveBgVideo(file: File, type: "idle" | "thinking" | "talking") {
+  async function uploadRemoveBgVideo(file: File, type: AnimationUploadKey) {
     setUploadState((s) => ({ ...s, [type]: { loading: true, progress: 1 } }));
 
     const form = new FormData();
@@ -549,7 +550,7 @@ export const CreationStepSoundAnimation = ({
   }
 
   // ============ 本地上传事件 ============
-  function handleUpload(e: any, type: "idle" | "thinking" | "talking") {
+  function handleUpload(e: any, type: AnimationUploadKey) {
     const file = e.target.files?.[0];
     if (!file) return;
     uploadRemoveBgVideo(file, type);
@@ -662,11 +663,11 @@ export const CreationStepSoundAnimation = ({
         )}
 
         <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[
+          {([
             { key: "idle", label: "待機動畫", value: videoIdle },
             { key: "thinking", label: "思考動畫", value: videoThinking },
             { key: "talking", label: "說話動畫", value: videoTalking },
-          ].map((item) => (
+          ] satisfies Array<{ key: AnimationUploadKey; label: string; value: string }>).map((item) => (
             <div
               key={item.key}
               className="rounded-3xl border border-slate-200 bg-gradient-to-b from-white to-slate-50/80 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.06)] transition hover:shadow-[0_14px_30px_rgba(15,23,42,0.12)]"

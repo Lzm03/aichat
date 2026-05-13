@@ -14,6 +14,7 @@ import {
 } from "../lib/platform-auth.ts";
 
 const router = express.Router();
+type SequenceVideoEntry = { key: "idle" | "thinking" | "talking"; url: string };
 
 function fallbackOpeningMessage(name: string) {
   const safeName = (name || "").trim() || "AI 助手";
@@ -104,11 +105,11 @@ router.post("/precompute-sequences/all", async (req, res) => {
     for (const row of result.rows) {
       const bot = toClient(row) as any;
       const item: any = { botId: bot.id, name: bot.name, sequences: {} };
-      const entries: Array<{ key: "idle" | "thinking" | "talking"; url: string }> = [
+      const entries = ([
         { key: "idle", url: bot.videoIdle || "" },
         { key: "thinking", url: bot.videoThinking || "" },
         { key: "talking", url: bot.videoTalking || "" },
-      ].filter((x) => x.url);
+      ] satisfies SequenceVideoEntry[]).filter((x) => x.url);
 
       for (const entry of entries) {
         try {
@@ -144,11 +145,11 @@ router.post("/:id/precompute-sequences", async (req, res) => {
 
     const bot = toClient(result.rows[0]) as any;
     const base = getPublicBase(req);
-    const entries: Array<{ key: "idle" | "thinking" | "talking"; url: string }> = [
+    const entries = ([
       { key: "idle", url: bot.videoIdle || "" },
       { key: "thinking", url: bot.videoThinking || "" },
       { key: "talking", url: bot.videoTalking || "" },
-    ].filter((x) => x.url);
+    ] satisfies SequenceVideoEntry[]).filter((x) => x.url);
 
     const sequences: Record<string, any> = {};
     for (const entry of entries) {

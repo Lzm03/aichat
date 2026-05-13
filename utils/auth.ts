@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { AxiosHeaders } from "axios";
 import { API_BASE } from "./api";
 import type { UserPreferences } from "./userPreferences";
 
@@ -133,10 +133,11 @@ export function installAuthTransportBridge() {
     axios.interceptors.request.use((config) => {
       const token = getAuthToken();
       if (!token) return config;
-      config.headers = config.headers || {};
-      if (!("Authorization" in config.headers)) {
-        (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;
+      const headers = AxiosHeaders.from(config.headers);
+      if (!headers.has("Authorization")) {
+        headers.set("Authorization", `Bearer ${token}`);
       }
+      config.headers = headers;
       return config;
     });
   }
