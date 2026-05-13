@@ -20,6 +20,7 @@ interface CreateVideoParams {
   duration?: string | null;
   aspectRatio?: string | null;
   resolution?: string | null;
+  loopFrameMode?: boolean | null;
 }
 
 interface GenerateResponse {
@@ -69,15 +70,13 @@ function normalizeAspectRatio(aspectRatio?: string | null): string | null {
 /* =======================================================
    1. 发起 Grok 视频生成
 ======================================================= */
-async function createVideoRequest({
+function buildVideoPayload({
   prompt,
   imageUrl,
   duration,
   aspectRatio,
   resolution,
-}: CreateVideoParams): Promise<GenerateResponse> {
-
-  /* ⭐ Grok payload 结构 */
+}: CreateVideoParams): Record<string, any> {
   const payload: Record<string, any> = {
     prompt,
     model: "grok-imagine-video",
@@ -90,8 +89,24 @@ async function createVideoRequest({
   const normalizedAspectRatio = normalizeAspectRatio(aspectRatio);
   if (normalizedAspectRatio) payload.aspect_ratio = normalizedAspectRatio;
   if (resolution) payload.resolution = resolution;
+  return payload;
+}
 
-  console.log("🔥 [Grok Payload Sending]", payload);
+function buildLoopFramePayload(params: CreateVideoParams): Record<string, any> {
+  const payload = buildVideoPayload({
+    ...params,
+    prompt:
+      `${params.prompt}\n\nLoop frame constraint: treat the source image as both the first-frame anchor and the intended final-frame target. The clip must animate away from this pose and return to the same still pose by the final frame.`,
+  });
+  if (params.imageUrl) {
+    payload.reference_images = [{ url: params.imageUrl }, { url: params.imageUrl }];
+  }
+  return payload;
+}
+
+async function postVideoPayload(payload: Record<string, any>, label: string): Promise<GenerateResponse> {
+
+  console.log(`🔥 [Grok Payload Sending:${label}]`, payload);
 
   const res = await fetch("https://api.x.ai/v1/videos/generations", {
     method: "POST",
@@ -105,7 +120,7 @@ async function createVideoRequest({
   const text = await res.text();
 
   if (!res.ok) {
-    console.error("❌ Grok API Error:", text);
+    console.error(`❌ Grok API Error:${label}`, text);
     throw new Error(text);
   }
 
@@ -113,6 +128,20 @@ async function createVideoRequest({
   console.log("🎉 Grok CreateVideo Response:", json);
 
   return json as GenerateResponse;
+}
+
+async function createVideoRequest(params: CreateVideoParams): Promise<GenerateResponse> {
+  if (params.loopFrameMode && params.imageUrl) {
+    try {
+      return await postVideoPayload(buildLoopFramePayload(params), "loop-frame");
+    } catch (error) {
+      console.warn(
+        "⚠️ Loop-frame payload rejected, falling back to standard image-to-video:",
+        error instanceof Error ? error.message : error
+      );
+    }
+  }
+  return postVideoPayload(buildVideoPayload(params), "standard");
 }
 
 /* =======================================================
@@ -255,7 +284,7 @@ router.post(
       const authUser = getAuthUser(req);
       console.log("📥 Incoming Generate Request:", req.body);
 
-      const { prompt, duration, aspectRatio, resolution, imageUrl } = req.body;
+      const { prompt, duration, aspectRatio, resolution, imageUrl, loopFrameMode } = req.body;
 
       if (!prompt) {
         return res.status(400).json({ error: "Missing prompt" });
@@ -268,6 +297,7 @@ router.post(
         duration,
         aspectRatio,
         resolution,
+        loopFrameMode,
       });
 
       await consumeUserCredits(authUser!.id, "generate_video", 30, {

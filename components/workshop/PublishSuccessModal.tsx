@@ -2530,12 +2530,8 @@ const unlockAudioAndMic = async () => {
               <div className={`flex h-full min-w-0 flex-col ${chatPanelOpen ? "" : "md:pointer-events-none"}`}>
               {/* header */}
               <div className="flex items-center justify-between border-b border-[#decfb9] bg-[#fffaf1]/86 p-3.5">
-                  <div className="min-w-0">
+                <div className="min-w-0">
                   <div className="text-base font-bold leading-tight text-[#241b12] break-words">{botName}</div>
-                  <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[#6f604c]">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    對話艙已就緒
-                  </div>
                 </div>
 
                 <button

@@ -20,7 +20,7 @@ const SLOT_PROMPTS: Record<VideoStudioSlotKey, string> = {
   idle:
     "Silent idle only. Character stands in place with both feet planted at exactly the same position. No walking, no stepping, no body translation, and no turn-and-shift. Mouth must stay naturally closed for the entire clip: no speech, no lip-sync, no mouth opening, no visible teeth, no tongue, and no jaw rhythm. Keep the body almost perfectly still. Do not move the head, neck, shoulders, torso, arms, hands, or posture. Do not sway, nod, tilt, lean, gesture, or shift weight. The only allowed motion is tiny eye movement and occasional natural blinking. Breathing must be imperceptible or nearly imperceptible. Keep all motion extremely small and smooth, with no expressive acting. Camera must be fully locked: no zoom, no pan, no dolly, and no shake. Background must be pure bright chroma key green, close to RGB 0,255,0, as a single uniform solid color with no gradient, no texture, no shadow, no reflection, no noise, and no background objects. The subject must have no green spill and no green edge halo. Edges must be crisp and clean for keying, including hair strands, fingers, and clothing contours. If constraints conflict, priority order is: no speaking > no body movement > eyes only > locked camera > green screen purity.",
   speaking:
-    "Speaking mode. Character stands in place with both feet planted at exactly the same position. No walking, no stepping, no body translation, and no turn-and-shift. Natural speech lip-sync is allowed with clear but restrained mouth articulation. Keep the performance minimal: only tiny head micro-movements, very small facial changes, and natural blinking are allowed. No expressive gestures, no large nods, no body sway, no shoulder movement, and no noticeable pose shifts. Camera must be fully locked: no zoom, no pan, no dolly, and no shake. Background must be pure bright chroma key green, close to RGB 0,255,0, as a single uniform solid color with no gradient, no texture, no shadow, no reflection, no noise, and no background objects. The subject must have no green spill and no green edge halo. Edges must be crisp and clean for keying, including hair strands, fingers, and clothing contours. If constraints conflict, priority order is: stable framing > no body movement > subtle speech motion > green screen purity.",
+    "Speaking mode with restrained lip-sync only. Character stands in place with both feet planted at exactly the same position. No walking, no stepping, no body translation, and no turn-and-shift. Arms, hands, fingers, shoulders, torso, hips, legs, and posture must stay completely still. Do not gesture, wave, raise hands, move arms, shift weight, sway, lean, nod, or perform any body acting. Natural speech lip-sync is allowed only through small, controlled mouth movement. Keep mouth opening narrow and modest: no wide-open mouth, no exaggerated jaw drop, no visible teeth, no tongue, no shouting expression, and no large facial acting. Lips should move subtly as if speaking softly. Only tiny head micro-movements, very small facial changes, and natural blinking are allowed. Camera must be fully locked: no zoom, no pan, no dolly, and no shake. Background must be pure bright chroma key green, close to RGB 0,255,0, as a single uniform solid color with no gradient, no texture, no shadow, no reflection, no noise, and no background objects. The subject must have no green spill and no green edge halo. Edges must be crisp and clean for keying, including hair strands, fingers, and clothing contours. If constraints conflict, priority order is: no body movement > restrained mouth-only lip-sync > stable framing > green screen purity.",
   thinking:
     "Thinking mode, silent. Character stands in place with both feet planted at exactly the same position. No walking, no stepping, no body translation, and no turn-and-shift. No speech and no lip-sync. Mouth stays closed with no speaking-related jaw rhythm. Keep the body almost perfectly still. Do not move the shoulders, torso, arms, hands, or posture. Avoid dramatic pondering, large head turns, obvious nods, expressive gestures, or visible body motion. Allowed actions are only extremely subtle thinking cues: tiny eye movement, a very slight brow change, and a brief soft upward glance. Head movement should be absent or nearly absent, with no visible tilt unless absolutely minimal. Camera must be fully locked: no zoom, no pan, no dolly, and no shake. Background must be pure bright chroma key green, close to RGB 0,255,0, as a single uniform solid color with no gradient, no texture, no shadow, no reflection, no noise, and no background objects. The subject must have no green spill and no green edge halo. Edges must be crisp and clean for keying, including hair strands, fingers, and clothing contours. If constraints conflict, priority order is: no speaking > no body movement > tiny eye and brow motion only > locked camera > green screen purity.",
 };
@@ -107,31 +107,55 @@ async function createVideoRequest(params: {
   resolution?: string | null;
   duration?: string | null;
   preset?: string | null;
+  loopFrameMode?: boolean | null;
 }) {
-  const payload: Record<string, any> = {
-    prompt: params.prompt,
-    model: "grok-imagine-video",
-    image: { url: params.imageUrl },
+  const buildPayload = (loopFrameMode = false) => {
+    const payload: Record<string, any> = {
+      prompt: loopFrameMode
+        ? `${params.prompt}\n\nLoop frame constraint: treat the source image as both the first-frame anchor and the intended final-frame target. The clip must animate away from this pose and return to the same still pose by the final frame.`
+        : params.prompt,
+      model: "grok-imagine-video",
+      image: { url: params.imageUrl },
+    };
+    if (loopFrameMode) {
+      payload.reference_images = [{ url: params.imageUrl }, { url: params.imageUrl }];
+    }
+    if (params.duration) payload.duration = Number(params.duration);
+    const normalizedAspectRatio = normalizeAspectRatio(params.aspectRatio);
+    if (normalizedAspectRatio) payload.aspect_ratio = normalizedAspectRatio;
+    if (params.resolution) payload.resolution = params.resolution;
+    return payload;
   };
-  if (params.duration) payload.duration = Number(params.duration);
-  const normalizedAspectRatio = normalizeAspectRatio(params.aspectRatio);
-  if (normalizedAspectRatio) payload.aspect_ratio = normalizedAspectRatio;
-  if (params.resolution) payload.resolution = params.resolution;
 
-  const res = await fetch("https://api.x.ai/v1/videos/generations", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.XAI_API_KEY}`,
-    },
-    body: JSON.stringify(payload),
-  });
+  const postPayload = async (payload: Record<string, any>) => {
+    const res = await fetch("https://api.x.ai/v1/videos/generations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.XAI_API_KEY}`,
+      },
+      body: JSON.stringify(payload),
+    });
 
-  const text = await res.text();
-  if (!res.ok) throw new Error(text || "create video request failed");
-  const json = JSON.parse(text);
-  if (!json?.request_id) throw new Error("missing request_id");
-  return json.request_id as string;
+    const text = await res.text();
+    if (!res.ok) throw new Error(text || "create video request failed");
+    const json = JSON.parse(text);
+    if (!json?.request_id) throw new Error("missing request_id");
+    return json.request_id as string;
+  };
+
+  if (params.loopFrameMode) {
+    try {
+      return await postPayload(buildPayload(true));
+    } catch (error) {
+      console.warn(
+        "⚠️ Loop-frame payload rejected, falling back to standard image-to-video:",
+        error instanceof Error ? error.message : error
+      );
+    }
+  }
+
+  return postPayload(buildPayload(false));
 }
 
 async function fetchVideoResult(requestId: string): Promise<{ status: "completed" | "failed" | "processing"; url?: string; error?: string }> {
@@ -354,6 +378,7 @@ async function processSlot(
           resolution: "480p",
           duration: "2",
           preset: "small_movement",
+          loopFrameMode: slotKey === "idle" || slotKey === "thinking",
         });
         await updateVideoStudioTaskSlot({
           taskId,

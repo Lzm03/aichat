@@ -13,6 +13,7 @@ function pad4(n: number) {
 }
 
 const LOOP_RESTART_FRAME = 5;
+const LOOP_TAIL_TRIM_FRAMES = 3;
 
 function getNextLoopFrame(frame: number, safeCount: number) {
   if (safeCount <= 1) return 1;
@@ -32,16 +33,20 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
   const [frame, setFrame] = useState(1);
   const [ready, setReady] = useState(false);
   const loadedRef = useRef<Set<number>>(new Set());
-  const safeCount = Math.max(1, frameCount);
+  const totalFrameCount = Math.max(1, frameCount);
+  const safeCount =
+    totalFrameCount > LOOP_TAIL_TRIM_FRAMES + LOOP_RESTART_FRAME
+      ? totalFrameCount - LOOP_TAIL_TRIM_FRAMES
+      : totalFrameCount;
   const frameDuration = 1000 / Math.max(1, fps);
 
   const frameUrls = useMemo(
     () =>
-      Array.from({ length: safeCount }, (_, idx) => {
+      Array.from({ length: totalFrameCount }, (_, idx) => {
         const file = pattern.replace("%04d", pad4(idx + 1));
         return `${folderUrl}/${file}`;
       }),
-    [folderUrl, pattern, safeCount]
+    [folderUrl, pattern, totalFrameCount]
   );
 
   useEffect(() => {
@@ -82,12 +87,12 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
       while (!cancelled) {
         const next = cursor + 1;
         cursor = next;
-        if (next > safeCount) return;
+        if (next > totalFrameCount) return;
         await loadOne(next);
       }
     };
 
-    const workers = Array.from({ length: Math.min(concurrency, safeCount) }, () =>
+    const workers = Array.from({ length: Math.min(concurrency, totalFrameCount) }, () =>
       runWorker()
     );
     Promise.all(workers).then(() => {
@@ -97,7 +102,7 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [frameUrls, safeCount]);
+  }, [frameUrls, safeCount, totalFrameCount]);
 
   useEffect(() => {
     if (!active || !ready) return;
