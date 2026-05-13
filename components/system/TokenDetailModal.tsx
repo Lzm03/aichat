@@ -40,7 +40,7 @@ export const TokenDetailModal: React.FC<TokenDetailModalProps> = ({ providers, l
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95, y: -10 }}
       transition={{ duration: 0.2, ease: 'easeOut' }}
-      className="absolute top-full right-0 mt-2 w-96 bg-white rounded-3xl shadow-lg border border-slate-200/80 z-30 p-4 origin-top-right"
+      className="fixed left-3 right-3 top-[74px] z-30 rounded-3xl border border-slate-200/80 bg-white p-4 shadow-lg origin-top sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96 sm:origin-top-right"
     >
       <div className="flex justify-between items-center mb-4">
         <h3 className="font-bold text-slate-800">第三方 API 額度監控</h3>

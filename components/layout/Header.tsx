@@ -112,28 +112,29 @@ export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, onNotifi
   const canViewProviderUsage = currentUser?.email?.trim().toLowerCase() === "lzm200303@gmail.com";
 
   return (
-    <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200/80 px-6 lg:px-8 py-4 flex items-center justify-between sticky top-0 z-20">
-      <div className="flex items-center space-x-4">
+    <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200/80 px-3 py-3 sm:px-5 lg:px-8 lg:py-4 flex items-center justify-between gap-2 sticky top-0 z-20">
+      <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
         <button 
           onClick={onMenuClick}
-          className={`${forceMobileMenu ? "inline-flex" : "lg:hidden"} p-2 -ml-2 text-slate-600 hover:text-indigo-600 active:bg-slate-100 rounded-lg`}
+          className={`${forceMobileMenu ? "inline-flex" : "lg:hidden"} shrink-0 p-2 -ml-2 text-slate-600 hover:text-indigo-600 active:bg-slate-100 rounded-lg`}
         >
           <Icons.menu className="w-6 h-6" />
         </button>
-        <div>
-          <h2 className="text-sm text-slate-500">{getTimeGreeting()}, {currentUser?.fullName || '老師'}</h2>
-          <p className="text-2xl font-bold text-[#1E293B]">{pageTitle}</p>
+        <div className="min-w-0">
+          <h2 className="text-xs leading-snug text-slate-500 sm:text-sm">{getTimeGreeting()}, {currentUser?.fullName || '老師'}</h2>
+          <p className="text-xl font-bold leading-tight text-[#1E293B] break-words sm:text-2xl">{pageTitle}</p>
         </div>
       </div>
-      <div className="flex items-center space-x-2">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         {primaryFeatures.length ? (
-          <div className="relative hidden xl:block" ref={featureMenuTriggerRef}>
+          <div className="relative" ref={featureMenuTriggerRef}>
             <button
               onClick={() => setIsFeatureMenuOpen((prev) => !prev)}
-              className="flex items-center gap-2 rounded-2xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700"
+              className="flex h-10 items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-2.5 text-xs font-semibold text-indigo-700 sm:h-11 sm:gap-2 sm:rounded-2xl sm:px-3"
             >
-              <span>使用次數</span>
-              <span className={`rounded-full px-2 py-0.5 ${lockedCount > 0 ? "bg-rose-100 text-rose-700" : "bg-white text-indigo-700"}`}>
+              <Icons.cpu className="h-4 w-4 xl:hidden" />
+              <span className="hidden xl:inline">使用次數</span>
+              <span className={`rounded-full px-1.5 py-0.5 sm:px-2 ${lockedCount > 0 ? "bg-rose-100 text-rose-700" : "bg-white text-indigo-700"}`}>
                 {lockedCount > 0 ? `${lockedCount} 已用完` : "查看"}
               </span>
               <Icons.down className={`h-4 w-4 transition-transform ${isFeatureMenuOpen ? "rotate-180" : ""}`} />
@@ -145,7 +146,7 @@ export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, onNotifi
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.96, y: -10 }}
                   transition={{ type: 'spring', damping: 20, stiffness: 280 }}
-                  className="absolute right-0 top-full mt-2 z-30"
+                  className="fixed left-3 right-3 top-[74px] z-30 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2"
                 >
                   <FeatureLimitPanel features={primaryFeatures} dropdown />
                 </motion.div>
@@ -188,8 +189,8 @@ export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, onNotifi
           </button>
         </div>
 
-        <button onClick={onNotificationClick} className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-slate-100 transition-colors relative">
-          <Icons.bell className="w-6 h-6 text-slate-500" />
+        <button onClick={onNotificationClick} className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center rounded-xl hover:bg-slate-100 transition-colors relative">
+          <Icons.bell className="w-5 h-5 sm:w-6 sm:h-6 text-slate-500" />
           <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-rose-500 rounded-full border border-white"></span>
         </button>
 
@@ -197,7 +198,7 @@ export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, onNotifi
           <motion.button
             onClick={() => setIsUserMenuOpen(prev => !prev)}
             whileTap={{ scale: 0.9 }}
-            className="w-11 h-11 rounded-full border-2 border-transparent hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-2 transition-all"
+            className="w-10 h-10 sm:w-11 sm:h-11 rounded-full border-2 border-transparent hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-2 transition-all"
           >
             <img
               src={currentUser?.avatarUrl || DEFAULT_ACCOUNT_AVATAR}

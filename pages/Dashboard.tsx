@@ -83,21 +83,23 @@ function getTimeGreeting(date = new Date()) {
 }
 
 const HeroBanner: React.FC<{ teacherName: string }> = ({ teacherName }) => (
-  <div className="w-full aspect-[4/1] rounded-[32px] overflow-hidden relative mb-6 shadow-md group">
+  <div className="relative mb-5 h-[210px] w-full overflow-hidden rounded-[24px] shadow-md group sm:mb-6 sm:h-auto sm:aspect-[4/1] sm:rounded-[32px]">
     <img 
       src="https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=2560&auto=format&fit=crop" 
       alt="AI Dashboard Hero" 
-      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+      className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
     />
-    <div className="absolute inset-0 bg-gradient-to-r from-slate-900/60 to-transparent flex flex-col justify-center p-8 md:p-12">
-      <div className="max-w-2xl text-white space-y-4">
-        <h2 className="text-2xl md:text-4xl font-bold tracking-tight">{getTimeGreeting()}，{teacherName}</h2>
-        <div className="bg-indigo-50/90 backdrop-blur-sm text-indigo-700 rounded-xl p-3 inline-block shadow-sm">
-          <p className="text-sm font-medium">
-            本週 <span className="font-bold bg-white px-1.5 py-0.5 rounded-md mx-0.5 shadow-sm">2</span> 份測驗已批改完成 · 
-            <span className="font-bold bg-white px-1.5 py-0.5 rounded-md mx-0.5 shadow-sm">3</span> 名學生在「分析」層級持續落後 · 
-            <span className="font-bold bg-white px-1.5 py-0.5 rounded-md mx-0.5 shadow-sm">1</span> 份 AI 評分偏差較高
-          </p>
+    <div className="absolute inset-0 flex flex-col justify-center bg-gradient-to-r from-slate-900/70 via-slate-900/35 to-transparent p-5 sm:p-8 md:p-12">
+      <div className="max-w-2xl space-y-3 text-white sm:space-y-4">
+        <h2 className="text-xl font-bold leading-tight tracking-tight sm:text-2xl md:text-4xl">{getTimeGreeting()}，{teacherName}</h2>
+        <div className="inline-block max-w-full rounded-2xl border border-white bg-white/95 p-3 text-indigo-700 shadow-sm sm:rounded-xl">
+          <div className="flex flex-col gap-2 text-sm font-semibold leading-snug sm:block">
+            <span>本週 <span className="font-bold bg-white px-1.5 py-0.5 rounded-md mx-0.5 shadow-sm">2</span> 份測驗已批改完成</span>
+            <span className="hidden sm:inline"> · </span>
+            <span><span className="font-bold bg-white px-1.5 py-0.5 rounded-md mx-0.5 shadow-sm">3</span> 名學生在「分析」層級持續落後</span>
+            <span className="hidden sm:inline"> · </span>
+            <span><span className="font-bold bg-white px-1.5 py-0.5 rounded-md mx-0.5 shadow-sm">1</span> 份 AI 評分偏差較高</span>
+          </div>
         </div>
       </div>
     </div>

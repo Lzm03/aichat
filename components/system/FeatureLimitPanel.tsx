@@ -12,7 +12,7 @@ export const FeatureLimitPanel: React.FC<{
   if (!visibleFeatures.length) return null;
 
   return (
-    <div className={`${dropdown ? "w-[360px] rounded-[24px] border border-slate-200/80 bg-white/95 p-4 shadow-lg backdrop-blur-md" : `rounded-3xl border border-slate-200 bg-white ${compact ? "p-4" : "p-6"} shadow-sm`}`}>
+    <div className={`${dropdown ? "w-full rounded-[24px] border border-slate-200/80 bg-white/95 p-4 shadow-lg backdrop-blur-md sm:w-[360px]" : `rounded-3xl border border-slate-200 bg-white ${compact ? "p-4" : "p-6"} shadow-sm`}`}>
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className={`${compact ? "mt-1 text-base" : "mt-2 text-lg"} font-bold text-slate-900`}>
