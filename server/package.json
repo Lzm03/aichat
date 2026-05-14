@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx index.ts",
-    "db": "tsx db.ts",
-    "start": "tsx index.ts"
+    "dev": "node --import tsx index.ts",
+    "db": "node --import tsx db.ts",
+    "start": "node --import tsx index.ts"
   },
   "dependencies": {
     "@railway/cli": "^4.30.5",

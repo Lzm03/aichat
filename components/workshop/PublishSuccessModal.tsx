@@ -54,14 +54,20 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
   
   const lastTTS = useRef(0);
-  const [messages, setMessages] = useState<{ role: "user" | "bot"; content: string; guidedTitle?: string; guidedBody?: string }[]>([]);
+  const [messages, setMessages] = useState<{ role: "user" | "bot"; content: string; guidedTitle?: string; guidedBody?: string; imagePreviews?: string[] }[]>([]);
 
   const [inputText, setInputText] = useState("");
+  const [chatImages, setChatImages] = useState<File[]>([]);
+  const [chatImagePreviews, setChatImagePreviews] = useState<string[]>([]);
+  const [isChatDragActive, setIsChatDragActive] = useState(false);
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [voiceLevel, setVoiceLevel] = useState(0);
   const [copied, setCopied] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const bootingOverlayRef = useRef<HTMLDivElement | null>(null);
+  const wasOpenRef = useRef(false);
   const [botState, setBotState] = useState<"idle" | "thinking" | "speaking">(
     "idle"
   );
@@ -91,11 +97,15 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [guidedMode, setGuidedMode] = useState(false);
   const [guidedStepIndex, setGuidedStepIndex] = useState(0);
   const [guidedTotalSteps, setGuidedTotalSteps] = useState(0);
+  const [modelProvider, setModelProvider] = useState<"deepseek" | "gemini">("deepseek");
+  const [showModelMenu, setShowModelMenu] = useState(false);
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
   const [seqIdle, setSeqIdle] = useState<any>(null);
   const [seqThinking, setSeqThinking] = useState<any>(null);
   const [seqTalking, setSeqTalking] = useState<any>(null);
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
+  const chatImageInputRef = useRef<HTMLInputElement | null>(null);
+  const previewUrlsRef = useRef<Set<string>>(new Set());
   const stageCaptureRef = useRef<HTMLDivElement | null>(null);
   const stageBackgroundImageRef = useRef<HTMLImageElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
@@ -163,7 +173,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const isSeqManifest = (url?: string | null) =>
     Boolean(url && /\/manifest\.json(\?|$)/i.test(url));
   const hasAnyVideo = Boolean(safeVideoIdle || safeVideoThinking || safeVideoTalking);
-  const shouldShowBooting = isOpen && (!openingReady || !mediaReady);
+  const isOpeningFrame = isOpen && !wasOpenRef.current;
+  const shouldShowBooting = isOpen && (isOpeningFrame || !openingReady || !mediaReady);
   const shouldRequirePermission = Boolean(voiceId) && !voiceLimitMessage && isMobileClient;
   const shouldBlockChat = shouldShowBooting || (shouldRequirePermission && !permissionReady);
   const visualState =
@@ -202,6 +213,10 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   }, []);
 
   useEffect(() => {
+    wasOpenRef.current = isOpen;
+  }, [isOpen]);
+
+  useEffect(() => {
     if (!messagesRef.current) return;
     messagesRef.current.scrollTo({
       top: messagesRef.current.scrollHeight,
@@ -210,11 +225,34 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   }, [messages, botState]);
 
   useEffect(() => {
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!(target instanceof Node)) return;
+      if ((target as HTMLElement).closest?.("[data-model-menu-root='publish-chat']")) return;
+      setShowModelMenu(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      previewUrlsRef.current.clear();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!inputRef.current) return;
-    inputRef.current.style.height = "0px";
+    if (!inputText.trim()) {
+      inputRef.current.style.height = "40px";
+      inputRef.current.style.overflowY = "hidden";
+      return;
+    }
+    inputRef.current.style.height = "40px";
     const fullHeight = inputRef.current.scrollHeight;
     const next = Math.min(fullHeight, 128);
-    inputRef.current.style.height = `${Math.max(24, next)}px`;
+    inputRef.current.style.height = `${Math.max(40, next)}px`;
     inputRef.current.style.overflowY = fullHeight > 128 ? "auto" : "hidden";
   }, [inputText]);
 
@@ -238,6 +276,20 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       }
     });
   }, [chatPanelOpen, isMobileClient]);
+
+  useEffect(() => {
+    if (!shouldShowBooting) return;
+    setShowDropdown(false);
+    setShowModelMenu(false);
+    const rafId = window.requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement) {
+        active.blur();
+      }
+      bootingOverlayRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [shouldShowBooting]);
 
   useEffect(() => {
     if (!isOpen || !botConfig?.id || interactionRecordedRef.current) return;
@@ -1442,14 +1494,18 @@ const stopAllSpeech = () => {
 const sendMessage = async (forcedText?: string) => {
   if (shouldBlockChat) return;
   const textToSend = (forcedText ?? inputText).trim();
-  if (!textToSend) return;
+  if (!textToSend && chatImages.length === 0) return;
+  const queuedImages = chatImages;
+  const queuedPreviews = chatImagePreviews;
 
   stopAllSpeech();
   setIsStopAvailable(true);
   const userMsg = textToSend;
   setInputText("");
+  setChatImages([]);
+  setChatImagePreviews([]);
 
-  setMessages(prev => [...prev, { role: "user", content: userMsg }]);
+  setMessages(prev => [...prev, { role: "user", content: userMsg, imagePreviews: queuedPreviews }]);
   setBotState("thinking");
 
   const baseUrl = API_BASE;
@@ -1458,23 +1514,37 @@ const sendMessage = async (forcedText?: string) => {
   try {
     const controller = new AbortController();
     activeRequestController.current = controller;
+    const requestPayload = {
+      systemPrompt:
+        botConfig.knowledgeBase +
+        "\n" +
+        botConfig.securityPrompt +
+        "\n" +
+        chatStyleRules,
+      userPrompt: userMsg,
+      modelProvider,
+      botId: botConfig.id,
+      stream: false,
+      teachingHint: guidedMode ? "continue" : "auto",
+      usageType: "chat_message",
+      sharedBotId: isSharedView ? botConfig.id : undefined,
+    };
+    const usesGeminiImages = modelProvider === "gemini" && queuedImages.length > 0;
     const response = await fetch(`${baseUrl}/api/ask`, {
       method: "POST",
-      headers: requestHeaders,
-      body: JSON.stringify({
-        systemPrompt:
-          botConfig.knowledgeBase +
-          "\n" +
-          botConfig.securityPrompt +
-          "\n" +
-          chatStyleRules,
-        userPrompt: userMsg,
-        botId: botConfig.id,
-        stream: false,
-        teachingHint: guidedMode ? "continue" : "auto",
-        usageType: "chat_message",
-        sharedBotId: isSharedView ? botConfig.id : undefined,
-      }),
+      headers: usesGeminiImages ? undefined : requestHeaders,
+      body: usesGeminiImages
+        ? (() => {
+            const form = new FormData();
+            Object.entries(requestPayload).forEach(([key, value]) => {
+              if (value !== undefined && value !== null) form.append(key, String(value));
+            });
+            queuedImages.forEach((file) => {
+              form.append("images", file);
+            });
+            return form;
+          })()
+        : JSON.stringify(requestPayload),
       signal: controller.signal,
     });
     activeRequestController.current = null;
@@ -1489,7 +1559,19 @@ const sendMessage = async (forcedText?: string) => {
       throw new Error(errorMessage);
     }
 
-    const data = await response.json();
+    const raw = await response.text();
+    let data: any = null;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      const reply = raw
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.replace(/^data:/, ""))
+        .join("")
+        .trim();
+      data = { reply };
+    }
     const committedReply = String(data?.reply || "");
     const parseGuidedCard = (text: string) => {
       const normalized = text.trim();
@@ -1555,6 +1637,46 @@ const sendMessage = async (forcedText?: string) => {
       },
     ]);
   }
+};
+
+const appendChatImages = (files: FileList | File[]) => {
+  const nextFiles = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
+  if (!nextFiles.length) return;
+  if (chatImages.length + nextFiles.length > 4) {
+    showAlert({
+      title: "圖片數量已達上限",
+      message: "最多只能上傳四張圖片。",
+    });
+  }
+  const allowed = nextFiles.slice(0, Math.max(0, 4 - chatImages.length));
+  if (!allowed.length) return;
+  const nextPreviews = allowed.map((file) => URL.createObjectURL(file));
+  nextPreviews.forEach((url) => previewUrlsRef.current.add(url));
+  setChatImages((prev) => [...prev, ...allowed]);
+  setChatImagePreviews((prev) => [...prev, ...nextPreviews]);
+};
+
+const removeChatImage = (index: number) => {
+  setChatImages((prev) => prev.filter((_, i) => i !== index));
+  setChatImagePreviews((prev) => {
+    const target = prev[index];
+    if (target) {
+      URL.revokeObjectURL(target);
+      previewUrlsRef.current.delete(target);
+    }
+    return prev.filter((_, i) => i !== index);
+  });
+};
+
+const renderFormattedMessage = (text: string) => {
+  const normalized = text.replace(/「([^」]+)」/g, (_, content) => `**${content}**`);
+  return normalized.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, index) => {
+    const match = part.match(/^\*\*([^*]+)\*\*$/);
+    if (match) {
+      return <strong key={`${part}-${index}`} className="font-semibold text-[#1f160d]">{match[1]}</strong>;
+    }
+    return <span key={`${part}-${index}`}>{part}</span>;
+  });
 };
 
 const stopSpeechInput = (forceAbort = false) => {
@@ -1988,11 +2110,15 @@ const unlockAudioAndMic = async () => {
 
           {/* 主体 */}
           <div className="relative h-[92svh] w-full max-w-[720px] overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_22px_80px_rgba(15,23,42,0.16)] md:h-[92vh] md:max-w-7xl md:rounded-3xl md:border-0 md:shadow-2xl">
-            <div
-              className={`relative h-full w-full overflow-hidden rounded-[1.5rem] bg-[#f8fafc] transition-all duration-300 md:flex md:rounded-3xl ${
-                shouldShowBooting ? "opacity-0" : "opacity-100"
-              }`}
-            >
+            {shouldShowBooting ? (
+              <div
+                ref={bootingOverlayRef}
+                tabIndex={-1}
+                aria-hidden="true"
+                className="absolute inset-0 z-20 bg-white outline-none"
+              />
+            ) : (
+            <div className="relative h-full w-full overflow-hidden rounded-[1.5rem] bg-[#f8fafc] transition-all duration-300 md:flex md:rounded-3xl">
             {/* 左侧背景 + 动画 */}
             <div
               ref={stageCaptureRef}
@@ -2571,11 +2697,30 @@ const unlockAudioAndMic = async () => {
                       <div
                         className={`max-w-[88%] rounded-2xl p-3 text-sm leading-relaxed shadow-sm ${
                           m.role === "user"
-                            ? "rounded-br-sm bg-[#2e2418] text-white"
+                            ? m.imagePreviews?.length
+                              ? "rounded-br-sm border border-[#e5d8c3] bg-white/88 text-[#2b241b]"
+                              : "rounded-br-sm bg-[#2e2418] text-white"
                             : "rounded-bl-sm border border-[#e5d8c3] bg-white/88 text-[#2b241b]"
                         }`}
                       >
-                        {m.content}
+                        {m.imagePreviews?.length ? (
+                          <div className="mb-2 flex flex-wrap gap-2">
+                            {m.imagePreviews.map((src, index) => (
+                              <button
+                                key={`${src}-${index}`}
+                                type="button"
+                                onClick={() => setSelectedPreviewImage(src)}
+                                className="overflow-hidden rounded-xl"
+                              >
+                                <img
+                                  src={src}
+                                  className="h-20 w-20 rounded-xl object-cover transition-transform hover:scale-[1.03]"
+                                />
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                        <div className="whitespace-pre-wrap">{renderFormattedMessage(m.content)}</div>
                       </div>
                     )}
                   </div>
@@ -2624,7 +2769,89 @@ const unlockAudioAndMic = async () => {
                     {voiceLimitMessage}
                   </div>
                 )}
+                <div className="mb-2 flex items-center">
+                  <div className="relative" data-model-menu-root="publish-chat">
+                    <button
+                      type="button"
+                      onClick={() => setShowModelMenu((prev) => !prev)}
+                      className="flex items-center gap-2 rounded-full border border-[#e1d4bf] bg-white/92 px-3 py-1.5 text-xs font-medium text-[#4b3f31] shadow-sm transition hover:bg-[#fffaf1]"
+                    >
+                      <span>{modelProvider === "deepseek" ? "DeepSeek" : "Gemini"}</span>
+                      <ChevronDown size={14} className={`transition-transform ${showModelMenu ? "rotate-180" : ""}`} />
+                    </button>
+                    {showModelMenu ? (
+                      <div className="absolute bottom-full left-0 z-20 mb-2 min-w-[116px] overflow-hidden rounded-2xl border border-[#e5d8c3] bg-[#fffaf1] shadow-[0_14px_28px_rgba(36,27,18,0.12)]">
+                        {(["deepseek", "gemini"] as const).map((option) => {
+                          const active = modelProvider === option;
+                          return (
+                            <button
+                              key={option}
+                              type="button"
+                              onClick={() => {
+                                setModelProvider(option);
+                                setShowModelMenu(false);
+                              }}
+                              className={`flex w-full items-center px-3 py-2 text-left text-sm transition ${
+                                active
+                                  ? "bg-[#f4e7d3] font-semibold text-[#2d2115]"
+                                  : "text-[#5f5141] hover:bg-[#f9efe1]"
+                              }`}
+                            >
+                              <span>{option === "deepseek" ? "DeepSeek" : "Gemini"}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+                {chatImagePreviews.length ? (
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    {chatImagePreviews.map((src, index) => (
+                      <div key={`${src}-${index}`} className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPreviewImage(src)}
+                          className="overflow-hidden rounded-xl"
+                        >
+                          <img src={src} className="h-16 w-16 rounded-xl object-cover transition-transform hover:scale-[1.03]" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeChatImage(index)}
+                          className="absolute -right-1 -top-1 rounded-full bg-black/70 p-1 text-white"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="flex items-end rounded-[1.35rem] border border-[#e1d4bf] bg-[#ede2cf] p-2">
+                  {modelProvider === "gemini" ? (
+                    <>
+                      <input
+                        ref={chatImageInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={(event) => {
+                          appendChatImages(event.target.files || []);
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => chatImageInputRef.current?.click()}
+                        disabled={shouldBlockChat || chatImages.length >= 4}
+                        className="mr-2 flex h-10 w-10 items-center justify-center rounded-full border border-[#e1d4bf] bg-white text-lg leading-none text-[#6f604c] hover:bg-[#fffaf1] disabled:opacity-40"
+                        title="上傳圖片"
+                      >
+                        +
+                      </button>
+                    </>
+                  ) : null}
                   <button
                     onClick={startSpeechInput}
                     disabled={shouldBlockChat}
@@ -2639,7 +2866,9 @@ const unlockAudioAndMic = async () => {
                   </button>
                   <textarea
                     ref={inputRef}
-                    className="flex-1 min-w-0 bg-transparent px-3 py-2 text-sm outline-none resize-none max-h-32 overflow-y-hidden leading-6"
+                    className={`flex-1 min-w-0 rounded-xl bg-transparent px-3 py-2 text-sm outline-none resize-none max-h-32 overflow-y-hidden leading-6 ${
+                      isChatDragActive ? "bg-[#f6ead7] ring-2 ring-[#e7cda8]" : ""
+                    }`}
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={(e) => {
@@ -2651,6 +2880,23 @@ const unlockAudioAndMic = async () => {
                     disabled={shouldBlockChat}
                     placeholder="輸入訊息，或按麥克風說話..."
                     rows={1}
+                    style={{ height: "40px" }}
+                    onDragOver={(event) => {
+                      if (modelProvider !== "gemini") return;
+                      event.preventDefault();
+                      setIsChatDragActive(true);
+                    }}
+                    onDragLeave={(event) => {
+                      if (modelProvider !== "gemini") return;
+                      event.preventDefault();
+                      setIsChatDragActive(false);
+                    }}
+                    onDrop={(event) => {
+                      if (modelProvider !== "gemini") return;
+                      event.preventDefault();
+                      setIsChatDragActive(false);
+                      appendChatImages(event.dataTransfer.files);
+                    }}
                   />
                   <button
                     onClick={stopAllSpeech}
@@ -2664,7 +2910,7 @@ const unlockAudioAndMic = async () => {
                     onClick={() => {
                       void sendMessage();
                     }}
-                    disabled={shouldBlockChat || !inputText.trim()}
+                    disabled={shouldBlockChat || (!inputText.trim() && chatImages.length === 0)}
                     className="p-3 bg-[#2e2418] text-white rounded-full hover:bg-[#463727] disabled:opacity-40"
                   >
                     <Send size={16} />
@@ -2674,12 +2920,6 @@ const unlockAudioAndMic = async () => {
             </div>
             </div>
             </div>
-
-            {shouldShowBooting && (
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-white">
-                <div className="w-10 h-10 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
-                <div className="text-sm text-slate-600">正在載入聊天與語音...</div>
-              </div>
             )}
             {!shouldShowBooting && shouldRequirePermission && !permissionReady && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-white/95 px-6 text-center">
@@ -2701,6 +2941,25 @@ const unlockAudioAndMic = async () => {
                 )}
               </div>
             )}
+            {selectedPreviewImage ? (
+              <div
+                className="fixed inset-0 z-[120] flex items-center justify-center bg-black/72 p-6"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setSelectedPreviewImage(null);
+                }}
+              >
+                <img
+                  src={selectedPreviewImage}
+                  className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                />
+              </div>
+            ) : null}
           </div>
 
           {showDeleteConfirm && (

@@ -17,17 +17,28 @@ import {
   findUserById,
   requireAuth,
 } from "../lib/platform-auth.ts";
+import {
+  getAI,
+  getVertexAccessToken,
+  getVertexAIConfig,
+  isVertexAIEnabled,
+} from "../lib/gemini-server.ts";
 
 const require = createRequire(import.meta.url);
 const pdfParse = require("pdf-parse");
 const AdmZip = require("adm-zip");
 const WordExtractor = require("word-extractor");
 const MAX_FILE_PROMPT_CHARS = 18000;
+const MAX_CHAT_IMAGE_COUNT = 4;
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 type TeachingTaskType = "email";
+type ChatImageInput = {
+  mimeType: string;
+  data: string;
+};
 type TeachingSessionRow = {
   id: string;
   user_id: string;
@@ -327,6 +338,255 @@ async function askDeepSeekOnce(systemPrompt: string, userPrompt: string): Promis
   return data?.choices?.[0]?.message?.content || "";
 }
 
+function extractChatImages(req: Request): ChatImageInput[] {
+  const files = ((req.files as Express.Multer.File[] | undefined) || []).filter(Boolean);
+  return files
+    .filter((file) => String(file.mimetype || "").startsWith("image/"))
+    .slice(0, MAX_CHAT_IMAGE_COUNT)
+    .map((file) => ({
+      mimeType: file.mimetype,
+      data: file.buffer.toString("base64"),
+    }));
+}
+
+type ChatModelProvider = "deepseek" | "gemini";
+
+function normalizeChatModelProvider(input: unknown): ChatModelProvider {
+  return String(input || "").trim().toLowerCase() === "gemini" ? "gemini" : "deepseek";
+}
+
+function normalizeStreamFlag(input: unknown): boolean {
+  if (typeof input === "string") {
+    const normalized = input.trim().toLowerCase();
+    return normalized !== "false" && normalized !== "0" && normalized !== "";
+  }
+  return Boolean(input);
+}
+
+async function askGemini(
+  systemPrompt: string,
+  userPrompt: string,
+  onToken: (token: string) => void,
+  images: ChatImageInput[] = []
+) {
+  if (isVertexAIEnabled()) {
+    const { project, location } = getVertexAIConfig();
+    const accessToken = await getVertexAccessToken();
+    const response = await fetch(
+      `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/gemini-2.5-flash:streamGenerateContent?alt=sse`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: userPrompt },
+                ...images.map((image) => ({
+                  inlineData: {
+                    mimeType: image.mimeType,
+                    data: image.data,
+                  },
+                })),
+              ],
+            },
+          ],
+          systemInstruction: {
+            parts: [{ text: systemPrompt }],
+          },
+        }),
+      }
+    );
+
+    if (!response.ok || !response.body) {
+      throw new Error((await response.text()) || "Vertex AI streaming request failed");
+    }
+
+    const reader = (response.body as any).getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary >= 0) {
+        const rawEvent = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+
+        const payload = rawEvent
+          .split("\n")
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trim())
+          .join("");
+
+        if (payload) {
+          const parsed: any = JSON.parse(payload);
+          const text = parsed?.candidates?.[0]?.content?.parts
+            ?.map((part: any) => String(part?.text || ""))
+            .join("") || "";
+          if (text) onToken(text);
+        }
+
+        boundary = buffer.indexOf("\n\n");
+      }
+
+      if (done) break;
+    }
+    return;
+  }
+
+  const ai = getAI();
+  const stream = await ai.models.generateContentStream({
+    model: "gemini-2.5-flash",
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { text: userPrompt },
+          ...images.map((image) => ({
+            inlineData: {
+              mimeType: image.mimeType,
+              data: image.data,
+            },
+          })),
+        ],
+      },
+    ],
+    config: {
+      systemInstruction: systemPrompt,
+    },
+  });
+
+  for await (const chunk of stream) {
+    const token = chunk.text;
+    if (token) onToken(token);
+  }
+}
+
+async function askGeminiOnce(systemPrompt: string, userPrompt: string, images: ChatImageInput[] = []): Promise<string> {
+  if (isVertexAIEnabled()) {
+    const { project, location } = getVertexAIConfig();
+    const accessToken = await getVertexAccessToken();
+    const response = await fetch(
+      `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/gemini-2.5-flash:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: userPrompt },
+                ...images.map((image) => ({
+                  inlineData: {
+                    mimeType: image.mimeType,
+                    data: image.data,
+                  },
+                })),
+              ],
+            },
+          ],
+          systemInstruction: {
+            parts: [{ text: systemPrompt }],
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error((await response.text()) || "Vertex AI request failed");
+    }
+
+    const data: any = await response.json();
+    return String(data?.candidates?.[0]?.content?.parts?.[0]?.text || "").trim();
+  }
+
+  const ai = getAI();
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { text: userPrompt },
+          ...images.map((image) => ({
+            inlineData: {
+              mimeType: image.mimeType,
+              data: image.data,
+            },
+          })),
+        ],
+      },
+    ],
+    config: {
+      systemInstruction: systemPrompt,
+    },
+  });
+
+  return String(response.text || "").trim();
+}
+
+async function askModelOnce(
+  provider: ChatModelProvider,
+  systemPrompt: string,
+  userPrompt: string,
+  images: ChatImageInput[] = []
+): Promise<string> {
+  if (provider === "gemini") {
+    return askGeminiOnce(systemPrompt, userPrompt, images);
+  }
+  return askDeepSeekOnce(systemPrompt, userPrompt);
+}
+
+async function askModelStream(
+  provider: ChatModelProvider,
+  systemPrompt: string,
+  userPrompt: string,
+  onToken: (token: string) => void,
+  images: ChatImageInput[] = []
+) {
+  if (provider === "gemini") {
+    return askGemini(systemPrompt, userPrompt, onToken, images);
+  }
+  return askDeepSeek(systemPrompt, userPrompt, onToken);
+}
+
+function remapModelProviderError(error: unknown) {
+  const message = String((error as any)?.message || "");
+  if (
+    /Missing GOOGLE_CLOUD_PROJECT/i.test(message) ||
+    /Could not load the default credentials/i.test(message) ||
+    /DefaultCredentialsError/i.test(message) ||
+    /Application Default Credentials/i.test(message) ||
+    /Failed to acquire Vertex AI access token/i.test(message)
+  ) {
+    return new Error("Gemini Vertex AI 尚未完成伺服器認證設定，請先配置 Google Cloud 憑證。");
+  }
+  if (
+    /Permission 'aiplatform\./i.test(message) ||
+    /PERMISSION_DENIED/i.test(message)
+  ) {
+    return new Error("Gemini Vertex AI 沒有足夠權限，請確認目前 Google Cloud 帳號已開通 Vertex AI 並具備對應權限。");
+  }
+  if (
+    /User location is not supported for the API use/i.test(message) ||
+    /FAILED_PRECONDITION/i.test(message)
+  ) {
+    return new Error("Gemini 目前請改走 Vertex AI；若仍看到地區限制，表示請求尚未使用到 Vertex AI 憑證。");
+  }
+  return error;
+}
+
 async function fetchDeepSeekWithRetry(body: Record<string, unknown>, retries = 2) {
   let lastError: unknown;
 
@@ -615,19 +875,34 @@ router.post("/ask-url", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-router.post("/ask", async (req: Request, res: Response) => {
+router.post("/ask", upload.any(), async (req: Request, res: Response) => {
   try {
-    const { systemPrompt = "", userPrompt = "", stream = true, usageType = "general", botId = "default", sharedBotId = "" } = req.body || {};
+    const {
+      systemPrompt = "",
+      userPrompt = "",
+      stream = true,
+      usageType = "general",
+      botId = "default",
+      sharedBotId = "",
+      modelProvider = "deepseek",
+    } = req.body || {};
     const actor = await resolveChatActor(req, String(sharedBotId || ""));
     const authUser = actor.user;
     await assertUserCanSpend(authUser.id, 1);
     if (usageType === "chat_message") await ensureFeatureAvailable(authUser.id, "chat_messages", 1);
 
     const normalized = String(userPrompt || "").trim();
+    const selectedModelProvider = normalizeChatModelProvider(modelProvider);
+    const wantsStream = normalizeStreamFlag(stream);
+    const chatImages = selectedModelProvider === "gemini" ? extractChatImages(req) : [];
+    const normalizedPrompt = selectedModelProvider === "gemini" && chatImages.length > 0 && !normalized
+      ? "請描述這張圖片。"
+      : normalized;
+    console.log("[ask] provider=%s stream=%s shared=%s vertex=%s", selectedModelProvider, wantsStream, Boolean(sharedBotId), isVertexAIEnabled());
     const normalizedBotId = String(botId || "default");
     const active = actor.shared ? null : await getActiveTeachingSession(authUser.id, normalizedBotId);
 
-    if (shouldStartTeaching(normalized)) {
+    if (shouldStartTeaching(normalizedPrompt)) {
       if (actor.shared) {
         return res.json({ reply: "分享聊天目前不支援引導教學模式。", teachingMode: false });
       }
@@ -637,20 +912,20 @@ router.post("/ask", async (req: Request, res: Response) => {
     }
 
     if (active) {
-      if (active && isExitCommand(normalized)) {
+      if (active && isExitCommand(normalizedPrompt)) {
         await pool.query(`UPDATE teaching_sessions SET mode='aborted', updated_at=NOW() WHERE id=$1`, [active.id]);
         return res.json({ reply: "已退出引導模式，現在回到一般聊天模式。", teachingMode: false });
       }
       const session = active;
       const teachingState = getTeachingState(session);
 
-      if (isExampleCommand(normalized)) {
+      if (isExampleCommand(normalizedPrompt)) {
         return res.json({ reply: buildTeachingGuide(session.step_index, "example", teachingState), teachingMode: true, stepIndex: session.step_index, totalSteps: session.total_steps, taskType: session.task_type });
       }
-      if (isRepeatCommand(normalized)) {
+      if (isRepeatCommand(normalizedPrompt)) {
         return res.json({ reply: buildTeachingGuide(session.step_index, "step", teachingState), teachingMode: true, stepIndex: session.step_index, totalSteps: session.total_steps, taskType: session.task_type });
       }
-      if (isNextCommand(normalized)) {
+      if (isNextCommand(normalizedPrompt)) {
         const savedParts = teachingState.studentParts || {};
         const currentPart = savedParts[String(session.step_index)]?.trim();
         if (session.step_index >= 2 && !currentPart) {
@@ -757,21 +1032,34 @@ router.post("/ask", async (req: Request, res: Response) => {
       return res.json({ reply: composed, teachingMode: true, stepIndex: session.step_index, totalSteps: session.total_steps, taskType: session.task_type, evaluation });
     }
 
-    if (!stream) {
-      const reply = await askDeepSeekOnce(systemPrompt, normalized);
+    if (!wantsStream) {
+      let reply = "";
+      try {
+        console.log("[ask] requesting model reply");
+        reply = await askModelOnce(selectedModelProvider, systemPrompt, normalizedPrompt, chatImages);
+        console.log("[ask] model reply received length=%s", reply.length);
+      } catch (error) {
+        throw remapModelProviderError(error);
+      }
       if (usageType === "chat_message") await recordFeatureUsage(authUser.id, "chat_messages", 1, { usageType, source: actor.shared ? "shared_bot" : "direct" });
-      await consumeUserCredits(authUser.id, "ask", 1, { streaming: false, promptLength: normalized.length, source: actor.shared ? "shared_bot" : "direct" });
-      return res.json({ reply, teachingMode: false });
+      console.log("[ask] consuming credits");
+      await consumeUserCredits(authUser.id, "ask", 1, { streaming: false, promptLength: normalizedPrompt.length, source: actor.shared ? "shared_bot" : "direct", modelProvider: selectedModelProvider, imageCount: chatImages.length });
+      console.log("[ask] sending json response");
+      return res.json({ reply, teachingMode: false, modelProvider: selectedModelProvider });
     }
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
-    await askDeepSeek(systemPrompt, normalized, (token: string) => {
-      res.write(`data:${token}\n\n`);
-    });
+    try {
+      await askModelStream(selectedModelProvider, systemPrompt, normalizedPrompt, (token: string) => {
+        res.write(`data:${token}\n\n`);
+      }, chatImages);
+    } catch (error) {
+      throw remapModelProviderError(error);
+    }
     if (usageType === "chat_message") await recordFeatureUsage(authUser.id, "chat_messages", 1, { usageType, source: actor.shared ? "shared_bot" : "direct" });
-    await consumeUserCredits(authUser.id, "ask", 1, { streaming: true, promptLength: normalized.length, source: actor.shared ? "shared_bot" : "direct" });
+    await consumeUserCredits(authUser.id, "ask", 1, { streaming: true, promptLength: normalizedPrompt.length, source: actor.shared ? "shared_bot" : "direct", modelProvider: selectedModelProvider, imageCount: chatImages.length });
     res.end();
   } catch (err: any) {
     console.error(err);

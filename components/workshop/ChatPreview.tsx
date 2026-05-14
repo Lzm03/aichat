@@ -20,12 +20,20 @@ export const ChatPreview: React.FC<ChatPreviewProps> = ({
   currentStep,
   botConfig,
 }) => {
+  const [modelProvider, setModelProvider] = useState<"deepseek" | "gemini">("deepseek");
+  const [showModelMenu, setShowModelMenu] = useState(false);
   const [messages, setMessages] = useState<
-    { role: "user" | "bot"; text: string }[]
+    { role: "user" | "bot"; text: string; imagePreviews?: string[] }[]
   >([]);
 
   const [inputText, setInputText] = useState("");
+  const [chatImages, setChatImages] = useState<File[]>([]);
+  const [chatImagePreviews, setChatImagePreviews] = useState<string[]>([]);
+  const [isChatDragActive, setIsChatDragActive] = useState(false);
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const chatImageInputRef = useRef<HTMLInputElement | null>(null);
+  const previewUrlsRef = useRef<Set<string>>(new Set());
 
   const canChat = currentStep > 3;
   const avatarSrc = botConfig.avatarUrl || botConfig.avatar || "";
@@ -35,8 +43,28 @@ export const ChatPreview: React.FC<ChatPreviewProps> = ({
     if (!canChat) {
       setMessages([]);
       setInputText("");
+      setChatImages([]);
+      setChatImagePreviews([]);
     }
   }, [canChat]);
+
+  useEffect(() => {
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!(target instanceof Node)) return;
+      if ((target as HTMLElement).closest?.("[data-model-menu-root='chat-preview']")) return;
+      setShowModelMenu(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      previewUrlsRef.current.clear();
+    };
+  }, []);
 
   /** ⭐ 新訊息自動滾到底部 */
   useEffect(() => {
@@ -48,16 +76,36 @@ export const ChatPreview: React.FC<ChatPreviewProps> = ({
     }
   }, [messages]);
 
-  async function askLLM(systemPrompt: string, userPrompt: string) {
+  async function askLLM(systemPrompt: string, userPrompt: string, images: File[] = []) {
     const baseUrl = API_BASE;
-
+    const usesGeminiImages = modelProvider === "gemini" && images.length > 0;
+    const payload = { systemPrompt, userPrompt, stream: false, modelProvider };
     const r = await fetch(`${baseUrl}/api/ask`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ systemPrompt, userPrompt, stream: false }),
+      headers: usesGeminiImages ? undefined : { "Content-Type": "application/json" },
+      body: usesGeminiImages
+        ? (() => {
+            const form = new FormData();
+            Object.entries(payload).forEach(([key, value]) => form.append(key, String(value)));
+            images.forEach((file) => form.append("images", file));
+            return form;
+          })()
+        : JSON.stringify(payload),
     });
 
-    const data = await r.json().catch(() => null);
+    const raw = await r.text();
+    let data: any = null;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      const reply = raw
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.replace(/^data:/, ""))
+        .join("")
+        .trim();
+      data = { reply };
+    }
     if (!r.ok) {
       throw new Error(data?.error || `聊天請求失敗：${r.status}`);
     }
@@ -65,25 +113,66 @@ export const ChatPreview: React.FC<ChatPreviewProps> = ({
   }
 
 async function sendMessage() {
-  if (!inputText.trim()) return;
+  if (!inputText.trim() && chatImages.length === 0) return;
 
   const text = inputText;     
+  const queuedImages = chatImages;
+  const queuedPreviews = chatImagePreviews;
   setInputText("");            
+  setChatImages([]);
+  setChatImagePreviews([]);
 
-  const userMsg = { role: "user" as const, text };
+  const userMsg = { role: "user" as const, text, imagePreviews: queuedPreviews };
   setMessages((prev) => [...prev, userMsg]);
 
   try {
     const systemPrompt = [botConfig.knowledgeBase, botConfig.securityPrompt]
       .filter(Boolean)
       .join("\n");
-    const reply = await askLLM(systemPrompt, text);
+    const reply = await askLLM(systemPrompt, text, queuedImages);
     const botMsg = { role: "bot" as const, text: reply || "（未收到回覆）" };
     setMessages((prev) => [...prev, botMsg]);
   } catch (error: any) {
     const errText = error?.message || "發送失敗，請稍後再試。";
     setMessages((prev) => [...prev, { role: "bot", text: errText }]);
   }
+}
+
+function appendChatImages(files: FileList | File[]) {
+  const nextFiles = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
+  if (!nextFiles.length) return;
+  if (chatImages.length + nextFiles.length > 4) {
+    window.alert("最多只能上傳四張圖片");
+  }
+  const allowed = nextFiles.slice(0, Math.max(0, 4 - chatImages.length));
+  if (!allowed.length) return;
+  const nextPreviews = allowed.map((file) => URL.createObjectURL(file));
+  nextPreviews.forEach((url) => previewUrlsRef.current.add(url));
+  setChatImages((prev) => [...prev, ...allowed]);
+  setChatImagePreviews((prev) => [...prev, ...nextPreviews]);
+}
+
+function removeChatImage(index: number) {
+  setChatImages((prev) => prev.filter((_, i) => i !== index));
+  setChatImagePreviews((prev) => {
+    const target = prev[index];
+    if (target) {
+      URL.revokeObjectURL(target);
+      previewUrlsRef.current.delete(target);
+    }
+    return prev.filter((_, i) => i !== index);
+  });
+}
+
+function renderFormattedMessage(text: string) {
+  const normalized = text.replace(/「([^」]+)」/g, (_, content) => `**${content}**`);
+  return normalized.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, index) => {
+    const match = part.match(/^\*\*([^*]+)\*\*$/);
+    if (match) {
+      return <strong key={`${part}-${index}`} className="font-semibold text-slate-900">{match[1]}</strong>;
+    }
+    return <span key={`${part}-${index}`}>{part}</span>;
+  });
 }
 
   return (
@@ -184,11 +273,27 @@ async function sendMessage() {
                     <div
                       className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm shadow ${
                         m.role === "user"
-                          ? "bg-indigo-600 text-white"
+                          ? m.imagePreviews?.length
+                            ? "bg-white/90 text-slate-800 border border-slate-200"
+                            : "bg-indigo-600 text-white"
                           : "bg-white/80 backdrop-blur text-slate-800"
                       }`}
                     >
-                      {m.text}
+                      {m.imagePreviews?.length ? (
+                        <div className="mb-2 flex flex-wrap gap-2">
+                          {m.imagePreviews.map((src, index) => (
+                            <button
+                              key={`${src}-${index}`}
+                              type="button"
+                              onClick={() => setSelectedPreviewImage(src)}
+                              className="overflow-hidden rounded-xl"
+                            >
+                              <img src={src} className="h-16 w-16 rounded-xl object-cover transition-transform hover:scale-[1.03]" />
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="whitespace-pre-wrap">{renderFormattedMessage(m.text)}</div>
                     </div>
                   </div>
                 ))}
@@ -198,14 +303,114 @@ async function sendMessage() {
             {/* ⭐ 輸入框 */}
             {canChat && (
               <div className="p-4 flex gap-2 bg-white/60 backdrop-blur border-t border-white/30 md:bg-white/60 bg-black/24">
-                <input
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  placeholder="輸入訊息測試..."
-                  className="flex-1 p-3 rounded-xl text-sm border border-slate-300 focus:ring-2 focus:ring-indigo-300 bg-white/90"
-                />
+                <div className="flex-1 flex flex-col gap-2">
+                  <div className="relative w-fit" data-model-menu-root="chat-preview">
+                    <button
+                      type="button"
+                      onClick={() => setShowModelMenu((prev) => !prev)}
+                      className="flex items-center gap-2 rounded-full border border-slate-300 bg-white/90 px-3 py-2 text-xs font-medium text-slate-700 shadow-sm"
+                    >
+                      <span>{modelProvider === "deepseek" ? "DeepSeek" : "Gemini"}</span>
+                      <span className={`transition-transform ${showModelMenu ? "rotate-180" : ""}`}>⌄</span>
+                    </button>
+                    {showModelMenu ? (
+                      <div className="absolute bottom-full left-0 z-20 mb-2 min-w-[116px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
+                        {(["deepseek", "gemini"] as const).map((option) => {
+                          const active = modelProvider === option;
+                          return (
+                            <button
+                              key={option}
+                              type="button"
+                              onClick={() => {
+                                setModelProvider(option);
+                                setShowModelMenu(false);
+                              }}
+                              className={`flex w-full items-center px-3 py-2 text-left text-sm ${
+                                active ? "bg-slate-100 font-semibold text-slate-900" : "text-slate-700 hover:bg-slate-50"
+                              }`}
+                            >
+                              <span>{option === "deepseek" ? "DeepSeek" : "Gemini"}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                  {chatImagePreviews.length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {chatImagePreviews.map((src, index) => (
+                        <div key={`${src}-${index}`} className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedPreviewImage(src)}
+                            className="overflow-hidden rounded-lg"
+                          >
+                            <img src={src} className="h-14 w-14 rounded-lg object-cover transition-transform hover:scale-[1.03]" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeChatImage(index)}
+                            className="absolute -right-1 -top-1 rounded-full bg-black/70 px-1 text-[10px] text-white"
+                          >
+                            x
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="flex items-center gap-2">
+                    {modelProvider === "gemini" ? (
+                      <>
+                        <input
+                          ref={chatImageInputRef}
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={(event) => {
+                            appendChatImages(event.target.files || []);
+                            event.currentTarget.value = "";
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => chatImageInputRef.current?.click()}
+                          disabled={chatImages.length >= 4}
+                          className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white/90 text-lg leading-none text-slate-700 disabled:opacity-40"
+                        >
+                          +
+                        </button>
+                      </>
+                    ) : null}
+                  <input
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    placeholder="輸入訊息測試..."
+                    className={`w-full flex-1 rounded-xl border p-3 text-sm bg-white/90 ${
+                      isChatDragActive ? "border-indigo-400 bg-indigo-50 ring-2 ring-indigo-200" : "border-slate-300 focus:ring-2 focus:ring-indigo-300"
+                    }`}
+                    onDragOver={(event) => {
+                      if (modelProvider !== "gemini") return;
+                      event.preventDefault();
+                      setIsChatDragActive(true);
+                    }}
+                    onDragLeave={(event) => {
+                      if (modelProvider !== "gemini") return;
+                      event.preventDefault();
+                      setIsChatDragActive(false);
+                    }}
+                    onDrop={(event) => {
+                      if (modelProvider !== "gemini") return;
+                      event.preventDefault();
+                      setIsChatDragActive(false);
+                      appendChatImages(event.dataTransfer.files);
+                    }}
+                  />
+                  </div>
+                </div>
                 <button
                   onClick={sendMessage}
+                  disabled={!inputText.trim() && chatImages.length === 0}
                   className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-[0_8px_20px_rgba(79,70,229,0.35)]"
                 >
                   <Icons.send className="w-4 h-4" />
@@ -215,6 +420,25 @@ async function sendMessage() {
           </>
         )}
       </div>
+      {selectedPreviewImage ? (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-6"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setSelectedPreviewImage(null);
+          }}
+        >
+          <img
+            src={selectedPreviewImage}
+            className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+          />
+        </div>
+      ) : null}
     </div>
   );
 };
