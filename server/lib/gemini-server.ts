@@ -1,7 +1,28 @@
 import { GoogleGenAI } from "@google/genai";
 import { GoogleAuth } from "google-auth-library";
+import fs from "fs";
+import os from "os";
+import path from "path";
 
 const CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
+let injectedCredentialsPath: string | null = null;
+
+function ensureGoogleCredentialsFromEnv() {
+  const inlineJson = String(process.env.GCP_SERVICE_ACCOUNT_JSON || "").trim();
+  if (!inlineJson) return;
+  if (injectedCredentialsPath) {
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = injectedCredentialsPath;
+    return;
+  }
+
+  const parsed = JSON.parse(inlineJson);
+  const dir = path.join(os.tmpdir(), "gcp-creds");
+  fs.mkdirSync(dir, { recursive: true });
+  const targetPath = path.join(dir, "service-account.json");
+  fs.writeFileSync(targetPath, JSON.stringify(parsed), { encoding: "utf8", mode: 0o600 });
+  injectedCredentialsPath = targetPath;
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = targetPath;
+}
 
 export function isVertexAIEnabled() {
   return (
@@ -18,6 +39,7 @@ export function getVertexAIConfig() {
 }
 
 export async function getVertexAccessToken() {
+  ensureGoogleCredentialsFromEnv();
   const auth = new GoogleAuth({
     scopes: [CLOUD_PLATFORM_SCOPE],
   });
