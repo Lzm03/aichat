@@ -21,6 +21,7 @@ const upload = multer({ dest: uploadsDir });
 
 const API_KEY = process.env.VIDEO_BG_REMOVER_KEY;
 const PUBLIC_BASE = process.env.BACKEND_URL; // e.g. https://xxxx.ngrok-free.app
+const isDebugLogEnabled = process.env.LOG_LEVEL === "debug";
 
 if (!API_KEY) console.error("❌ Missing VIDEO_BG_REMOVER_KEY");
 if (!PUBLIC_BASE) console.error("❌ Missing BACKEND_URL");
@@ -43,13 +44,13 @@ async function pollStatus(
     try {
       statusJson = JSON.parse(raw);
     } catch {
-      console.log("⚠️ Status non-JSON response, keep polling");
+      if (isDebugLogEnabled) console.log("⚠️ Status non-JSON response, keep polling");
       await new Promise((r) => setTimeout(r, 2000));
       continue;
     }
 
     if (statusJson.status === "completed") {
-      console.log("✅ Remove BG Done");
+      if (isDebugLogEnabled) console.log("✅ Remove BG Done");
       return (
         statusJson.processed_video_url ||
         statusJson.processed_png_sequence_url ||
@@ -73,7 +74,7 @@ async function pollStatus(
       uploadedCount = 0;
     }
 
-    console.log("⏳ Processing:", statusJson.status);
+    if (isDebugLogEnabled) console.log("⏳ Processing:", statusJson.status);
     await new Promise((r) => setTimeout(r, 2000));
   }
   throw new Error("Remove BG polling timeout");
@@ -81,7 +82,7 @@ async function pollStatus(
 
 /* ---------------- Download video and save locally ---------------- */
 async function downloadToLocal(url: string) {
-  console.log("⬇️ Downloading processed video:", url);
+  if (isDebugLogEnabled) console.log("⬇️ Downloading processed video:", url);
 
   const res = await fetch(url);
   if (!res.ok) throw new Error("❌ Failed to download processed video");
@@ -97,8 +98,8 @@ async function downloadToLocal(url: string) {
   // Permanent public URL
   const publicUrl = `${PUBLIC_BASE}/uploads/${filename}`;
 
-  console.log("📦 Saved to:", savePath);
-  console.log("🌍 Public URL:", publicUrl);
+  if (isDebugLogEnabled) console.log("📦 Saved to:", savePath);
+  if (isDebugLogEnabled) console.log("🌍 Public URL:", publicUrl);
 
   return publicUrl;
 }
@@ -161,13 +162,13 @@ router.post("/remove-bg", requireAuth, upload.single("file"), async (req, res) =
     /* ---------- URL 模式 ---------- */
     if (req.body?.url) {
       videoUrl = req.body.url;
-      console.log("🔥 URL Mode:", videoUrl);
+      if (isDebugLogEnabled) console.log("🔥 URL Mode:", videoUrl);
     }
 
     /* ---------- 文件模式 ---------- */
     if (req.file) {
       tempFilePath = req.file.path;
-      console.log("🔥 File Mode:", tempFilePath);
+      if (isDebugLogEnabled) console.log("🔥 File Mode:", tempFilePath);
 
       if (!PUBLIC_BASE) {
         return res.status(500).json({ error: "Missing BACKEND_URL" });
@@ -175,14 +176,14 @@ router.post("/remove-bg", requireAuth, upload.single("file"), async (req, res) =
 
       // ⚠️ MUST use your BACKEND_URL for public access
       videoUrl = `${PUBLIC_BASE}/uploads/${path.basename(tempFilePath)}`;
-      console.log("🌍 Public URL:", videoUrl);
+      if (isDebugLogEnabled) console.log("🌍 Public URL:", videoUrl);
     }
 
     if (!videoUrl) {
       return res.status(400).json({ error: "Missing video url or file" });
     }
 
-    console.log("🎬 Sending to VideoBGRemover:", videoUrl);
+    if (isDebugLogEnabled) console.log("🎬 Sending to VideoBGRemover:", videoUrl);
 
     /* ---------- 创建任务 ---------- */
     const jobRes = await fetch("https://api.videobgremover.com/v1/jobs", {
@@ -195,7 +196,7 @@ router.post("/remove-bg", requireAuth, upload.single("file"), async (req, res) =
     });
 
     const jobJson = (await jobRes.json()) as { id?: string; [key: string]: unknown };
-    console.log("📥 Job Response:", jobJson);
+    if (isDebugLogEnabled) console.log("📥 Job Response:", jobJson);
 
     if (!jobRes.ok || !jobJson.id) {
       console.error("❌ Create job failed");
@@ -238,7 +239,7 @@ router.post("/remove-bg", requireAuth, upload.single("file"), async (req, res) =
       });
     }
 
-    console.log(`🌀 Processing started with mode: ${mode}`);
+    if (isDebugLogEnabled) console.log(`🌀 Processing started with mode: ${mode}`);
 
     /* ---------- 轮询 ---------- */
     let temporaryUrl: string;
@@ -247,7 +248,7 @@ router.post("/remove-bg", requireAuth, upload.single("file"), async (req, res) =
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       if (msg === "uploaded_stuck") {
-        console.log("⚠️ uploaded stuck in png_sequence mode, retry start with png_sequence");
+        if (isDebugLogEnabled) console.log("⚠️ uploaded stuck in png_sequence mode, retry start with png_sequence");
         const retry = await startJob(mode);
         if (!retry.ok) {
           return res.status(500).json({
@@ -263,9 +264,9 @@ router.post("/remove-bg", requireAuth, upload.single("file"), async (req, res) =
 
     /* ---------- 删除临时上传文件 ---------- */
     if (tempFilePath) {
-      fs.unlink(tempFilePath, () =>
-        console.log("🧹 Deleted temp:", tempFilePath)
-      );
+      fs.unlink(tempFilePath, () => {
+        if (isDebugLogEnabled) console.log("🧹 Deleted temp:", tempFilePath);
+      });
     }
 
     /* ---------- ⚡ 下載到後端，生成永久網址 ---------- */

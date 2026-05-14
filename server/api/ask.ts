@@ -23,6 +23,7 @@ import {
   getVertexAIConfig,
   isVertexAIEnabled,
 } from "../lib/gemini-server.ts";
+const isDebugLogEnabled = process.env.LOG_LEVEL === "debug";
 
 const require = createRequire(import.meta.url);
 const pdfParse = require("pdf-parse");
@@ -898,7 +899,9 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     const normalizedPrompt = selectedModelProvider === "gemini" && chatImages.length > 0 && !normalized
       ? "請描述這張圖片。"
       : normalized;
-    console.log("[ask] provider=%s stream=%s shared=%s vertex=%s", selectedModelProvider, wantsStream, Boolean(sharedBotId), isVertexAIEnabled());
+    if (isDebugLogEnabled) {
+      console.log("[ask] provider=%s stream=%s shared=%s vertex=%s", selectedModelProvider, wantsStream, Boolean(sharedBotId), isVertexAIEnabled());
+    }
     const normalizedBotId = String(botId || "default");
     const active = actor.shared ? null : await getActiveTeachingSession(authUser.id, normalizedBotId);
 
@@ -1035,16 +1038,16 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     if (!wantsStream) {
       let reply = "";
       try {
-        console.log("[ask] requesting model reply");
+        if (isDebugLogEnabled) console.log("[ask] requesting model reply");
         reply = await askModelOnce(selectedModelProvider, systemPrompt, normalizedPrompt, chatImages);
-        console.log("[ask] model reply received length=%s", reply.length);
+        if (isDebugLogEnabled) console.log("[ask] model reply received length=%s", reply.length);
       } catch (error) {
         throw remapModelProviderError(error);
       }
       if (usageType === "chat_message") await recordFeatureUsage(authUser.id, "chat_messages", 1, { usageType, source: actor.shared ? "shared_bot" : "direct" });
-      console.log("[ask] consuming credits");
+      if (isDebugLogEnabled) console.log("[ask] consuming credits");
       await consumeUserCredits(authUser.id, "ask", 1, { streaming: false, promptLength: normalizedPrompt.length, source: actor.shared ? "shared_bot" : "direct", modelProvider: selectedModelProvider, imageCount: chatImages.length });
-      console.log("[ask] sending json response");
+      if (isDebugLogEnabled) console.log("[ask] sending json response");
       return res.json({ reply, teachingMode: false, modelProvider: selectedModelProvider });
     }
 

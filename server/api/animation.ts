@@ -34,6 +34,7 @@ interface GrokVideoResult {
 }
 
 const SUPPORTED_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"] as const;
+const isDebugLogEnabled = process.env.LOG_LEVEL === "debug";
 
 function normalizeAspectRatio(aspectRatio?: string | null): string | null {
   if (!aspectRatio) return null;
@@ -106,7 +107,7 @@ function buildLoopFramePayload(params: CreateVideoParams): Record<string, any> {
 
 async function postVideoPayload(payload: Record<string, any>, label: string): Promise<GenerateResponse> {
 
-  console.log(`🔥 [Grok Payload Sending:${label}]`, payload);
+  if (isDebugLogEnabled) console.log(`🔥 [Grok Payload Sending:${label}]`, payload);
 
   const res = await fetch("https://api.x.ai/v1/videos/generations", {
     method: "POST",
@@ -125,7 +126,7 @@ async function postVideoPayload(payload: Record<string, any>, label: string): Pr
   }
 
   const json = JSON.parse(text);
-  console.log("🎉 Grok CreateVideo Response:", json);
+  if (isDebugLogEnabled) console.log("🎉 Grok CreateVideo Response:", json);
 
   return json as GenerateResponse;
 }
@@ -157,7 +158,7 @@ async function fetchVideoResult(requestId: string): Promise<GrokVideoResult> {
   const text = await res.text();
   const data = JSON.parse(text);
 
-  console.log("🔍 [Grok Polling]", data);
+  if (isDebugLogEnabled) console.log("🔍 [Grok Polling]", data);
 
   if (data.video?.url) {
     return { status: "completed", url: data.video.url };
@@ -282,7 +283,7 @@ router.post(
   async (req: Request<{}, {}, CreateVideoParams>, res: Response) => {
     try {
       const authUser = getAuthUser(req);
-      console.log("📥 Incoming Generate Request:", req.body);
+      if (isDebugLogEnabled) console.log("📥 Incoming Generate Request:", req.body);
 
       const { prompt, duration, aspectRatio, resolution, imageUrl, loopFrameMode } = req.body;
 

@@ -19,7 +19,6 @@ router.post("/", requireAuth, async (req, res) => {
     // 必须在这里读取！
     const XAI_API_KEY = process.env.XAI_API_KEY;
 
-    console.log("API KEY at request:", XAI_API_KEY); // <--- 应该打印真实 key
 
     if (!XAI_API_KEY) {
       return res.status(500).json({ error: "XAI_API_KEY missing in env" });

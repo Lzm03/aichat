@@ -278,20 +278,6 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   }, [chatPanelOpen, isMobileClient]);
 
   useEffect(() => {
-    if (!shouldShowBooting) return;
-    setShowDropdown(false);
-    setShowModelMenu(false);
-    const rafId = window.requestAnimationFrame(() => {
-      const active = document.activeElement;
-      if (active instanceof HTMLElement) {
-        active.blur();
-      }
-      bootingOverlayRef.current?.focus();
-    });
-    return () => window.cancelAnimationFrame(rafId);
-  }, [shouldShowBooting]);
-
-  useEffect(() => {
     if (!isOpen || !botConfig?.id || interactionRecordedRef.current) return;
     interactionRecordedRef.current = true;
     const baseUrl = API_BASE;
@@ -2110,15 +2096,11 @@ const unlockAudioAndMic = async () => {
 
           {/* 主体 */}
           <div className="relative h-[92svh] w-full max-w-[720px] overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_22px_80px_rgba(15,23,42,0.16)] md:h-[92vh] md:max-w-7xl md:rounded-3xl md:border-0 md:shadow-2xl">
-            {shouldShowBooting ? (
-              <div
-                ref={bootingOverlayRef}
-                tabIndex={-1}
-                aria-hidden="true"
-                className="absolute inset-0 z-20 bg-white outline-none"
-              />
-            ) : (
-            <div className="relative h-full w-full overflow-hidden rounded-[1.5rem] bg-[#f8fafc] transition-all duration-300 md:flex md:rounded-3xl">
+            <div
+              className={`relative h-full w-full overflow-hidden rounded-[1.5rem] bg-[#f8fafc] transition-all duration-300 md:flex md:rounded-3xl ${
+                shouldShowBooting ? "opacity-0" : "opacity-100"
+              }`}
+            >
             {/* 左侧背景 + 动画 */}
             <div
               ref={stageCaptureRef}
@@ -2920,6 +2902,12 @@ const unlockAudioAndMic = async () => {
             </div>
             </div>
             </div>
+
+            {shouldShowBooting && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-white">
+                <div className="w-10 h-10 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
+                <div className="text-sm text-slate-600">正在載入聊天與語音...</div>
+              </div>
             )}
             {!shouldShowBooting && shouldRequirePermission && !permissionReady && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-white/95 px-6 text-center">
