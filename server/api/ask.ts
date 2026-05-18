@@ -802,6 +802,7 @@ router.post("/ask-file", requireAuth, upload.any(), async (req: Request, res: Re
   try {
     const authUser = getAuthUser(req);
     await assertUserCanSpend(authUser!.id, 4);
+    const modelProvider = normalizeChatModelProvider((req.body as any)?.modelProvider);
     const files = ((req.files as Express.Multer.File[] | undefined) || []).filter(Boolean);
     if (!files.length) return res.status(400).json({ error: "缺少文件" });
 
@@ -826,15 +827,17 @@ router.post("/ask-file", requireAuth, upload.any(), async (req: Request, res: Re
       .trim();
     const normalizedPromptText = combinedText.slice(0, MAX_FILE_PROMPT_CHARS);
     const systemPrompt: string = (req.body as any)?.systemPrompt || "";
-    const reply = await askDeepSeekOnce(systemPrompt, normalizedPromptText);
+    const reply = await askModelOnce(modelProvider, systemPrompt, normalizedPromptText);
     await consumeUserCredits(authUser!.id, "ask_file", 4, {
       fileNames: files.map((file) => file.originalname),
       extractedLength: normalizedPromptText.length,
       fileCount: files.length,
+      modelProvider,
     });
     return res.json({
       reply,
       extractedText: normalizedPromptText,
+      modelProvider,
       files: nonEmptyParts.map((part) => ({
         fileName: part.fileName,
         extractedLength: part.extractedText.length,
@@ -859,7 +862,8 @@ router.post("/ask-url", requireAuth, async (req: Request, res: Response) => {
   try {
     const authUser = getAuthUser(req);
     await assertUserCanSpend(authUser!.id, 2);
-    const { systemPrompt = "", url = "" } = req.body as any;
+    const { systemPrompt = "", url = "", modelProvider = "deepseek" } = req.body as any;
+    const selectedModelProvider = normalizeChatModelProvider(modelProvider);
     if (!url || typeof url !== "string") return res.status(400).json({ error: "缺少網址" });
     const targetUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
     const pageRes = await fetch(targetUrl, { headers: { "User-Agent": "Mozilla/5.0 (compatible; AI-Bot/1.0)" } });
@@ -867,9 +871,9 @@ router.post("/ask-url", requireAuth, async (req: Request, res: Response) => {
     const html = await pageRes.text();
     const pageText = extractTextFromHtml(html).slice(0, 18000);
     if (!pageText) return res.status(400).json({ error: "網址內容無可解析文字" });
-    const reply = await askDeepSeekOnce(systemPrompt, pageText);
-    await consumeUserCredits(authUser!.id, "ask_url", 2, { url: targetUrl });
-    return res.json({ reply, extractedText: pageText, sourceUrl: targetUrl });
+    const reply = await askModelOnce(selectedModelProvider, systemPrompt, pageText);
+    await consumeUserCredits(authUser!.id, "ask_url", 2, { url: targetUrl, modelProvider: selectedModelProvider });
+    return res.json({ reply, extractedText: pageText, sourceUrl: targetUrl, modelProvider: selectedModelProvider });
   } catch (err: any) {
     console.error("❌ URL 解析錯誤:", err);
     return res.status(err?.status || 500).json({ error: err.message });

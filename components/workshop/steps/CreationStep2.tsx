@@ -24,6 +24,8 @@ interface CreationStep2Props {
 
 export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData }) => {
   const [uploadMethod, setUploadMethod] = useState<UploadMethod>("file");
+  const [modelProvider, setModelProvider] = useState<"deepseek" | "gemini">("deepseek");
+  const [showModelMenu, setShowModelMenu] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [inputValue, setInputValue] = useState("");
 
@@ -95,6 +97,17 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   }, [initialData?.characterBackground, initialData?.knowledgeSummary]);
 
   useEffect(() => {
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!(target instanceof Node)) return;
+      if ((target as HTMLElement).closest?.("[data-model-menu-root='knowledge-feed']")) return;
+      setShowModelMenu(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  useEffect(() => {
     if (!characterBackground.trim() && !knowledgeSummary.trim()) return;
     const personaProfile = [
       `【性格特質】${personalityTraits.join("、") || "未設定"}`,
@@ -132,6 +145,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       form.append("file", file);
     });
     form.append("systemPrompt", systemPrompt);
+    form.append("modelProvider", modelProvider);
 
     const res = await fetch(`${baseUrl}/api/ask-file`, {
       method: "POST",
@@ -152,6 +166,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
         systemPrompt,
         userPrompt: content,
         stream: false,
+        modelProvider,
       }),
     });
 
@@ -178,6 +193,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       body: JSON.stringify({
         systemPrompt,
         url,
+        modelProvider,
       }),
     });
 
@@ -644,6 +660,47 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           </div>
         </div>
       </div>
+
+      {status === "idle" && (
+        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4">
+          <div>
+            <p className="text-sm font-bold text-slate-800">知識提取模型</p>
+            <p className="mt-1 text-xs text-slate-500">提取前可先選擇要使用的模型</p>
+          </div>
+          <div className="relative" data-model-menu-root="knowledge-feed">
+            <button
+              type="button"
+              onClick={() => setShowModelMenu((prev) => !prev)}
+              className="flex items-center gap-2 rounded-full border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm"
+            >
+              <span>{modelProvider === "deepseek" ? "DeepSeek" : "Gemini"}</span>
+              <span className={`transition-transform ${showModelMenu ? "rotate-180" : ""}`}>⌄</span>
+            </button>
+            {showModelMenu ? (
+              <div className="absolute right-0 top-full z-20 mt-2 min-w-[128px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
+                {(["deepseek", "gemini"] as const).map((option) => {
+                  const active = modelProvider === option;
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => {
+                        setModelProvider(option);
+                        setShowModelMenu(false);
+                      }}
+                      className={`flex w-full items-center px-3 py-2 text-left text-sm ${
+                        active ? "bg-slate-100 font-semibold text-slate-900" : "text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span>{option === "deepseek" ? "DeepSeek" : "Gemini"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
 
       {/* Upload method tabs */}
       {status === "idle" && (
