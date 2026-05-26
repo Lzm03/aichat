@@ -13,6 +13,18 @@ import type { FeatureEntitlement } from '../../hooks/useFeatureEntitlements';
 import { usePlatformDialog } from '../../hooks/usePlatformDialog';
 import { PlatformDialog } from '../system/PlatformDialog';
 
+type KnowledgeTier = "basic_fact" | "deep_understanding";
+type KnowledgePoint = {
+  id: string;
+  tier: KnowledgeTier;
+  content: string;
+  keywords: string[];
+  assessmentCriteria: string;
+};
+
+const MAX_KNOWLEDGE_POINTS = 8;
+const MAX_POINTS_PER_TIER = 4;
+
 type VideoStudioTask = {
   id: string;
   status: "pending" | "generating" | "remove_bg_done" | "ready" | "failed";
@@ -128,10 +140,77 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   };
 
   const parseKnowledgeBase = (knowledgeBase: string) => {
+    const trimKnowledgePoints = (points: KnowledgePoint[]) => {
+      const basicFacts = points.filter((point) => point.tier === "basic_fact").slice(0, MAX_POINTS_PER_TIER);
+      const deepPoints = points.filter((point) => point.tier === "deep_understanding").slice(0, MAX_POINTS_PER_TIER);
+      return [...basicFacts, ...deepPoints]
+        .slice(0, MAX_KNOWLEDGE_POINTS)
+        .map((point, index) => ({
+          ...point,
+          id: `kp_${String(index + 1).padStart(3, "0")}`,
+        }));
+    };
+
     const bgMatch = knowledgeBase.match(/【人物背景設定】([\s\S]*?)【人物知識庫摘要】/);
-    const ksMatch = knowledgeBase.match(/【人物知識庫摘要】([\s\S]*?)(?:【角色對話策略】|請根據「人物背景設定」與「知識庫摘要」回答問題，不要捏造不存在的資訊。|$)/);
+    const ksMatch = knowledgeBase.match(/【人物知識庫摘要】([\s\S]*?)(?:【知識點分級】|【角色對話策略】|請根據「人物背景設定」與「知識庫摘要」回答問題，不要捏造不存在的資訊。|$)/);
+    const pointsMatch = knowledgeBase.match(/【知識點分級】([\s\S]*?)(?:【角色對話策略】|請根據「人物背景設定」與「知識庫摘要」回答問題，不要捏造不存在的資訊。|$)/);
     const personaMatch = knowledgeBase.match(/【角色對話策略】([\s\S]*?)(?:請根據「人物背景設定」與「知識庫摘要」回答問題，不要捏造不存在的資訊。|$)/);
     const personaText = personaMatch?.[1] || "";
+    let knowledgePoints: KnowledgePoint[] = [];
+    try {
+      const raw = pointsMatch?.[1]?.trim();
+      const parsed = raw ? JSON.parse(raw) : [];
+      knowledgePoints = trimKnowledgePoints(Array.isArray(parsed)
+        ? parsed
+            .map((item, index) => ({
+              id: String(item?.id || `kp_${String(index + 1).padStart(3, "0")}`),
+              tier: (item?.tier === "deep_understanding" ? "deep_understanding" : "basic_fact") as KnowledgeTier,
+              content: String(item?.content || "").trim(),
+              keywords: Array.isArray(item?.keywords)
+                ? item.keywords.map((keyword: string) => String(keyword || "").trim()).filter(Boolean)
+                : [],
+              assessmentCriteria: String(item?.assessmentCriteria || item?.assessment_criteria || "").trim(),
+            }))
+            .filter((item) => item.content)
+        : []);
+    } catch {
+      knowledgePoints = [];
+    }
+    const knowledgeSummary = ksMatch?.[1]?.trim() || "";
+    if (!knowledgePoints.length && knowledgeSummary) {
+      const summaryLines = knowledgeSummary
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => line.replace(/^-+\s*/, "").trim())
+        .filter((line) => !/^[\[\]\{\}",]+$/.test(line))
+        .filter((line) => !/^(id|tier|content|keywords|assessmentCriteria|assessment_criteria)\s*[:：]/i.test(line))
+        .filter((line) => !/^【?知識點分級】?$/.test(line));
+
+      knowledgePoints = trimKnowledgePoints(summaryLines
+        .map((line, index) => {
+          const tier = /\[(深度理解|基礎事實)\]/.test(line)
+            ? (line.includes("深度理解") ? "deep_understanding" : "basic_fact")
+            : (index < Math.ceil(summaryLines.length / 2) ? "basic_fact" : "deep_understanding");
+          const content = line
+            .replace(/\[(深度理解|基礎事實)\]/g, "")
+            .replace(/（.*?）/g, "")
+            .trim();
+          const keywordMatch = line.match(/關鍵詞：([^｜）]+)/);
+          const assessmentMatch = line.match(/評估：([^）]+)/);
+          return {
+            id: `kp_${String(index + 1).padStart(3, "0")}`,
+            tier: tier as KnowledgeTier,
+            content,
+            keywords: keywordMatch?.[1]
+              ?.split(/[、，,]/)
+              .map((item) => item.trim())
+              .filter(Boolean) || [],
+            assessmentCriteria: assessmentMatch?.[1]?.trim() || "",
+          };
+        })
+        .filter((item) => item.content));
+    }
     const traits = (personaText.match(/【性格特質】([^\n]+)/)?.[1] || "")
       .split("、")
       .map((s) => s.trim())
@@ -140,7 +219,8 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
     const answerMode = (personaText.match(/【答題策略】([^\n]+)/)?.[1] || "引導後再回答").trim();
     return {
       characterBackground: bgMatch?.[1]?.trim() || "",
-      knowledgeSummary: ksMatch?.[1]?.trim() || "",
+      knowledgeSummary,
+      knowledgePoints,
       personalityTraits: traits.length ? traits : ["耐心"],
       speakingStyle,
       answerMode,
@@ -382,6 +462,9 @@ ${data.characterBackground}
 
 【人物知識庫摘要】
 ${data.knowledgeSummary}
+
+【知識點分級】
+${JSON.stringify(data.knowledgePoints, null, 2)}
 
 【角色對話策略】
 ${data.personaProfile}

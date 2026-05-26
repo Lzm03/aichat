@@ -6,16 +6,30 @@ import { usePlatformDialog } from "../../../hooks/usePlatformDialog";
 import { PlatformDialog } from "../../system/PlatformDialog";
 
 type UploadMethod = "file" | "url" | "text";
+type KnowledgeTier = "basic_fact" | "deep_understanding";
+
+type KnowledgePoint = {
+  id: string;
+  tier: KnowledgeTier;
+  content: string;
+  keywords: string[];
+  assessmentCriteria: string;
+};
+
+const MAX_KNOWLEDGE_POINTS = 8;
+const MAX_POINTS_PER_TIER = 4;
 
 interface CreationStep2Props {
   onGenerated: (data: {
     characterBackground: string;
     knowledgeSummary: string;
     personaProfile: string;
+    knowledgePoints: KnowledgePoint[];
   }) => void;
   initialData?: {
     characterBackground?: string;
     knowledgeSummary?: string;
+    knowledgePoints?: KnowledgePoint[];
     personalityTraits?: string[];
     speakingStyle?: string;
     answerMode?: string;
@@ -32,14 +46,20 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   const [status, setStatus] = useState<"idle" | "processing" | "complete">(
     "idle"
   );
+  const [viewMode, setViewMode] = useState<"graph" | "list">("graph");
 
   const [characterBackground, setCharacterBackground] = useState(initialData?.characterBackground || "");
   const [knowledgeSummary, setKnowledgeSummary] = useState(initialData?.knowledgeSummary || "");
+  const [knowledgePoints, setKnowledgePoints] = useState<KnowledgePoint[]>(initialData?.knowledgePoints || []);
   const [sourceLabel, setSourceLabel] = useState("");
   const [personalityTraits, setPersonalityTraits] = useState<string[]>(initialData?.personalityTraits || ["耐心"]);
   const [speakingStyle, setSpeakingStyle] = useState(initialData?.speakingStyle || "文言文");
   const [answerMode, setAnswerMode] = useState(initialData?.answerMode || "引導後再回答");
   const [progress, setProgress] = useState(0);
+  const [newPointContent, setNewPointContent] = useState("");
+  const [newPointKeywords, setNewPointKeywords] = useState("");
+  const [newPointAssessment, setNewPointAssessment] = useState("");
+  const [newPointTier, setNewPointTier] = useState<KnowledgeTier>("basic_fact");
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
 
   const baseUrl = import.meta.env.VITE_API_URL;
@@ -48,40 +68,90 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   // ⭐ 系統提示詞（深度分析 PDF）
   // --------------------------
   const systemPrompt = `
-你是一個擅長分析 PDF / 文本資料的 AI，負責幫用戶將內容拆分為兩個部分：
+你是一個專業的教育內容結構化專家。你要閱讀用戶提供的文本、網址或文件內容，為一個可對話的教學角色抽取知識，並按認知層級分級。
 
-【1】人物背景設定（Character Background）
-- 用第一人稱寫（例如：我係 / 我平時會…）
-- 3～6 句
-- 自然、有角色感，不要逐字抄文件
-- 像「可用於 AI 機器人」的人格描述
+【任務要求】
+1. 先生成「人物背景設定」：
+- 用第一人稱書寫
+- 3 到 6 句
+- 要自然、有角色感，不逐字照抄原文
 
-【2】人物知識庫摘要（Knowledge Summary）
-- 用 4～10 條 bullet points
-- 整理 PDF 中的：
-  - 教學內容
-  - 技能知識
-  - 背景資料
-  - 問答內容
-  - 規則流程
-  - 口語示例
+2. 再生成最多 8 個核心知識點，並分成兩個層級：
+- 盡量保持 "basic_fact" 4 個、"deep_understanding" 4 個
+- "basic_fact"：客觀事實、時間、地點、定義、名稱，偏向記憶與識別
+- "deep_understanding"：動機、因果、背景、影響、評價，偏向分析與解釋
 
-⚠️ 請務必用以下格式輸出：
+3. 每個知識點都要包含：
+- id：kp_001 這類遞增編號
+- tier：只能是 "basic_fact" 或 "deep_understanding"
+- content：知識點內容
+- keywords：2 到 5 個關鍵詞
+- assessment_criteria：一句可用於判斷學生是否掌握的標準
 
-【人物背景設定】
-<3～6 句>
-
-【人物知識庫摘要】
-- <重點 1>
-- <重點 2>
-- ...
+【輸出要求】
+只能輸出合法 JSON，不能輸出 Markdown，不能輸出解釋。
+JSON 必須符合以下結構：
+{
+  "character_name": "角色名",
+  "character_background": "第一人稱背景設定",
+  "knowledge_points": [
+    {
+      "id": "kp_001",
+      "tier": "basic_fact",
+      "content": "知識點內容",
+      "keywords": ["關鍵詞1", "關鍵詞2"],
+      "assessment_criteria": "評估標準"
+    }
+  ]
+}
 `;
+
+  const buildKnowledgeSummary = (points: KnowledgePoint[]) =>
+    points
+      .map((point) => {
+        const tierLabel = point.tier === "basic_fact" ? "基礎事實" : "深度理解";
+        const keywords = point.keywords.filter(Boolean).join("、");
+        const assessment = point.assessmentCriteria.trim();
+        const suffix = [keywords ? `關鍵詞：${keywords}` : "", assessment ? `評估：${assessment}` : ""]
+          .filter(Boolean)
+          .join("｜");
+        return `- ${point.content.trim()}${suffix ? `（${suffix}）` : ""}`;
+      })
+      .join("\n");
+
+  const trimKnowledgePoints = (points: KnowledgePoint[]) => {
+    const basicFacts = points.filter((point) => point.tier === "basic_fact").slice(0, MAX_POINTS_PER_TIER);
+    const deepPoints = points.filter((point) => point.tier === "deep_understanding").slice(0, MAX_POINTS_PER_TIER);
+    const combined = [...basicFacts, ...deepPoints].slice(0, MAX_KNOWLEDGE_POINTS);
+    return combined.map((point, index) => ({
+      ...point,
+      id: `kp_${String(index + 1).padStart(3, "0")}`,
+    }));
+  };
+
+  const normalizeKnowledgePoint = (point: any, index: number): KnowledgePoint | null => {
+    const content = String(point?.content || "").trim();
+    if (!content) return null;
+    const tier: KnowledgeTier =
+      point?.tier === "deep_understanding" ? "deep_understanding" : "basic_fact";
+    const keywords = Array.isArray(point?.keywords)
+      ? point.keywords.map((item: any) => String(item || "").trim()).filter(Boolean).slice(0, 5)
+      : [];
+    return {
+      id: String(point?.id || `kp_${String(index + 1).padStart(3, "0")}`),
+      tier,
+      content,
+      keywords,
+      assessmentCriteria: String(point?.assessment_criteria || point?.assessmentCriteria || "").trim(),
+    };
+  };
 
   const resetState = () => {
     setFiles([]);
     setInputValue("");
     setCharacterBackground("");
     setKnowledgeSummary("");
+    setKnowledgePoints([]);
     setStatus("idle");
     setProgress(0);
     setSourceLabel("");
@@ -90,11 +160,12 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   useEffect(() => {
     setCharacterBackground(initialData?.characterBackground || "");
     setKnowledgeSummary(initialData?.knowledgeSummary || "");
+    setKnowledgePoints(initialData?.knowledgePoints || []);
     if (initialData?.characterBackground || initialData?.knowledgeSummary) {
       setStatus("complete");
       setProgress(100);
     }
-  }, [initialData?.characterBackground, initialData?.knowledgeSummary]);
+  }, [initialData?.characterBackground, initialData?.knowledgeSummary, initialData?.knowledgePoints]);
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -114,8 +185,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       `【說話風格】${speakingStyle}`,
       `【答題策略】${answerMode}`,
     ].join("\n");
-    onGenerated({ characterBackground, knowledgeSummary, personaProfile });
-  }, [personalityTraits, speakingStyle, answerMode]);
+    onGenerated({ characterBackground, knowledgeSummary, personaProfile, knowledgePoints });
+  }, [personalityTraits, speakingStyle, answerMode, characterBackground, knowledgeSummary, knowledgePoints]);
 
   useEffect(() => {
     if (status !== "processing") return;
@@ -213,28 +284,62 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   };
 
   const parseKnowledgeReply = (reply: string) => {
-    const bgMatch = reply.match(/【人物背景設定】([\s\S]*?)【人物知識庫摘要】/);
-    const ksMatch = reply.match(/【人物知識庫摘要】([\s\S]*)/);
-
-    let bg = bgMatch?.[1]?.trim() ?? "";
-    let ks = ksMatch?.[1]?.trim() ?? "";
-
-    // 容錯：模型沒完全按格式回覆時，仍然產生可用內容
-    if (!bg && reply.trim()) {
-      const firstBlock = reply.split("\n\n")[0]?.trim() || "";
-      bg = firstBlock || "我會根據你提供的資料進行回答與整理。";
-    }
-    if (!ks && reply.trim()) {
-      const lines = reply
-        .split("\n")
-        .map((l) => l.trim())
-        .filter(Boolean)
-        .slice(0, 10)
-        .map((l) => (l.startsWith("-") ? l : `- ${l}`));
-      ks = lines.join("\n");
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(reply);
+    } catch {
+      const jsonBlock = reply.match(/\{[\s\S]*\}/)?.[0];
+      if (jsonBlock) {
+        try {
+          parsed = JSON.parse(jsonBlock);
+        } catch {
+          parsed = null;
+        }
+      }
     }
 
-    return { bg, ks };
+    if (parsed && Array.isArray(parsed.knowledge_points)) {
+      const points = trimKnowledgePoints(parsed.knowledge_points
+        .map((point: any, index: number) => normalizeKnowledgePoint(point, index))
+        .filter(Boolean) as KnowledgePoint[]);
+      const bg = String(parsed.character_background || parsed.characterBackground || "").trim()
+        || "我會根據你提供的資料進行回答與整理。";
+      return { bg, ks: buildKnowledgeSummary(points), points };
+    }
+
+    const lines = trimKnowledgePoints(reply
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .slice(0, MAX_KNOWLEDGE_POINTS)
+      .map((content, index) =>
+        normalizeKnowledgePoint(
+          {
+            id: `kp_${String(index + 1).padStart(3, "0")}`,
+            tier: index < 5 ? "basic_fact" : "deep_understanding",
+            content: content.replace(/^-+\s*/, ""),
+            keywords: [],
+            assessment_criteria: "",
+          },
+          index
+        )
+      )
+      .filter(Boolean) as KnowledgePoint[]);
+
+    const cleanedLines = lines.filter((point) => {
+      const content = point.content.trim();
+      return (
+        content.length > 1 &&
+        !/^[\[\]\{\}",]+$/.test(content) &&
+        !/^(id|tier|content|keywords|assessmentCriteria|assessment_criteria)\s*[:：]/i.test(content)
+      );
+    });
+
+    return {
+      bg: reply.split("\n\n")[0]?.trim() || "我會根據你提供的資料進行回答與整理。",
+      ks: buildKnowledgeSummary(cleanedLines),
+      points: cleanedLines,
+    };
   };
 
   // --------------------------
@@ -266,26 +371,97 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       }
 
       const reply = result.reply || "";
-      const { bg, ks } = parseKnowledgeReply(reply);
+      const { bg, ks, points } = parseKnowledgeReply(reply);
 
       setCharacterBackground(bg);
       setKnowledgeSummary(ks);
+      setKnowledgePoints(points);
       const personaProfile = [
         `【性格特質】${personalityTraits.join("、") || "未設定"}`,
         `【說話風格】${speakingStyle}`,
         `【答題策略】${answerMode}`,
       ].join("\n");
-      onGenerated({ characterBackground: bg, knowledgeSummary: ks, personaProfile });
+      onGenerated({ characterBackground: bg, knowledgeSummary: ks, personaProfile, knowledgePoints: points });
       setProgress(100);
       setStatus("complete");
     } catch (error) {
       console.error("知識解析失敗:", error);
       setCharacterBackground("解析失敗，請重試。");
       setKnowledgeSummary("- 目前未能整理內容\n- 請檢查 API 設定或稍後重試");
+      setKnowledgePoints([]);
       setProgress(100);
       setStatus("complete");
     }
   };
+
+  const updateKnowledgePoint = (id: string, field: keyof KnowledgePoint, value: string | string[]) => {
+    setKnowledgePoints((prev) => {
+      const next = prev.map((point) =>
+        point.id === id
+          ? {
+              ...point,
+              [field]: value,
+            }
+          : point
+      );
+      setKnowledgeSummary(buildKnowledgeSummary(next));
+      return next;
+    });
+  };
+
+  const toggleKnowledgeTier = (id: string) => {
+    setKnowledgePoints((prev) => {
+      const next = prev.map((point) =>
+        point.id === id
+          ? {
+              ...point,
+              tier: (point.tier === "basic_fact" ? "deep_understanding" : "basic_fact") as KnowledgeTier,
+            }
+          : point
+      );
+      setKnowledgeSummary(buildKnowledgeSummary(next));
+      return next;
+    });
+  };
+
+  const removeKnowledgePoint = (id: string) => {
+    setKnowledgePoints((prev) => {
+      const next = prev.filter((point) => point.id !== id);
+      setKnowledgeSummary(buildKnowledgeSummary(next));
+      return next;
+    });
+  };
+
+  const handleAddKnowledgePoint = () => {
+    const content = newPointContent.trim();
+    if (!content) {
+      showAlert({ title: "缺少內容", message: "請先輸入知識點內容。" });
+      return;
+    }
+    const nextPoint: KnowledgePoint = {
+      id: `kp_${String(knowledgePoints.length + 1).padStart(3, "0")}`,
+      tier: newPointTier,
+      content,
+      keywords: newPointKeywords
+        .split(/[，,、]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 5),
+      assessmentCriteria: newPointAssessment.trim(),
+    };
+    const nextPoints = trimKnowledgePoints([...knowledgePoints, nextPoint]);
+    setKnowledgePoints(nextPoints);
+    setKnowledgeSummary(buildKnowledgeSummary(nextPoints));
+    setNewPointContent("");
+    setNewPointKeywords("");
+    setNewPointAssessment("");
+  };
+
+  const dottedBgStyle = {
+    backgroundImage: "radial-gradient(circle at 1px 1px, rgba(148,163,184,0.28) 1px, transparent 0)",
+    backgroundSize: "18px 18px",
+    backgroundPosition: "center",
+  } as const;
 
   // --------------------------
   // 🔥 自動觸發文件解析
@@ -433,10 +609,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
     }
 
     if (status === "complete") {
-      const summaryLines = knowledgeSummary
-        .split("\n")
-        .map((l) => l.replace(/^-+\s*/, "").trim())
-        .filter(Boolean);
+      const summaryLines = knowledgePoints.map((point) => point.content).filter(Boolean);
       const bgText = characterBackground.replace(/\s+/g, " ").trim();
       const nameMatch = bgText.match(/我(?:是|叫|係)\s*([^\s，。,.!！?？]{1,20})/);
       const traitLine =
@@ -451,6 +624,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       const scenarioLine =
         summaryLines.find((l) => /適用|場景|應用|教學|客服|銷售/.test(l)) ||
         "聊天互動、教學解說、問答輔助";
+      const basicFacts = knowledgePoints.filter((point) => point.tier === "basic_fact");
+      const deepPoints = knowledgePoints.filter((point) => point.tier === "deep_understanding");
 
       const mindmapBranches = [
         { title: "人物名字", value: nameMatch?.[1] || "未明確命名" },
@@ -496,14 +671,42 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
             </div>
           </div>
 
-          <div className="rounded-2xl border bg-white p-4">
-            <h4 className="font-bold text-slate-800 mb-3">角色關聯圖</h4>
-            <div className="rounded-xl border border-slate-200 bg-gradient-to-b from-[#f8fbff] to-white p-4">
-              <div className="hidden md:block pb-2 overflow-x-auto">
-                <div className="relative h-[300px] w-[860px] min-w-[860px] rounded-xl mx-auto">
+          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Knowledge Map</p>
+                <h4 className="mt-1 text-[34px] leading-none font-black tracking-tight text-slate-900 md:text-[28px]">知識庫架構</h4>
+              </div>
+              <div className="flex items-center rounded-2xl border border-slate-200 bg-slate-50 p-1.5 text-sm font-semibold shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("graph")}
+                  className={`flex items-center gap-2 rounded-xl px-4 py-2 ${viewMode === "graph" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500"}`}
+                >
+                  <Icons.task className="h-4 w-4" />
+                  關聯圖
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("list")}
+                  className={`flex items-center gap-2 rounded-xl px-4 py-2 ${viewMode === "list" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500"}`}
+                >
+                  <Icons.clipboardList className="h-4 w-4" />
+                  列表視圖
+                </button>
+              </div>
+            </div>
+            <div className="rounded-[24px] border border-slate-200 bg-gradient-to-b from-[#fbfcff] via-white to-[#f8fbff] p-4 md:p-6">
+              {viewMode === "graph" ? (
+              <>
+              <div className="hidden md:block overflow-x-auto">
+                <div
+                  className="relative h-[400px] w-[980px] min-w-[980px] overflow-hidden rounded-[24px] border border-slate-100 bg-white/80 px-10 py-8"
+                  style={dottedBgStyle}
+                >
                   <svg
                     className="absolute inset-0 h-full w-full pointer-events-none"
-                    viewBox="0 0 860 280"
+                    viewBox="0 0 980 400"
                     preserveAspectRatio="none"
                   >
                     <defs>
@@ -512,72 +715,203 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
                         <stop offset="100%" stopColor="#60a5fa" />
                       </linearGradient>
                       <linearGradient id="knowledgeFlowRight" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stopColor="#60a5fa" />
-                        <stop offset="100%" stopColor="#818cf8" />
+                        <stop offset="0%" stopColor="#d8b4fe" />
+                        <stop offset="100%" stopColor="#a78bfa" />
                       </linearGradient>
                     </defs>
-                    <path d="M 388 140 C 332 140, 292 66, 210 66" stroke="url(#knowledgeFlowLeft)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
-                    <path d="M 388 140 C 332 140, 292 214, 210 214" stroke="url(#knowledgeFlowLeft)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
-                    <path d="M 472 140 C 536 140, 576 54, 650 54" stroke="url(#knowledgeFlowRight)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
-                    <path d="M 472 140 C 536 140, 586 132, 650 132" stroke="url(#knowledgeFlowRight)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
-                    <path d="M 472 140 C 536 140, 576 226, 650 226" stroke="url(#knowledgeFlowRight)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+                    {basicFacts.slice(0, 5).map((point, index) => {
+                      const y = 54 + index * 72;
+                      return (
+                        <path
+                          key={`left-line-${point.id}`}
+                          d={`M 462 200 C 406 200, 360 ${y}, 272 ${y}`}
+                          stroke="url(#knowledgeFlowLeft)"
+                          strokeWidth="3"
+                          strokeDasharray="8 8"
+                          fill="none"
+                          strokeLinecap="round"
+                        />
+                      );
+                    })}
+                    {deepPoints.slice(0, 5).map((point, index) => {
+                      const y = 54 + index * 72;
+                      return (
+                        <path
+                          key={`right-line-${point.id}`}
+                          d={`M 518 200 C 574 200, 620 ${y}, 706 ${y}`}
+                          stroke="url(#knowledgeFlowRight)"
+                          strokeWidth="3"
+                          strokeDasharray="8 8"
+                          fill="none"
+                          strokeLinecap="round"
+                        />
+                      );
+                    })}
                   </svg>
 
-                  <div className="absolute left-[24px] top-[18px] w-[186px] min-h-[72px] rounded-xl border border-blue-100 bg-white p-2.5 shadow-sm">
-                    <p className="text-xs font-semibold text-blue-700">{mindmapBranches[0].title}</p>
-                    <p className="text-[13px] text-slate-700 leading-5 max-h-[84px] overflow-y-auto break-words whitespace-pre-wrap pr-1">
-                      {mindmapBranches[0].value}
-                    </p>
+                  {basicFacts.slice(0, 5).map((point, index) => (
+                    <div
+                      key={point.id}
+                      className="absolute left-[44px] w-[206px] rounded-[18px] border border-blue-100 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(96,165,250,0.08)]"
+                      style={{ top: `${22 + index * 72}px` }}
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-blue-500 shadow-[0_0_0_3px_rgba(96,165,250,0.14)]" />
+                        <div className="min-w-0">
+                          <p className="text-[14px] font-black tracking-tight text-slate-900 line-clamp-1">{point.content}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="absolute left-1/2 top-1/2 flex h-[112px] w-[126px] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-[24px] border-2 border-indigo-300 bg-white px-3 text-center shadow-[0_12px_24px_rgba(99,102,241,0.14)]">
+                    <Icons.brain className="h-7 w-7 text-indigo-500" />
+                    <p className="mt-2 text-[9px] font-semibold tracking-[0.22em] text-slate-400">中心節點</p>
+                    <p className="mt-1 text-[13px] font-black leading-4 text-slate-900">{nameMatch?.[1] || "人物"}</p>
+                    <p className="text-[11px] font-bold text-slate-700">（人物知識庫）</p>
                   </div>
 
-                  <div className="absolute left-[24px] top-[188px] w-[186px] min-h-[72px] rounded-xl border border-blue-100 bg-white p-2.5 shadow-sm">
-                    <p className="text-xs font-semibold text-blue-700">{mindmapBranches[1].title}</p>
-                    <p className="text-[13px] text-slate-700 leading-5 max-h-[84px] overflow-y-auto break-words whitespace-pre-wrap pr-1">
-                      {mindmapBranches[1].value}
-                    </p>
-                  </div>
-
-                  <div className="absolute left-1/2 top-1/2 w-[96px] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white border-2 border-blue-300 shadow-lg px-2.5 py-3.5 text-center">
-                    <p className="text-xs text-slate-500">中心主題</p>
-                    <p className="text-[13px] font-extrabold text-slate-800 leading-5 whitespace-nowrap">人物知識庫</p>
-                    <p className="text-xs text-blue-600 mt-1 font-semibold">提取完成</p>
-                  </div>
-
-                  <div className="absolute right-[24px] top-[6px] w-[186px] min-h-[72px] rounded-xl border border-indigo-100 bg-white p-2.5 shadow-sm">
-                    <p className="text-xs font-semibold text-indigo-700">{mindmapBranches[2].title}</p>
-                    <p className="text-[13px] text-slate-700 leading-5 max-h-[84px] overflow-y-auto break-words whitespace-pre-wrap pr-1">
-                      {mindmapBranches[2].value}
-                    </p>
-                  </div>
-
-                  <div className="absolute right-[24px] top-[116px] w-[186px] min-h-[58px] rounded-xl border border-indigo-100 bg-white p-2.5 shadow-sm">
-                    <p className="text-xs font-semibold text-indigo-700">{mindmapBranches[3].title}</p>
-                    <p className="text-[13px] text-slate-700 leading-5 max-h-[64px] overflow-y-auto break-words whitespace-pre-wrap pr-1">
-                      {mindmapBranches[3].value}
-                    </p>
-                  </div>
-
-                  <div className="absolute right-[24px] top-[216px] w-[186px] min-h-[72px] rounded-xl border border-indigo-100 bg-white p-2.5 shadow-sm">
-                    <p className="text-xs font-semibold text-indigo-700">{mindmapBranches[4].title}</p>
-                    <p className="text-[13px] text-slate-700 leading-5 max-h-[84px] overflow-y-auto break-words whitespace-pre-wrap pr-1">
-                      {mindmapBranches[4].value}
-                    </p>
-                  </div>
+                  {deepPoints.slice(0, 5).map((point, index) => (
+                    <div
+                      key={point.id}
+                      className="absolute right-[44px] w-[206px] rounded-[18px] border border-violet-100 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(167,139,250,0.1)]"
+                      style={{ top: `${22 + index * 72}px` }}
+                    >
+                      <div className="flex items-start gap-3">
+                        <Icons.lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-500" />
+                        <div className="min-w-0">
+                          <p className="text-[14px] font-black tracking-tight text-slate-900 line-clamp-1">{point.content}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <div className="md:hidden space-y-2.5">
-                <div className="rounded-xl border-2 border-blue-300 bg-white px-3 py-2 text-center">
-                  <p className="text-[11px] text-slate-500">中心主題</p>
-                  <p className="text-sm font-bold text-slate-800">人物知識庫</p>
+              <div className="space-y-3 md:hidden">
+                <div className="rounded-[22px] border-2 border-indigo-200 bg-white px-4 py-4 text-center shadow-sm">
+                  <p className="text-[11px] font-semibold tracking-[0.18em] text-slate-400">中心節點</p>
+                  <p className="mt-2 text-lg font-black text-slate-900">{nameMatch?.[1] || "人物"}</p>
+                  <p className="text-sm font-semibold text-slate-600">人物知識庫</p>
                 </div>
-                {mindmapBranches.map((b) => (
-                  <div key={b.title} className="rounded-xl border border-slate-200 bg-white p-2.5">
-                    <p className="text-[11px] font-semibold text-blue-700">{b.title}</p>
-                    <p className="text-xs text-slate-600 leading-5">{b.value}</p>
+                <div className="rounded-[20px] border border-blue-100 bg-blue-50/70 p-4">
+                  <p className="text-sm font-black text-blue-900">基礎事實</p>
+                  <div className="mt-3 space-y-2">
+                    {basicFacts.map((point) => (
+                      <div key={point.id} className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm">
+                        {point.content}
+                      </div>
+                    ))}
                   </div>
+                </div>
+                <div className="rounded-[20px] border border-violet-100 bg-violet-50/70 p-4">
+                  <p className="text-sm font-black text-violet-900">深度理解</p>
+                  <div className="mt-3 space-y-2">
+                    {deepPoints.map((point) => (
+                      <div key={point.id} className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm">
+                        {point.content}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              </>
+              ) : (
+                <div className="space-y-8">
+                  <div>
+                    <div className="mb-3 flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full bg-blue-500" />
+                      <h5 className="text-base font-black tracking-tight text-slate-900">基礎事實 ({basicFacts.length}個)</h5>
+                    </div>
+                    <div className="space-y-2.5">
+                      {basicFacts.map((point) => (
+                        <div key={point.id} className="rounded-[18px] border border-slate-200 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
+                          <div className="flex items-start gap-3">
+                            <div className="flex pt-1 text-slate-300">
+                              <Icons.grip className="h-3.5 w-3.5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div>
+                                  <p className="text-[15px] font-black tracking-tight text-slate-900">{point.content}</p>
+                                  <p className="mt-0.5 text-[13px] text-slate-500">{point.assessmentCriteria || point.keywords.join("、") || "尚未補充說明"}</p>
+                                </div>
+                                <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">基礎事實</span>
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <button type="button" onClick={() => toggleKnowledgeTier(point.id)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700">切換為深度理解</button>
+                                <button type="button" onClick={() => removeKnowledgePoint(point.id)} className="rounded-lg bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600">刪除</button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="mb-3 flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full bg-violet-400" />
+                      <h5 className="text-base font-black tracking-tight text-slate-900">深度理解 ({deepPoints.length}個)</h5>
+                    </div>
+                    <div className="space-y-2.5">
+                      {deepPoints.map((point) => (
+                        <div key={point.id} className="rounded-[18px] border border-violet-200 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(167,139,250,0.06)]">
+                          <div className="flex items-start gap-3">
+                            <div className="flex pt-1 text-violet-300">
+                              <Icons.grip className="h-3.5 w-3.5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-[15px] font-black tracking-tight text-slate-900">{point.content}</p>
+                                    <Icons.helpCircle className="h-3.5 w-3.5 text-violet-400" />
+                                  </div>
+                                  <p className="mt-0.5 text-[13px] text-slate-500">{point.assessmentCriteria || point.keywords.join("、") || "尚未補充說明"}</p>
+                                </div>
+                                <span className="rounded-lg bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-600">深度理解</span>
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <button type="button" onClick={() => toggleKnowledgeTier(point.id)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700">切換為基礎知識</button>
+                                <button type="button" onClick={() => removeKnowledgePoint(point.id)} className="rounded-lg bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600">刪除</button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <h4 className="font-bold text-slate-800">手動新增知識點</h4>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <textarea value={newPointContent} onChange={(e) => setNewPointContent(e.target.value)} rows={3} placeholder="輸入知識點內容" className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm" />
+              </div>
+              <input value={newPointKeywords} onChange={(e) => setNewPointKeywords(e.target.value)} placeholder="關鍵詞，以頓號或逗號分隔" className="rounded-xl border border-slate-200 bg-white p-3 text-sm" />
+              <input value={newPointAssessment} onChange={(e) => setNewPointAssessment(e.target.value)} placeholder="評估標準" className="rounded-xl border border-slate-200 bg-white p-3 text-sm" />
+              <div className="flex flex-wrap gap-2">
+                {([
+                  { value: "basic_fact", label: "基礎事實" },
+                  { value: "deep_understanding", label: "深度理解" },
+                ] as const).map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setNewPointTier(option.value)}
+                    className={`rounded-xl px-4 py-2 text-sm font-semibold ${newPointTier === option.value ? "bg-slate-900 text-white" : "bg-white text-slate-700 border border-slate-200"}`}
+                  >
+                    {option.label}
+                  </button>
                 ))}
               </div>
+              <button type="button" onClick={handleAddKnowledgePoint} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">
+                新增知識點
+              </button>
             </div>
           </div>
 

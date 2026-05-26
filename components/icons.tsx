@@ -48,6 +48,8 @@ import {
   LogOut,
   GraduationCap,
   MoreHorizontal,
+  Grip,
+  Lightbulb,
 } from 'lucide-react';
 
 export const Icons = {
@@ -100,4 +102,6 @@ export const Icons = {
   logOut: LogOut,
   assessment: GraduationCap,
   more: MoreHorizontal,
+  grip: Grip,
+  lightbulb: Lightbulb,
 };
