@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Stepper } from './Stepper';
 import { Icons } from '../icons';
 import { CreationStep1 } from './steps/CreationStep1';
@@ -17,6 +17,7 @@ type KnowledgeTier = "basic_fact" | "deep_understanding";
 type KnowledgePoint = {
   id: string;
   tier: KnowledgeTier;
+  title: string;
   content: string;
   keywords: string[];
   assessmentCriteria: string;
@@ -136,10 +137,23 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   const previousVideoTaskStatusRef = React.useRef<string | null>(null);
 
   const updateConfig = <K extends keyof typeof botConfig>(key: K, value: typeof botConfig[K]) => {
-    setBotConfig((prev) => ({ ...prev, [key]: value }));
+    setBotConfig((prev) => (Object.is(prev[key], value) ? prev : { ...prev, [key]: value }));
   };
 
   const parseKnowledgeBase = (knowledgeBase: string) => {
+    const createKnowledgeTitle = (content: string, keywords: string[] = []) => {
+      const cleaned = content.replace(/\s+/g, " ").trim();
+      const keywordTitle = keywords.find((keyword) => keyword.length >= 2 && keyword.length <= 14);
+      if (keywordTitle) return keywordTitle;
+      const titleMatch = cleaned.match(/^([^：:，,。.!！?？]{2,14})[：:，,。.!！?？]/)?.[1]?.trim();
+      if (titleMatch) return titleMatch;
+      if (/本名|出生|現居|退休|排字|工人/.test(cleaned)) return "人物背景";
+      if (/性格|親切|懷舊|語速|粵語|口語|停頓詞/.test(cleaned)) return "說話風格";
+      if (/興趣|飲茶|散步|觀察|遊樂場/.test(cleaned)) return "生活興趣";
+      if (/對話|邀請|茶|食個包/.test(cleaned)) return "對話示例";
+      return cleaned.split(/[，,。.!！?？]/)[0]?.slice(0, 14) || "知識主題";
+    };
+
     const trimKnowledgePoints = (points: KnowledgePoint[]) => {
       const basicFacts = points.filter((point) => point.tier === "basic_fact").slice(0, MAX_POINTS_PER_TIER);
       const deepPoints = points.filter((point) => point.tier === "deep_understanding").slice(0, MAX_POINTS_PER_TIER);
@@ -147,9 +161,17 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         .slice(0, MAX_KNOWLEDGE_POINTS)
         .map((point, index) => ({
           ...point,
+          title: point.title?.trim() || createKnowledgeTitle(point.content, point.keywords),
           id: `kp_${String(index + 1).padStart(3, "0")}`,
         }));
     };
+
+    const normalizeKnowledgePoints = (points: KnowledgePoint[]) =>
+      points.map((point, index) => ({
+        ...point,
+        title: point.title?.trim() || createKnowledgeTitle(point.content, point.keywords),
+        id: point.id || `kp_${String(index + 1).padStart(3, "0")}`,
+      }));
 
     const bgMatch = knowledgeBase.match(/【人物背景設定】([\s\S]*?)【人物知識庫摘要】/);
     const ksMatch = knowledgeBase.match(/【人物知識庫摘要】([\s\S]*?)(?:【知識點分級】|【角色對話策略】|請根據「人物背景設定」與「知識庫摘要」回答問題，不要捏造不存在的資訊。|$)/);
@@ -160,11 +182,12 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
     try {
       const raw = pointsMatch?.[1]?.trim();
       const parsed = raw ? JSON.parse(raw) : [];
-      knowledgePoints = trimKnowledgePoints(Array.isArray(parsed)
+      knowledgePoints = normalizeKnowledgePoints(Array.isArray(parsed)
         ? parsed
             .map((item, index) => ({
               id: String(item?.id || `kp_${String(index + 1).padStart(3, "0")}`),
               tier: (item?.tier === "deep_understanding" ? "deep_understanding" : "basic_fact") as KnowledgeTier,
+              title: String(item?.title || item?.topic || "").trim(),
               content: String(item?.content || "").trim(),
               keywords: Array.isArray(item?.keywords)
                 ? item.keywords.map((keyword: string) => String(keyword || "").trim()).filter(Boolean)
@@ -196,16 +219,20 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
             .replace(/\[(深度理解|基礎事實)\]/g, "")
             .replace(/（.*?）/g, "")
             .trim();
+          const [maybeTitle, ...contentParts] = content.split(/[：:]/);
+          const parsedContent = contentParts.length ? contentParts.join("：").trim() : content;
           const keywordMatch = line.match(/關鍵詞：([^｜）]+)/);
           const assessmentMatch = line.match(/評估：([^）]+)/);
+          const keywords = keywordMatch?.[1]
+            ?.split(/[、，,]/)
+            .map((item) => item.trim())
+            .filter(Boolean) || [];
           return {
             id: `kp_${String(index + 1).padStart(3, "0")}`,
             tier: tier as KnowledgeTier,
-            content,
-            keywords: keywordMatch?.[1]
-              ?.split(/[、，,]/)
-              .map((item) => item.trim())
-              .filter(Boolean) || [],
+            title: contentParts.length ? maybeTitle.trim() : createKnowledgeTitle(parsedContent, keywords),
+            content: parsedContent,
+            keywords,
             assessmentCriteria: assessmentMatch?.[1]?.trim() || "",
           };
         })
@@ -226,6 +253,10 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       answerMode,
     };
   };
+  const parsedKnowledgeData = useMemo(
+    () => parseKnowledgeBase(botConfig.knowledgeBase),
+    [botConfig.knowledgeBase]
+  );
 
   const parseSecurityConfig = (securityPrompt: string) => {
     const sharingMode = (securityPrompt.match(/【共享模式】([^\n]+)/)?.[1] || "link").trim();
@@ -454,7 +485,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       case 4:
         return (
           <CreationStep2
-            initialData={parseKnowledgeBase(botConfig.knowledgeBase)}
+            initialData={parsedKnowledgeData}
             onGenerated={(data) => {
               const combined = `
 【人物背景設定】

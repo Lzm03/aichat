@@ -11,6 +11,7 @@ type KnowledgeTier = "basic_fact" | "deep_understanding";
 type KnowledgePoint = {
   id: string;
   tier: KnowledgeTier;
+  title: string;
   content: string;
   keywords: string[];
   assessmentCriteria: string;
@@ -56,6 +57,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   const [speakingStyle, setSpeakingStyle] = useState(initialData?.speakingStyle || "文言文");
   const [answerMode, setAnswerMode] = useState(initialData?.answerMode || "引導後再回答");
   const [progress, setProgress] = useState(0);
+  const [newPointTitle, setNewPointTitle] = useState("");
   const [newPointContent, setNewPointContent] = useState("");
   const [newPointKeywords, setNewPointKeywords] = useState("");
   const [newPointAssessment, setNewPointAssessment] = useState("");
@@ -84,6 +86,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
 3. 每個知識點都要包含：
 - id：kp_001 這類遞增編號
 - tier：只能是 "basic_fact" 或 "deep_understanding"
+- title：8 到 14 個字的知識主題，不要直接複製完整長句
 - content：知識點內容
 - keywords：2 到 5 個關鍵詞
 - assessment_criteria：一句可用於判斷學生是否掌握的標準
@@ -98,6 +101,7 @@ JSON 必須符合以下結構：
     {
       "id": "kp_001",
       "tier": "basic_fact",
+      "title": "知識主題",
       "content": "知識點內容",
       "keywords": ["關鍵詞1", "關鍵詞2"],
       "assessment_criteria": "評估標準"
@@ -115,9 +119,26 @@ JSON 必須符合以下結構：
         const suffix = [keywords ? `關鍵詞：${keywords}` : "", assessment ? `評估：${assessment}` : ""]
           .filter(Boolean)
           .join("｜");
-        return `- ${point.content.trim()}${suffix ? `（${suffix}）` : ""}`;
+        return `- [${tierLabel}] ${point.title.trim()}：${point.content.trim()}${suffix ? `（${suffix}）` : ""}`;
       })
       .join("\n");
+
+  const createKnowledgeTitle = (content: string, keywords: string[] = []) => {
+    const cleaned = content
+      .replace(/^[\s「『"']+|[\s」』"']+$/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const keywordTitle = keywords.find((keyword) => keyword.length >= 2 && keyword.length <= 14);
+    if (keywordTitle) return keywordTitle;
+    const colonTitle = cleaned.match(/^([^：:，,。.!！?？]{2,14})[：:，,。.!！?？]/)?.[1]?.trim();
+    if (colonTitle) return colonTitle;
+    const nameFact = cleaned.match(/^([^，,。]{2,8})(?:本名|出生|現居|退休|性格|興趣|口頭禪|語速)/)?.[1];
+    if (/本名|出生|現居|退休|排字|工人/.test(cleaned)) return nameFact ? `${nameFact}背景` : "人物背景";
+    if (/性格|親切|懷舊|語速|粵語|口語|停頓詞/.test(cleaned)) return "說話風格";
+    if (/興趣|飲茶|散步|觀察|遊樂場/.test(cleaned)) return "生活興趣";
+    if (/對話|邀請|茶|食個包/.test(cleaned)) return "對話示例";
+    return cleaned.split(/[，,。.!！?？]/)[0]?.slice(0, 14) || "知識主題";
+  };
 
   const trimKnowledgePoints = (points: KnowledgePoint[]) => {
     const basicFacts = points.filter((point) => point.tier === "basic_fact").slice(0, MAX_POINTS_PER_TIER);
@@ -125,9 +146,17 @@ JSON 必須符合以下結構：
     const combined = [...basicFacts, ...deepPoints].slice(0, MAX_KNOWLEDGE_POINTS);
     return combined.map((point, index) => ({
       ...point,
+      title: point.title?.trim() || createKnowledgeTitle(point.content, point.keywords),
       id: `kp_${String(index + 1).padStart(3, "0")}`,
     }));
   };
+
+  const normalizeKnowledgePoints = (points: KnowledgePoint[]) =>
+    points.map((point, index) => ({
+      ...point,
+      title: point.title?.trim() || createKnowledgeTitle(point.content, point.keywords),
+      id: point.id || `kp_${String(index + 1).padStart(3, "0")}`,
+    }));
 
   const normalizeKnowledgePoint = (point: any, index: number): KnowledgePoint | null => {
     const content = String(point?.content || "").trim();
@@ -137,9 +166,11 @@ JSON 必須符合以下結構：
     const keywords = Array.isArray(point?.keywords)
       ? point.keywords.map((item: any) => String(item || "").trim()).filter(Boolean).slice(0, 5)
       : [];
+    const title = String(point?.title || point?.topic || "").trim() || createKnowledgeTitle(content, keywords);
     return {
       id: String(point?.id || `kp_${String(index + 1).padStart(3, "0")}`),
       tier,
+      title,
       content,
       keywords,
       assessmentCriteria: String(point?.assessment_criteria || point?.assessmentCriteria || "").trim(),
@@ -160,7 +191,7 @@ JSON 必須符合以下結構：
   useEffect(() => {
     setCharacterBackground(initialData?.characterBackground || "");
     setKnowledgeSummary(initialData?.knowledgeSummary || "");
-    setKnowledgePoints(initialData?.knowledgePoints || []);
+    setKnowledgePoints(normalizeKnowledgePoints(initialData?.knowledgePoints || []));
     if (initialData?.characterBackground || initialData?.knowledgeSummary) {
       setStatus("complete");
       setProgress(100);
@@ -438,20 +469,23 @@ JSON 必須符合以下結構：
       showAlert({ title: "缺少內容", message: "請先輸入知識點內容。" });
       return;
     }
+    const keywords = newPointKeywords
+      .split(/[，,、]/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 5);
     const nextPoint: KnowledgePoint = {
       id: `kp_${String(knowledgePoints.length + 1).padStart(3, "0")}`,
       tier: newPointTier,
+      title: newPointTitle.trim() || createKnowledgeTitle(content, keywords),
       content,
-      keywords: newPointKeywords
-        .split(/[，,、]/)
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .slice(0, 5),
+      keywords,
       assessmentCriteria: newPointAssessment.trim(),
     };
-    const nextPoints = trimKnowledgePoints([...knowledgePoints, nextPoint]);
+    const nextPoints = normalizeKnowledgePoints([...knowledgePoints, nextPoint]);
     setKnowledgePoints(nextPoints);
     setKnowledgeSummary(buildKnowledgeSummary(nextPoints));
+    setNewPointTitle("");
     setNewPointContent("");
     setNewPointKeywords("");
     setNewPointAssessment("");
@@ -758,7 +792,7 @@ JSON 必須符合以下結構：
                       <div className="flex items-start gap-3">
                         <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-blue-500 shadow-[0_0_0_3px_rgba(96,165,250,0.14)]" />
                         <div className="min-w-0">
-                          <p className="text-[14px] font-black tracking-tight text-slate-900 line-clamp-1">{point.content}</p>
+                          <p className="text-[14px] font-black tracking-tight text-slate-900 line-clamp-1">{point.title}</p>
                         </div>
                       </div>
                     </div>
@@ -780,7 +814,7 @@ JSON 必須符合以下結構：
                       <div className="flex items-start gap-3">
                         <Icons.lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-500" />
                         <div className="min-w-0">
-                          <p className="text-[14px] font-black tracking-tight text-slate-900 line-clamp-1">{point.content}</p>
+                          <p className="text-[14px] font-black tracking-tight text-slate-900 line-clamp-1">{point.title}</p>
                         </div>
                       </div>
                     </div>
@@ -799,7 +833,7 @@ JSON 必須符合以下結構：
                   <div className="mt-3 space-y-2">
                     {basicFacts.map((point) => (
                       <div key={point.id} className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm">
-                        {point.content}
+                        {point.title}
                       </div>
                     ))}
                   </div>
@@ -809,7 +843,7 @@ JSON 必須符合以下結構：
                   <div className="mt-3 space-y-2">
                     {deepPoints.map((point) => (
                       <div key={point.id} className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm">
-                        {point.content}
+                        {point.title}
                       </div>
                     ))}
                   </div>
@@ -833,8 +867,8 @@ JSON 必須符合以下結構：
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-start justify-between gap-2">
                                 <div>
-                                  <p className="text-[15px] font-black tracking-tight text-slate-900">{point.content}</p>
-                                  <p className="mt-0.5 text-[13px] text-slate-500">{point.assessmentCriteria || point.keywords.join("、") || "尚未補充說明"}</p>
+                                  <p className="text-[15px] font-black tracking-tight text-slate-900">{point.title}</p>
+                                  <p className="mt-0.5 text-[13px] text-slate-500">{point.content || point.assessmentCriteria || point.keywords.join("、") || "尚未補充說明"}</p>
                                 </div>
                                 <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">基礎事實</span>
                               </div>
@@ -864,10 +898,10 @@ JSON 必須符合以下結構：
                               <div className="flex flex-wrap items-start justify-between gap-2">
                                 <div>
                                   <div className="flex items-center gap-2">
-                                    <p className="text-[15px] font-black tracking-tight text-slate-900">{point.content}</p>
+                                    <p className="text-[15px] font-black tracking-tight text-slate-900">{point.title}</p>
                                     <Icons.helpCircle className="h-3.5 w-3.5 text-violet-400" />
                                   </div>
-                                  <p className="mt-0.5 text-[13px] text-slate-500">{point.assessmentCriteria || point.keywords.join("、") || "尚未補充說明"}</p>
+                                  <p className="mt-0.5 text-[13px] text-slate-500">{point.content || point.assessmentCriteria || point.keywords.join("、") || "尚未補充說明"}</p>
                                 </div>
                                 <span className="rounded-lg bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-600">深度理解</span>
                               </div>
@@ -889,8 +923,14 @@ JSON 必須符合以下結構：
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <h4 className="font-bold text-slate-800">手動新增知識點</h4>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <input
+                value={newPointTitle}
+                onChange={(e) => setNewPointTitle(e.target.value)}
+                placeholder="知識主題，例如：人物背景"
+                className="md:col-span-2 rounded-xl border border-slate-200 bg-white p-3 text-sm"
+              />
               <div className="md:col-span-2">
-                <textarea value={newPointContent} onChange={(e) => setNewPointContent(e.target.value)} rows={3} placeholder="輸入知識點內容" className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm" />
+                <textarea value={newPointContent} onChange={(e) => setNewPointContent(e.target.value)} rows={3} placeholder="補充說明，輸入完整知識點內容" className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm" />
               </div>
               <input value={newPointKeywords} onChange={(e) => setNewPointKeywords(e.target.value)} placeholder="關鍵詞，以頓號或逗號分隔" className="rounded-xl border border-slate-200 bg-white p-3 text-sm" />
               <input value={newPointAssessment} onChange={(e) => setNewPointAssessment(e.target.value)} placeholder="評估標準" className="rounded-xl border border-slate-200 bg-white p-3 text-sm" />
