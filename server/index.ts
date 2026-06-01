@@ -23,6 +23,7 @@ import uploadVideoRoute from "./api/upload-video.ts";
 import debugStorageRoute from "./api/debug-storage.ts";
 import tokenUsageRoute from "./api/token-usage.ts";
 import webmSequenceRoute from "./api/webm-sequence.ts";
+import { pool } from "./db.ts";
 import { uploadsDir } from "./lib/uploads-dir.ts";
 import { ensurePlatformTables, maybeAssignLegacyDataByEmail } from "./lib/platform-auth.ts";
 
@@ -177,6 +178,7 @@ app.use(
 
 // ⭐ Railway 會動態提供 PORT
 const PORT = process.env.PORT || 4000;
+let server: ReturnType<typeof app.listen> | null = null;
 
 async function start() {
   await ensurePlatformTables();
@@ -186,10 +188,24 @@ async function start() {
     // Keep startup healthy even if legacy migration assignment fails.
     console.warn("Legacy account assignment skipped:", error);
   }
-  app.listen(PORT, () => {
+  server = app.listen(PORT, () => {
     console.log(`Backend running at http://localhost:${PORT}`);
   });
 }
+
+async function shutdown(signal: string) {
+  console.log(`Received ${signal}, shutting down gracefully...`);
+  server?.close(async () => {
+    await pool.end().catch((error) => {
+      console.error("Failed to close database pool:", error);
+    });
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(0), 10000).unref();
+}
+
+process.once("SIGTERM", () => void shutdown("SIGTERM"));
+process.once("SIGINT", () => void shutdown("SIGINT"));
 
 start().catch((error) => {
   console.error("Backend startup failed:", error);
