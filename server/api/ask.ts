@@ -34,6 +34,25 @@ const MAX_CHAT_IMAGE_COUNT = 4;
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
+const MOCK_UPSTREAM = /^(1|true|yes|on)$/i.test(String(process.env.MOCK_UPSTREAM || "").trim());
+
+function randomInt(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+async function maybeMockModelReply(userPrompt: string): Promise<string | null> {
+  if (!MOCK_UPSTREAM) return null;
+  const delayMs = randomInt(
+    Number(process.env.MOCK_UPSTREAM_MIN_DELAY_MS || 300),
+    Number(process.env.MOCK_UPSTREAM_MAX_DELAY_MS || 3000)
+  );
+  const failureRate = Math.max(0, Math.min(1, Number(process.env.MOCK_UPSTREAM_FAILURE_RATE || 0.03)));
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+  if (Math.random() < failureRate) {
+    throw new Error("Mock upstream timeout");
+  }
+  return `mock-reply(${delayMs}ms): ${String(userPrompt || "").slice(0, 120)}`;
+}
 
 type TeachingTaskType = "email";
 type ChatImageInput = {
@@ -866,10 +885,15 @@ router.post("/ask-url", requireAuth, async (req: Request, res: Response) => {
     const selectedModelProvider = normalizeChatModelProvider(modelProvider);
     if (!url || typeof url !== "string") return res.status(400).json({ error: "缺少網址" });
     const targetUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-    const pageRes = await fetch(targetUrl, { headers: { "User-Agent": "Mozilla/5.0 (compatible; AI-Bot/1.0)" } });
-    if (!pageRes.ok) return res.status(400).json({ error: `網址抓取失敗：${pageRes.status}` });
-    const html = await pageRes.text();
-    const pageText = extractTextFromHtml(html).slice(0, 18000);
+    let pageText = "";
+    if (MOCK_UPSTREAM) {
+      pageText = `Mock page content from ${targetUrl}`.slice(0, 18000);
+    } else {
+      const pageRes = await fetch(targetUrl, { headers: { "User-Agent": "Mozilla/5.0 (compatible; AI-Bot/1.0)" } });
+      if (!pageRes.ok) return res.status(400).json({ error: `網址抓取失敗：${pageRes.status}` });
+      const html = await pageRes.text();
+      pageText = extractTextFromHtml(html).slice(0, 18000);
+    }
     if (!pageText) return res.status(400).json({ error: "網址內容無可解析文字" });
     const reply = await askModelOnce(selectedModelProvider, systemPrompt, pageText);
     await consumeUserCredits(authUser!.id, "ask_url", 2, { url: targetUrl, modelProvider: selectedModelProvider });
@@ -1043,7 +1067,9 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
       let reply = "";
       try {
         if (isDebugLogEnabled) console.log("[ask] requesting model reply");
-        reply = await askModelOnce(selectedModelProvider, systemPrompt, normalizedPrompt, chatImages);
+        reply =
+          (await maybeMockModelReply(normalizedPrompt)) ??
+          (await askModelOnce(selectedModelProvider, systemPrompt, normalizedPrompt, chatImages));
         if (isDebugLogEnabled) console.log("[ask] model reply received length=%s", reply.length);
       } catch (error) {
         throw remapModelProviderError(error);
@@ -1059,9 +1085,14 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     try {
-      await askModelStream(selectedModelProvider, systemPrompt, normalizedPrompt, (token: string) => {
-        res.write(`data:${token}\n\n`);
-      }, chatImages);
+      const mocked = await maybeMockModelReply(normalizedPrompt);
+      if (mocked !== null) {
+        res.write(`data:${mocked}\n\n`);
+      } else {
+        await askModelStream(selectedModelProvider, systemPrompt, normalizedPrompt, (token: string) => {
+          res.write(`data:${token}\n\n`);
+        }, chatImages);
+      }
     } catch (error) {
       throw remapModelProviderError(error);
     }

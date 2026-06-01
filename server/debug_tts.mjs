@@ -1,0 +1,16 @@
+import { spawn } from 'child_process';
+const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+const env={...process.env,MOCK_UPSTREAM:'true',MOCK_UPSTREAM_MIN_DELAY_MS:'100',MOCK_UPSTREAM_MAX_DELAY_MS:'200',MOCK_UPSTREAM_FAILURE_RATE:'0',LOG_LEVEL:'debug'};
+const sp=spawn('npm',['run','start'],{cwd:'/Users/liuzhiming/Desktop/aichat/server',env,stdio:['ignore','pipe','pipe']});
+let ready=false;let out='';let err='';
+sp.stdout.on('data',d=>{const t=d.toString(); out+=t; if(t.includes('Backend running at')) ready=true;});
+sp.stderr.on('data',d=>{err+=d.toString();});
+for(let i=0;i<240 && !ready;i++) await sleep(250);
+const login=await fetch('http://127.0.0.1:4000/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:'lzm200303@gmail.com',password:'Uzumymw123'})});
+const lj=await login.json();
+const token=lj.token;
+const tts=await fetch('http://127.0.0.1:4000/api/tts',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({text:'hello',voiceId:'mock-voice-1',usageType:'chat_voice'})});
+console.log('status',tts.status,'body',await tts.text());
+console.log('OUT_TAIL',out.slice(-2000));
+console.log('ERR_TAIL',err.slice(-2000));
+sp.kill('SIGTERM');

@@ -9,6 +9,7 @@ dotenv.config({ path: path.resolve(__dirname, ".env"), override: true });
 import express from "express";
 import cors from "cors";
 import fs from "fs";
+import { Readable } from "stream";
 
 import botsRoute from "./api/bots.ts";
 import animationRoute from "./api/animation.ts";
@@ -111,8 +112,7 @@ app.get("/api/media-proxy", async (req, res) => {
     if (contentType) res.set("Content-Type", contentType);
     res.set("Cache-Control", cacheControl || "public, max-age=3600");
 
-    const arrayBuffer = await upstream.arrayBuffer();
-    res.send(Buffer.from(arrayBuffer));
+    Readable.fromWeb(upstream.body as any).pipe(res);
   } catch (error) {
     console.error("Failed to proxy media:", error);
     res.status(502).json({ error: "Failed to proxy media" });
@@ -180,7 +180,12 @@ const PORT = process.env.PORT || 4000;
 
 async function start() {
   await ensurePlatformTables();
-  await maybeAssignLegacyDataByEmail("lzm200303@gmail.com");
+  try {
+    await maybeAssignLegacyDataByEmail("lzm200303@gmail.com");
+  } catch (error) {
+    // Keep startup healthy even if legacy migration assignment fails.
+    console.warn("Legacy account assignment skipped:", error);
+  }
   app.listen(PORT, () => {
     console.log(`Backend running at http://localhost:${PORT}`);
   });

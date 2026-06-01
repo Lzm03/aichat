@@ -115,10 +115,11 @@ async function createVideoRequest(params: {
         ? `${params.prompt}\n\nLoop frame constraint: treat the source image as both the first-frame anchor and the intended final-frame target. The clip must animate away from this pose and return to the same still pose by the final frame.`
         : params.prompt,
       model: "grok-imagine-video",
-      image: { url: params.imageUrl },
     };
     if (loopFrameMode) {
       payload.reference_images = [{ url: params.imageUrl }, { url: params.imageUrl }];
+    } else {
+      payload.image = { url: params.imageUrl };
     }
     if (params.duration) payload.duration = Number(params.duration);
     const normalizedAspectRatio = normalizeAspectRatio(params.aspectRatio);
@@ -139,7 +140,12 @@ async function createVideoRequest(params: {
 
     const text = await res.text();
     if (!res.ok) throw new Error(text || "create video request failed");
-    const json = JSON.parse(text);
+    let json: any = null;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      throw new Error(`invalid grok create response: ${text.slice(0, 180)}`);
+    }
     if (!json?.request_id) throw new Error("missing request_id");
     return json.request_id as string;
   };
@@ -169,7 +175,7 @@ async function fetchVideoResult(requestId: string): Promise<{ status: "completed
   } catch {
     return {
       status: "failed",
-      error: text || "invalid upstream response",
+      error: `invalid grok polling response: ${text.slice(0, 180) || "empty response"}`,
     };
   }
   if (data.video?.url) return { status: "completed", url: data.video.url };

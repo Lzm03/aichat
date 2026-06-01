@@ -16,6 +16,11 @@ import {
 } from "../lib/platform-auth.ts";
 
 const router = express.Router();
+const MOCK_UPSTREAM = /^(1|true|yes|on)$/i.test(String(process.env.MOCK_UPSTREAM || "").trim());
+
+function randomInt(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 
 async function resolveTtsActor(req: express.Request, sharedBotId?: string) {
   const token = getBearerToken(req);
@@ -84,6 +89,14 @@ const collectVoices = (node: any, bucket: any[]) => {
 
 router.get("/voices", async (req, res) => {
   try {
+    if (MOCK_UPSTREAM) {
+      return res.json({
+        voices: [
+          { voice_id: "mock-voice-1", name: "Mock Voice 1" },
+          { voice_id: "mock-voice-2", name: "Mock Voice 2" },
+        ],
+      });
+    }
     const token = process.env.MINIMAX_TOKEN;
 
     const result = await fetch("https://api-bj.minimaxi.com/v1/get_voice", {
@@ -118,6 +131,23 @@ router.post("/tts", async (req, res) => {
     const { text, voiceId, usageType = "chat_voice", sharedBotId = "" } = req.body;
     const actor = await resolveTtsActor(req, String(sharedBotId || ""));
     const authUser = actor.user;
+    if (MOCK_UPSTREAM) {
+      const delayMs = randomInt(
+        Number(process.env.MOCK_UPSTREAM_MIN_DELAY_MS || 300),
+        Number(process.env.MOCK_UPSTREAM_MAX_DELAY_MS || 3000)
+      );
+      const failureRate = Math.max(0, Math.min(1, Number(process.env.MOCK_UPSTREAM_FAILURE_RATE || 0.03)));
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      if (Math.random() < failureRate) {
+        throw new Error("Mock upstream timeout");
+      }
+      const mockAudio = Buffer.from("ID3");
+      res.writeHead(200, {
+        "Content-Type": "audio/mpeg",
+        "Content-Length": mockAudio.length,
+      });
+      return res.end(mockAudio);
+    }
     await assertUserCanSpend(authUser.id, 2);
     if (usageType === "preview_audition") {
       await ensureFeatureAvailable(authUser.id, "voice_audition_preview", 1);
