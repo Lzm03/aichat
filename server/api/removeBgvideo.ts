@@ -22,6 +22,8 @@ const upload = multer({ dest: uploadsDir });
 const API_KEY = process.env.VIDEO_BG_REMOVER_KEY;
 const PUBLIC_BASE = process.env.BACKEND_URL; // e.g. https://xxxx.ngrok-free.app
 const isDebugLogEnabled = process.env.LOG_LEVEL === "debug";
+const REMOVE_BG_TIMEOUT_MS = Number.parseInt(process.env.VIDEO_BG_TIMEOUT_MS || "", 10) || 600000;
+const REMOVE_BG_POLL_INTERVAL_MS = Number.parseInt(process.env.VIDEO_BG_POLL_INTERVAL_MS || "", 10) || 3000;
 
 if (!API_KEY) console.error("❌ Missing VIDEO_BG_REMOVER_KEY");
 if (!PUBLIC_BASE) console.error("❌ Missing BACKEND_URL");
@@ -29,11 +31,12 @@ if (!PUBLIC_BASE) console.error("❌ Missing BACKEND_URL");
 /* ---------------- Poll Status ---------------- */
 async function pollStatus(
   jobId: string,
-  timeoutMs = 120000,
-  uploadedStuckLimit = 25
+  timeoutMs = REMOVE_BG_TIMEOUT_MS,
+  uploadedStuckLimit = Math.ceil(90000 / REMOVE_BG_POLL_INTERVAL_MS)
 ): Promise<string> {
   const startedAt = Date.now();
   let uploadedCount = 0;
+  let lastStatus = "unknown";
   while (Date.now() - startedAt < timeoutMs) {
     const statusRes = await fetch(
       `https://api.videobgremover.com/v1/jobs/${jobId}/status`,
@@ -45,20 +48,22 @@ async function pollStatus(
       statusJson = JSON.parse(raw);
     } catch {
       if (isDebugLogEnabled) console.log("⚠️ Status non-JSON response, keep polling");
-      await new Promise((r) => setTimeout(r, 2000));
+      await new Promise((r) => setTimeout(r, REMOVE_BG_POLL_INTERVAL_MS));
       continue;
     }
 
+    lastStatus = String(statusJson.status || "unknown");
     if (statusJson.status === "completed") {
       if (isDebugLogEnabled) console.log("✅ Remove BG Done");
-      return (
+      const processedUrl =
         statusJson.processed_video_url ||
         statusJson.processed_png_sequence_url ||
         statusJson.processed_png_zip_url ||
         statusJson.processed_zip_url ||
         statusJson.processed_archive_url ||
-        statusJson.processed_url
-      ); // ⚠️ 臨時 URL
+        statusJson.processed_url;
+      if (processedUrl) return processedUrl; // ⚠️ 臨時 URL
+      throw new Error("Remove BG completed without processed URL");
     }
 
     if (statusJson.status === "failed") {
@@ -75,9 +80,9 @@ async function pollStatus(
     }
 
     if (isDebugLogEnabled) console.log("⏳ Processing:", statusJson.status);
-    await new Promise((r) => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, REMOVE_BG_POLL_INTERVAL_MS));
   }
-  throw new Error("Remove BG polling timeout");
+  throw new Error(`Remove BG polling timeout after ${Math.round(timeoutMs / 1000)}s (last status: ${lastStatus})`);
 }
 
 /* ---------------- Download video and save locally ---------------- */
@@ -256,7 +261,7 @@ router.post("/remove-bg", requireAuth, upload.single("file"), async (req, res) =
             detail: retry,
           });
         }
-        temporaryUrl = await pollStatus(jobId, 120000, 25);
+        temporaryUrl = await pollStatus(jobId, REMOVE_BG_TIMEOUT_MS, Math.ceil(90000 / REMOVE_BG_POLL_INTERVAL_MS));
       } else {
         throw e;
       }

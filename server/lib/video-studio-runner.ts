@@ -185,15 +185,19 @@ async function fetchVideoResult(requestId: string): Promise<{ status: "completed
   return { status: "processing" };
 }
 
-async function pollVideoResult(requestId: string, timeoutMs = 240000) {
+const VIDEO_GENERATION_TIMEOUT_MS = Number.parseInt(process.env.VIDEO_GENERATION_TIMEOUT_MS || "", 10) || 480000;
+const VIDEO_GENERATION_POLL_INTERVAL_MS =
+  Number.parseInt(process.env.VIDEO_GENERATION_POLL_INTERVAL_MS || "", 10) || 2000;
+
+async function pollVideoResult(requestId: string, timeoutMs = VIDEO_GENERATION_TIMEOUT_MS) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     const result = await fetchVideoResult(requestId);
     if (result.status === "completed" && result.url) return result.url;
     if (result.status === "failed") throw new Error(toErrorMessage(result.error || "video generation failed"));
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, VIDEO_GENERATION_POLL_INTERVAL_MS));
   }
-  throw new Error("video generation timeout");
+  throw new Error(`video generation timeout after ${Math.round(timeoutMs / 1000)}s`);
 }
 
 const REMOVE_BG_TIMEOUT_MS = Number.parseInt(process.env.VIDEO_BG_TIMEOUT_MS || "", 10) || 600000;

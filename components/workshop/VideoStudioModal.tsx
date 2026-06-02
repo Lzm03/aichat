@@ -704,6 +704,7 @@ export default function VideoStudioModal({
   /* ========= Step 2: 轮询生成状态 ========= */
   async function pollVideoStatus(requestId: string, type: string) {
     let attempts = 0;
+    const maxAttempts = 240;
 
     return new Promise<string>((resolve, reject) => {
       const timer = setInterval(async () => {
@@ -732,9 +733,9 @@ export default function VideoStudioModal({
             reject(new Error(`${type} 生成失败`));
           }
 
-          if (attempts > 120) {
+          if (attempts > maxAttempts) {
             clearInterval(timer);
-            reject(new Error(`${type} 超时`));
+            reject(new Error(`${type} 生成等待超時（約 ${Math.round((maxAttempts * 2) / 60)} 分鐘）`));
           }
         } catch (error) {
           clearInterval(timer);
