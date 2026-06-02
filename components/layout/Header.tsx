@@ -112,20 +112,19 @@ export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, onNotifi
   const canViewProviderUsage = currentUser?.email?.trim().toLowerCase() === "lzm200303@gmail.com";
 
   return (
-    <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200/80 px-3 py-3 sm:px-5 lg:px-8 lg:py-4 flex items-center justify-between gap-2 sticky top-0 z-20">
-      <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
+    <header className="sticky top-0 z-20 flex flex-col gap-2 border-b border-slate-200/80 bg-white/80 px-3 py-3 backdrop-blur-sm sm:px-5 lg:flex-row lg:items-center lg:justify-between lg:gap-2 lg:px-8 lg:py-4">
+      <div className="flex min-w-0 items-center justify-between gap-2 lg:flex-1 lg:justify-start sm:gap-4">
         <button 
           onClick={onMenuClick}
           className={`${forceMobileMenu ? "inline-flex" : "lg:hidden"} shrink-0 p-2 -ml-2 text-slate-600 hover:text-indigo-600 active:bg-slate-100 rounded-lg`}
         >
           <Icons.menu className="w-6 h-6" />
         </button>
-        <div className="min-w-0">
-          <h2 className="text-xs leading-snug text-slate-500 sm:text-sm">{getTimeGreeting()}, {currentUser?.fullName || '老師'}</h2>
-          <p className="text-xl font-bold leading-tight text-[#1E293B] break-words sm:text-2xl">{pageTitle}</p>
+        <div className="hidden min-w-0 lg:block">
+          <h2 className="truncate text-xs leading-snug text-slate-500 sm:text-sm">{getTimeGreeting()}, {currentUser?.fullName || '老師'}</h2>
+          <p className="truncate text-2xl font-bold leading-tight text-[#1E293B]">{pageTitle}</p>
         </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2 lg:ml-auto">
         {primaryFeatures.length ? (
           <div className="relative" ref={featureMenuTriggerRef}>
             <button
@@ -210,6 +209,11 @@ export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, onNotifi
             {isUserMenuOpen && <UserMenu currentUser={currentUser} />}
           </AnimatePresence>
         </div>
+      </div>
+      </div>
+      <div className="min-w-0 pl-10 lg:hidden">
+        <h2 className="truncate whitespace-nowrap text-xs leading-snug text-slate-500 sm:text-sm">{getTimeGreeting()}, {currentUser?.fullName || '老師'}</h2>
+        <p className="truncate whitespace-nowrap text-2xl font-black leading-tight text-[#1E293B] sm:text-3xl">{pageTitle}</p>
       </div>
     </header>
   );
