@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from '../icons';
-import { Target, ArrowLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import { Target, ArrowLeft, ChevronRight, AlertCircle, BookOpen, CheckCircle2, Sparkles, X } from 'lucide-react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
+import { readAuthSession } from '../../utils/auth';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 // Mock Data
 const classList = [
@@ -27,6 +29,22 @@ const studentData = [
   { id: 's4', name: '林美玲', scoreRate: 55, diff: 10, avatar: '林' },
 ];
 
+const classAssessmentRows = [
+  { id: '03', name: '學生 03', mastery: 92, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'knowledge', statusText: '知識溢出' },
+  { id: '04', name: '學生 04', mastery: 92, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'knowledge', statusText: '知識溢出' },
+  { id: '13', name: '學生 13', mastery: 92, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'knowledge', statusText: '知識溢出' },
+  { id: '14', name: '學生 14', mastery: 92, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'knowledge', statusText: '知識溢出' },
+  { id: '23', name: '學生 23', mastery: 91, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'normal', statusText: '正常探索' },
+  { id: '08', name: '學生 08', mastery: 74, output: 'L2', outputText: '正確回憶', interaction: 'Y2 持續互動', rounds: 5, mode: '引導回答', status: 'warning', statusText: '卡關預警' },
+  { id: '17', name: '學生 17', mastery: 68, output: 'L1', outputText: '簡短回應', interaction: 'Y1 初步參與', rounds: 3, mode: '被動回覆', status: 'warning', statusText: '卡關預警' },
+];
+
+const knowledgeTracking = [
+  { level: 'L1 基礎事實', state: '已掌握', note: '學生能正確回答', detail: '出生地、求學經歷、行醫經歷', tone: 'green' },
+  { level: 'L2 理解關聯', state: '已掌握', note: '學生能正確回答', detail: '棄醫從革原因、上書李鴻章、建立興中會', tone: 'green' },
+  { level: 'L3 深度遷移', state: '深度理解', note: '已建立知識網絡，形成關聯', detail: '三民主義內涵、革命對後世影響', tone: 'blue' },
+];
+
 const radarData = [
   { subject: '記憶', A: 90, fullMark: 100 },
   { subject: '理解', A: 85, fullMark: 100 },
@@ -37,10 +55,16 @@ const radarData = [
 ];
 
 export const StudentLearningReportCard = () => {
+  const canViewClassAssessmentDetail =
+    readAuthSession()?.user?.email?.trim().toLowerCase() === 'lzm200303@gmail.com';
   const [viewLevel, setViewLevel] = useState<'overview' | 'class' | 'student'>('overview');
   const [selectedClass, setSelectedClass] = useState<any | null>(null);
   const [selectedBloom, setSelectedBloom] = useState<string | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<any | null>(studentData[0]);
+  const [isClassDetailOpen, setIsClassDetailOpen] = useState(false);
+  const [detailFilter, setDetailFilter] = useState<'all' | 'warning' | 'knowledge' | 'normal'>('all');
+  const [selectedDetailStudent, setSelectedDetailStudent] = useState<any | null>(null);
+  useBodyScrollLock(isClassDetailOpen);
 
   const handleClassClick = (cls: any) => {
     setSelectedClass(cls);
@@ -60,6 +84,14 @@ export const StudentLearningReportCard = () => {
   const handleBackToClass = () => {
     setViewLevel('class');
     setSelectedBloom(null);
+  };
+
+  const filteredAssessmentRows = classAssessmentRows.filter((row) => detailFilter === 'all' || row.status === detailFilter);
+
+  const openClassDetail = () => {
+    if (!canViewClassAssessmentDetail) return;
+    setSelectedDetailStudent(null);
+    setIsClassDetailOpen(true);
   };
 
   return (
@@ -110,6 +142,26 @@ export const StudentLearningReportCard = () => {
                 </div>
               ))}
             </div>
+            {canViewClassAssessmentDetail && (
+              <button
+                type="button"
+                onClick={openClassDetail}
+                className="mt-4 w-full rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4 text-left transition-all hover:border-indigo-200 hover:bg-indigo-50"
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm">
+                      <BookOpen className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="font-black text-slate-900">全班評估明細表</p>
+                      <p className="mt-1 text-xs font-medium text-slate-500">深度檢視學生知識點交互狀態與品質</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-indigo-400" />
+                </div>
+              </button>
+            )}
           </motion.div>
         )}
 
@@ -282,6 +334,179 @@ export const StudentLearningReportCard = () => {
                 </div>
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {canViewClassAssessmentDetail && isClassDetailOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onWheel={(event) => event.stopPropagation()}
+            onTouchMove={(event) => event.stopPropagation()}
+            className="fixed inset-0 z-[120] bg-slate-950/35 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ y: 24, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 24, opacity: 0 }}
+              className="absolute inset-3 overflow-hidden rounded-[28px] bg-white shadow-2xl md:inset-6"
+            >
+              <div className="relative h-full">
+                <div className={`h-full min-w-0 overflow-y-auto transition duration-300 ${
+                  selectedDetailStudent ? 'pointer-events-none blur-[0.5px] brightness-95' : ''
+                }`}>
+                  <div className="sticky top-0 z-10 border-b border-slate-100 bg-white/95 px-6 py-5 backdrop-blur">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h2 className="text-2xl font-black tracking-tight text-slate-900">全班評估明細表</h2>
+                        <p className="mt-1 text-sm font-medium text-slate-500">深度檢視學生的知識點交互狀態與品質</p>
+                      </div>
+                      {!selectedDetailStudent && (
+                        <button
+                          type="button"
+                          onClick={() => setIsClassDetailOpen(false)}
+                          className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                        >
+                          <X className="h-5 w-5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-6 px-6 py-6">
+                    <div className="grid gap-4 rounded-2xl border border-slate-100 bg-slate-50/70 p-5 lg:grid-cols-2">
+                      <div>
+                        <div className="flex items-center gap-2 text-sm font-black text-slate-800">
+                          <Sparkles className="h-4 w-4 text-indigo-500" />
+                          輸出品質評級說明
+                        </div>
+                        <p className="mt-2 text-sm text-slate-500">依學生回答的完整度、關聯性與思考深度綜合評估。</p>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {['L0: 偏離主題', 'L1: 簡短回應', 'L2: 正確回憶', 'L3: 深入連結'].map((item) => (
+                            <span key={item} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700">{item}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="border-t border-slate-200 pt-5 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+                        <div className="flex items-center gap-2 text-sm font-black text-slate-800">
+                          <AlertCircle className="h-4 w-4 text-amber-500" />
+                          互動深度說明
+                        </div>
+                        <p className="mt-2 text-sm text-slate-500">反映學生在本次學習中主動探索與持續參與的程度。</p>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {['Y1: 初步參與', 'Y2: 持續互動', 'Y3: 深入探索', 'Y4: 高度投入'].map((item) => (
+                            <span key={item} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700">{item}</span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-3">
+                      {[
+                        { key: 'all', label: '全部學生 (30)' },
+                        { key: 'warning', label: '🚨 卡關預警 (3)' },
+                        { key: 'knowledge', label: '✨ 知識溢出 (6)' },
+                        { key: 'normal', label: '✅ 正常探索 (21)' },
+                      ].map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => setDetailFilter(item.key as any)}
+                          className={`rounded-xl border px-5 py-3 text-sm font-black transition ${
+                            detailFilter === item.key
+                              ? 'border-slate-900 bg-slate-900 text-white shadow-lg'
+                              : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+                      <div className="grid grid-cols-[1.2fr_0.8fr_1fr_1.1fr_1fr_1fr] gap-4 border-b border-slate-100 bg-slate-50 px-5 py-4 text-sm font-black text-slate-500">
+                        <span>學生</span>
+                        <span>總掌握度 ▼</span>
+                        <span>輸出品質</span>
+                        <span>互動深度</span>
+                        <span>參與模式</span>
+                        <span>狀態</span>
+                      </div>
+                      <div className="divide-y divide-slate-100">
+                        {filteredAssessmentRows.map((row) => (
+                          <button
+                            key={row.id}
+                            type="button"
+                            onClick={() => setSelectedDetailStudent(row)}
+                            className="grid w-full grid-cols-[1.2fr_0.8fr_1fr_1.1fr_1fr_1fr] items-center gap-4 px-5 py-5 text-left transition hover:bg-indigo-50/40"
+                          >
+                            <span className="flex items-center gap-3">
+                              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-50 text-sm font-black text-indigo-600">{row.id}</span>
+                              <span className="font-black text-slate-800">{row.name}</span>
+                            </span>
+                            <span className="text-lg font-black text-slate-800">{row.mastery}%</span>
+                            <span className="font-bold text-slate-700"><b className="mr-2 rounded-md bg-emerald-50 px-2 py-1 text-emerald-700">{row.output}</b>{row.outputText}</span>
+                            <span className="font-bold text-slate-700">{row.interaction}<br /><small className="font-semibold text-slate-400">({row.rounds}輪)</small></span>
+                            <span className="w-fit rounded-lg bg-emerald-50 px-3 py-1.5 text-sm font-black text-emerald-700">{row.mode}</span>
+                            <span className={`font-black ${row.status === 'warning' ? 'text-rose-600' : row.status === 'knowledge' ? 'text-emerald-600' : 'text-slate-500'}`}>{row.statusText}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <AnimatePresence>
+                  {selectedDetailStudent && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="absolute inset-0 z-10 bg-slate-900/8"
+                    />
+                  )}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                  {selectedDetailStudent && (
+                    <motion.aside
+                      initial={{ x: 460, opacity: 0.9 }}
+                      animate={{ x: 0 }}
+                      exit={{ x: 460, opacity: 0.9 }}
+                      transition={{ type: "spring", stiffness: 260, damping: 30 }}
+                      className="absolute inset-y-0 right-0 z-20 w-full overflow-y-auto border-l border-slate-100 bg-white shadow-[-18px_0_40px_rgba(15,23,42,0.18)] md:w-[460px]"
+                    >
+                      <div className="flex items-start justify-between border-b border-slate-100 px-6 py-6">
+                        <div>
+                          <h3 className="text-xl font-black text-slate-900">{selectedDetailStudent.name} — 知識掌握追蹤</h3>
+                          <p className="mt-1 text-sm font-bold text-slate-500">總掌握度 {selectedDetailStudent.mastery}%</p>
+                        </div>
+                        <button type="button" onClick={() => setSelectedDetailStudent(null)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                          <X className="h-5 w-5" />
+                        </button>
+                      </div>
+                      <div className="space-y-5 p-6">
+                        {knowledgeTracking.map((item) => (
+                          <div key={item.level} className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+                            <h4 className="font-black text-slate-900">【{item.level}】</h4>
+                            <div className="mt-4 flex items-start gap-3">
+                              <span className={`mt-1 h-3 w-3 rounded-full ${item.tone === 'green' ? 'bg-emerald-400' : 'bg-indigo-500'} shadow-[0_0_0_4px_rgba(99,102,241,0.08)]`} />
+                              <div>
+                                <p className="font-black text-slate-800">{item.state} <span className="text-sm font-medium text-slate-400">({item.note})</span></p>
+                                <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">{item.detail}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </motion.aside>
+                  )}
+                </AnimatePresence>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
