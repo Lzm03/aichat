@@ -865,64 +865,66 @@ export default function VideoStudioModal({
 
   /* ========= UI ========= */
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="flex h-[90vh] w-[90vw] overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.16)]">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-0">
+      <div className="flex h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.16)] sm:h-[90vh] sm:w-[90vw] lg:flex-row">
 
         {/* ================= 左侧设置 ================= */}
-        <aside className="w-[380px] overflow-y-auto border-r border-slate-200 bg-[#FAFCFF] p-7">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-3">
-                <h2 className="text-[28px] font-black tracking-[-0.04em] text-[#1E293B]">影片工作室</h2>
-                <button
-                  ref={hintButtonRef}
-                  type="button"
-                  onMouseEnter={() => setShowHint(true)}
-                  onMouseLeave={() => setShowHint(false)}
-                  className="flex h-4 w-4 items-center justify-center rounded-full border border-[#CBD5E1] bg-white text-[8px] font-bold text-[#64748B] transition hover:border-[#94A3B8] hover:text-[#475569]"
-                >
-                  i
-                </button>
+        <aside className="flex max-h-[58vh] w-full shrink-0 flex-col overflow-hidden border-b border-slate-200 bg-[#FAFCFF] lg:h-full lg:max-h-none lg:w-[380px] lg:border-b-0 lg:border-r">
+          <div className="min-h-0 flex-1 overflow-y-auto p-5 pb-4 sm:p-7 sm:pb-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-[24px] font-black tracking-[-0.04em] text-[#1E293B] sm:text-[28px]">影片工作室</h2>
+                  <button
+                    ref={hintButtonRef}
+                    type="button"
+                    onMouseEnter={() => setShowHint(true)}
+                    onMouseLeave={() => setShowHint(false)}
+                    className="flex h-4 w-4 items-center justify-center rounded-full border border-[#CBD5E1] bg-white text-[8px] font-bold text-[#64748B] transition hover:border-[#94A3B8] hover:text-[#475569]"
+                  >
+                    i
+                  </button>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={requestClose}
+                className="rounded-2xl p-2 text-[#94A3B8] transition hover:bg-white hover:text-[#64748B]"
+              >
+                ×
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={requestClose}
-              className="rounded-2xl p-2 text-[#94A3B8] transition hover:bg-white hover:text-[#64748B]"
-            >
-              ×
-            </button>
-          </div>
 
 
-          <div className="mt-6 rounded-[28px] border border-[#E2E8F0] bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
-            <div className="flex items-center justify-between gap-3">
-              <label className="text-sm font-semibold tracking-[0.01em] text-[#334155]">生成照片</label>
-            </div>
-            <div className="mt-4 rounded-[24px] bg-[#F8FBFF] p-3">
-              {videoSourceImage ? (
-                <div className="relative overflow-hidden rounded-[20px] bg-[#EEF4FB]">
-                  <img
-                    src={videoSourceImage}
-                    alt="生成照片預覽"
-                    className="h-[220px] w-full object-contain bg-[#EAF1F8]"
-                  />
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-[#F8FBFF] via-[#F8FBFF]/92 to-transparent px-4 py-4">
+            <div className="mt-5 rounded-[24px] border border-[#E2E8F0] bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.06)] sm:mt-6 sm:rounded-[28px] sm:p-4">
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-sm font-semibold tracking-[0.01em] text-[#334155]">生成照片</label>
+              </div>
+              <div className="mt-4 rounded-[24px] bg-[#F8FBFF] p-3">
+                {videoSourceImage ? (
+                  <div className="relative overflow-hidden rounded-[20px] bg-[#EEF4FB]">
+                    <img
+                      src={videoSourceImage}
+                      alt="生成照片預覽"
+                      className="h-[150px] w-full object-contain bg-[#EAF1F8] sm:h-[220px]"
+                    />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-[#F8FBFF] via-[#F8FBFF]/92 to-transparent px-4 py-4">
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div className="flex h-[220px] w-full flex-col items-center justify-center rounded-[20px] border border-dashed border-[#CBD5E1] bg-white px-6 text-center">
-                  <div className="text-lg font-bold tracking-[-0.03em] text-[#1E293B]">尚未設定 Avatar</div>
-                  <div className="mt-2 text-sm leading-6 text-[#64748B]">
-                    請先回到第一步設定角色頭像，影片工作室會直接使用那張照片。
+                ) : (
+                  <div className="flex h-[150px] w-full flex-col items-center justify-center rounded-[20px] border border-dashed border-[#CBD5E1] bg-white px-6 text-center sm:h-[220px]">
+                    <div className="text-lg font-bold tracking-[-0.03em] text-[#1E293B]">尚未設定 Avatar</div>
+                    <div className="mt-2 text-sm leading-6 text-[#64748B]">
+                      請先回到第一步設定角色頭像，影片工作室會直接使用那張照片。
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
 
           {/* 按钮 */}
-          <div className="mt-7 border-t border-[#E2E8F0] pt-5">
+          <div className="shrink-0 border-t border-[#E2E8F0] bg-white/92 p-4 shadow-[0_-12px_24px_rgba(15,23,42,0.06)] backdrop-blur sm:p-5 lg:bg-[#FAFCFF]">
             <button
               onClick={() => generateAll(false)}
               className={`w-full py-3 rounded-xl font-semibold ${
@@ -964,11 +966,11 @@ export default function VideoStudioModal({
         </aside>
 
         {/* ================= 右侧预览区 ================= */}
-        <main className="flex-1 overflow-y-auto bg-[#F8FAFC] p-6">
+        <main className="min-h-0 flex-1 overflow-y-auto bg-[#F8FAFC] p-4 sm:p-6">
           {hasPreviewStage && (
             <div className="space-y-5">
               {loading && (
-                <div className="flex items-center justify-between rounded-2xl border border-[#DBEAFE] bg-white px-5 py-4 shadow-sm">
+                <div className="flex flex-col gap-3 rounded-2xl border border-[#DBEAFE] bg-white px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-5">
                   <div>
                     <div className="text-sm font-semibold text-[#1E293B]">
                       生成中 {Math.max(1, Math.min(100, Math.round(progress)))}%
@@ -981,7 +983,7 @@ export default function VideoStudioModal({
                 </div>
               )}
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 {previewCards.map((item) => {
                   const status = previewStatus[item.key];
                   const isReady = (status === "ready" || status === "remove_bg_done") && item.src;
@@ -1021,7 +1023,7 @@ export default function VideoStudioModal({
                             <SequenceOrVideo src={item.src} />
                           </div>
                         ) : (
-                          <div className="relative h-[276px] overflow-hidden rounded-2xl border border-[#E2E8F0] bg-[#F8F8F6]">
+                          <div className="relative h-[240px] overflow-hidden rounded-2xl border border-[#E2E8F0] bg-[#F8F8F6] sm:h-[276px]">
                             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.88)_0%,rgba(248,250,252,0.92)_72%,rgba(241,245,249,0.96)_100%)]" />
                             {videoSourceImage ? (
                               <img
@@ -1086,7 +1088,7 @@ export default function VideoStudioModal({
 
           {/* 初始界面 */}
           {!hasPreviewStage && (
-            <div className="text-gray-500 text-center mt-20">
+            <div className="text-gray-500 text-center mt-12 sm:mt-20">
               <div className="text-4xl mb-3">🎬</div>
               <div className="font-semibold text-lg">影片準備開始</div>
               <div>設定左側參數後開始生成</div>

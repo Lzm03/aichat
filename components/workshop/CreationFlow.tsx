@@ -612,7 +612,7 @@ const handleDeleteBot = async () => {
       </div>
 
       {/* mobile 预览按钮 */}
-      <div className="lg:hidden fixed bottom-6 right-6 z-40">
+      <div className="hidden lg:hidden fixed bottom-6 right-6 z-40">
         <motion.button
           whileTap={{ scale: 0.95 }}
           onClick={() => setIsPreviewModalOpen(true)}

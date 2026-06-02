@@ -23,6 +23,7 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
   const [zoom, setZoom] = useState(1);
   const [aspect, setAspect] = useState<string>("16:9");
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [cropOffset, setCropOffset] = useState({ x: 0, y: 0 });
   const [cropSize, setCropSize] = useState({ w: 0, h: 0 });
   const [imageNatural, setImageNatural] = useState({ w: 0, h: 0 });
   const [viewport, setViewport] = useState({ w: 0, h: 0 });
@@ -34,6 +35,21 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
     active: false,
     startX: 0,
     startY: 0,
+  });
+  const resizeRef = useRef<{
+    active: boolean;
+    handle: string;
+    startX: number;
+    startY: number;
+    startW: number;
+    startH: number;
+  }>({
+    active: false,
+    handle: "",
+    startX: 0,
+    startY: 0,
+    startW: 0,
+    startH: 0,
   });
 
   useBodyScrollLock(true);
@@ -74,11 +90,24 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
 
   const fixedAspect = aspectRatios[aspect];
   const imageScale = useMemo(() => {
-    if (!imageNatural.w || !imageNatural.h || !cropSize.w || !cropSize.h) return 1;
-    // Use "cover" against crop box to avoid tiny image-in-the-middle.
-    const coverScale = Math.max(cropSize.w / imageNatural.w, cropSize.h / imageNatural.h);
+    if (!imageNatural.w || !imageNatural.h) return 1;
+    const frameW = fixedAspect ? cropSize.w : viewport.w;
+    const frameH = fixedAspect ? cropSize.h : viewport.h;
+    if (!frameW || !frameH) return 1;
+    // Fixed-ratio crops cover the crop box. Free mode keeps the image locked to the
+    // preview stage so resizing the crop frame never resizes the image underneath.
+    const coverScale = Math.max(frameW / imageNatural.w, frameH / imageNatural.h);
     return coverScale * zoom;
-  }, [imageNatural.w, imageNatural.h, cropSize.w, cropSize.h, zoom]);
+  }, [
+    fixedAspect,
+    imageNatural.w,
+    imageNatural.h,
+    cropSize.w,
+    cropSize.h,
+    viewport.w,
+    viewport.h,
+    zoom,
+  ]);
 
   const displaySize = useMemo(
     () => ({
@@ -90,14 +119,26 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
 
   const clampOffset = useCallback(
     (next: { x: number; y: number }, nextCrop = cropSize) => {
-      const maxX = Math.max(0, (displaySize.w - nextCrop.w) / 2);
-      const maxY = Math.max(0, (displaySize.h - nextCrop.h) / 2);
+    const maxX = Math.max(0, (displaySize.w - nextCrop.w) / 2);
+    const maxY = Math.max(0, (displaySize.h - nextCrop.h) / 2);
       return {
         x: Math.max(-maxX, Math.min(maxX, next.x)),
         y: Math.max(-maxY, Math.min(maxY, next.y)),
       };
     },
     [cropSize, displaySize.w, displaySize.h]
+  );
+
+  const clampCropOffset = useCallback(
+    (next: { x: number; y: number }, nextCrop = cropSize) => {
+      const maxX = Math.max(0, (viewport.w - nextCrop.w) / 2);
+      const maxY = Math.max(0, (viewport.h - nextCrop.h) / 2);
+      return {
+        x: Math.max(-maxX, Math.min(maxX, next.x)),
+        y: Math.max(-maxY, Math.min(maxY, next.y)),
+      };
+    },
+    [cropSize, viewport.w, viewport.h]
   );
 
   useEffect(() => {
@@ -112,6 +153,7 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
       };
       setCropSize(next);
       setOffset((prev) => clampOffset(prev, next));
+      setCropOffset((prev) => clampCropOffset(prev, next));
       return;
     }
 
@@ -126,6 +168,7 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
     const next = { w: Math.round(w), h: Math.round(h) };
     setCropSize(next);
     setOffset((prev) => clampOffset(prev, next));
+    setCropOffset({ x: 0, y: 0 });
   }, [
     viewport.w,
     viewport.h,
@@ -133,6 +176,7 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
     freeWidthPercent,
     freeHeightPercent,
     clampOffset,
+    clampCropOffset,
   ]);
 
   useEffect(() => {
@@ -140,6 +184,7 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
   }, [zoom, clampOffset]);
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (resizeRef.current.active) return;
     dragRef.current = { active: true, startX: e.clientX - offset.x, startY: e.clientY - offset.y };
     e.currentTarget.setPointerCapture(e.pointerId);
   };
@@ -155,6 +200,49 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
 
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     dragRef.current.active = false;
+    resizeRef.current.active = false;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+  };
+
+  const startFreeResize = (handle: string) => (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (aspect !== "自由") return;
+    e.preventDefault();
+    e.stopPropagation();
+    resizeRef.current = {
+      active: true,
+      handle,
+      startX: e.clientX,
+      startY: e.clientY,
+      startW: cropSize.w,
+      startH: cropSize.h,
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onFreeResizeMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!resizeRef.current.active || aspect !== "自由" || !viewport.w || !viewport.h) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const { handle, startX, startY, startW, startH } = resizeRef.current;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    const maxW = viewport.w * 0.95;
+    const maxH = viewport.h * 0.95;
+    const minW = Math.min(160, maxW);
+    const minH = Math.min(120, maxH);
+    const xSign = handle.includes("e") ? 1 : handle.includes("w") ? -1 : 0;
+    const ySign = handle.includes("s") ? 1 : handle.includes("n") ? -1 : 0;
+    const nextW = Math.max(minW, Math.min(maxW, startW + dx * xSign * 2));
+    const nextH = Math.max(minH, Math.min(maxH, startH + dy * ySign * 2));
+    setFreeWidthPercent(Math.round((nextW / viewport.w) * 100));
+    setFreeHeightPercent(Math.round((nextH / viewport.h) * 100));
+    setCropOffset((prev) => clampCropOffset(prev, { w: nextW, h: nextH }));
+  };
+
+  const onFreeResizeEnd = (e: React.PointerEvent<HTMLButtonElement>) => {
+    resizeRef.current.active = false;
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
@@ -177,8 +265,8 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
 
       const srcW = cropSize.w / imageScale;
       const srcH = cropSize.h / imageScale;
-      const srcX = imageNatural.w / 2 + (-offset.x - cropSize.w / 2) / imageScale;
-      const srcY = imageNatural.h / 2 + (-offset.y - cropSize.h / 2) / imageScale;
+      const srcX = imageNatural.w / 2 + (cropOffset.x - offset.x - cropSize.w / 2) / imageScale;
+      const srcY = imageNatural.h / 2 + (cropOffset.y - offset.y - cropSize.h / 2) / imageScale;
       const safeX = Math.max(0, Math.min(imageNatural.w - srcW, srcX));
       const safeY = Math.max(0, Math.min(imageNatural.h - srcH, srcY));
 
@@ -211,21 +299,22 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
   const overlayStyle = {
     width: `${cropSize.w}px`,
     height: `${cropSize.h}px`,
+    transform: `translate(${cropOffset.x}px, ${cropOffset.y}px)`,
     boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)",
   };
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
-      <div className="bg-white w-full max-w-4xl rounded-3xl shadow-lg flex flex-col h-[85vh]">
-        <div className="flex justify-between items-center p-4 border-b border-slate-200">
-          <div className="flex items-center space-x-2">
-            <span className="text-lg font-bold text-[#1E293B]">裁剪背景圖</span>
-            <div className="flex items-center bg-slate-100 p-1 rounded-full">
+      <div className="bg-white w-full max-w-4xl rounded-3xl shadow-lg flex flex-col h-[85vh] overflow-hidden">
+        <div className="flex flex-col gap-3 p-4 border-b border-slate-200 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="shrink-0 text-lg font-bold text-[#1E293B]">裁剪背景圖</span>
+            <div className="flex min-w-0 flex-1 items-center overflow-x-auto bg-slate-100 p-1 rounded-full sm:flex-none">
               {Object.keys(aspectRatios).map((key) => (
                 <button
                   key={key}
                   onClick={() => setAspect(key)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
                     aspect === key
                       ? "bg-indigo-600 text-white shadow-sm"
                       : "text-slate-600 hover:bg-slate-200"
@@ -236,17 +325,17 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
               ))}
             </div>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex shrink-0 items-center justify-end gap-2">
             <button
               onClick={onCancel}
-              className="px-4 py-2 text-sm font-semibold bg-white border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50"
+              className="whitespace-nowrap px-4 py-2 text-sm font-semibold bg-white border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50"
             >
               取消
             </button>
             <button
               onClick={handleApply}
               disabled={isApplying}
-              className="px-4 py-2 text-sm font-semibold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-60"
+              className="whitespace-nowrap px-4 py-2 text-sm font-semibold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-60"
             >
               {isApplying ? "應用中..." : "應用"}
             </button>
@@ -255,7 +344,9 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
 
         <div ref={stageRef} className="flex-1 bg-slate-100 p-4 overflow-hidden relative">
           <div
-            className="relative w-full h-full flex items-center justify-center touch-none cursor-grab active:cursor-grabbing"
+            className={`relative w-full h-full flex items-center justify-center touch-none ${
+              aspect === "自由" ? "cursor-default" : "cursor-grab active:cursor-grabbing"
+            }`}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
@@ -273,9 +364,35 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
             />
             {cropSize.w > 0 && cropSize.h > 0 && (
               <div
-                className="absolute border-2 border-white pointer-events-none"
+                className={`absolute border-2 border-white ${aspect === "自由" ? "pointer-events-auto" : "pointer-events-none"}`}
                 style={overlayStyle}
-              />
+              >
+                {aspect === "自由" && (
+                  <>
+                    {[
+                      ["n", "left-1/2 top-0 h-4 w-12 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize"],
+                      ["s", "bottom-0 left-1/2 h-4 w-12 -translate-x-1/2 translate-y-1/2 cursor-ns-resize"],
+                      ["e", "right-0 top-1/2 h-12 w-4 -translate-y-1/2 translate-x-1/2 cursor-ew-resize"],
+                      ["w", "left-0 top-1/2 h-12 w-4 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize"],
+                      ["ne", "right-0 top-0 h-6 w-6 -translate-y-1/2 translate-x-1/2 cursor-nesw-resize"],
+                      ["nw", "left-0 top-0 h-6 w-6 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize"],
+                      ["se", "bottom-0 right-0 h-6 w-6 translate-x-1/2 translate-y-1/2 cursor-nwse-resize"],
+                      ["sw", "bottom-0 left-0 h-6 w-6 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize"],
+                    ].map(([handle, className]) => (
+                      <button
+                        key={handle}
+                        type="button"
+                        aria-label="調整裁剪框"
+                        onPointerDown={startFreeResize(handle)}
+                        onPointerMove={onFreeResizeMove}
+                        onPointerUp={onFreeResizeEnd}
+                        onPointerCancel={onFreeResizeEnd}
+                        className={`absolute rounded-full border border-white bg-indigo-500/90 shadow-[0_2px_10px_rgba(79,70,229,0.35)] ${className}`}
+                      />
+                    ))}
+                  </>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -294,32 +411,9 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
             />
           </div>
           {aspect === "自由" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="flex items-center space-x-3">
-                <span className="text-sm font-medium text-slate-600 whitespace-nowrap">裁剪寬度</span>
-                <input
-                  type="range"
-                  min="40"
-                  max="95"
-                  step="1"
-                  value={freeWidthPercent}
-                  onChange={(e) => setFreeWidthPercent(parseInt(e.target.value, 10))}
-                  className="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                />
-              </div>
-              <div className="flex items-center space-x-3">
-                <span className="text-sm font-medium text-slate-600 whitespace-nowrap">裁剪高度</span>
-                <input
-                  type="range"
-                  min="40"
-                  max="95"
-                  step="1"
-                  value={freeHeightPercent}
-                  onChange={(e) => setFreeHeightPercent(parseInt(e.target.value, 10))}
-                  className="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                />
-              </div>
-            </div>
+            <p className="text-xs font-semibold text-slate-500">
+                自由模式：拖動裁剪框邊緣或角點調整範圍，圖片保持不動。
+            </p>
           )}
         </div>
       </div>

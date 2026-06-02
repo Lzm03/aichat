@@ -352,17 +352,17 @@ export const StudentLearningReportCard = () => {
               initial={{ y: 24, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 24, opacity: 0 }}
-              className="absolute inset-3 overflow-hidden rounded-[28px] bg-white shadow-2xl md:inset-6"
+              className="absolute inset-2 overflow-hidden rounded-[24px] bg-white shadow-2xl sm:inset-3 sm:rounded-[28px] md:inset-6"
             >
               <div className="relative h-full">
                 <div className={`h-full min-w-0 overflow-y-auto transition duration-300 ${
                   selectedDetailStudent ? 'pointer-events-none blur-[0.5px] brightness-95' : ''
                 }`}>
-                  <div className="sticky top-0 z-10 border-b border-slate-100 bg-white/95 px-6 py-5 backdrop-blur">
+                  <div className="sticky top-0 z-10 border-b border-slate-100 bg-white/95 px-4 py-4 backdrop-blur sm:px-6 sm:py-5">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <h2 className="text-2xl font-black tracking-tight text-slate-900">全班評估明細表</h2>
-                        <p className="mt-1 text-sm font-medium text-slate-500">深度檢視學生的知識點交互狀態與品質</p>
+                        <h2 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">全班評估明細表</h2>
+                        <p className="mt-1 text-xs font-medium text-slate-500 sm:text-sm">深度檢視學生的知識點交互狀態與品質</p>
                       </div>
                       {!selectedDetailStudent && (
                         <button
@@ -376,8 +376,8 @@ export const StudentLearningReportCard = () => {
                     </div>
                   </div>
 
-                  <div className="space-y-6 px-6 py-6">
-                    <div className="grid gap-4 rounded-2xl border border-slate-100 bg-slate-50/70 p-5 lg:grid-cols-2">
+                  <div className="space-y-5 px-4 py-4 sm:space-y-6 sm:px-6 sm:py-6">
+                    <div className="grid gap-4 rounded-2xl border border-slate-100 bg-slate-50/70 p-4 sm:p-5 lg:grid-cols-2">
                       <div>
                         <div className="flex items-center gap-2 text-sm font-black text-slate-800">
                           <Sparkles className="h-4 w-4 text-indigo-500" />
@@ -404,7 +404,7 @@ export const StudentLearningReportCard = () => {
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-3">
+                    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
                       {[
                         { key: 'all', label: '全部學生 (30)' },
                         { key: 'warning', label: '🚨 卡關預警 (3)' },
@@ -415,7 +415,7 @@ export const StudentLearningReportCard = () => {
                           key={item.key}
                           type="button"
                           onClick={() => setDetailFilter(item.key as any)}
-                          className={`rounded-xl border px-5 py-3 text-sm font-black transition ${
+                          className={`rounded-xl border px-3 py-3 text-xs font-black transition sm:px-5 sm:text-sm ${
                             detailFilter === item.key
                               ? 'border-slate-900 bg-slate-900 text-white shadow-lg'
                               : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
@@ -427,7 +427,7 @@ export const StudentLearningReportCard = () => {
                     </div>
 
                     <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-                      <div className="grid grid-cols-[1.2fr_0.8fr_1fr_1.1fr_1fr_1fr] gap-4 border-b border-slate-100 bg-slate-50 px-5 py-4 text-sm font-black text-slate-500">
+                      <div className="hidden grid-cols-[1.2fr_0.8fr_1fr_1.1fr_1fr_1fr] gap-4 border-b border-slate-100 bg-slate-50 px-5 py-4 text-sm font-black text-slate-500 md:grid">
                         <span>學生</span>
                         <span>總掌握度 ▼</span>
                         <span>輸出品質</span>
@@ -441,13 +441,13 @@ export const StudentLearningReportCard = () => {
                             key={row.id}
                             type="button"
                             onClick={() => setSelectedDetailStudent(row)}
-                            className="grid w-full grid-cols-[1.2fr_0.8fr_1fr_1.1fr_1fr_1fr] items-center gap-4 px-5 py-5 text-left transition hover:bg-indigo-50/40"
+                            className="grid w-full grid-cols-2 items-start gap-3 px-4 py-4 text-left transition hover:bg-indigo-50/40 md:grid-cols-[1.2fr_0.8fr_1fr_1.1fr_1fr_1fr] md:items-center md:gap-4 md:px-5 md:py-5"
                           >
-                            <span className="flex items-center gap-3">
+                            <span className="col-span-2 flex items-center gap-3 md:col-span-1">
                               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-50 text-sm font-black text-indigo-600">{row.id}</span>
                               <span className="font-black text-slate-800">{row.name}</span>
                             </span>
-                            <span className="text-lg font-black text-slate-800">{row.mastery}%</span>
+                            <span className="text-sm font-black text-slate-800 md:text-lg"><span className="mr-1 text-xs text-slate-400 md:hidden">掌握</span>{row.mastery}%</span>
                             <span className="font-bold text-slate-700"><b className="mr-2 rounded-md bg-emerald-50 px-2 py-1 text-emerald-700">{row.output}</b>{row.outputText}</span>
                             <span className="font-bold text-slate-700">{row.interaction}<br /><small className="font-semibold text-slate-400">({row.rounds}輪)</small></span>
                             <span className="w-fit rounded-lg bg-emerald-50 px-3 py-1.5 text-sm font-black text-emerald-700">{row.mode}</span>
@@ -477,18 +477,18 @@ export const StudentLearningReportCard = () => {
                       animate={{ x: 0 }}
                       exit={{ x: 460, opacity: 0.9 }}
                       transition={{ type: "spring", stiffness: 260, damping: 30 }}
-                      className="absolute inset-y-0 right-0 z-20 w-full overflow-y-auto border-l border-slate-100 bg-white shadow-[-18px_0_40px_rgba(15,23,42,0.18)] md:w-[460px]"
+                      className="absolute inset-y-0 right-0 z-20 w-full overflow-y-auto border-l border-slate-100 bg-white shadow-[-18px_0_40px_rgba(15,23,42,0.18)] sm:w-[460px]"
                     >
-                      <div className="flex items-start justify-between border-b border-slate-100 px-6 py-6">
+                      <div className="flex items-start justify-between border-b border-slate-100 px-4 py-5 sm:px-6 sm:py-6">
                         <div>
-                          <h3 className="text-xl font-black text-slate-900">{selectedDetailStudent.name} — 知識掌握追蹤</h3>
+                          <h3 className="text-lg font-black text-slate-900 sm:text-xl">{selectedDetailStudent.name} — 知識掌握追蹤</h3>
                           <p className="mt-1 text-sm font-bold text-slate-500">總掌握度 {selectedDetailStudent.mastery}%</p>
                         </div>
                         <button type="button" onClick={() => setSelectedDetailStudent(null)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
                           <X className="h-5 w-5" />
                         </button>
                       </div>
-                      <div className="space-y-5 p-6">
+                      <div className="space-y-4 p-4 sm:space-y-5 sm:p-6">
                         {knowledgeTracking.map((item) => (
                           <div key={item.level} className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
                             <h4 className="font-black text-slate-900">【{item.level}】</h4>
