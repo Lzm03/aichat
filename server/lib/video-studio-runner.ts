@@ -196,9 +196,17 @@ async function pollVideoResult(requestId: string, timeoutMs = 240000) {
   throw new Error("video generation timeout");
 }
 
-async function pollRemoveBgStatus(jobId: string, timeoutMs = 120000, uploadedStuckLimit = 25): Promise<string> {
+const REMOVE_BG_TIMEOUT_MS = Number.parseInt(process.env.VIDEO_BG_TIMEOUT_MS || "", 10) || 600000;
+const REMOVE_BG_POLL_INTERVAL_MS = Number.parseInt(process.env.VIDEO_BG_POLL_INTERVAL_MS || "", 10) || 3000;
+
+async function pollRemoveBgStatus(
+  jobId: string,
+  timeoutMs = REMOVE_BG_TIMEOUT_MS,
+  uploadedStuckLimit = Math.ceil(90000 / REMOVE_BG_POLL_INTERVAL_MS)
+): Promise<string> {
   const startedAt = Date.now();
   let uploadedCount = 0;
+  let lastStatus = "unknown";
   while (Date.now() - startedAt < timeoutMs) {
     const statusRes = await fetch(`https://api.videobgremover.com/v1/jobs/${jobId}/status`, {
       headers: { "X-Api-Key": process.env.VIDEO_BG_REMOVER_KEY! },
@@ -212,15 +220,17 @@ async function pollRemoveBgStatus(jobId: string, timeoutMs = 120000, uploadedStu
       continue;
     }
 
+    lastStatus = String(statusJson.status || "unknown");
     if (statusJson.status === "completed") {
-      return (
+      const processedUrl =
         statusJson.processed_video_url ||
         statusJson.processed_png_sequence_url ||
         statusJson.processed_png_zip_url ||
         statusJson.processed_zip_url ||
         statusJson.processed_archive_url ||
-        statusJson.processed_url
-      );
+        statusJson.processed_url;
+      if (processedUrl) return processedUrl;
+      throw new Error("remove bg completed without processed url");
     }
     if (statusJson.status === "failed") throw new Error("remove bg failed");
     if (statusJson.status === "uploaded") {
@@ -229,9 +239,9 @@ async function pollRemoveBgStatus(jobId: string, timeoutMs = 120000, uploadedStu
     } else {
       uploadedCount = 0;
     }
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, REMOVE_BG_POLL_INTERVAL_MS));
   }
-  throw new Error("remove bg timeout");
+  throw new Error(`remove bg timeout after ${Math.round(timeoutMs / 1000)}s (last status: ${lastStatus})`);
 }
 
 async function downloadZipAndExtractToSequence(url: string, publicBase: string) {
@@ -304,7 +314,7 @@ async function removeBgFromVideoUrl(sourceUrl: string, userId: string, options?:
     temporaryUrl = await pollRemoveBgStatus(jobId);
   } catch (error) {
     if (error instanceof Error && error.message === "uploaded_stuck") {
-      temporaryUrl = await pollRemoveBgStatus(jobId, 120000, 25);
+      temporaryUrl = await pollRemoveBgStatus(jobId, REMOVE_BG_TIMEOUT_MS, Math.ceil(90000 / REMOVE_BG_POLL_INTERVAL_MS));
     } else {
       throw error;
     }
