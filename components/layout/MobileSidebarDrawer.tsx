@@ -41,8 +41,8 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen
             >
               <div className="p-6 flex items-center justify-between border-b border-slate-100">
                 <div className="flex items-center gap-3">
-                   <div className="bg-indigo-600 p-2 rounded-lg shadow-md shadow-indigo-500/20">
-                    <Icons.sparkles className="text-white w-5 h-5" />
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[16px] bg-white">
+                    <img src="/choprealitylogo.png" alt="Logo" className="h-10 w-10 object-contain" />
                   </div>
                   <span className="font-bold text-slate-800 text-lg">CHOPREALITY</span>
                 </div>
