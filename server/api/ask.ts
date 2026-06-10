@@ -35,7 +35,7 @@ const MAX_CHAT_IMAGE_COUNT = 4;
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 const MOCK_UPSTREAM = /^(1|true|yes|on)$/i.test(String(process.env.MOCK_UPSTREAM || "").trim());
-const ENABLE_DIALOGUE_SUGGESTION_LLM = /^(1|true|yes|on)$/i.test(String(process.env.ENABLE_DIALOGUE_SUGGESTION_LLM || "").trim());
+const ENABLE_DIALOGUE_SUGGESTION_LLM = !/^(0|false|no|off)$/i.test(String(process.env.ENABLE_DIALOGUE_SUGGESTION_LLM || "true").trim());
 
 function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -378,6 +378,14 @@ type SuggestedReply = {
   sendText: string;
 };
 
+type DialogueQuestionType =
+  | "specific_fact_lookup"
+  | "choice_or_judgment"
+  | "change_comparison"
+  | "reason_explanation"
+  | "style_or_symbol"
+  | "general_reflection";
+
 type RecentChatMessage = {
   role: "user" | "bot";
   content: string;
@@ -510,48 +518,97 @@ function pickDialogueKnowledgePoint(systemPrompt: string, userPrompt: string, re
   return scored[0]?.point || points[0];
 }
 
+function pickDialogueKnowledgePointForQuestion(systemPrompt: string, question: string, reply: string) {
+  return pickDialogueKnowledgePoint(systemPrompt, question, `${question}\n${reply}`);
+}
+
+function inferDialogueQuestionType(question: string): DialogueQuestionType {
+  const q = String(question || "");
+  if (/(邊齣|哪齣|哪一齣|咩戲|什麼戲|知唔知|知道.*嗎|叫咩|叫什麼|係咩|是什麼)/.test(q)) {
+    return "specific_fact_lookup";
+  }
+  if (/(係因為|是因為|定係|還是|或者|會唔會|是不是|係咪|你覺得.*還是|你覺得.*定)/.test(q)) {
+    return "choice_or_judgment";
+  }
+  if (/(以前同依家|以前和現在|前後|變化|唔同|不同|改變)/.test(q)) {
+    return "change_comparison";
+  }
+  if (/(點解|為什麼|原因|因為咩|為何)/.test(q)) {
+    return "reason_explanation";
+  }
+  if (/(象徵|符號|意象|風格|設計|紅梅|花|顏色|代表)/.test(q)) {
+    return "style_or_symbol";
+  }
+  return "general_reflection";
+}
+
+function describeDialogueQuestionType(type: DialogueQuestionType) {
+  switch (type) {
+    case "specific_fact_lookup":
+      return "具體事實題：L1 必須給出知識庫中的具體答案，例如劇名、人物、地點或名稱；L2 解釋它和問題的關係；L3 才做象徵或生活連結。";
+    case "choice_or_judgment":
+      return "選擇/判斷題：L1 必須選一邊或給出最直接判斷；L2 說原因；L3 連到更一般的價值或生活例子。";
+    case "change_comparison":
+      return "變化比較題：L1 說出一個具體變化；L2 說為什麼會變或前後差異；L3 連到今天生活中的相似變化。";
+    case "reason_explanation":
+      return "原因解釋題：L1 給一個簡單原因；L2 補充脈絡或影響；L3 連到現代或個人經驗。";
+    case "style_or_symbol":
+      return "風格/象徵題：L1 說出具體象徵物、風格或觀察；L2 解釋它代表什麼；L3 連到作品如何用符號表達人物或情感。";
+    default:
+      return "一般思考題：L1 直接回答；L2 說原因或關聯；L3 連到生活或價值遷移。";
+  }
+}
+
+function compactForMatch(input: string) {
+  return String(input || "")
+    .replace(/[「」『』"'`《》？?。！!，,、：:\s]/g, "")
+    .trim();
+}
+
+function extractChoiceOptions(question: string) {
+  const cleaned = String(question || "")
+    .replace(/[？?]/g, "")
+    .replace(/^(你覺得|你認為|咁你覺得|咁你認為|你估|咁你估吓|咁你估)/, "")
+    .trim();
+  const match = cleaned.match(/(.+?)(?:，|,)?(?:定係|還是|或者)(.+)$/);
+  if (!match) return [];
+  return [match[1], match[2]]
+    .map((item) =>
+      item
+        .replace(/^(係因為|是因為|係|是)/, "")
+        .replace(/^(我|你|佢|它|呢個|這個)/, "")
+        .trim()
+    )
+    .filter((item) => compactForMatch(item).length >= 2)
+    .slice(0, 2);
+}
+
+function extractQuestionKeywords(question: string) {
+  const choiceOptions = extractChoiceOptions(question);
+  const source = choiceOptions.length ? choiceOptions.join(" ") : question;
+  const candidates = source
+    .replace(/[？?。！!，,、：:]/g, " ")
+    .split(/\s+/)
+    .flatMap((part) => part.split(/(?:係|是|因為|定係|還是|或者|有冇|會唔會|你覺得|你認為|咁|呢|嘅|的)/))
+    .map((part) => compactForMatch(part))
+    .filter((part) => part.length >= 2 && !/^(我|你|佢|它|這個|呢個|問題|答案|覺得|認為)$/.test(part));
+  return Array.from(new Set(candidates)).slice(0, 8);
+}
+
+function includesAnyConcept(text: string, concepts: string[]) {
+  const compactText = compactForMatch(text);
+  return concepts.some((concept) => {
+    const compactConcept = compactForMatch(concept);
+    if (!compactConcept) return false;
+    if (compactText.includes(compactConcept)) return true;
+    return compactConcept.length > 4 && compactText.includes(compactConcept.slice(0, 4));
+  });
+}
+
 function extractLastQuestion(text: string) {
   const normalized = String(text || "").replace(/\r/g, "").trim();
   const questionMatches = normalized.match(/[^。！？!?。\n]*[？?]/g);
   return questionMatches?.at(-1)?.trim() || "";
-}
-
-function extractAnswerSeedFromQuestion(question: string, fallback: string) {
-  const rawQuestion = String(question || "").replace(/[？?]/g, "").trim();
-  const normalized = rawQuestion
-    .replace(/^(好似|例如|比如|譬如).{0,12}?(咁|呀|啦|呢)?[，,]?\s*/, "")
-    .replace(/^(你覺得|你認為|你估|咁你覺得|咁你認為)/, "")
-    .replace(/^(佢|呢度|呢個地方|以前同依家)/, "")
-    .trim();
-
-  if (/(有冇|有沒有|會唔會|係咪|是不是|能不能|可不可以|要不要|點解|為什麼|點樣|怎樣)/.test(rawQuestion)) {
-    if (/(以前同依家|以前和現在|前後)/.test(rawQuestion)) {
-      return "我覺得有唔同";
-    }
-    if (/(有冇|有沒有|係咪|是不是)/.test(rawQuestion)) {
-      return "我覺得有";
-    }
-    if (/(會唔會|能不能|可不可以|要不要)/.test(rawQuestion)) {
-      return "我覺得會";
-    }
-    if (/(點解|為什麼)/.test(rawQuestion)) {
-      return "我覺得因為情況變咗";
-    }
-  }
-
-  const candidate = clampChinesePhrase(
-    normalized
-      .replace(/[，,].*$/, "")
-      .replace(/(有冇啲咩|有冇|有沒有|會唔會|係咪|是不是|能不能|可不可以|要不要|點解|為什麼|點樣|怎樣).*$/, "")
-      .trim(),
-    18
-  );
-
-  if (!candidate || candidate.length < 3 || candidate === clampChinesePhrase(rawQuestion, 18)) {
-    return clampChinesePhrase(fallback, 18) || "我覺得有";
-  }
-
-  return candidate;
 }
 
 function isGenericSuggestedText(text: string) {
@@ -570,43 +627,6 @@ function isGenericSuggestedText(text: string) {
   ].includes(normalized);
 }
 
-function buildTierReplyFromContext(
-  tier: SuggestedReply["tier"],
-  questionContext: string,
-  knowledgeHint: string
-) {
-  const question = String(questionContext || "").replace(/[？?]/g, "").trim();
-  const hint = clampChinesePhrase(String(knowledgeHint || "").trim(), 18) || "這個地方";
-
-  if (tier === "L1") {
-    if (/(以前同依家|以前和現在|前後|變化|唔同|不同)/.test(question)) {
-      return `${hint}而家同以前真係唔同咗`;
-    }
-    if (/(設計|樣子|外觀|建築)/.test(question)) {
-      return `我覺得${hint}個設計幾有特色`;
-    }
-    return extractAnswerSeedFromQuestion(questionContext, hint);
-  }
-
-  if (tier === "L2") {
-    if (/(以前同依家|以前和現在|前後|變化|唔同|不同)/.test(question)) {
-      return `我估係因為後來重新改建過`;
-    }
-    if (/(設計|樣子|外觀|建築)/.test(question)) {
-      return `我估係因為想保留返嗰種特色`;
-    }
-    return `我估可能同${hint}後來嘅變化有關`;
-  }
-
-  if (/(以前同依家|以前和現在|前後|變化|唔同|不同)/.test(question)) {
-    return "令我諗到而家好多地方都翻新咗";
-  }
-  if (/(設計|樣子|外觀|建築)/.test(question)) {
-    return "令我諗到而家都仲會重視地方特色";
-  }
-  return `令我諗到而家我哋都會留意${hint}`;
-}
-
 function cleanSuggestionJson(raw: string) {
   const cleaned = String(raw || "")
     .replace(/^```(?:json)?/i, "")
@@ -617,7 +637,7 @@ function cleanSuggestionJson(raw: string) {
   return start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned;
 }
 
-function normalizeSuggestedReplies(input: unknown, questionContext: string, knowledgeHint = ""): SuggestedReply[] {
+function normalizeSuggestedReplies(input: unknown, questionContext: string): SuggestedReply[] {
   if (!Array.isArray(input)) return [];
   const allowedTiers = new Set(["L1", "L2", "L3"]);
   return input
@@ -627,82 +647,210 @@ function normalizeSuggestedReplies(input: unknown, questionContext: string, know
         String(item?.label || "").trim() ||
         (tier === "L1" ? "基礎事實" : tier === "L2" ? "深入思考" : "價值遷移");
       const rawText = String(item?.text || "").replace(/[。！？!?]+$/g, "").trim();
-      let text = clampChinesePhrase(rawText, 22);
-      const normalizedQuestion = clampChinesePhrase(String(questionContext || "").replace(/[？?]/g, ""), 22);
-      if (tier === "L1" && (!text || text === normalizedQuestion || /^(你覺得|好似|例如|比如)/.test(rawText))) {
-        text = buildTierReplyFromContext(tier, String(questionContext || ""), knowledgeHint || text || "這個地方");
-      }
-      if (isGenericSuggestedText(text) || text === normalizedQuestion) {
-        text = buildTierReplyFromContext(tier, String(questionContext || ""), knowledgeHint || text || "這個地方");
-      }
+      const text = clampChinesePhrase(rawText, 22);
       if (!text) return null;
       return {
         tier,
         label,
         text,
-        sendText: String(item?.sendText || "").trim() || `我會咁答：${text}`,
+        sendText: String(item?.sendText || "").trim() || text,
       };
     })
     .filter(Boolean)
     .slice(0, 3) as SuggestedReply[];
 }
 
-function buildFallbackDialogueEnhancement(systemPrompt: string, userPrompt: string, reply: string) {
-  const point = pickDialogueKnowledgePoint(systemPrompt, userPrompt, reply);
-  const rawTopic = String(point?.content || userPrompt || "這個想法")
-    .split(/[。！？!?；;\n]/)[0]
-    .replace(/^[-*•\d.、\s]+/, "")
+function isQuestionSubstring(text: string, questionContext: string) {
+  const normalizedText = String(text || "").replace(/\s+/g, "").trim();
+  const normalizedQuestion = String(questionContext || "")
+    .replace(/[？?。！!，,、\s]/g, "")
     .trim();
-  const topic = clampChinesePhrase(rawTopic, 12) || "這個想法";
-  const replyAlreadyAsks = /[？?]\s*$/.test(String(reply || "").trim());
-  const existingQuestion = extractLastQuestion(reply);
-  const followUpQuestion = replyAlreadyAsks
-    ? ""
-    : point?.tier === "deep_understanding"
-      ? `你覺得「${topic}」背後最重要的原因是什麼？`
-      : `你能先說說「${topic}」的基本意思嗎？`;
-  const questionContext = existingQuestion || followUpQuestion || `請根據剛才的內容，圍繞「${topic}」回答。`;
-  const factSeed = clampChinesePhrase(
-    String(point?.content || topic)
-      .replace(/^[-*•\d.、\s]+/, "")
-      .replace(/[「」]/g, "")
-      .split(/[。！？!?；;\n]/)[0],
-    20
-  ) || topic;
-  const l1Text = existingQuestion
-    ? extractAnswerSeedFromQuestion(existingQuestion, factSeed)
-    : factSeed;
-  const l2Text = buildTierReplyFromContext("L2", questionContext, factSeed);
-  const l3Text = buildTierReplyFromContext("L3", questionContext, factSeed);
+  return Boolean(normalizedText && normalizedQuestion.includes(normalizedText));
+}
 
-  const suggestedReplies: SuggestedReply[] = [
-    {
-      tier: "L1",
-      label: "基礎事實",
-      text: l1Text,
-      sendText: `我會咁答：${l1Text}`,
-    },
-    {
-      tier: "L2",
-      label: "深入思考",
-      text: l2Text,
-      sendText: `我會咁答：${l2Text}`,
-    },
-    {
-      tier: "L3",
-      label: "價值遷移",
-      text: l3Text,
-      sendText: `我會咁答：${l3Text}`,
-    },
-  ];
+function l1ReplyLooksWeak(reply: SuggestedReply, questionContext: string) {
+  if (reply.tier !== "L1") return false;
+  const questionType = inferDialogueQuestionType(questionContext);
+  const text = String(reply.text || "").trim();
+  const compactText = text.replace(/\s+/g, "");
+  if (!compactText) return true;
+  if (isQuestionSubstring(compactText, questionContext) && compactText.length <= 10) return true;
+  if (/^(你覺得|你認為|你估|咁你估|咁你估吓|咁你覺得|好似|例如|比如|譬如|我哋之前講到)/.test(text)) return true;
+  if (/(稱呼|呢個稱呼|符號|問題|故事|內容)$/.test(compactText) && compactText.length <= 12) return true;
 
+  if (questionType === "specific_fact_lookup") {
+    const hasConcreteEntity = /(《[^》]+》|「[^」]+」|『[^』]+』|[A-Za-z0-9]|[一-龥]{2,}(花|戲|劇|曲|亭|園|廣場|稱|名|號|角色|人物)|叫|係|是|同)/.test(text);
+    const hasAnswerRelation = /(係|是|叫|同|有關|關於|就係|就是|來自|出自)/.test(text);
+    return !hasConcreteEntity || !hasAnswerRelation;
+  }
+
+  if (questionType === "choice_or_judgment") {
+    const options = extractChoiceOptions(questionContext);
+    const matchesOption = options.length ? includesAnyConcept(text, options) : true;
+    return !matchesOption || !/(係|是|因為|我覺得|可能|似|唔係|不是|會|有|自然|演變|改變)/.test(text);
+  }
+
+  if (questionType === "reason_explanation") {
+    return !/(因為|可能|由於|所以|係為咗|是為了)/.test(text);
+  }
+
+  if (questionType === "change_comparison") {
+    return !/(唔同|不同|變|改|多咗|少咗|以前|而家|現在)/.test(text);
+  }
+
+  return compactText.length < 4;
+}
+
+function suggestedReplyLooksWeak(reply: SuggestedReply, questionContext: string) {
+  const questionType = inferDialogueQuestionType(questionContext);
+  const concepts = extractQuestionKeywords(questionContext);
+  const normalizedQuestion = clampChinesePhrase(String(questionContext || "").replace(/[？?]/g, ""), 22);
+  const normalizedText = clampChinesePhrase(String(reply?.text || ""), 22);
+  const rawText = String(reply?.text || "").trim();
+  if (l1ReplyLooksWeak(reply, questionContext)) return true;
+  if (!normalizedText) return true;
+  if (normalizedText === normalizedQuestion) return true;
+  if (isGenericSuggestedText(normalizedText)) return true;
+  if (/^(你覺得|你認為|你估|咁你估|咁你估吓|咁你覺得|好似|例如|比如|譬如|我哋之前講到)/.test(rawText)) return true;
+  if (/(估吓|諗吓|睇吓).{0,8}$/.test(rawText)) return true;
+  if (reply.tier === "L1" && rawText.length <= 5 && !/(係|是|有|會|因為|同|叫|關於|唔同|不同)/.test(rawText)) return true;
+  if (
+    questionType === "specific_fact_lookup" &&
+    reply.tier === "L1" &&
+    !/(《[^》]+》|「[^」]+」|『[^』]+』|[A-Za-z0-9]|花|戲|劇|曲|稱|名|叫|係|是|同)/.test(rawText)
+  ) {
+    return true;
+  }
+  if (
+    questionType === "specific_fact_lookup" &&
+    reply.tier === "L3" &&
+    /(類似改變|好多地方|翻新|變新|現代生活|而家都會有類似)/.test(rawText)
+  ) {
+    return true;
+  }
+  if (
+    questionType !== "change_comparison" &&
+    /(後來嘅變化|類似改變|好多地方都翻新|變新咗|改建過)/.test(rawText)
+  ) {
+    return true;
+  }
+  if (reply.tier === "L2") {
+    if (!/(因為|所以|可能|我估|我覺得|代表|反映|關係|脈絡|意思|象徵|演變|改變)/.test(rawText)) return true;
+    if (concepts.length && !includesAnyConcept(rawText, concepts)) return true;
+  }
+  if (reply.tier === "L3") {
+    if (/(現在生活|而家生活|相似例子)$/.test(rawText)) return true;
+    if (!/(好似|令我諗到|而家|現在|作品|電影|粉絲|觀眾|稱呼|身份|符號|象徵|生活|例子)/.test(rawText)) return true;
+    if (
+      questionType === "choice_or_judgment" &&
+      concepts.length &&
+      !includesAnyConcept(rawText, concepts) &&
+      !/(稱呼|身份|觀眾|粉絲|暱稱|叫法|認同|地位)/.test(rawText)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function repairL1WithModel(
+  provider: ChatModelProvider,
+  systemPrompt: string,
+  questionContext: string,
+  currentL1: SuggestedReply | undefined,
+  topic: string,
+  recentMessages: RecentChatMessage[]
+) {
+  const questionType = inferDialogueQuestionType(questionContext);
+  const choiceOptions = extractChoiceOptions(questionContext);
+  const prompt = [
+    "你只需要修正 L1（基礎事實）提示回答。",
+    "目前 L1 可能只是摘了題目中的名詞、像提問片段，或沒有真正回答 Bot 的問題。",
+    `問題類型：${questionType}`,
+    `題型要求：${describeDialogueQuestionType(questionType)}`,
+    choiceOptions.length ? `可選項：${choiceOptions.join(" / ")}` : "",
+    "要求：",
+    "1. 只輸出一個 L1，必須是學生能直接點選發送的短答案。",
+    "2. L1 必須直接回答 Bot 最後問題，不可以只摘出問題裡的名詞。",
+    "3. 如果是具體事實題，L1 要給具體名稱、劇名、人物、地點或稱呼，並帶有基本關係詞，例如『同...有關』『係...』『叫...』。",
+    "4. 如果是選擇/判斷題，L1 必須明確選其中一個選項，不能只說『我覺得會』。",
+    "5. 每條只寫一句，8-18 個中文字為佳。",
+    "只輸出 JSON：",
+    '{"tier":"L1","label":"基礎事實","text":"短答案","sendText":"完整一點的學生答案"}',
+    "",
+    `角色與知識庫資料：${String(systemPrompt || "").slice(0, 4000)}`,
+    `Bot 最後問題：${questionContext}`,
+    `相關知識點：${topic || "未指定"}`,
+    recentMessages.length
+      ? `最近對話：\n${recentMessages.map((message) => `${message.role === "user" ? "學生" : "老師"}：${sanitizeChatHistoryContent(message.content)}`).join("\n")}`
+      : "",
+    `目前 L1：${JSON.stringify(currentL1 || null)}`,
+  ].join("\n");
+
+  const raw = await askModelOnce(
+    provider,
+    "你只負責輸出符合格式的 L1 教學建議答案 JSON，不扮演任何角色。",
+    prompt
+  );
+  const parsed = JSON.parse(cleanSuggestionJson(raw));
+  const repaired = normalizeSuggestedReplies([parsed], questionContext)[0];
+  return repaired && !l1ReplyLooksWeak(repaired, questionContext) ? repaired : null;
+}
+
+async function repairSuggestedRepliesWithModel(
+  provider: ChatModelProvider,
+  systemPrompt: string,
+  questionContext: string,
+  originalReplies: SuggestedReply[],
+  topic: string,
+  recentMessages: RecentChatMessage[]
+) {
+  const questionType = inferDialogueQuestionType(questionContext);
+  const choiceOptions = extractChoiceOptions(questionContext);
+  const prompt = [
+    "你現在要修正 3 個學生提示回答。",
+    "下面有一些回答太像重複 bot 話術、太空泛、或不像真正答題。",
+    "請根據角色知識庫與 bot 最後的問題，重新寫出 3 個更自然、更具體的學生回答。",
+    `問題類型：${questionType}`,
+    `題型要求：${describeDialogueQuestionType(questionType)}`,
+    choiceOptions.length ? `可選項：${choiceOptions.join(" / ")}` : "",
+    "要求：",
+    "1. 每個回答都必須直接回答問題，不要重複 bot 原句。",
+    "2. 不要使用『我哋之前講到』『這讓我想到現在的生活』『慢慢形成』這類空話。",
+    "3. 如果是具體事實題，L1 必須給出具體答案，不能只摘出問題裡的名詞；L2 解釋關係；L3 連到象徵、作品表達或生活例子。",
+    "4. 如果是選擇/判斷題，L1 要選一邊；L2 要解釋為何選這邊；L3 要連到這個選項背後的概念，例如稱呼、身份、觀眾認同或藝術地位。",
+    "5. 不要引用與 Bot 最後問題無關的舊知識點，即使它出現在最近對話中。",
+    "6. 只有當問題真的在問前後變化時，才可以使用『變化、改變、翻新』這類答案。",
+    "7. 每條只寫一句，8-18 個中文字為佳。",
+    "只輸出 JSON：",
+    '{"suggestedReplies":[{"tier":"L1","label":"基礎事實","text":"短答案","sendText":"完整一點的學生答案"},{"tier":"L2","label":"深入思考","text":"短答案","sendText":"完整一點的學生答案"},{"tier":"L3","label":"價值遷移","text":"短答案","sendText":"完整一點的學生答案"}]}',
+    "",
+    `角色與知識庫資料：${String(systemPrompt || "").slice(0, 4000)}`,
+    `Bot 最後問題：${questionContext}`,
+    `相關知識點：${topic || "未指定"}`,
+    recentMessages.length
+      ? `最近對話：\n${recentMessages.map((message) => `${message.role === "user" ? "學生" : "老師"}：${sanitizeChatHistoryContent(message.content)}`).join("\n")}`
+      : "",
+    `待修正回答：${JSON.stringify(originalReplies)}`,
+  ].join("\n");
+
+  const raw = await askModelOnce(
+    provider,
+    "你只負責輸出符合格式的教學建議答案 JSON，不扮演任何角色。",
+    prompt
+  );
+  const parsed = JSON.parse(cleanSuggestionJson(raw));
+  return normalizeSuggestedReplies(parsed?.suggestedReplies, questionContext);
+}
+
+function emptyDialogueEnhancement() {
   return {
-    followUpQuestion,
-    suggestedReplies,
+    followUpQuestion: "",
+    suggestedReplies: [] as SuggestedReply[],
     dialogueState: {
       student_status_flag: "stuck",
-      suggested_replies: suggestedReplies,
-      follow_up_question: followUpQuestion,
+      suggested_replies: [] as SuggestedReply[],
+      follow_up_question: "",
     },
   };
 }
@@ -713,15 +861,17 @@ async function buildDialogueEnhancement(
   userPrompt: string,
   reply: string,
   recentMessages: RecentChatMessage[] = [],
-  options: { idleTrigger?: boolean } = {}
+  options: { idleTrigger?: boolean; currentQuestion?: string } = {}
 ) {
-  const fallback = buildFallbackDialogueEnhancement(systemPrompt, userPrompt, reply);
-  if (MOCK_UPSTREAM || !ENABLE_DIALOGUE_SUGGESTION_LLM) return fallback;
+  const empty = emptyDialogueEnhancement();
+  if (MOCK_UPSTREAM || !ENABLE_DIALOGUE_SUGGESTION_LLM) return empty;
   const enhancementProvider = getDialogueEnhancementProvider(provider);
 
-  const point = pickDialogueKnowledgePoint(systemPrompt, userPrompt, reply);
-  const lastQuestion = extractLastQuestion(reply) || fallback.followUpQuestion;
-  if (!lastQuestion) return fallback;
+  const lastQuestion = String(options.currentQuestion || "").trim() || extractLastQuestion(reply);
+  if (!lastQuestion) return empty;
+  const questionType = inferDialogueQuestionType(lastQuestion);
+  const choiceOptions = extractChoiceOptions(lastQuestion);
+  const point = pickDialogueKnowledgePointForQuestion(systemPrompt, lastQuestion, reply);
 
   const topic = clampChinesePhrase(
     String(point?.content || userPrompt || lastQuestion)
@@ -732,21 +882,29 @@ async function buildDialogueEnhancement(
   );
 
   const prompt = [
-    "你是兒童中文學習平台的對話引導設計器。",
-    "請根據角色知識庫、學生上一句話、Bot 剛剛回覆，以及 Bot 最後提出的問題，生成 3 個學生可直接點選發送的短答案。",
-    "3 個建議都必須直接回答 Bot 最後的問題，不能變成新任務、學習策略名稱或泛泛口號。",
+    "你是兒童中文學習平台的引導提示生成器，不是回答模板機器。",
+    "請先理解角色知識庫、角色語氣、學生上一句話、Bot 剛剛回覆，以及 Bot 最後提出的問題，再生成 3 個可直接點選的學生回答。",
+    "三個回答必須是『真的回答這一題』，要從角色知識庫中挑出最相關的內容來組織成自然句子，而不是套用固定句式。",
+    "每個層級都要不同：L1 偏基礎事實，L2 偏原因、變化、比較或脈絡，L3 偏價值遷移、現代連結或生活經驗。",
+    `問題類型：${questionType}`,
+    `題型要求：${describeDialogueQuestionType(questionType)}`,
+    choiceOptions.length ? `可選項：${choiceOptions.join(" / ")}` : "",
     options.idleTrigger
       ? "這次是學生超過 15 秒未輸入的情境，請更積極提供可直接點選的回答鷹架，並視為 student_status_flag = stuck。"
       : "若學生沒有卡住，followUpQuestion 可保持空字串。",
     "如果學生剛剛已經回答了上一條問題，新的 followUpQuestion 應自然推進到下一個小問題；如果未回答，也不要原句重複追問。",
     "重要要求：",
-    "1. text 必須像學生正在回答 Bot 的問題，不可以是「比較不同原因」「連到現代例子」這種操作指令。",
-    "2. 每個 text 以 8-18 個中文字為佳，具體、自然、貼近角色與知識點。",
-    "3. L1 只給一個基礎事實答案；L2 只給一個帶原因、前後變化或影響的深入答案；L3 只給一個能連到現代生活、個人經驗或當下處境的價值遷移答案。",
+    "1. 不要輸出模板句、空話、口號或操作說明，例如『我覺得這是慢慢形成的』『這讓我想到現在的生活』『可比較前後變化』。",
+    "2. 每個 text 必須是 1 句自然的學生回答，盡量 8-18 個中文字，且要具體、像真的在回應問題。",
+    "3. L1 要直接命中事實或觀察結果；L2 要點出原因、變化、比較、脈絡；L3 要連到今天生活、個人經驗、或現在的情境。",
     "4. 三個答案要回答同一個問題，但層次不同，不能只是換句話說。",
     "5. sendText 可以稍完整，但仍然要像學生回答，不要要求 Bot 再做任務。",
-    "6. 每個 text 都必須壓縮成一句話，不要拆成兩句。",
-    "7. L1 要像直接答題；L2 要像『我覺得因為...』或『可能是因為...』；L3 要像『這讓我想到現在...』或『這跟我們今天...有點像』。",
+    "6. 如果 knowledge base 內有明確相關內容，請優先使用它，不要自己發明空泛的概念。",
+    "7. 如果是具體事實題，L1 必須回答具體名稱/劇名/人物/地點，不可以只摘出題目中的名詞。",
+    "8. 如果是選擇/判斷題，L1 必須明確選其中一個選項；L2 必須解釋選擇原因；L3 必須連到該選項背後的概念，不能泛泛說生活有相似例子。",
+    "9. 不要引用與 Bot 最後問題無關的舊知識點，即使它出現在最近對話中。",
+    "10. 只有問題真的在問前後變化時，才可以使用『變化、改變、翻新』這類答案。",
+    "11. 如果最後還是很難寫得自然，就寧可簡短直接，也不要補空話。",
     "只輸出 JSON，不要 Markdown：",
     '{"followUpQuestion":"Bot最後的問題","suggestedReplies":[{"tier":"L1","label":"基礎事實","text":"短答案","sendText":"完整一點的學生答案"},{"tier":"L2","label":"深入思考","text":"短答案","sendText":"完整一點的學生答案"},{"tier":"L3","label":"價值遷移","text":"短答案","sendText":"完整一點的學生答案"}]}',
     "",
@@ -767,13 +925,44 @@ async function buildDialogueEnhancement(
       prompt
     );
     const parsed = JSON.parse(cleanSuggestionJson(raw));
-    const generatedQuestion = String(parsed?.followUpQuestion || lastQuestion).trim();
-    const previousBotQuestion = extractLastQuestion(recentMessages.filter((message) => message.role === "bot").at(-1)?.content || "");
+    const generatedQuestion = lastQuestion;
+    const botQuestions = recentMessages
+      .filter((message) => message.role === "bot")
+      .map((message) => extractLastQuestion(message.content))
+      .filter(Boolean);
+    const previousBotQuestion = botQuestions.at(-1) || "";
     const dedupedQuestion =
       generatedQuestion && previousBotQuestion && generatedQuestion === previousBotQuestion
         ? ""
         : generatedQuestion;
-    const suggestedReplies = normalizeSuggestedReplies(parsed?.suggestedReplies, generatedQuestion, topic);
+    let suggestedReplies = normalizeSuggestedReplies(parsed?.suggestedReplies, lastQuestion);
+    const l1Reply = suggestedReplies.find((item) => item.tier === "L1");
+    if (l1Reply && l1ReplyLooksWeak(l1Reply, lastQuestion)) {
+      const repairedL1 = await repairL1WithModel(
+        enhancementProvider,
+        systemPrompt,
+        lastQuestion,
+        l1Reply,
+        topic,
+        recentMessages
+      );
+      if (repairedL1) {
+        suggestedReplies = suggestedReplies.map((item) => (item.tier === "L1" ? repairedL1 : item));
+      }
+    }
+    if (
+      suggestedReplies.length === 3 &&
+      suggestedReplies.some((item) => suggestedReplyLooksWeak(item, lastQuestion))
+    ) {
+      suggestedReplies = await repairSuggestedRepliesWithModel(
+        enhancementProvider,
+        systemPrompt,
+        lastQuestion,
+        suggestedReplies,
+        topic,
+        recentMessages
+      );
+    }
     if (suggestedReplies.length === 3) {
       return {
         followUpQuestion: extractLastQuestion(reply) ? "" : dedupedQuestion,
@@ -786,10 +975,10 @@ async function buildDialogueEnhancement(
       };
     }
   } catch (error) {
-    if (isDebugLogEnabled) console.warn("[ask] dialogue suggestions fallback", error);
+    if (isDebugLogEnabled) console.warn("[ask] dialogue suggestions skipped", error);
   }
 
-  return fallback;
+  return empty;
 }
 
 function normalizeRecentMessages(input: unknown): RecentChatMessage[] {
@@ -1284,6 +1473,27 @@ async function recordBotChatMessages(input: {
   }
 }
 
+async function recordBotInteractionEvent(input: {
+  botId: string;
+  userId: string;
+  source: string;
+}) {
+  const botId = String(input.botId || "").trim();
+  if (!botId || botId === "default") return;
+  try {
+    await ensurePlatformTables();
+    await pool.query(
+      `
+      INSERT INTO bot_interaction_events (id, bot_id, user_id, source)
+      VALUES ($1, $2, $3, $4)
+      `,
+      [crypto.randomUUID(), botId, input.userId || null, String(input.source || "direct").slice(0, 32)]
+    );
+  } catch (error) {
+    console.warn("[ask] failed to record bot interaction event", error);
+  }
+}
+
 async function fetchRecentBotChatMessages(botId: string, userId: string, limit = 6): Promise<RecentChatMessage[]> {
   const normalizedBotId = String(botId || "").trim();
   const normalizedUserId = String(userId || "").trim();
@@ -1450,6 +1660,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
       sharedBotId = "",
       modelProvider = "deepseek",
       mode = "",
+      source = "direct",
     } = req.body || {};
     const actor = await resolveChatActor(req, String(sharedBotId || ""), String(botId || ""));
     const authUser = actor.user;
@@ -1473,6 +1684,26 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
         : [];
     const contextualPrompt = buildContextualUserPrompt(normalizedPrompt, recentChatMessages);
     const active = actor.shared ? null : await getActiveTeachingSession(authUser.id, normalizedBotId);
+    const respondTeaching = async (payload: Record<string, any>) => {
+      if (usageType === "chat_message") {
+        const replyText = String(payload?.reply || "").trim();
+        const normalizedSource = String(source || (actor.shared ? "shared_bot" : "direct")).slice(0, 32);
+        await recordBotChatMessages({
+          botId: normalizedBotId,
+          userId: authUser.id,
+          userPrompt: normalizedPrompt,
+          botReply: replyText,
+          modelProvider: selectedModelProvider,
+          source: normalizedSource,
+        });
+        await recordBotInteractionEvent({
+          botId: normalizedBotId,
+          userId: authUser.id,
+          source: normalizedSource,
+        });
+      }
+      return res.json(payload);
+    };
 
     if (mode === "dialogue_enhancement") {
       const reply = String(req.body?.reply || "").trim();
@@ -1485,7 +1716,10 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
         normalizedPrompt,
         reply,
         normalizeRecentMessages(req.body?.recentMessages),
-        { idleTrigger: Boolean(req.body?.idleTrigger) }
+        {
+          idleTrigger: Boolean(req.body?.idleTrigger),
+          currentQuestion: String(req.body?.currentQuestion || "").trim(),
+        }
       );
       return res.json(enhancement);
     }
@@ -1496,22 +1730,22 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
       }
       const taskType = inferTeachingTask(normalized) || "email";
       const created = await startTeachingSession(authUser.id, normalizedBotId, taskType);
-      return res.json({ reply: buildTeachingGuide(1, "step"), teachingMode: true, stepIndex: 1, totalSteps: created.totalSteps, taskType: created.taskType });
+      return respondTeaching({ reply: buildTeachingGuide(1, "step"), teachingMode: true, stepIndex: 1, totalSteps: created.totalSteps, taskType: created.taskType });
     }
 
     if (active) {
       if (active && isExitCommand(normalizedPrompt)) {
         await pool.query(`UPDATE teaching_sessions SET mode='aborted', updated_at=NOW() WHERE id=$1`, [active.id]);
-        return res.json({ reply: "已退出引導模式，現在回到一般聊天模式。", teachingMode: false });
+        return respondTeaching({ reply: "已退出引導模式，現在回到一般聊天模式。", teachingMode: false });
       }
       const session = active;
       const teachingState = getTeachingState(session);
 
       if (isExampleCommand(normalizedPrompt)) {
-        return res.json({ reply: buildTeachingGuide(session.step_index, "example", teachingState), teachingMode: true, stepIndex: session.step_index, totalSteps: session.total_steps, taskType: session.task_type });
+        return respondTeaching({ reply: buildTeachingGuide(session.step_index, "example", teachingState), teachingMode: true, stepIndex: session.step_index, totalSteps: session.total_steps, taskType: session.task_type });
       }
       if (isRepeatCommand(normalizedPrompt)) {
-        return res.json({ reply: buildTeachingGuide(session.step_index, "step", teachingState), teachingMode: true, stepIndex: session.step_index, totalSteps: session.total_steps, taskType: session.task_type });
+        return respondTeaching({ reply: buildTeachingGuide(session.step_index, "step", teachingState), teachingMode: true, stepIndex: session.step_index, totalSteps: session.total_steps, taskType: session.task_type });
       }
       if (isNextCommand(normalizedPrompt)) {
         const savedParts = teachingState.studentParts || {};
@@ -1525,7 +1759,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
             6: "例如：祝 教安",
             7: "例如：學生 陳小明 敬上",
           };
-          return res.json({
+          return respondTeaching({
             reply: `先別急著跳步，你這一步還沒寫內容喔！你可以先試試：${hintMap[session.step_index] || "先寫這一步內容"}`,
             teachingMode: true,
             stepIndex: session.step_index,
@@ -1550,16 +1784,16 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
             "",
             "超有創意！格式也越來越穩了！",
           ].join("\n");
-          return res.json({ reply: finalTemplate, teachingMode: false });
+          return respondTeaching({ reply: finalTemplate, teachingMode: false });
         }
         await pool.query(`UPDATE teaching_sessions SET step_index=$2, mode='guiding', updated_at=NOW() WHERE id=$1`, [session.id, nextStep]);
-        return res.json({ reply: buildTeachingGuide(nextStep, "step", teachingState), teachingMode: true, stepIndex: nextStep, totalSteps: session.total_steps, taskType: session.task_type });
+        return respondTeaching({ reply: buildTeachingGuide(nextStep, "step", teachingState), teachingMode: true, stepIndex: nextStep, totalSteps: session.total_steps, taskType: session.task_type });
       }
 
       if (session.step_index === 1) {
         const category = detectCategory(normalized);
         if (!category) {
-          return res.json({
+          return respondTeaching({
             reply: "Step 1/7（郵件）\n請先從 5 個類別中選 1 個：\n1. 請求信\n2. 請假信\n3. 感謝信\n4. 邀請信\n5. 道歉信\n你可以直接輸入數字，或輸入類別名稱。",
             teachingMode: true,
             stepIndex: 1,
@@ -1596,7 +1830,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
           "",
           buildTeachingGuide(2, "step", nextState),
         ].join("\n");
-        return res.json({ reply, teachingMode: true, stepIndex: 2, totalSteps: session.total_steps, taskType: session.task_type });
+        return respondTeaching({ reply, teachingMode: true, stepIndex: 2, totalSteps: session.total_steps, taskType: session.task_type });
       }
 
       const evaluation = await evaluateStudentDraft(session, normalized);
@@ -1617,7 +1851,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
         ...(evaluation.improve || []),
         evaluation.nextAction || "請按這一步的要求再試一次。",
       ].join("\n");
-      return res.json({ reply: composed, teachingMode: true, stepIndex: session.step_index, totalSteps: session.total_steps, taskType: session.task_type, evaluation });
+      return respondTeaching({ reply: composed, teachingMode: true, stepIndex: session.step_index, totalSteps: session.total_steps, taskType: session.task_type, evaluation });
     }
 
     if (!wantsStream) {
@@ -1639,7 +1873,12 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
           userPrompt: normalizedPrompt,
           botReply: reply,
           modelProvider: selectedModelProvider,
-          source: actor.shared ? "shared_bot" : "direct",
+          source: String(source || (actor.shared ? "shared_bot" : "direct")).slice(0, 32),
+        });
+        await recordBotInteractionEvent({
+          botId: normalizedBotId,
+          userId: authUser.id,
+          source: String(source || (actor.shared ? "shared_bot" : "direct")).slice(0, 32),
         });
       }
       if (isDebugLogEnabled) console.log("[ask] consuming credits");
@@ -1674,7 +1913,12 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
         userPrompt: normalizedPrompt,
         botReply: streamedReply,
         modelProvider: selectedModelProvider,
-        source: actor.shared ? "shared_bot" : "direct",
+        source: String(source || (actor.shared ? "shared_bot" : "direct")).slice(0, 32),
+      });
+      await recordBotInteractionEvent({
+        botId: normalizedBotId,
+        userId: authUser.id,
+        source: String(source || (actor.shared ? "shared_bot" : "direct")).slice(0, 32),
       });
     }
     await consumeUserCredits(authUser.id, "ask", 1, { streaming: true, promptLength: normalizedPrompt.length, source: actor.shared ? "shared_bot" : "direct", modelProvider: selectedModelProvider, imageCount: chatImages.length });

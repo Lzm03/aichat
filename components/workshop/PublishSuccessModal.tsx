@@ -74,6 +74,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [isListening, setIsListening] = useState(false);
   const [voiceLevel, setVoiceLevel] = useState(0);
   const messagesRef = useRef<HTMLDivElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const bootingOverlayRef = useRef<HTMLDivElement | null>(null);
   const guideActivationTimerRef = useRef<number | null>(null);
@@ -228,6 +229,13 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       behavior: "smooth",
     });
   }, [messages, botState]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    window.requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    });
+  }, [isOpen, suggestedReplies.length, guidedMode, guideQuestion, messages.length]);
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -1526,6 +1534,20 @@ const extractQuestionFromReply = (text: string) => {
   return matches?.at(-1)?.trim() || "";
 };
 
+const trimReplyToSingleQuestion = (text: string) => {
+  const normalized = String(text || "").replace(/\r/g, "").trim();
+  if (!normalized) return "";
+  const parts = normalized
+    .split(/(?<=[。！？!?\n])/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const questionParts = parts.filter((part) => /[？?]/.test(part));
+  if (questionParts.length <= 1) return normalized;
+  const lastQuestion = questionParts.at(-1) || "";
+  const nonQuestionParts = parts.filter((part) => !/[？?]/.test(part));
+  return [...nonQuestionParts, lastQuestion].join("\n").trim();
+};
+
 const requestDialogueEnhancement = async ({
   userMsg,
   reply,
@@ -1541,7 +1563,13 @@ const requestDialogueEnhancement = async ({
 }) => {
   if (!reply.trim()) return;
   try {
-    const recentMessages = [...messages, { role: "user" as const, content: userMsg }, { role: "bot" as const, content: reply }]
+    const currentQuestion = extractQuestionFromReply(reply);
+    const recentMessages = [...messages]
+      .filter((message, index, list) => {
+        const isLast = index === list.length - 1;
+        const content = String(message.content || "").trim();
+        return !(isLast && message.role === "bot" && content === reply.trim());
+      })
       .slice(-8)
       .map(({ role, content }) => ({ role, content }));
     const response = await fetch(`${API_BASE}/api/ask`, {
@@ -1552,6 +1580,7 @@ const requestDialogueEnhancement = async ({
         systemPrompt: chatSystemPrompt,
         userPrompt: userMsg,
         reply,
+        currentQuestion,
         recentMessages,
         idleTrigger,
         modelProvider,
@@ -1620,7 +1649,11 @@ const scheduleIdleGuide = ({
   }, IDLE_GUIDE_DELAY_MS);
 };
 
-const sendMessage = async (forcedText?: string, visibleText?: string) => {
+const sendMessage = async (
+  forcedText?: string,
+  visibleText?: string,
+  source: "direct" | "voice" | "guided_hint" | "guided_action" = "direct"
+) => {
   if (shouldBlockChat) return;
   const textToSend = (forcedText ?? inputText).trim();
   if (!textToSend && chatImages.length === 0) return;
@@ -1645,12 +1678,13 @@ const sendMessage = async (forcedText?: string, visibleText?: string) => {
   try {
     const controller = new AbortController();
     activeRequestController.current = controller;
-    const requestPayload = {
-      systemPrompt:
+      const requestPayload = {
+        systemPrompt:
         chatSystemPrompt,
       userPrompt: userMsg,
       modelProvider,
       botId: botConfig.id,
+      source,
       stream: !guidedMode && modelProvider !== "gemini",
       teachingHint: guidedMode ? "continue" : "auto",
       usageType: "chat_message",
@@ -1696,7 +1730,7 @@ const sendMessage = async (forcedText?: string, visibleText?: string) => {
 
     if (contentType.includes("application/json") || modelProvider === "gemini") {
       const data = await response.json().catch(() => null);
-      const baseReply = String(data?.reply || "").trim();
+      const baseReply = trimReplyToSingleQuestion(String(data?.reply || "").trim());
       const followUpQuestion = String(data?.followUpQuestion || data?.dialogueState?.follow_up_question || "").trim();
       const committedReply = [baseReply, followUpQuestion].filter(Boolean).join("\n\n");
       const guidedCard = Boolean(data?.teachingMode) ? parseGuidedCard(committedReply) : { title: "", body: committedReply };
@@ -1807,7 +1841,14 @@ const sendMessage = async (forcedText?: string, visibleText?: string) => {
     }
 
     streamedReply += decoder.decode();
-    const committedReply = streamedReply.trim();
+    const committedReply = trimReplyToSingleQuestion(streamedReply.trim());
+    if (committedReply !== streamedReply.trim()) {
+      setMessages(prev => {
+        const newMessages = [...prev];
+        newMessages[newMessages.length - 1] = { role: "bot", content: committedReply };
+        return newMessages;
+      });
+    }
     if (!spokenReply && voicePlaybackEnabledRef.current && committedReply) {
       enqueueSpeak(committedReply);
     }
@@ -2168,7 +2209,7 @@ const startSpeechInput = async () => {
         sttTypingTimerRef.current = null;
       }
       setInputText(transcript);
-      void sendMessage(transcript);
+      void sendMessage(transcript, undefined, "voice");
     }, Math.max(220, Math.min(transcript.length * 35 + 120, 900)));
 
     sttTypingTimerRef.current = window.setInterval(() => {
@@ -2193,7 +2234,7 @@ const startSpeechInput = async () => {
           window.clearTimeout(sttAutoSendTimerRef.current);
           sttAutoSendTimerRef.current = null;
         }
-        void sendMessage(transcript);
+        void sendMessage(transcript, undefined, "voice");
       }
     }, 35);
   };
@@ -2936,7 +2977,12 @@ const unlockAudioAndMic = async () => {
               </div>
 
               {/* messages */}
-                  <div ref={messagesRef} className="custom-scroll flex-1 space-y-3 overflow-y-auto bg-[linear-gradient(180deg,rgba(255,250,241,0.6),rgba(247,241,230,0.92))] p-3.5">
+                  <div
+                    ref={messagesRef}
+                    className={`custom-scroll flex-1 space-y-3 overflow-y-auto bg-[linear-gradient(180deg,rgba(255,250,241,0.6),rgba(247,241,230,0.92))] p-3.5 ${
+                      suggestedReplies.length > 0 || guidedMode ? "pb-44 md:pb-52" : "pb-3.5"
+                    }`}
+                  >
                 {messages.map((m, i) => (
                   <div
                     key={i}
@@ -3009,6 +3055,7 @@ const unlockAudioAndMic = async () => {
                     </div>
                   </div>
                 )}
+                <div ref={messagesEndRef} />
               </div>
 
               {/* input */}
@@ -3036,7 +3083,7 @@ const unlockAudioAndMic = async () => {
                           <button
                             key={`${reply.tier}-${reply.text}`}
                             type="button"
-                            onClick={() => void sendMessage(reply.sendText || reply.text, reply.text)}
+                            onClick={() => void sendMessage(reply.sendText || reply.text, reply.text, "guided_hint")}
                             className={`flex min-h-[34px] w-full items-center gap-1.5 rounded-full border px-3 py-1 text-left text-[10px] font-black shadow-[0_2px_6px_rgba(148,163,184,0.06)] transition active:scale-[0.99] ${meta.className}`}
                           >
                             <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -3053,10 +3100,10 @@ const unlockAudioAndMic = async () => {
                       引導模式進行中 {guidedStepIndex > 0 && guidedTotalSteps > 0 ? `(Step ${guidedStepIndex}/${guidedTotalSteps})` : ""}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <button onClick={() => void sendMessage("下一步")} className="rounded-lg bg-white px-3 py-1 text-xs text-amber-800 border border-amber-200">下一步</button>
-                      <button onClick={() => void sendMessage("重複這一步")} className="rounded-lg bg-white px-3 py-1 text-xs text-amber-800 border border-amber-200">重複這一步</button>
-                      <button onClick={() => void sendMessage("給我示例")} className="rounded-lg bg-white px-3 py-1 text-xs text-amber-800 border border-amber-200">給我示例</button>
-                      <button onClick={() => void sendMessage("退出引導")} className="rounded-lg bg-white px-3 py-1 text-xs text-rose-700 border border-rose-200">退出引導</button>
+                      <button onClick={() => void sendMessage("下一步", undefined, "guided_action")} className="rounded-lg bg-white px-3 py-1 text-xs text-amber-800 border border-amber-200">下一步</button>
+                      <button onClick={() => void sendMessage("重複這一步", undefined, "guided_action")} className="rounded-lg bg-white px-3 py-1 text-xs text-amber-800 border border-amber-200">重複這一步</button>
+                      <button onClick={() => void sendMessage("給我示例", undefined, "guided_action")} className="rounded-lg bg-white px-3 py-1 text-xs text-amber-800 border border-amber-200">給我示例</button>
+                      <button onClick={() => void sendMessage("退出引導", undefined, "guided_action")} className="rounded-lg bg-white px-3 py-1 text-xs text-rose-700 border border-rose-200">退出引導</button>
                     </div>
                   </div>
                 ) : null}
@@ -3175,7 +3222,7 @@ const unlockAudioAndMic = async () => {
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
-                        void sendMessage();
+                        void sendMessage(undefined, undefined, "direct");
                       }
                     }}
                     disabled={shouldBlockChat}
@@ -3209,7 +3256,7 @@ const unlockAudioAndMic = async () => {
                   </button>
                   <button
                     onClick={() => {
-                      void sendMessage();
+                      void sendMessage(undefined, undefined, "direct");
                     }}
                     disabled={shouldBlockChat || (!inputText.trim() && chatImages.length === 0)}
                     className="p-3 bg-[#2e2418] text-white rounded-full hover:bg-[#463727] disabled:opacity-40"

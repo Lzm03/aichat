@@ -292,10 +292,11 @@ function formatStudentIndex(index: number) {
 function buildAssessmentRow(input: {
   student: any;
   index: number;
-  messages: string[];
+  messages: Array<{ content: string; createdAt: string; source?: string }>;
   buckets: KnowledgeBuckets;
 }) {
-  const outputLevel = scoreOutputLevel(input.messages, input.buckets);
+  const messageContents = input.messages.map((message) => String(message.content || ""));
+  const outputLevel = scoreOutputLevel(messageContents, input.buckets);
   const interactionTurn = input.messages.length;
   const turnFactor = Math.min(interactionTurn / 10, 1);
   const qualityFactor = outputLevel / 3;
@@ -303,7 +304,24 @@ function buildAssessmentRow(input: {
   const band = interactionBand(interactionDepth);
   const status = classifyStatus(outputLevel, interactionDepth);
   const mastery = Math.round(Math.max(0, Math.min(1, interactionDepth * 0.72 + qualityFactor * 0.28)) * 100);
-  const hasStudentInput = input.messages.some((msg) => msg.trim().length >= 12);
+  const directInputCount = input.messages.filter((msg) => {
+    const source = String(msg.source || "direct").toLowerCase();
+    return source === "direct" || source === "typing" || source === "voice" || source === "chat_enter" || source === "shared_bot";
+  }).length;
+  const directInputChars = input.messages.reduce((sum, msg) => {
+    const source = String(msg.source || "direct").toLowerCase();
+    if (!(source === "direct" || source === "typing" || source === "voice" || source === "chat_enter" || source === "shared_bot")) return sum;
+    return sum + String(msg.content || "").trim().length;
+  }, 0);
+  const assistedInputCount = input.messages.filter((msg) => {
+    const source = String(msg.source || "").toLowerCase();
+    return source.includes("guided") || source.includes("hint") || source.includes("bubble") || source.includes("assist");
+  }).length;
+  const voiceInputCount = input.messages.filter((msg) => String(msg.source || "").toLowerCase() === "voice").length;
+  const activeInputCount = Math.max(0, directInputCount);
+  const activeInputRate = interactionTurn ? Math.round((activeInputCount / interactionTurn) * 100) : 0;
+  const assistedInputRate = interactionTurn ? Math.round((assistedInputCount / interactionTurn) * 100) : 0;
+  const hasStudentInput = messageContents.some((msg) => msg.trim().length >= 12);
 
   return {
     id: formatStudentIndex(input.index),
@@ -318,7 +336,15 @@ function buildAssessmentRow(input: {
     interactionText: band.text,
     interactionDepth,
     rounds: interactionTurn,
-    mode: hasStudentInput ? "主動輸入" : "尚未互動",
+    mode: interactionTurn ? (assistedInputCount > activeInputCount ? "系統引導" : "主動輸入") : "尚未互動",
+    activeInputCount,
+    assistedInputCount,
+    directInputCount,
+    directInputChars,
+    voiceInputCount,
+    guidedInputCount: assistedInputCount,
+    activeInputRate,
+    assistedInputRate,
     ...status,
   };
 }
@@ -328,7 +354,7 @@ function buildWeightedAssessmentRow(input: {
   index: number;
   items: Array<{
     botId: string;
-    messages: Array<{ content: string; createdAt: string }>;
+    messages: Array<{ content: string; createdAt: string; source?: string }>;
     buckets: KnowledgeBuckets;
   }>;
 }) {
@@ -338,8 +364,7 @@ function buildWeightedAssessmentRow(input: {
 
   const now = Date.now();
   const scoredItems = input.items.map((item) => {
-    const messages = item.messages.map((msg) => String(msg.content || ""));
-    const baseRow = buildAssessmentRow({ student: input.student, index: input.index, messages, buckets: item.buckets });
+    const baseRow = buildAssessmentRow({ student: input.student, index: input.index, messages: item.messages, buckets: item.buckets });
     const latestAt = item.messages.reduce((max, msg) => Math.max(max, new Date(msg.createdAt).getTime() || 0), 0);
     const ageDays = latestAt ? Math.max(0, (now - latestAt) / (1000 * 60 * 60 * 24)) : 30;
     const recencyFactor = Math.max(0.35, 1 - Math.min(ageDays, 30) / 30);
@@ -356,7 +381,18 @@ function buildWeightedAssessmentRow(input: {
   const band = interactionBand(weightedDepth);
   const status = classifyStatus(blendedOutputLevel, weightedDepth);
   const mastery = Math.round(Math.max(0, Math.min(1, weightedDepth * 0.72 + (blendedOutputLevel / 3) * 0.28)) * 100);
-  const mode = weightedRounds >= 2 ? "加權平均" : "尚未互動";
+  const totalDirectInputCount = scoredItems.reduce((sum, item) => sum + Number(item.baseRow.directInputCount || 0), 0);
+  const totalActiveInputCount = scoredItems.reduce((sum, item) => sum + Number(item.baseRow.activeInputCount || 0), 0);
+  const totalAssistedInputCount = scoredItems.reduce((sum, item) => sum + Number(item.baseRow.assistedInputCount || 0), 0);
+  const totalVoiceInputCount = scoredItems.reduce((sum, item) => sum + Number(item.baseRow.voiceInputCount || 0), 0);
+  const totalGuidedInputCount = scoredItems.reduce((sum, item) => sum + Number(item.baseRow.guidedInputCount || 0), 0);
+  const totalDirectInputChars = scoredItems.reduce((sum, item) => sum + Number(item.baseRow.directInputChars || 0), 0);
+  const totalInputs = totalActiveInputCount + totalAssistedInputCount;
+  const activeInputRate = totalInputs ? Math.round((totalActiveInputCount / totalInputs) * 100) : 0;
+  const assistedInputRate = totalInputs ? Math.round((totalAssistedInputCount / totalInputs) * 100) : 0;
+  const mode = scoredItems.some((item) => item.baseRow.assistedInputCount > item.baseRow.activeInputCount)
+    ? "系統引導"
+    : "主動輸入";
 
   return {
     id: formatStudentIndex(input.index),
@@ -372,6 +408,14 @@ function buildWeightedAssessmentRow(input: {
     interactionDepth: Number(weightedDepth.toFixed(3)),
     rounds: Math.round(weightedRounds),
     mode,
+    activeInputCount: totalActiveInputCount,
+    assistedInputCount: totalAssistedInputCount,
+    directInputCount: totalDirectInputCount,
+    voiceInputCount: totalVoiceInputCount,
+    guidedInputCount: totalGuidedInputCount,
+    directInputChars: totalDirectInputChars,
+    activeInputRate,
+    assistedInputRate,
     weightedBots: scoredItems.length,
     weightedOutputLevel: Number(weightedOutputLevel.toFixed(3)),
     ...status,
@@ -567,7 +611,7 @@ router.get("/teacher/assessment-report", requireAuth, async (req, res) => {
     ));
     const messageRows = botIds.length
       ? await pool.query(
-          `SELECT user_id, bot_id, content, created_at
+          `SELECT user_id, bot_id, content, source, created_at
            FROM bot_chat_messages
            WHERE teacher_id=$1
              AND role='user'
@@ -577,11 +621,11 @@ router.get("/teacher/assessment-report", requireAuth, async (req, res) => {
         )
       : { rows: [] as any[] };
 
-    const messagesByStudentBot = new Map<string, Array<{ content: string; createdAt: string }>>();
+    const messagesByStudentBot = new Map<string, Array<{ content: string; createdAt: string; source?: string }>>();
     for (const row of messageRows.rows) {
       const key = `${row.user_id}:${row.bot_id}`;
       const list = messagesByStudentBot.get(key) || [];
-      list.push({ content: String(row.content || ""), createdAt: String(row.created_at || "") });
+      list.push({ content: String(row.content || ""), createdAt: String(row.created_at || ""), source: String(row.source || "direct") });
       messagesByStudentBot.set(key, list);
     }
 
@@ -621,19 +665,28 @@ router.get("/teacher/assessment-report", requireAuth, async (req, res) => {
 
     const interactionSummary = rows.reduce(
       (acc, row) => {
-        if (row.mode === "主動輸入") acc.independent += 1;
-        else acc.assisted += 1;
+        const typedRow = row as any;
+        const active = Number(typedRow.activeInputCount || 0);
+        const assisted = Number(typedRow.assistedInputCount || 0);
+        acc.independent += active;
+        acc.assisted += assisted;
+        acc.totalInputs += active + assisted;
+        acc.totalActiveChars += Number(typedRow.directInputChars || 0);
+        acc.totalActiveMessages += Number(typedRow.directInputCount || 0);
         acc.points.push({
-          name: row.name,
-          x: Math.max(0, Math.min(100, Math.round((row.interactionDepth || 0) * 100))),
-          y: Math.max(0, Math.min(100, Math.round(row.mastery || 0))),
-          status: row.status,
+          name: typedRow.name,
+          x: Math.max(0, Math.min(100, Number(typedRow.activeInputRate ?? Math.round((typedRow.interactionDepth || 0) * 100)))),
+          y: Math.max(0, Math.min(100, Math.round(typedRow.mastery || 0))),
+          status: typedRow.status,
         });
         return acc;
       },
       {
         independent: 0,
         assisted: 0,
+        totalInputs: 0,
+        totalActiveChars: 0,
+        totalActiveMessages: 0,
         points: [] as Array<{ name: string; x: number; y: number; status: string }>,
       }
     );
@@ -655,10 +708,12 @@ router.get("/teacher/assessment-report", requireAuth, async (req, res) => {
       selectedBot,
       knowledgePoints,
       interactionSummary: {
-        independentRate: rows.length ? Math.round((interactionSummary.independent / rows.length) * 100) : 0,
-        assistedRate: rows.length ? Math.round((interactionSummary.assisted / rows.length) * 100) : 0,
-        averageFreeInputLength: rows.length ? Math.max(8, Math.round(rows.reduce((sum, row) => sum + (row.mastery || 0), 0) / rows.length / 2)) : 0,
-        averageBubbleDependency: rows.length ? Number((interactionSummary.assisted / Math.max(1, rows.length * 10)).toFixed(1)) : 0,
+        independentRate: interactionSummary.totalInputs ? Math.round((interactionSummary.independent / interactionSummary.totalInputs) * 100) : 0,
+        assistedRate: interactionSummary.totalInputs ? Math.round((interactionSummary.assisted / interactionSummary.totalInputs) * 100) : 0,
+        averageFreeInputLength: rows.length
+          ? Math.max(8, Math.round(interactionSummary.totalActiveChars / Math.max(1, interactionSummary.totalActiveMessages || 1)))
+          : 0,
+        averageBubbleDependency: rows.length ? Number((interactionSummary.assisted / Math.max(1, rows.length)).toFixed(1)) : 0,
         points: interactionSummary.points,
       },
       rules: {

@@ -46,6 +46,14 @@ type AssessmentRow = (typeof classAssessmentRows)[number] & {
   interactionCode?: string;
   interactionText?: string;
   interactionDepth?: number;
+  activeInputCount?: number;
+  assistedInputCount?: number;
+  directInputCount?: number;
+  voiceInputCount?: number;
+  guidedInputCount?: number;
+  directInputChars?: number;
+  activeInputRate?: number;
+  assistedInputRate?: number;
 };
 
 type AssessmentCounts = {
@@ -136,9 +144,11 @@ export const StudentLearningReportCard = () => {
   const rankingRows = [...assessmentRows]
     .filter((row) => typeof row.mastery === 'number')
     .sort((a, b) => {
-      const aMastery = a.mastery ?? 0;
-      const bMastery = b.mastery ?? 0;
-      return rankingPriority === 'active' ? bMastery - aMastery : aMastery - bMastery;
+      const aActive = Number(a.activeInputRate ?? 0);
+      const bActive = Number(b.activeInputRate ?? 0);
+      const aAssisted = Number(a.assistedInputRate ?? 0);
+      const bAssisted = Number(b.assistedInputRate ?? 0);
+      return rankingPriority === 'active' ? bActive - aActive : bAssisted - aAssisted;
     });
   const selectedBot = useMemo(
     () => sharedBots.find((bot) => bot.id === selectedBotId) || sharedBots[0] || null,
@@ -146,6 +156,18 @@ export const StudentLearningReportCard = () => {
   );
   const inputRate = interactionSummary.independentRate || 0;
   const assistedRate = interactionSummary.assistedRate || 0;
+  const aiModeInsight = (() => {
+    if (inputRate === 0 && assistedRate === 0) {
+      return '本堂課目前尚未開始互動，班級還沒有累積足夠的輸入記錄，等學生開始回應後，這裡會依實際占比自動更新。';
+    }
+    if (inputRate > assistedRate) {
+      return '本堂課整體互動偏向主動輸入。學生以直接回應為主，表示當前知識點能促使學生自行輸出，可適度提高挑戰度。';
+    }
+    if (inputRate < assistedRate) {
+      return '本堂課整體互動偏向系統引導。學生較常依賴提示或引導回覆，表示當前知識點仍需要更多支架支持，建議先降低門檻，再逐步提高挑戰度。';
+    }
+    return '本堂課整體互動剛好平衡。學生直接回應與系統引導各佔一半，表示當前知識點能同時支撐自主輸出與適度提示，適合維持目前難度並觀察後續走向。';
+  })();
   const topicNodes = knowledgePoints.length
     ? knowledgePoints
     : [
@@ -348,11 +370,11 @@ export const StudentLearningReportCard = () => {
                   </div>
                 </div>
                 <div className="mt-3.5 h-3 w-full rounded-full bg-slate-200">
-                  <div className="h-3 w-[45%] rounded-full bg-emerald-500" />
+                  <div className="h-3 rounded-full bg-emerald-500" style={{ width: `${inputRate}%` }} />
                 </div>
                 <div className="mt-2.5 flex flex-col gap-1 text-[11px] font-black sm:flex-row sm:items-center sm:justify-between">
-                  <span className="text-emerald-700">主動輸入 (Independent): 45%</span>
-                  <span className="text-slate-500">系統引導 (Assisted): 55%</span>
+                  <span className="text-emerald-700">主動輸入 (Independent): {inputRate}%</span>
+                  <span className="text-slate-500">系統引導 (Assisted): {assistedRate}%</span>
                 </div>
                 <button type="button" onClick={() => setIsRankingOpen(true)} className="mt-3 flex w-full items-center justify-center rounded-2xl bg-slate-50 px-4 py-2.5 text-center text-[11px] font-black text-slate-700">
                   學生排行榜 <ChevronRight className="ml-2 inline h-4 w-4" />
@@ -490,27 +512,33 @@ export const StudentLearningReportCard = () => {
                     </div>
                     <div className="rounded-2xl border border-slate-100 bg-white p-3.5 shadow-sm">
                       <p className="text-[13px] font-semibold leading-relaxed text-slate-700 sm:text-sm">
-                        {inputRate >= assistedRate
-                          ? '本堂課整體互動偏向主動。學生對知識點的回應較穩定，可適度提高後半段挑戰度，持續拉高深度互動。'
-                          : '本堂課整體互動偏向被動。多數學生在對話後半段放慢主動輸入速度，建議適度提高知識點挑戰度，促進更穩定的引導回應。'}
+                        {aiModeInsight}
                       </p>
                     </div>
 
                     <div className="mt-4 sm:mt-5">
                       <h4 className="mb-2 text-sm font-black text-slate-900 sm:text-sm">主動輸入/引導依賴佔比</h4>
-                      <div className="h-6 w-full overflow-hidden rounded-full bg-slate-200">
-                        <div className="flex h-full">
-                          <div className="flex h-full items-center justify-start bg-emerald-500 px-2.5 text-[11px] font-black text-white sm:text-xs" style={{ width: `${inputRate}%` }}>
+                      <div className="relative h-6 w-full overflow-hidden rounded-full bg-slate-200">
+                        {inputRate > 0 ? (
+                          <div
+                            className="flex h-full items-center justify-start whitespace-nowrap bg-emerald-500 px-2.5 text-[11px] font-black text-white sm:text-xs"
+                            style={{ width: `${Math.max(0, Math.min(100, inputRate))}%` }}
+                          >
                             {inputRate}%
                           </div>
-                          <div className="flex h-full items-center justify-end bg-slate-200 px-2.5 text-[11px] font-black text-slate-500 sm:text-xs" style={{ width: `${assistedRate}%` }}>
+                        ) : null}
+                        {assistedRate > 0 ? (
+                          <div
+                            className="absolute inset-y-0 right-0 flex h-full items-center justify-end whitespace-nowrap bg-slate-200 px-2.5 text-[11px] font-black text-slate-500 sm:text-xs"
+                            style={{ width: `${Math.max(0, Math.min(100, assistedRate))}%` }}
+                          >
                             {assistedRate}%
                           </div>
-                        </div>
+                        ) : null}
                       </div>
                       <div className="mt-2 flex items-center justify-between text-[11px] font-black sm:text-xs">
                         <span className="text-emerald-700">主動輸入</span>
-                        <span className="text-slate-500">氣泡點擊</span>
+                        <span className="text-slate-500">系統引導</span>
                       </div>
                     </div>
 
@@ -544,8 +572,10 @@ export const StudentLearningReportCard = () => {
                     </div>
                     <div className="min-h-0 flex-1 overflow-y-auto">
                       {rankingRows.map((row, index) => {
-                        const inputRate = Math.max(0, Math.min(100, Math.round(row.mastery ?? 0)));
-                        const displayRate = rankingPriority === 'active' ? inputRate : 100 - inputRate;
+                        const activeRate = Math.max(0, Math.min(100, Math.round(row.activeInputRate ?? 0)));
+                        const assistedRate = Math.max(0, Math.min(100, Math.round(row.assistedInputRate ?? 0)));
+                        const displayRate = rankingPriority === 'active' ? activeRate : assistedRate;
+                        const modeLabel = rankingPriority === 'active' ? '輸入' : '依賴';
                         return (
                           <div
                             key={`${row.id}-${row.studentId || row.name}`}
@@ -563,7 +593,7 @@ export const StudentLearningReportCard = () => {
                               </div>
                             </div>
                             <div className={`shrink-0 text-right text-[11px] font-bold sm:text-xs ${rankingPriority === 'active' ? 'text-emerald-700' : 'text-rose-700'}`}>
-                              {displayRate}% {rankingPriority === 'active' ? '輸入' : '依賴'}
+                              {displayRate}% {modeLabel}
                             </div>
                           </div>
                         );
