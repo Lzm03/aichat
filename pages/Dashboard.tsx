@@ -83,22 +83,22 @@ function getTimeGreeting(date = new Date()) {
 }
 
 const HeroBanner: React.FC<{ teacherName: string }> = ({ teacherName }) => (
-  <div className="relative mb-5 h-[210px] w-full overflow-hidden rounded-[24px] shadow-md group sm:mb-6 sm:h-auto sm:aspect-[4/1] sm:rounded-[32px]">
-    <img 
-      src="https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=2560&auto=format&fit=crop" 
-      alt="AI Dashboard Hero" 
-      className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+    <div className="relative mb-5 h-[210px] w-full overflow-hidden rounded-[24px] shadow-md group sm:mb-6 sm:h-auto sm:aspect-[4/1] sm:rounded-[32px]">
+      <img 
+      src="/Tomato_Robot.png" 
+        alt="AI Dashboard Hero" 
+        className="absolute inset-0 h-full w-full object-cover object-center transition-transform duration-700 group-hover:scale-105"
     />
-    <div className="absolute inset-0 flex flex-col justify-center bg-gradient-to-r from-slate-900/70 via-slate-900/35 to-transparent p-5 sm:p-8 md:p-12">
+    <div className="absolute inset-0 flex flex-col justify-center bg-gradient-to-r from-slate-950/70 via-slate-900/45 to-slate-900/10 p-5 sm:p-8 md:p-12">
       <div className="max-w-2xl space-y-3 text-white sm:space-y-4">
-        <h2 className="text-xl font-bold leading-tight tracking-tight sm:text-2xl md:text-4xl">{getTimeGreeting()}，{teacherName}</h2>
-        <div className="inline-block max-w-full rounded-2xl border border-white bg-white/95 p-3 text-indigo-700 shadow-sm sm:rounded-xl">
-          <div className="flex flex-col gap-2 text-sm font-semibold leading-snug sm:block">
-            <span>本週 <span className="font-bold bg-white px-1.5 py-0.5 rounded-md mx-0.5 shadow-sm">2</span> 份測驗已批改完成</span>
+        <h2 className="text-xl font-black leading-tight tracking-tight text-white sm:text-2xl md:text-4xl">{getTimeGreeting()}，{teacherName}</h2>
+        <div className="inline-block max-w-full rounded-2xl border border-white/18 bg-white/10 p-3 text-white shadow-sm backdrop-blur-[3px] sm:rounded-xl">
+          <div className="flex flex-col gap-2 text-sm font-semibold leading-snug text-white/90 sm:block">
+            <span>本週 <span className="mx-0.5 rounded-md bg-white/18 px-1.5 py-0.5 font-black text-white shadow-sm">2</span> 份測驗已批改完成</span>
             <span className="hidden sm:inline"> · </span>
-            <span><span className="font-bold bg-white px-1.5 py-0.5 rounded-md mx-0.5 shadow-sm">3</span> 名學生在「分析」層級持續落後</span>
+            <span><span className="mx-0.5 rounded-md bg-white/18 px-1.5 py-0.5 font-black text-white shadow-sm">3</span> 名學生在「分析」層級持續落後</span>
             <span className="hidden sm:inline"> · </span>
-            <span><span className="font-bold bg-white px-1.5 py-0.5 rounded-md mx-0.5 shadow-sm">1</span> 份 AI 評分偏差較高</span>
+            <span><span className="mx-0.5 rounded-md bg-white/18 px-1.5 py-0.5 font-black text-white shadow-sm">1</span> 份 AI 評分偏差較高</span>
           </div>
         </div>
       </div>

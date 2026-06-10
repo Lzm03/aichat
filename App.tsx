@@ -12,6 +12,8 @@ import { SharedBotChatPage } from './pages/SharedBotChatPage';
 import { AuthPage } from './pages/AuthPage';
 import { AccountPage } from './pages/AccountPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { StudentHome } from './pages/StudentHome';
+import { TeacherSharingPage } from './pages/TeacherSharingPage';
 import { MobileSidebarDrawer } from './components/layout/MobileSidebarDrawer';
 import { Icons } from './components/icons';
 import { API_BASE } from './utils/api';
@@ -25,12 +27,13 @@ import {
 import { DEFAULT_USER_PREFERENCES, getAppShellThemeClasses, normalizeUserPreferences } from './utils/userPreferences';
 import { useFeatureEntitlements } from './hooks/useFeatureEntitlements';
 
-export type Page = 'dashboard' | 'assessment' | 'workshop' | 'tasks' | 'messages';
+export type Page = 'dashboard' | 'assessment' | 'workshop' | 'sharing' | 'tasks' | 'messages';
 
 const pageConfig = {
   dashboard: { title: '教學指揮艙', component: <Dashboard /> },
   assessment: { title: '智能評測', component: <AssessmentPage /> },
   workshop: { title: 'AI 機器人工作坊', component: <AiBotWorkshopPage /> },
+  sharing: { title: '學生與 Bot 分享', component: <TeacherSharingPage /> },
   tasks: { title: '任務中心', component: <TaskCenter /> },
   messages: { title: '消息中心', component: <MessagesPage /> },
 };
@@ -172,6 +175,8 @@ const App: React.FC = () => {
         </div>
       ) : shouldShowAuth ? (
         <AuthPage />
+      ) : currentUser?.role === "student" ? (
+        <StudentHome currentUser={currentUser} />
       ) : isAccountRoute && currentUser ? (
         <AccountPage currentUser={currentUser} onProfileUpdated={setCurrentUser} />
       ) : isSettingsRoute && currentUser ? (

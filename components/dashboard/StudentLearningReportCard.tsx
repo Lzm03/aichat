@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from '../icons';
-import { Target, ArrowLeft, ChevronRight, AlertCircle, BookOpen, CheckCircle2, Sparkles, X } from 'lucide-react';
+import { Target, ArrowLeft, ChevronRight, AlertCircle, BookOpen, CheckCircle2, Sparkles, X, BarChart3, ChevronDown } from 'lucide-react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
 import { readAuthSession } from '../../utils/auth';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { API_BASE } from '../../utils/api';
 
 // Mock Data
 const classList = [
@@ -39,6 +40,41 @@ const classAssessmentRows = [
   { id: '17', name: '學生 17', mastery: 68, output: 'L1', outputText: '簡短回應', interaction: 'Y1 初步參與', rounds: 3, mode: '被動回覆', status: 'warning', statusText: '卡關預警' },
 ];
 
+type AssessmentRow = (typeof classAssessmentRows)[number] & {
+  studentId?: string;
+  outputLevel?: number;
+  interactionCode?: string;
+  interactionText?: string;
+  interactionDepth?: number;
+};
+
+type AssessmentCounts = {
+  all: number;
+  warning: number;
+  knowledge: number;
+  normal: number;
+};
+
+type SharedBotOption = {
+  id: string;
+  name: string;
+  avatarUrl?: string;
+  knowledgeBase?: string;
+};
+
+type KnowledgePoint = {
+  label: string;
+  score: number;
+  completed: boolean;
+};
+
+type InteractionPoint = {
+  name: string;
+  x: number;
+  y: number;
+  status: string;
+};
+
 const knowledgeTracking = [
   { level: 'L1 基礎事實', state: '已掌握', note: '學生能正確回答', detail: '出生地、求學經歷、行醫經歷', tone: 'green' },
   { level: 'L2 理解關聯', state: '已掌握', note: '學生能正確回答', detail: '棄醫從革原因、上書李鴻章、建立興中會', tone: 'green' },
@@ -55,38 +91,135 @@ const radarData = [
 ];
 
 export const StudentLearningReportCard = () => {
-  const canViewClassAssessmentDetail =
-    readAuthSession()?.user?.email?.trim().toLowerCase() === 'lzm200303@gmail.com';
-  const [viewLevel, setViewLevel] = useState<'overview' | 'class' | 'student'>('overview');
-  const [selectedClass, setSelectedClass] = useState<any | null>(null);
-  const [selectedBloom, setSelectedBloom] = useState<string | null>(null);
-  const [selectedStudent, setSelectedStudent] = useState<any | null>(studentData[0]);
+  const currentRole = readAuthSession()?.user?.role;
+  const canViewClassAssessmentDetail = currentRole === 'teacher' || currentRole === 'admin';
+  const [viewLevel, setViewLevel] = useState<'overview' | 'report'>('overview');
   const [isClassDetailOpen, setIsClassDetailOpen] = useState(false);
   const [detailFilter, setDetailFilter] = useState<'all' | 'warning' | 'knowledge' | 'normal'>('all');
   const [selectedDetailStudent, setSelectedDetailStudent] = useState<any | null>(null);
-  useBodyScrollLock(isClassDetailOpen);
+  const [isRankingOpen, setIsRankingOpen] = useState(false);
+  const [assessmentRows, setAssessmentRows] = useState<AssessmentRow[]>(classAssessmentRows);
+  const [sharedBots, setSharedBots] = useState<SharedBotOption[]>([]);
+  const [selectedBotId, setSelectedBotId] = useState('');
+  const [knowledgePoints, setKnowledgePoints] = useState<KnowledgePoint[]>([]);
+  const [interactionSummary, setInteractionSummary] = useState<{
+    independentRate: number;
+    assistedRate: number;
+    averageFreeInputLength: number;
+    averageBubbleDependency: number;
+    points: InteractionPoint[];
+  }>({
+    independentRate: 45,
+    assistedRate: 55,
+    averageFreeInputLength: 21,
+    averageBubbleDependency: 2.1,
+    points: [],
+  });
+  const [assessmentCounts, setAssessmentCounts] = useState<AssessmentCounts>({
+    all: classAssessmentRows.length,
+    warning: classAssessmentRows.filter((row) => row.status === 'warning').length,
+    knowledge: classAssessmentRows.filter((row) => row.status === 'knowledge').length,
+    normal: classAssessmentRows.filter((row) => row.status === 'normal').length,
+  });
+  const [assessmentLoading, setAssessmentLoading] = useState(false);
+  const [assessmentError, setAssessmentError] = useState('');
+  const [rankingPriority, setRankingPriority] = useState<'active' | 'passive'>('active');
+  const [assessmentSortDirection, setAssessmentSortDirection] = useState<'desc' | 'asc'>('desc');
+  useBodyScrollLock(isClassDetailOpen || isRankingOpen);
 
-  const handleClassClick = (cls: any) => {
-    setSelectedClass(cls);
-    setViewLevel('class');
-  };
+  const filteredAssessmentRows = assessmentRows.filter((row) => detailFilter === 'all' || row.status === detailFilter);
+  const sortedAssessmentRows = [...filteredAssessmentRows].sort((a, b) => {
+    const aMastery = Number(a.mastery ?? 0);
+    const bMastery = Number(b.mastery ?? 0);
+    return assessmentSortDirection === 'desc' ? bMastery - aMastery : aMastery - bMastery;
+  });
+  const rankingRows = [...assessmentRows]
+    .filter((row) => typeof row.mastery === 'number')
+    .sort((a, b) => {
+      const aMastery = a.mastery ?? 0;
+      const bMastery = b.mastery ?? 0;
+      return rankingPriority === 'active' ? bMastery - aMastery : aMastery - bMastery;
+    });
+  const selectedBot = useMemo(
+    () => sharedBots.find((bot) => bot.id === selectedBotId) || sharedBots[0] || null,
+    [sharedBots, selectedBotId]
+  );
+  const inputRate = interactionSummary.independentRate || 0;
+  const assistedRate = interactionSummary.assistedRate || 0;
+  const topicNodes = knowledgePoints.length
+    ? knowledgePoints
+    : [
+        { label: '知識點', score: 0, completed: false },
+      ];
+  const botAvatarFallback = 'https://api.dicebear.com/9.x/bottts/svg?seed=Chopreality';
 
-  const handleBloomClick = (data: any) => {
-    setSelectedBloom(data.level);
-    setViewLevel('student');
-  };
+  useEffect(() => {
+    if (!canViewClassAssessmentDetail) return;
+    let cancelled = false;
+    setAssessmentLoading(true);
+    setAssessmentError('');
+    setSharedBots([]);
+    setAssessmentRows(classAssessmentRows);
+    const query = selectedBotId ? `?botId=${encodeURIComponent(selectedBotId)}` : '';
+    fetch(`${API_BASE}/api/bots/teacher/assessment-report${query}`)
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || 'Failed to load assessment report');
+        return data;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        if (Array.isArray(data?.sharedBots)) {
+          const nextSharedBots = data.sharedBots.map((bot: any) => ({
+            id: String(bot.id || ''),
+            name: String(bot.name || 'AI Bot'),
+            avatarUrl: bot.avatarUrl || bot.avatar_url || '',
+            knowledgeBase: bot.knowledgeBase || bot.knowledge_base || '',
+          })).filter((bot: SharedBotOption) => Boolean(bot.id));
+          setSharedBots(nextSharedBots);
+          if (!selectedBotId && data.sharedBots[0]?.id) {
+            setSelectedBotId(String(data.sharedBots[0].id));
+          }
+        }
+        if (data?.selectedBotId && !selectedBotId) {
+          setSelectedBotId(String(data.selectedBotId));
+        }
+        if (Array.isArray(data?.rows)) {
+          setAssessmentRows(data.rows);
+        }
+        if (data?.counts) {
+          setAssessmentCounts({
+            all: Number(data.counts.all || 0),
+            warning: Number(data.counts.warning || 0),
+            knowledge: Number(data.counts.knowledge || 0),
+            normal: Number(data.counts.normal || 0),
+          });
+        }
+        if (Array.isArray(data?.knowledgePoints)) {
+          setKnowledgePoints(data.knowledgePoints);
+        }
+        if (data?.interactionSummary) {
+          setInteractionSummary({
+            independentRate: Number(data.interactionSummary.independentRate || 0),
+            assistedRate: Number(data.interactionSummary.assistedRate || 0),
+            averageFreeInputLength: Number(data.interactionSummary.averageFreeInputLength || 0),
+            averageBubbleDependency: Number(data.interactionSummary.averageBubbleDependency || 0),
+            points: Array.isArray(data.interactionSummary.points) ? data.interactionSummary.points : [],
+          });
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setAssessmentError(error instanceof Error ? error.message : 'Failed to load assessment report');
+      })
+      .finally(() => {
+        if (!cancelled) setAssessmentLoading(false);
+      });
 
-  const handleBackToOverview = () => {
-    setViewLevel('overview');
-    setSelectedClass(null);
-  };
-
-  const handleBackToClass = () => {
-    setViewLevel('class');
-    setSelectedBloom(null);
-  };
-
-  const filteredAssessmentRows = classAssessmentRows.filter((row) => detailFilter === 'all' || row.status === detailFilter);
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewClassAssessmentDetail, selectedBotId]);
 
   const openClassDetail = () => {
     if (!canViewClassAssessmentDetail) return;
@@ -94,10 +227,22 @@ export const StudentLearningReportCard = () => {
     setIsClassDetailOpen(true);
   };
 
+  const toggleRankingPriority = () => {
+    setRankingPriority((current) => (current === 'active' ? 'passive' : 'active'));
+  };
+
+  const toggleAssessmentSort = () => {
+    setAssessmentSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'));
+  };
+
+  const openBotReport = (botId: string) => {
+    setSelectedBotId(botId);
+    setViewLevel('report');
+  };
+
   return (
     <motion.div 
-      layout
-      className="bg-white p-4 md:p-6 rounded-[24px] shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] flex flex-col border border-slate-100 overflow-hidden"
+      className="bg-white p-3.5 md:p-4 rounded-[24px] shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] flex flex-col border border-slate-100 overflow-hidden"
     >
       <AnimatePresence mode="wait">
         {viewLevel === 'overview' && (
@@ -109,229 +254,200 @@ export const StudentLearningReportCard = () => {
             transition={{ duration: 0.2 }}
             className="flex flex-col h-full"
           >
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold text-[#1E293B] flex items-center shrink-0">
+            <div className="flex items-center justify-between mb-3 md:mb-4">
+              <h3 className="flex items-center shrink-0 text-sm font-bold text-[#1E293B] md:text-base">
                 <Target className="w-5 h-5 mr-2 text-indigo-500" />
                 能力追蹤報告
               </h3>
             </div>
-            <div className="space-y-3 flex-1">
-              {classList.map(cls => (
-                <div key={cls.id} className="flex items-center justify-between p-4 rounded-2xl border border-slate-100 hover:border-indigo-100 hover:bg-slate-50 transition-colors group">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-lg">
-                      {cls.name.substring(0, 2)}
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-slate-800">{cls.name}</h4>
-                      <p className="text-xs text-slate-500 mt-1">上次測驗: {cls.lastDate} · 平均 {cls.avgScore} 分</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-rose-50 text-rose-600 text-xs font-bold">
-                      <AlertCircle className="w-3 h-3" />
-                      薄弱點: {cls.weakness}
-                    </span>
-                    <button 
-                      onClick={() => handleClassClick(cls)}
-                      className="flex items-center gap-1 text-sm font-bold text-slate-400 group-hover:text-indigo-600 transition-colors"
-                    >
-                      查看 <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {canViewClassAssessmentDetail && (
-              <button
-                type="button"
-                onClick={openClassDetail}
-                className="mt-4 w-full rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4 text-left transition-all hover:border-indigo-200 hover:bg-indigo-50"
-              >
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm">
-                      <BookOpen className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <p className="font-black text-slate-900">全班評估明細表</p>
-                      <p className="mt-1 text-xs font-medium text-slate-500">深度檢視學生知識點交互狀態與品質</p>
-                    </div>
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-indigo-400" />
-                </div>
-              </button>
-            )}
-          </motion.div>
-        )}
-
-        {viewLevel === 'class' && (
-          <motion.div
-            key="class"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.2 }}
-            className="flex flex-col h-full"
-          >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
-              <button 
-                onClick={handleBackToOverview}
-                className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-indigo-600 transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                返回所有班級
-              </button>
-              <div className="flex items-center gap-2">
-                <select className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-indigo-500/50 font-medium">
-                  <option>最近一次測驗</option>
-                  <option>過去一個月</option>
-                </select>
-                <select className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-indigo-500/50 font-medium">
-                  <option>對比歷史平均</option>
-                  <option>對比年級平均</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="mb-4">
-              <h4 className="font-bold text-slate-800 text-lg">{selectedClass?.name} - 認知層級得分率</h4>
-              <p className="text-sm text-slate-500">點擊雷達圖外圍標籤查看該層級的學生名單</p>
-            </div>
-
-            <div className="flex-1 min-h-[300px] w-full mb-6 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center relative">
-              <ResponsiveContainer width="100%" height="100%">
-                <RadarChart cx="50%" cy="50%" outerRadius="70%" data={bloomData}>
-                  <PolarGrid stroke="#e2e8f0" />
-                  <PolarAngleAxis 
-                    dataKey="level" 
-                    tick={(props) => {
-                      const { payload, x, y, textAnchor, stroke } = props;
-                      return (
-                        <g className="cursor-pointer hover:opacity-70 transition-opacity" onClick={() => handleBloomClick({ level: payload.value })}>
-                          <text stroke={stroke} x={x} y={y} className="fill-slate-700 text-sm font-bold" textAnchor={textAnchor}>{payload.value}</text>
-                        </g>
-                      );
-                    }} 
-                  />
-                  <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                  <Radar 
-                    name="得分率" 
-                    dataKey="score" 
-                    stroke="#6366f1" 
-                    fill="#818cf8" 
-                    fillOpacity={0.6} 
-                  />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                    itemStyle={{ color: '#4f46e5', fontWeight: 'bold' }}
-                  />
-                </RadarChart>
-              </ResponsiveContainer>
-            </div>
-
-            <button 
-              onClick={() => alert('喚醒 AI 助教：為您深入分析「評價」與「創造」層級的教學策略...')}
-              className="mt-auto w-full bg-purple-50 hover:bg-purple-100 border border-purple-100 rounded-xl p-4 text-left transition-colors group"
-            >
-              <div className="flex items-start gap-3">
-                <div className="text-xl">💡</div>
-                <div>
-                  <p className="text-sm font-bold text-purple-900 mb-1">AI 洞察</p>
-                  <p className="text-sm text-purple-700 leading-relaxed">
-                    全班在「評價」與「創造」層級得分率均低於 40%，建議近期課堂增加開放討論環節。
-                  </p>
-                </div>
-              </div>
-            </button>
-          </motion.div>
-        )}
-
-        {viewLevel === 'student' && (
-          <motion.div
-            key="student"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.2 }}
-            className="flex flex-col h-full"
-          >
-            <div className="flex items-center mb-6">
-              <button 
-                onClick={handleBackToClass}
-                className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-indigo-600 transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                返回班級視圖
-              </button>
-              <div className="ml-auto">
-                <span className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-sm font-bold">
-                  層級：{selectedBloom}
-                </span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 flex-1">
-              {/* Left Column: Student List */}
-              <div className="md:col-span-1 flex flex-col gap-2 overflow-y-auto custom-scrollbar pr-2 max-h-[400px]">
-                <h4 className="text-sm font-bold text-slate-500 mb-2 px-1">需關注學生 (由低至高)</h4>
-                {studentData.map((student) => (
+            <div className="space-y-2 flex-1">
+              {sharedBots.length ? sharedBots.map((bot, index) => {
+                const summaryRow = assessmentRows[index] || assessmentRows[0];
+                return (
                   <button
-                    key={student.id}
-                    onClick={() => setSelectedStudent(student)}
-                    className={`flex items-center gap-3 p-3 rounded-xl transition-all text-left ${
-                      selectedStudent?.id === student.id 
-                        ? 'bg-indigo-50 border border-indigo-200 shadow-sm' 
-                        : 'bg-slate-50 border border-transparent hover:bg-slate-100'
-                    }`}
+                    key={bot.id}
+                    type="button"
+                    onClick={() => openBotReport(bot.id)}
+                    className="flex min-h-[92px] w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-[0_2px_5px_rgba(15,23,42,0.04)] transition hover:border-indigo-200 hover:shadow-[0_18px_40px_rgba(79,70,229,0.10)]"
                   >
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                      selectedStudent?.id === student.id ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'
-                    }`}>
-                      {student.avatar}
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-indigo-50 text-indigo-600">
+                        <img
+                          src={bot.avatarUrl || botAvatarFallback}
+                          alt={bot.name}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="truncate text-sm font-black text-slate-900">{bot.name}</h4>
+                        <p className="mt-0.5 text-[10px] text-slate-500">
+                          上次測驗: 2023-10-25 · 平均 {summaryRow?.mastery ?? 0} 分
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className={`font-bold text-sm truncate ${selectedStudent?.id === student.id ? 'text-indigo-700' : 'text-slate-700'}`}>
-                        {student.name}
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs font-medium text-slate-500">得分率 {student.scoreRate}%</span>
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${student.diff < 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                          {student.diff > 0 ? '+' : ''}{student.diff}%
-                        </span>
-                      </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="hidden rounded-lg bg-rose-50 px-2 py-1.5 text-[10px] font-black text-rose-600 sm:inline-flex">
+                        <AlertCircle className="mr-1 h-3 w-3" />
+                        薄弱點: {summaryRow?.outputText || '分析'}
+                      </span>
+                      <span className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-2 text-[11px] font-black text-indigo-600">
+                        查看報告
+                        <ChevronRight className="h-4 w-4" />
+                      </span>
                     </div>
                   </button>
-                ))}
-              </div>
+                );
+              }) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-[11px] text-slate-500">
+                  目前沒有可顯示的共享 bot。
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
 
-              {/* Right Column: Radar Chart & Insight */}
-              <div className="md:col-span-2 flex flex-col gap-4">
-                <div className="bg-slate-50 rounded-2xl p-4 flex flex-col items-center justify-center flex-1 min-h-[250px] border border-slate-100">
-                  <h4 className="text-sm font-bold text-slate-700 mb-2">{selectedStudent?.name} - 能力輪廓</h4>
-                  <div className="w-full h-[250px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-                        <PolarGrid stroke="#e2e8f0" />
-                        <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }} />
-                        <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                        <Radar name="近期表現" dataKey="A" stroke="#6366f1" fill="#818cf8" fillOpacity={0.5} />
-                      </RadarChart>
-                    </ResponsiveContainer>
+        {viewLevel === 'report' && (
+          <motion.div
+            key="report"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.2 }}
+            className="flex flex-col h-full"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
+              <button 
+                onClick={() => setViewLevel('overview')}
+                className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-indigo-600 transition-colors sm:text-sm"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                返回
+              </button>
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-indigo-50">
+                  <img
+                    src={selectedBot?.avatarUrl || botAvatarFallback}
+                    alt={selectedBot?.name || '共享 Bot'}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+                <div className="rounded-full bg-slate-100 px-2.5 py-1.5 text-[10px] font-black text-slate-600 sm:text-[11px]">
+                  {selectedBot?.name || '共享 Bot'}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-3">
+              <div className="rounded-2xl border border-slate-100 bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                    <BarChart3 className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900">班級思維自主指數</h4>
                   </div>
                 </div>
-                
-                <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-bold text-amber-800 mb-1">個人學習分析</p>
-                      <p className="text-sm text-amber-700 leading-relaxed">
-                        該學生在「{selectedBloom}」與「評價」層級均低於班級平均 20%，建議在課後指派針對性的基礎概念鞏固練習。
-                      </p>
+                <div className="mt-3.5 h-3 w-full rounded-full bg-slate-200">
+                  <div className="h-3 w-[45%] rounded-full bg-emerald-500" />
+                </div>
+                <div className="mt-2.5 flex flex-col gap-1 text-[11px] font-black sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-emerald-700">主動輸入 (Independent): 45%</span>
+                  <span className="text-slate-500">系統引導 (Assisted): 55%</span>
+                </div>
+                <button type="button" onClick={() => setIsRankingOpen(true)} className="mt-3 flex w-full items-center justify-center rounded-2xl bg-slate-50 px-4 py-2.5 text-center text-[11px] font-black text-slate-700">
+                  學生排行榜 <ChevronRight className="ml-2 inline h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="rounded-2xl border border-slate-100 bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                    <BookOpen className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900">班級知識覆蓋地圖</h4>
+                    <p className="mt-0.5 text-[10px] font-semibold text-slate-400">展示全班各知識點的集體解鎖進度</p>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                  {topicNodes.map((item) => (
+                    <div key={item.label} className="flex flex-col items-center rounded-2xl border border-transparent p-1 text-center">
+                      <div className={`flex h-12 w-12 items-center justify-center rounded-full text-sm font-black ${item.completed ? 'bg-indigo-500 text-white' : 'bg-amber-100 text-amber-700'}`}>
+                        {item.completed ? '✓' : '!'}
+                      </div>
+                      <div className="mt-2 text-[10px] font-black text-slate-700">{item.label}</div>
+                      <div className="mt-1 text-xs font-black text-indigo-500">{item.score}%</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-100 bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+                    <Target className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900">學習狀態分佈矩陣</h4>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-[2rem_minmax(0,1fr)] gap-2">
+                  <div className="relative">
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap text-[11px] font-black text-slate-400">
+                      總掌握度 (0-100%)
+                    </div>
+                  </div>
+                  <div>
+                    <div className="rounded-2xl border-2 border-dashed border-slate-100 bg-white p-2">
+                      <div className="relative h-[240px] overflow-hidden rounded-[16px] border border-slate-100 bg-white pt-8 pr-3 pb-8 pl-8">
+                        <div className="absolute inset-0 grid grid-cols-2 grid-rows-2">
+                          <div className="bg-white" />
+                          <div className="bg-emerald-50/35" />
+                          <div className="bg-white" />
+                          <div className="bg-rose-50/35" />
+                        </div>
+                        <div className="absolute inset-0 bg-[linear-gradient(to_right,transparent_0,transparent_49.8%,rgba(203,213,225,0.7)_49.8%,rgba(203,213,225,0.7)_50.2%,transparent_50.2%),linear-gradient(to_bottom,transparent_0,transparent_49.8%,rgba(203,213,225,0.7)_49.8%,rgba(203,213,225,0.7)_50.2%,transparent_50.2%)]" />
+                        <div className="absolute left-2 top-2 z-10 text-[11px] font-black text-slate-400">高效學握區</div>
+                        <div className="absolute right-2 top-2 z-10 text-[11px] font-black text-emerald-500">知識溢出</div>
+                        <div className="absolute left-2 bottom-2 z-10 text-[11px] font-black text-slate-400">基礎/淺層參與區</div>
+                        <div className="absolute right-2 bottom-2 z-10 text-[11px] font-black text-rose-400">無效卡關</div>
+                        <div className="absolute inset-x-4 top-1/2 z-0 h-px -translate-y-1/2 bg-slate-200/90" />
+                        <div className="absolute inset-y-4 left-1/2 z-0 w-px -translate-x-1/2 bg-slate-200/90" />
+                        <div className="absolute left-8 top-8 bottom-8 right-3">
+                          {interactionSummary.points.map((point) => {
+                            const left = Math.min(94, Math.max(6, point.x));
+                            const top = Math.min(94, Math.max(6, point.y));
+                            const quadrantColor =
+                              point.status === 'knowledge'
+                                ? 'bg-emerald-500 border-emerald-200'
+                                : point.status === 'warning'
+                                  ? 'bg-rose-500 border-rose-200'
+                                  : 'bg-slate-400 border-slate-200';
+                            return (
+                              <div
+                                key={`${point.name}-${point.x}-${point.y}`}
+                                title={point.name}
+                                className={`absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 shadow-[0_0_0_2px_rgba(255,255,255,0.9)] ${quadrantColor}`}
+                                style={{ left: `${left}%`, top: `${100 - top}%` }}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between px-2 text-[11px] font-black text-slate-400">
+                        <span>低輪次</span>
+                        <span className="text-slate-500">互動輪次</span>
+                        <span>高輪次</span>
+                      </div>
                     </div>
                   </div>
                 </div>
+                <button
+                  onClick={openClassDetail}
+                  className="mt-3.5 flex w-full items-center justify-center rounded-2xl bg-slate-50 px-4 py-2.5 text-center text-[11px] font-black text-slate-700"
+                >
+                  查看全班評估明細 <ChevronRight className="ml-2 inline h-4 w-4" />
+                </button>
               </div>
             </div>
           </motion.div>
@@ -339,6 +455,127 @@ export const StudentLearningReportCard = () => {
       </AnimatePresence>
 
       <AnimatePresence>
+        {isRankingOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[130] bg-slate-950/40 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 20, opacity: 0 }}
+              className="absolute inset-3 overflow-hidden rounded-[24px] bg-white shadow-2xl md:inset-8 lg:inset-12"
+            >
+              <div className="flex h-full flex-col">
+                <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5 sm:px-5 sm:py-4">
+                  <h2 className="text-sm font-black tracking-tight text-slate-900 sm:text-base">互動模式深度分析</h2>
+                  <button
+                    type="button"
+                    onClick={() => setIsRankingOpen(false)}
+                    className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[0.95fr_1.05fr]">
+                  <div className="border-b border-slate-100 bg-slate-50/70 p-4 sm:p-5 lg:border-b-0 lg:border-r">
+                    <div className="mb-3 flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                        <Sparkles className="h-4.5 w-4.5" />
+                      </div>
+                      <h3 className="text-sm font-black text-slate-900 sm:text-base">AI 模式洞察</h3>
+                    </div>
+                    <div className="rounded-2xl border border-slate-100 bg-white p-3.5 shadow-sm">
+                      <p className="text-[13px] font-semibold leading-relaxed text-slate-700 sm:text-sm">
+                        {inputRate >= assistedRate
+                          ? '本堂課整體互動偏向主動。學生對知識點的回應較穩定，可適度提高後半段挑戰度，持續拉高深度互動。'
+                          : '本堂課整體互動偏向被動。多數學生在對話後半段放慢主動輸入速度，建議適度提高知識點挑戰度，促進更穩定的引導回應。'}
+                      </p>
+                    </div>
+
+                    <div className="mt-4 sm:mt-5">
+                      <h4 className="mb-2 text-sm font-black text-slate-900 sm:text-sm">主動輸入/引導依賴佔比</h4>
+                      <div className="h-6 w-full overflow-hidden rounded-full bg-slate-200">
+                        <div className="flex h-full">
+                          <div className="flex h-full items-center justify-start bg-emerald-500 px-2.5 text-[11px] font-black text-white sm:text-xs" style={{ width: `${inputRate}%` }}>
+                            {inputRate}%
+                          </div>
+                          <div className="flex h-full items-center justify-end bg-slate-200 px-2.5 text-[11px] font-black text-slate-500 sm:text-xs" style={{ width: `${assistedRate}%` }}>
+                            {assistedRate}%
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-[11px] font-black sm:text-xs">
+                        <span className="text-emerald-700">主動輸入</span>
+                        <span className="text-slate-500">氣泡點擊</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:mt-5 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-slate-100 bg-white p-3 sm:p-3.5">
+                        <p className="text-[11px] font-black text-slate-500 sm:text-xs">平均自由輸入長度</p>
+                        <p className="mt-2 text-xl font-black text-slate-900 sm:text-2xl">{interactionSummary.averageFreeInputLength || 0} <span className="text-xs font-bold text-slate-400 sm:text-sm">字</span></p>
+                      </div>
+                      <div className="rounded-2xl border border-slate-100 bg-white p-3 sm:p-3.5">
+                        <p className="text-[11px] font-black text-slate-500 sm:text-xs">平均氣泡依賴次數</p>
+                        <p className="mt-2 text-xl font-black text-slate-900 sm:text-2xl">{interactionSummary.averageBubbleDependency.toFixed(1)} <span className="text-xs font-bold text-slate-400 sm:text-sm">次/人</span></p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex min-h-0 flex-col">
+                    <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 sm:px-5">
+                      <h3 className="text-sm font-black text-slate-900 sm:text-base">主動輸入/引導依賴佔比排行榜</h3>
+                      <button
+                        type="button"
+                        onClick={toggleRankingPriority}
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black transition sm:px-3 sm:py-1.5 sm:text-[11px] ${
+                          rankingPriority === 'active'
+                            ? 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-slate-900'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-slate-900'
+                        }`}
+                      >
+                        <span className="text-[12px] leading-none sm:text-[13px]">☰</span>
+                        {rankingPriority === 'active' ? '主動優先' : '被動優先'}
+                      </button>
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-y-auto">
+                      {rankingRows.map((row, index) => {
+                        const inputRate = Math.max(0, Math.min(100, Math.round(row.mastery ?? 0)));
+                        const displayRate = rankingPriority === 'active' ? inputRate : 100 - inputRate;
+                        return (
+                          <div
+                            key={`${row.id}-${row.studentId || row.name}`}
+                            className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] items-center gap-3 border-b border-slate-100 px-4 py-3.5 sm:px-5"
+                          >
+                            <div className="min-w-0 text-sm font-bold text-slate-700 sm:text-sm">
+                              <span className="truncate block">{row.name}</span>
+                            </div>
+                            <div className="min-w-0">
+                              <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
+                                <div
+                                  className={`h-full rounded-full ${rankingPriority === 'active' ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                                  style={{ width: `${displayRate}%` }}
+                                />
+                              </div>
+                            </div>
+                            <div className={`shrink-0 text-right text-[11px] font-bold sm:text-xs ${rankingPriority === 'active' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                              {displayRate}% {rankingPriority === 'active' ? '輸入' : '依賴'}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
         {canViewClassAssessmentDetail && isClassDetailOpen && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -358,11 +595,11 @@ export const StudentLearningReportCard = () => {
                 <div className={`h-full min-w-0 overflow-y-auto transition duration-300 ${
                   selectedDetailStudent ? 'pointer-events-none blur-[0.5px] brightness-95' : ''
                 }`}>
-                  <div className="sticky top-0 z-10 border-b border-slate-100 bg-white/95 px-4 py-4 backdrop-blur sm:px-6 sm:py-5">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h2 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">全班評估明細表</h2>
-                        <p className="mt-1 text-xs font-medium text-slate-500 sm:text-sm">深度檢視學生的知識點交互狀態與品質</p>
+                  <div className="sticky top-0 z-10 border-b border-slate-100 bg-white/95 px-4 py-3.5 backdrop-blur sm:px-5 sm:py-4">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <h2 className="text-sm font-black tracking-tight text-slate-900 sm:text-base">全班評估明細表</h2>
+                        <p className="mt-1 text-[11px] font-medium text-slate-500 sm:text-xs">深度檢視學生的知識點交互狀態與品質</p>
                       </div>
                       {!selectedDetailStudent && (
                         <button
@@ -376,29 +613,29 @@ export const StudentLearningReportCard = () => {
                     </div>
                   </div>
 
-                  <div className="space-y-5 px-4 py-4 sm:space-y-6 sm:px-6 sm:py-6">
-                    <div className="grid gap-4 rounded-2xl border border-slate-100 bg-slate-50/70 p-4 sm:p-5 lg:grid-cols-2">
+                  <div className="space-y-4 px-4 py-4 sm:space-y-5 sm:px-5 sm:py-5">
+                    <div className="grid gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-3.5 sm:p-4 lg:grid-cols-2">
                       <div>
-                        <div className="flex items-center gap-2 text-sm font-black text-slate-800">
-                          <Sparkles className="h-4 w-4 text-indigo-500" />
+                        <div className="flex items-center gap-2 text-xs font-black text-slate-800 sm:text-sm">
+                          <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
                           輸出品質評級說明
                         </div>
-                        <p className="mt-2 text-sm text-slate-500">依學生回答的完整度、關聯性與思考深度綜合評估。</p>
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          {['L0: 偏離主題', 'L1: 簡短回應', 'L2: 正確回憶', 'L3: 深入連結'].map((item) => (
-                            <span key={item} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700">{item}</span>
+                        <p className="mt-1.5 text-[11px] text-slate-500 sm:text-xs">依學生與 Bot 的聊天內容和角色知識庫匹配結果評估。</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {['L0: 偏離主題', 'L1: 基礎事實', 'L2: 事實關聯', 'L3: 深度理解'].map((item) => (
+                            <span key={item} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-slate-700 sm:text-[11px]">{item}</span>
                           ))}
                         </div>
                       </div>
-                      <div className="border-t border-slate-200 pt-5 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
-                        <div className="flex items-center gap-2 text-sm font-black text-slate-800">
-                          <AlertCircle className="h-4 w-4 text-amber-500" />
+                      <div className="border-t border-slate-200 pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+                        <div className="flex items-center gap-2 text-xs font-black text-slate-800 sm:text-sm">
+                          <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
                           互動深度說明
                         </div>
-                        <p className="mt-2 text-sm text-slate-500">反映學生在本次學習中主動探索與持續參與的程度。</p>
-                        <div className="mt-4 flex flex-wrap gap-2">
+                        <p className="mt-1.5 text-[11px] text-slate-500 sm:text-xs">反映學生在本次學習中主動探索與持續參與的程度。</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
                           {['Y1: 初步參與', 'Y2: 持續互動', 'Y3: 深入探索', 'Y4: 高度投入'].map((item) => (
-                            <span key={item} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700">{item}</span>
+                            <span key={item} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-slate-700 sm:text-[11px]">{item}</span>
                           ))}
                         </div>
                       </div>
@@ -406,16 +643,16 @@ export const StudentLearningReportCard = () => {
 
                     <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
                       {[
-                        { key: 'all', label: '全部學生 (30)' },
-                        { key: 'warning', label: '🚨 卡關預警 (3)' },
-                        { key: 'knowledge', label: '✨ 知識溢出 (6)' },
-                        { key: 'normal', label: '✅ 正常探索 (21)' },
+                        { key: 'all', label: `全部學生 (${assessmentCounts.all})` },
+                        { key: 'warning', label: `卡關預警 (${assessmentCounts.warning})` },
+                        { key: 'knowledge', label: `知識溢出 (${assessmentCounts.knowledge})` },
+                        { key: 'normal', label: `正常探索 (${assessmentCounts.normal})` },
                       ].map((item) => (
                         <button
                           key={item.key}
                           type="button"
                           onClick={() => setDetailFilter(item.key as any)}
-                          className={`rounded-xl border px-3 py-3 text-xs font-black transition sm:px-5 sm:text-sm ${
+                          className={`rounded-xl border px-3 py-2.5 text-[11px] font-black transition sm:px-4 sm:py-2.5 sm:text-xs ${
                             detailFilter === item.key
                               ? 'border-slate-900 bg-slate-900 text-white shadow-lg'
                               : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
@@ -426,32 +663,49 @@ export const StudentLearningReportCard = () => {
                       ))}
                     </div>
 
+                    {(assessmentLoading || assessmentError) && (
+                      <div className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${
+                        assessmentError
+                          ? 'border-amber-200 bg-amber-50 text-amber-800'
+                          : 'border-indigo-100 bg-indigo-50 text-indigo-700'
+                      }`}>
+                        {assessmentError ? `使用示例資料顯示：${assessmentError}` : '正在同步學生聊天與知識庫分析...'}
+                      </div>
+                    )}
+
                     <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-                      <div className="hidden grid-cols-[1.2fr_0.8fr_1fr_1.1fr_1fr_1fr] gap-4 border-b border-slate-100 bg-slate-50 px-5 py-4 text-sm font-black text-slate-500 md:grid">
+                      <div className="hidden grid-cols-[1.2fr_0.75fr_1fr_1.05fr_0.95fr_0.9fr] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[11px] font-black text-slate-500 md:grid">
                         <span>學生</span>
-                        <span>總掌握度 ▼</span>
+                        <button
+                          type="button"
+                          onClick={toggleAssessmentSort}
+                          className="flex items-center gap-1 text-left transition hover:text-slate-900"
+                        >
+                          <span>總掌握度</span>
+                          <span>{assessmentSortDirection === 'desc' ? '▼' : '▲'}</span>
+                        </button>
                         <span>輸出品質</span>
                         <span>互動深度</span>
                         <span>參與模式</span>
                         <span>狀態</span>
                       </div>
                       <div className="divide-y divide-slate-100">
-                        {filteredAssessmentRows.map((row) => (
+                        {sortedAssessmentRows.map((row) => (
                           <button
                             key={row.id}
                             type="button"
                             onClick={() => setSelectedDetailStudent(row)}
-                            className="grid w-full grid-cols-2 items-start gap-3 px-4 py-4 text-left transition hover:bg-indigo-50/40 md:grid-cols-[1.2fr_0.8fr_1fr_1.1fr_1fr_1fr] md:items-center md:gap-4 md:px-5 md:py-5"
+                            className="grid w-full grid-cols-2 items-start gap-3 px-4 py-3 text-left transition hover:bg-indigo-50/40 md:grid-cols-[1.2fr_0.75fr_1fr_1.05fr_0.95fr_0.9fr] md:items-center md:gap-3 md:px-4 md:py-3.5"
                           >
                             <span className="col-span-2 flex items-center gap-3 md:col-span-1">
-                              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-50 text-sm font-black text-indigo-600">{row.id}</span>
-                              <span className="font-black text-slate-800">{row.name}</span>
+                              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-50 text-[10px] font-black text-indigo-600">{row.id}</span>
+                              <span className="text-sm font-bold text-slate-800 sm:text-[15px]">{row.name}</span>
                             </span>
-                            <span className="text-sm font-black text-slate-800 md:text-lg"><span className="mr-1 text-xs text-slate-400 md:hidden">掌握</span>{row.mastery}%</span>
-                            <span className="font-bold text-slate-700"><b className="mr-2 rounded-md bg-emerald-50 px-2 py-1 text-emerald-700">{row.output}</b>{row.outputText}</span>
-                            <span className="font-bold text-slate-700">{row.interaction}<br /><small className="font-semibold text-slate-400">({row.rounds}輪)</small></span>
-                            <span className="w-fit rounded-lg bg-emerald-50 px-3 py-1.5 text-sm font-black text-emerald-700">{row.mode}</span>
-                            <span className={`font-black ${row.status === 'warning' ? 'text-rose-600' : row.status === 'knowledge' ? 'text-emerald-600' : 'text-slate-500'}`}>{row.statusText}</span>
+                            <span className="text-sm font-black text-slate-800 md:text-sm"><span className="mr-1 text-[10px] text-slate-400 md:hidden">掌握</span>{row.mastery}%</span>
+                            <span className="text-[11px] font-semibold text-slate-700 sm:text-xs"><b className="mr-2 rounded-md bg-emerald-50 px-2 py-0.5 text-emerald-700">{row.output}</b>{row.outputText}</span>
+                            <span className="text-[11px] font-semibold text-slate-700 sm:text-xs">{row.interaction}<br /><small className="font-medium text-slate-400">({row.rounds}輪{typeof row.interactionDepth === 'number' ? ` · ${row.interactionDepth}` : ''})</small></span>
+                            <span className="w-fit rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-black text-emerald-700">{row.mode}</span>
+                            <span className={`text-[11px] font-black sm:text-xs ${row.status === 'warning' ? 'text-rose-600' : row.status === 'knowledge' ? 'text-emerald-600' : 'text-slate-500'}`}>{row.statusText}</span>
                           </button>
                         ))}
                       </div>
@@ -479,24 +733,24 @@ export const StudentLearningReportCard = () => {
                       transition={{ type: "spring", stiffness: 260, damping: 30 }}
                       className="absolute inset-y-0 right-0 z-20 w-full overflow-y-auto border-l border-slate-100 bg-white shadow-[-18px_0_40px_rgba(15,23,42,0.18)] sm:w-[460px]"
                     >
-                      <div className="flex items-start justify-between border-b border-slate-100 px-4 py-5 sm:px-6 sm:py-6">
+                      <div className="flex items-start justify-between border-b border-slate-100 px-4 py-4 sm:px-5 sm:py-5">
                         <div>
-                          <h3 className="text-lg font-black text-slate-900 sm:text-xl">{selectedDetailStudent.name} — 知識掌握追蹤</h3>
-                          <p className="mt-1 text-sm font-bold text-slate-500">總掌握度 {selectedDetailStudent.mastery}%</p>
+                          <h3 className="text-xs font-black text-slate-900 sm:text-sm">{selectedDetailStudent.name} — 知識掌握追蹤</h3>
+                          <p className="mt-1 text-[10px] font-semibold text-slate-500 sm:text-[11px]">總掌握度 {selectedDetailStudent.mastery}%</p>
                         </div>
-                        <button type="button" onClick={() => setSelectedDetailStudent(null)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
-                          <X className="h-5 w-5" />
+                        <button type="button" onClick={() => setSelectedDetailStudent(null)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                          <X className="h-4.5 w-4.5" />
                         </button>
                       </div>
-                      <div className="space-y-4 p-4 sm:space-y-5 sm:p-6">
+                      <div className="space-y-3.5 p-4 sm:space-y-4 sm:p-5">
                         {knowledgeTracking.map((item) => (
-                          <div key={item.level} className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-                            <h4 className="font-black text-slate-900">【{item.level}】</h4>
-                            <div className="mt-4 flex items-start gap-3">
-                              <span className={`mt-1 h-3 w-3 rounded-full ${item.tone === 'green' ? 'bg-emerald-400' : 'bg-indigo-500'} shadow-[0_0_0_4px_rgba(99,102,241,0.08)]`} />
+                          <div key={item.level} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                            <h4 className="text-[11px] font-black text-slate-900">【{item.level}】</h4>
+                            <div className="mt-3 flex items-start gap-2.5">
+                              <span className={`mt-1 h-2.5 w-2.5 rounded-full ${item.tone === 'green' ? 'bg-emerald-400' : 'bg-indigo-500'} shadow-[0_0_0_3px_rgba(99,102,241,0.08)]`} />
                               <div>
-                                <p className="font-black text-slate-800">{item.state} <span className="text-sm font-medium text-slate-400">({item.note})</span></p>
-                                <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">{item.detail}</p>
+                                <p className="text-[11px] font-bold text-slate-800">{item.state} <span className="text-[10px] font-medium text-slate-400">({item.note})</span></p>
+                                <p className="mt-1.5 text-[11px] leading-relaxed text-slate-600">{item.detail}</p>
                               </div>
                             </div>
                           </div>

@@ -25,6 +25,7 @@ type AuthResponse = {
 };
 
 export const AuthPage: React.FC = () => {
+  const [loginRole, setLoginRole] = useState<"teacher" | "student">("teacher");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
@@ -63,9 +64,13 @@ export const AuthPage: React.FC = () => {
       if (!data || !("token" in data) || !data.token || !data.user) {
         throw new Error("登入服務回傳格式異常。");
       }
+      const isStudent = data.user.role === "student";
+      if ((loginRole === "student") !== isStudent) {
+        throw new Error(loginRole === "student" ? "這不是學生帳戶，請選擇教師登入。" : "這是學生帳戶，請選擇學生登入。");
+      }
 
       saveAuthSession(data, rememberMe);
-      setSuccessMessage("登入成功，正在進入工作台...");
+      setSuccessMessage(loginRole === "student" ? "登入成功，正在進入學生平台..." : "登入成功，正在進入教師工作台...");
 
       window.setTimeout(() => {
         window.location.href = "/";
@@ -108,9 +113,37 @@ export const AuthPage: React.FC = () => {
         >
           <div className="mt-6">
             <div className="text-2xl font-black tracking-tight text-slate-900">歡迎回來</div>
+            <p className="mt-2 text-sm text-slate-500">選擇你的身份，進入專屬學習空間。</p>
           </div>
 
           <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
+            <div>
+              <span className="mb-2 block text-sm font-semibold text-slate-700">登入方式</span>
+              <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1.5" role="group" aria-label="登入方式">
+                {(["teacher", "student"] as const).map((role) => {
+                  const selected = loginRole === role;
+                  return (
+                    <button
+                      key={role}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => {
+                        setLoginRole(role);
+                        setErrorMessage("");
+                      }}
+                      className={`rounded-xl px-4 py-2.5 text-sm font-bold transition ${
+                        selected
+                          ? "bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200"
+                          : "text-slate-500 hover:text-slate-800"
+                      }`}
+                    >
+                      {role === "teacher" ? "教師登入" : "學生登入"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <label className="block">
               <span className="mb-2 block text-sm font-semibold text-slate-700">電郵</span>
               <input
@@ -162,7 +195,7 @@ export const AuthPage: React.FC = () => {
               disabled={loading}
               className="mt-2 inline-flex w-full items-center justify-center rounded-2xl bg-indigo-600 px-5 py-3.5 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-400"
             >
-              {loading ? "提交中..." : "登入 Chopreality"}
+              {loading ? "提交中..." : loginRole === "student" ? "進入學生平台" : "進入教師工作台"}
             </button>
           </form>
         </motion.section>

@@ -276,6 +276,24 @@ export async function ensurePlatformTables() {
         ON video_studio_tasks(user_id, updated_at DESC);
       `);
       await pool.query(`
+        CREATE TABLE IF NOT EXISTS teacher_students (
+          teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (teacher_id, student_id)
+        );
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS bot_student_shares (
+          bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+          teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (bot_id, student_id)
+        );
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS bot_student_shares_student_id_idx ON bot_student_shares(student_id);`);
+      await pool.query(`
         CREATE TABLE IF NOT EXISTS bot_interaction_events (
           id TEXT PRIMARY KEY,
           bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
@@ -287,6 +305,27 @@ export async function ensurePlatformTables() {
       await pool.query(`
         CREATE INDEX IF NOT EXISTS bot_interaction_events_bot_created_at_idx
         ON bot_interaction_events(bot_id, created_at DESC);
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS bot_chat_messages (
+          id TEXT PRIMARY KEY,
+          bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+          user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+          teacher_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+          role TEXT NOT NULL CHECK (role IN ('user', 'bot')),
+          content TEXT NOT NULL,
+          model_provider TEXT,
+          source TEXT NOT NULL DEFAULT 'direct',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS bot_chat_messages_teacher_student_bot_idx
+        ON bot_chat_messages(teacher_id, user_id, bot_id, created_at DESC);
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS bot_chat_messages_bot_created_at_idx
+        ON bot_chat_messages(bot_id, created_at DESC);
       `);
       await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS owner_id TEXT;`);
       await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS owner_email TEXT;`);
@@ -305,6 +344,44 @@ export async function ensurePlatformTables() {
         UPDATE bots
         SET owner_email = NULL
         WHERE owner_id IS NULL
+      `);
+      await pool.query(`
+        UPDATE bots b
+        SET owner_id = s.teacher_id
+        FROM bot_student_shares s
+        WHERE b.id = s.bot_id
+          AND b.owner_id IS NULL
+          AND s.teacher_id IS NOT NULL
+      `);
+      await pool.query(`
+        UPDATE bots
+        SET owner_email = u.email
+        FROM users u
+        WHERE owner_id = u.id
+          AND COALESCE(owner_email, '') <> COALESCE(u.email, '')
+      `);
+      await pool.query(`
+        UPDATE bot_chat_messages m
+        SET teacher_id = b.owner_id
+        FROM bots b
+        WHERE m.bot_id = b.id
+          AND m.teacher_id IS NULL
+          AND b.owner_id IS NOT NULL
+      `);
+      await pool.query(`
+        WITH single_student_share AS (
+          SELECT bot_id, teacher_id, MIN(student_id) AS student_id
+          FROM bot_student_shares
+          GROUP BY bot_id, teacher_id
+          HAVING COUNT(DISTINCT student_id) = 1
+        )
+        UPDATE bot_chat_messages m
+        SET user_id = s.student_id
+        FROM single_student_share s
+        WHERE m.bot_id = s.bot_id
+          AND m.teacher_id = s.teacher_id
+          AND m.source = 'shared_bot'
+          AND m.user_id = s.teacher_id
       `);
       await pool.query(`
         UPDATE bots

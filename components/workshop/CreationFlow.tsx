@@ -12,6 +12,7 @@ import { PublishSuccessModal } from './PublishSuccessModal';
 import type { FeatureEntitlement } from '../../hooks/useFeatureEntitlements';
 import { usePlatformDialog } from '../../hooks/usePlatformDialog';
 import { PlatformDialog } from '../system/PlatformDialog';
+import { buildChatSystemPrompt, buildStoredKnowledgeBase } from '../../utils/chat-prompt';
 
 type KnowledgeTier = "basic_fact" | "deep_understanding";
 type KnowledgePoint = {
@@ -487,21 +488,12 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
           <CreationStep2
             initialData={parsedKnowledgeData}
             onGenerated={(data) => {
-              const combined = `
-【人物背景設定】
-${data.characterBackground}
-
-【人物知識庫摘要】
-${data.knowledgeSummary}
-
-【知識點分級】
-${JSON.stringify(data.knowledgePoints, null, 2)}
-
-【角色對話策略】
-${data.personaProfile}
-
-請根據「人物背景設定」與「知識庫摘要」回答問題，不要捏造不存在的資訊。
-              `.trim();
+              const combined = buildStoredKnowledgeBase({
+                characterBackground: data.characterBackground,
+                knowledgeSummary: data.knowledgeSummary,
+                knowledgePoints: data.knowledgePoints,
+                personaProfile: data.personaProfile,
+              });
 
               updateConfig("knowledgeBase", combined);
             }}
@@ -526,24 +518,11 @@ ${data.personaProfile}
   // 4. 给 ChatPreview 的完整 prompt
   // -------------------------------
 const fullSystemPrompt = `
-    你是一名 AI 助教，具備以下資訊：
-
-    ${botConfig.knowledgeBase}
-
-    【安全規則】
-    ${botConfig.securityPrompt}
-
-    【對話方式】
-    每次新對話先主動提出 2~3 個澄清問題，再根據使用者回答提供建議。
-    若資訊不足，優先追問，不要直接假設。
-
-    【回覆格式規則（強制）】
-    1) 禁止輸出舞台描述或動作描寫，例如「（微笑）」「（拱手）」「*點頭*」。
-    2) 非用戶明確要求角色扮演時，不要使用文言/古風自稱（如「老夫」「在下」）。
-    3) 每次回覆控制在 1~3 句，優先短句；除非用戶要求詳細版，否則不超過 120 字。
-    4) 不要長段落鋪陳，直接回答重點。
-
-    請嚴格遵守以上所有規則。
+    ${buildChatSystemPrompt({
+      roleName: botConfig.name,
+      knowledgeBase: botConfig.knowledgeBase,
+      securityPrompt: botConfig.securityPrompt,
+    })}
 `.trim();
 
 const handleDeleteBot = async () => {

@@ -172,6 +172,30 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
   return (
     <div>
+      <section className="mb-5 overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+        <div className="grid gap-0 lg:grid-cols-[1.05fr_0.95fr] lg:min-h-[270px]">
+          <div className="relative min-h-[200px] overflow-hidden bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 text-white sm:min-h-[220px]">
+            <img
+              src="/Tomato_Logo.png"
+              alt="AI 夥伴視覺"
+              className="absolute inset-0 h-full w-full object-cover object-center"
+            />
+            <div className="absolute inset-0 bg-gradient-to-br from-indigo-700/25 via-fuchsia-700/10 to-white/0" />
+          </div>
+
+          <div className="flex flex-col justify-center gap-3 bg-white p-5 sm:p-6 lg:p-8">
+            <div className="space-y-2.5">
+              <h2 className="text-[30px] font-black leading-tight tracking-tight text-slate-900 sm:text-[32px] lg:text-[34px]">
+                建立屬於您的 AI 夥伴
+              </h2>
+              <p className="max-w-xl text-sm leading-6 text-slate-600 sm:text-[15px] sm:leading-7">
+                從角色外觀、知識庫、對話風格到教學情境，一次打造可立即投入課堂的 AI 機器人，讓每個學生都能得到更貼近需求的陪伴與引導。
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
 
         {/* --------------------------- */}
@@ -191,7 +215,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             }
             onStartCreation();
           }}
-          className={`group flex flex-col items-center justify-center p-6 border-2 border-dashed transition rounded-3xl min-h-[260px] ${
+          className={`group flex h-full min-h-[260px] flex-col items-center justify-center p-6 border-2 border-dashed transition rounded-3xl ${
             creationLockedByLoading || createBotFeature?.locked
               ? "bg-slate-50 border-slate-200 opacity-70"
               : "bg-white border-slate-300 hover:border-indigo-500 hover:bg-indigo-50"

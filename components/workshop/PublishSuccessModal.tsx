@@ -2,24 +2,22 @@ import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { motion } from "framer-motion";
 import {
   X,
-  Copy,
-  Check,
   Send,
   Mic,
   Square,
-  MoreHorizontal,
-  Link as LinkIcon,
-  Edit,
-  Trash2,
   MessageCircle,
   ChevronDown,
   Camera,
+  MoreHorizontal,
+  Lightbulb,
+  Brain,
+  Rocket,
 } from "lucide-react";
 import { SequencePngPlayer } from "./SequencePngPlayer";
 import { API_BASE } from "../../utils/api";
+import { buildChatSystemPrompt } from "../../utils/chat-prompt";
 import { usePlatformDialog } from "../../hooks/usePlatformDialog";
 import { PlatformDialog } from "../system/PlatformDialog";
-import { readAuthSession } from "../../utils/auth";
 import { markTrialEndedPopupPending } from "../../utils/trial-popup";
 
 interface PublishSuccessModalProps {
@@ -30,6 +28,16 @@ interface PublishSuccessModalProps {
   onDelete: (botId: string) => void;
   isSharedView?: boolean;
 }
+
+type SuggestedReply = {
+  tier: "L1" | "L2" | "L3";
+  label: string;
+  text: string;
+  sendText?: string;
+};
+
+const GUIDE_HINT_DELAY_MS = 1600;
+const IDLE_GUIDE_DELAY_MS = 15000;
 
 export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   isOpen,
@@ -55,6 +63,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   
   const lastTTS = useRef(0);
   const [messages, setMessages] = useState<{ role: "user" | "bot"; content: string; guidedTitle?: string; guidedBody?: string; imagePreviews?: string[] }[]>([]);
+  const [suggestedReplies, setSuggestedReplies] = useState<SuggestedReply[]>([]);
+  const [guideQuestion, setGuideQuestion] = useState("");
 
   const [inputText, setInputText] = useState("");
   const [chatImages, setChatImages] = useState<File[]>([]);
@@ -63,10 +73,13 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [selectedPreviewImage, setSelectedPreviewImage] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [voiceLevel, setVoiceLevel] = useState(0);
-  const [copied, setCopied] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const bootingOverlayRef = useRef<HTMLDivElement | null>(null);
+  const guideActivationTimerRef = useRef<number | null>(null);
+  const idleGuideTimerRef = useRef<number | null>(null);
+  const inputTextRef = useRef("");
+  const suggestedRepliesRef = useRef<SuggestedReply[]>([]);
   const wasOpenRef = useRef(false);
   const [botState, setBotState] = useState<"idle" | "thinking" | "speaking">(
     "idle"
@@ -91,9 +104,10 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [stagePhotoError, setStagePhotoError] = useState("");
   const [isCapturingStagePhoto, setIsCapturingStagePhoto] = useState(false);
 
-  const [showDropdown, setShowDropdown] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showTopMenu, setShowTopMenu] = useState(false);
   const [chatPanelOpen, setChatPanelOpen] = useState(false);
+  const [arControlsOpen, setArControlsOpen] = useState(false);
   const [guidedMode, setGuidedMode] = useState(false);
   const [guidedStepIndex, setGuidedStepIndex] = useState(0);
   const [guidedTotalSteps, setGuidedTotalSteps] = useState(0);
@@ -125,15 +139,9 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     originX: number;
     originY: number;
   } | null>(null);
-  const canEditBot = Boolean(readAuthSession()?.user?.id);
-  const requestHeaders = isSharedView
-    ? {
-        "Content-Type": "application/json",
-        Authorization: "",
-      }
-    : {
-        "Content-Type": "application/json",
-      };
+  const requestHeaders = {
+    "Content-Type": "application/json",
+  };
   const pinchStateRef = useRef<{
     distance: number;
     scale: number;
@@ -142,28 +150,41 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     originX: number;
     originY: number;
   } | null>(null);
-  const mobileDropdownRef = useRef<HTMLDivElement | null>(null);
-  const desktopDropdownRef = useRef<HTMLDivElement | null>(null);
   const voicePlaybackEnabledRef = useRef(Boolean(voiceId));
   const voiceLimitNoticeShownRef = useRef(false);
   const interactionRecordedRef = useRef(false);
   const ttsErrorNoticeShownRef = useRef(false);
 
-  const shareUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/bot/${botConfig.id || ""}`
-      : `/bot/${botConfig.id || ""}`;
-
   const buildDefaultOpeningMessage = React.useCallback(() => {
     return `你好！我是 ${botName}，我們一起開始今天的學習吧。`;
   }, [botName]);
-  const chatStyleRules = `
-【回覆格式規則（強制）】
-1) 禁止輸出舞台描述或動作描寫，例如「（微笑）」「（拱手）」「*點頭*」。
-2) 非用戶明確要求角色扮演時，不要使用文言/古風自稱（如「老夫」「在下」）。
-3) 每次回覆控制在 1~3 句，優先短句；除非用戶要求詳細版，否則不超過 120 字。
-4) 不要長段落鋪陳，直接回答重點。
-`.trim();
+  const shareableLink =
+    botConfig?.id && typeof window !== "undefined"
+      ? `${window.location.origin}/bot/${botConfig.id}`
+      : "";
+  const chatSystemPrompt = buildChatSystemPrompt({
+    roleName: botName,
+    knowledgeBase: botConfig.knowledgeBase,
+    securityPrompt: botConfig.securityPrompt,
+  });
+
+  const handleCopyShareLink = async () => {
+    if (!shareableLink) return;
+    try {
+      await navigator.clipboard.writeText(shareableLink);
+      showAlert({
+        title: "已複製共享連結",
+        message: "現在可以直接分享給學生使用了。",
+        confirmText: "知道了",
+      });
+    } catch {
+      showAlert({
+        title: "複製失敗",
+        message: "目前無法自動複製連結，請稍後再試。",
+        confirmText: "知道了",
+      });
+    }
+  };
 
   const safeVideoIdle = videoIdle && videoIdle.trim() !== "" ? videoIdle : null;
   const safeVideoThinking =
@@ -196,22 +217,6 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       ? "thinking"
       : "speaking";
 
-  // -----------------------------
-  // 点击外面自动关闭 dropdown
-  // -----------------------------
-  useEffect(() => {
-    const handleClick = (e: any) => {
-      const target = e.target as Node;
-      const inMobile = mobileDropdownRef.current?.contains(target);
-      const inDesktop = desktopDropdownRef.current?.contains(target);
-      if (!inMobile && !inDesktop) {
-        setShowDropdown(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
   useEffect(() => {
     wasOpenRef.current = isOpen;
   }, [isOpen]);
@@ -229,7 +234,9 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       const target = event.target as Node;
       if (!(target instanceof Node)) return;
       if ((target as HTMLElement).closest?.("[data-model-menu-root='publish-chat']")) return;
+      if ((target as HTMLElement).closest?.("[data-top-menu-root='publish-preview']")) return;
       setShowModelMenu(false);
+      setShowTopMenu(false);
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
@@ -255,6 +262,40 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     inputRef.current.style.height = `${Math.max(40, next)}px`;
     inputRef.current.style.overflowY = fullHeight > 128 ? "auto" : "hidden";
   }, [inputText]);
+
+  useEffect(() => {
+    inputTextRef.current = inputText;
+  }, [inputText]);
+
+  useEffect(() => {
+    suggestedRepliesRef.current = suggestedReplies;
+  }, [suggestedReplies]);
+
+  useEffect(() => {
+    if (!inputText.trim() || !idleGuideTimerRef.current) return;
+    window.clearTimeout(idleGuideTimerRef.current);
+    idleGuideTimerRef.current = null;
+  }, [inputText]);
+
+  useEffect(() => {
+    if (!isOpen || guidedMode || suggestedReplies.length > 0) return;
+    const lastMessage = messages[messages.length - 1];
+    if (!lastMessage || lastMessage.role !== "bot") return;
+    const reply = String(lastMessage.guidedBody || lastMessage.content || "").trim();
+    if (!extractQuestionFromReply(reply)) return;
+    const lastUserMessage = [...messages].reverse().find((message) => message.role === "user");
+    scheduleIdleGuide({
+      userMsg: String(lastUserMessage?.content || "").trim(),
+      reply,
+      currentGenId: generationIdRef.current,
+    });
+    return () => {
+      if (idleGuideTimerRef.current) {
+        window.clearTimeout(idleGuideTimerRef.current);
+        idleGuideTimerRef.current = null;
+      }
+    };
+  }, [isOpen, messages, guidedMode, suggestedReplies.length]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1094,6 +1135,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       // Wait for explicit user authorization before booting opening voice.
       setIsBooting(false);
       setMessages([]);
+      setSuggestedReplies([]);
       setBotState("idle");
       setIsStopAvailable(false);
       setOpeningReady(true);
@@ -1103,6 +1145,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       // Set loading state before first paint to avoid chat UI flashing for 1-2 frames.
       setIsBooting(true);
       setMessages([]);
+      setSuggestedReplies([]);
       setBotState("thinking");
       setIsStopAvailable(false);
     } else {
@@ -1116,6 +1159,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     if (shouldRequirePermission && !permissionReady) {
       stopAllSpeech();
       setMessages([]);
+      setSuggestedReplies([]);
       setBotState("idle");
       setIsStopAvailable(false);
       return;
@@ -1150,6 +1194,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     setIsBooting(true);
     setBotState("thinking");
     setMessages([]);
+    setSuggestedReplies([]);
 
     const openingSeq = ttsSeq.current++;
     let openingReady = false;
@@ -1191,15 +1236,6 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   }, [botName, configuredOpeningMessage, isOpen, voiceId, permissionReady, shouldRequirePermission, buildDefaultOpeningMessage]);
   
   
-
-  // -----------------------------
-  // 🔥 复制链接
-  // -----------------------------
-  const handleCopy = () => {
-    navigator.clipboard.writeText(shareUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
 
   const playing = useRef(false);
   const activeAudioUrl = useRef<string | null>(null);
@@ -1446,6 +1482,14 @@ const isSentenceEnd = (text: string) => {
 const stopAllSpeech = () => {
   generationIdRef.current += 1;
   ttsSessionRef.current += 1;
+  if (guideActivationTimerRef.current) {
+    window.clearTimeout(guideActivationTimerRef.current);
+    guideActivationTimerRef.current = null;
+  }
+  if (idleGuideTimerRef.current) {
+    window.clearTimeout(idleGuideTimerRef.current);
+    idleGuideTimerRef.current = null;
+  }
   activeRequestController.current?.abort();
   activeRequestController.current = null;
   ttsRequestControllers.current.forEach((controller) => controller.abort());
@@ -1477,7 +1521,106 @@ const stopAllSpeech = () => {
   setIsBooting(false);
 };
 
-const sendMessage = async (forcedText?: string) => {
+const extractQuestionFromReply = (text: string) => {
+  const matches = String(text || "").match(/[^。！？!?。\n]*[？?]/g);
+  return matches?.at(-1)?.trim() || "";
+};
+
+const requestDialogueEnhancement = async ({
+  userMsg,
+  reply,
+  currentGenId,
+  idleTrigger = false,
+  displayDelayMs = GUIDE_HINT_DELAY_MS,
+}: {
+  userMsg: string;
+  reply: string;
+  currentGenId: number;
+  idleTrigger?: boolean;
+  displayDelayMs?: number;
+}) => {
+  if (!reply.trim()) return;
+  try {
+    const recentMessages = [...messages, { role: "user" as const, content: userMsg }, { role: "bot" as const, content: reply }]
+      .slice(-8)
+      .map(({ role, content }) => ({ role, content }));
+    const response = await fetch(`${API_BASE}/api/ask`, {
+      method: "POST",
+      headers: requestHeaders,
+      body: JSON.stringify({
+        mode: "dialogue_enhancement",
+        systemPrompt: chatSystemPrompt,
+        userPrompt: userMsg,
+        reply,
+        recentMessages,
+        idleTrigger,
+        modelProvider,
+        botId: botConfig.id,
+        usageType: "chat_message",
+        sharedBotId: isSharedView ? botConfig.id : undefined,
+        stream: false,
+      }),
+    });
+    if (!response.ok) return;
+    const data = await response.json().catch(() => null);
+    const nextSuggestedReplies = Array.isArray(data?.suggestedReplies)
+      ? data.suggestedReplies
+          .map((item: any) => ({
+            tier: item?.tier === "L2" || item?.tier === "L3" ? item.tier : "L1",
+            label: String(item?.label || "").trim(),
+            text: String(item?.text || "").trim(),
+            sendText: String(item?.sendText || "").trim(),
+          }))
+          .filter((item: SuggestedReply) => item.label && item.text)
+          .slice(0, 3)
+      : [];
+    if (!nextSuggestedReplies.length) return;
+    const followUpQuestion = String(data?.followUpQuestion || data?.dialogueState?.follow_up_question || "").trim();
+    if (guideActivationTimerRef.current) {
+      window.clearTimeout(guideActivationTimerRef.current);
+      guideActivationTimerRef.current = null;
+    }
+    guideActivationTimerRef.current = window.setTimeout(() => {
+      if (currentGenId !== generationIdRef.current) return;
+      setGuideQuestion(followUpQuestion || extractQuestionFromReply(reply));
+      setSuggestedReplies(nextSuggestedReplies);
+      guideActivationTimerRef.current = null;
+    }, displayDelayMs);
+  } catch (error) {
+    console.warn("dialogue enhancement skipped", error);
+  }
+};
+
+const scheduleIdleGuide = ({
+  userMsg,
+  reply,
+  currentGenId,
+}: {
+  userMsg: string;
+  reply: string;
+  currentGenId: number;
+}) => {
+  if (!extractQuestionFromReply(reply)) return;
+  if (idleGuideTimerRef.current) {
+    window.clearTimeout(idleGuideTimerRef.current);
+    idleGuideTimerRef.current = null;
+  }
+  idleGuideTimerRef.current = window.setTimeout(() => {
+    if (currentGenId !== generationIdRef.current) return;
+    if (inputTextRef.current.trim()) return;
+    if (suggestedRepliesRef.current.length > 0) return;
+    void requestDialogueEnhancement({
+      userMsg,
+      reply,
+      currentGenId,
+      idleTrigger: true,
+      displayDelayMs: 0,
+    });
+    idleGuideTimerRef.current = null;
+  }, IDLE_GUIDE_DELAY_MS);
+};
+
+const sendMessage = async (forcedText?: string, visibleText?: string) => {
   if (shouldBlockChat) return;
   const textToSend = (forcedText ?? inputText).trim();
   if (!textToSend && chatImages.length === 0) return;
@@ -1486,10 +1629,12 @@ const sendMessage = async (forcedText?: string) => {
 
   stopAllSpeech();
   setIsStopAvailable(true);
-  const userMsg = textToSend;
+  const userMsg = (visibleText || textToSend).trim();
   setInputText("");
   setChatImages([]);
   setChatImagePreviews([]);
+  setSuggestedReplies([]);
+  setGuideQuestion("");
 
   setMessages(prev => [...prev, { role: "user", content: userMsg, imagePreviews: queuedPreviews }]);
   setBotState("thinking");
@@ -1502,15 +1647,11 @@ const sendMessage = async (forcedText?: string) => {
     activeRequestController.current = controller;
     const requestPayload = {
       systemPrompt:
-        botConfig.knowledgeBase +
-        "\n" +
-        botConfig.securityPrompt +
-        "\n" +
-        chatStyleRules,
+        chatSystemPrompt,
       userPrompt: userMsg,
       modelProvider,
       botId: botConfig.id,
-      stream: false,
+      stream: !guidedMode && modelProvider !== "gemini",
       teachingHint: guidedMode ? "continue" : "auto",
       usageType: "chat_message",
       sharedBotId: isSharedView ? botConfig.id : undefined,
@@ -1545,57 +1686,36 @@ const sendMessage = async (forcedText?: string) => {
       throw new Error(errorMessage);
     }
 
-    const raw = await response.text();
-    let data: any = null;
-    try {
-      data = JSON.parse(raw);
-    } catch {
-      const reply = raw
-        .split("\n")
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.replace(/^data:/, ""))
-        .join("")
-        .trim();
-      data = { reply };
-    }
-    const committedReply = String(data?.reply || "");
     const parseGuidedCard = (text: string) => {
       const normalized = text.trim();
       const m = normalized.match(/^(Step\s+\d+(?:\/\d+)?(?:（[^）]+）)?(?:\s*評估)?)\s*[\n：:]\s*([\s\S]*)$/);
       if (!m) return { title: "", body: normalized };
       return { title: m[1].trim(), body: (m[2] || "").trim() };
     };
-    const guidedCard = Boolean(data?.teachingMode) ? parseGuidedCard(committedReply) : { title: "", body: committedReply };
-    setGuidedMode(Boolean(data?.teachingMode));
-    setGuidedStepIndex(Number(data?.stepIndex || 0));
-    setGuidedTotalSteps(Number(data?.totalSteps || 0));
-    setMessages(prev => [...prev, { role: "bot", content: "", guidedTitle: guidedCard.title }]);
+    const contentType = String(response.headers.get("content-type") || "");
 
-    const ttsSource = guidedCard.body || committedReply;
-    const segments = ttsSource
-      .split(/(?<=[。！？!?；;\n])/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    let progressiveReply = "";
-    let progressiveChain = Promise.resolve();
+    if (contentType.includes("application/json") || modelProvider === "gemini") {
+      const data = await response.json().catch(() => null);
+      const baseReply = String(data?.reply || "").trim();
+      const followUpQuestion = String(data?.followUpQuestion || data?.dialogueState?.follow_up_question || "").trim();
+      const committedReply = [baseReply, followUpQuestion].filter(Boolean).join("\n\n");
+      const guidedCard = Boolean(data?.teachingMode) ? parseGuidedCard(committedReply) : { title: "", body: committedReply };
+      setGuidedMode(Boolean(data?.teachingMode));
+      setGuidedStepIndex(Number(data?.stepIndex || 0));
+      setGuidedTotalSteps(Number(data?.totalSteps || 0));
+      setMessages(prev => [...prev, { role: "bot", content: "", guidedTitle: guidedCard.title }]);
 
-    for (const segment of segments) {
-      if (voicePlaybackEnabledRef.current) {
-        const seq = enqueueSpeak(segment);
-        progressiveChain = progressiveChain.then(async () => {
-          if (currentGenId !== generationIdRef.current) return;
-          if (typeof seq === "number") {
-            await waitForAudioReady(seq, 900);
-          }
-          if (currentGenId !== generationIdRef.current) return;
-          progressiveReply += (progressiveReply ? "\n" : "") + segment;
-          setMessages(prev => {
-            const newMessages = [...prev];
-            newMessages[newMessages.length - 1] = { role: "bot", content: progressiveReply, guidedTitle: guidedCard.title, guidedBody: progressiveReply };
-            return newMessages;
-          });
-        });
-      } else {
+      const ttsSource = guidedCard.body || committedReply;
+      const segments = ttsSource
+        .split(/(?<=[。！？!?；;\n])/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      let progressiveReply = "";
+      for (const segment of segments) {
+        if (voicePlaybackEnabledRef.current) {
+          enqueueSpeak(segment);
+        }
+        if (currentGenId !== generationIdRef.current) return;
         progressiveReply += (progressiveReply ? "\n" : "") + segment;
         setMessages(prev => {
           const newMessages = [...prev];
@@ -1603,10 +1723,94 @@ const sendMessage = async (forcedText?: string) => {
           return newMessages;
         });
       }
+
+      if (currentGenId !== generationIdRef.current) return;
+      if (guideActivationTimerRef.current) {
+        window.clearTimeout(guideActivationTimerRef.current);
+        guideActivationTimerRef.current = null;
+      }
+      setBotState((current) => (current === "thinking" ? "idle" : current));
+      return;
     }
 
-    await progressiveChain;
-    if (currentGenId !== generationIdRef.current) return;
+    setGuidedMode(false);
+    setGuidedStepIndex(0);
+    setGuidedTotalSteps(0);
+    setMessages(prev => [...prev, { role: "bot", content: "" }]);
+
+    const canUseReader =
+      response.body &&
+      typeof (response.body as ReadableStream<Uint8Array>).getReader === "function";
+    const reader = canUseReader
+      ? (response.body as ReadableStream<Uint8Array>).getReader()
+      : null;
+    const decoder = new TextDecoder();
+    let sseBuffer = "";
+    let streamedReply = "";
+    let spokenReply = "";
+
+    if (!reader) {
+      const raw = await response.text();
+      const fallbackReply = raw
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.replace(/^data:/, ""))
+        .join("")
+        .trim() || raw.trim();
+      setMessages(prev => {
+        const newMessages = [...prev];
+        newMessages[newMessages.length - 1] = { role: "bot", content: fallbackReply };
+        return newMessages;
+      });
+      if (voicePlaybackEnabledRef.current && fallbackReply) {
+        enqueueSpeak(fallbackReply);
+      }
+      setBotState((current) => (current === "thinking" ? "idle" : current));
+      return;
+    }
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (currentGenId !== generationIdRef.current) return;
+      sseBuffer += decoder.decode(value, { stream: true });
+      const events = sseBuffer.split("\n\n");
+      sseBuffer = events.pop() || "";
+
+      for (const event of events) {
+        const token = event
+          .split("\n")
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.replace(/^data:/, ""))
+          .join("");
+        if (!token) continue;
+        streamedReply += token;
+        setMessages(prev => {
+          const newMessages = [...prev];
+          newMessages[newMessages.length - 1] = { role: "bot", content: streamedReply };
+          return newMessages;
+        });
+
+        const completedSegments = streamedReply
+          .slice(spokenReply.length)
+          .split(/(?<=[。！？!?；;\n])/)
+          .map((part) => part.trim())
+          .filter(Boolean);
+        if (voicePlaybackEnabledRef.current && completedSegments.length > 0) {
+          const speakable = completedSegments.filter((part) => /[。！？!?；;\n]$/.test(part));
+          for (const segment of speakable) {
+            enqueueSpeak(segment);
+            spokenReply += segment;
+          }
+        }
+      }
+    }
+
+    streamedReply += decoder.decode();
+    const committedReply = streamedReply.trim();
+    if (!spokenReply && voicePlaybackEnabledRef.current && committedReply) {
+      enqueueSpeak(committedReply);
+    }
     setBotState((current) => (current === "thinking" ? "idle" : current));
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") return;
@@ -1663,6 +1867,34 @@ const renderFormattedMessage = (text: string) => {
     }
     return <span key={`${part}-${index}`}>{part}</span>;
   });
+};
+
+const getSuggestedReplyMeta = (tier: SuggestedReply["tier"]) => {
+  if (tier === "L2") {
+    return {
+      icon: Brain,
+      className: "border-[#F7C948] bg-white text-[#B45309] hover:bg-[#FFF8E1]",
+    };
+  }
+  if (tier === "L3") {
+    return {
+      icon: Rocket,
+      className: "border-[#D8C4FF] bg-white text-[#7C3AED] hover:bg-[#F7F1FF]",
+    };
+  }
+  return {
+    icon: Lightbulb,
+    className: "border-[#A7C7FF] bg-white text-[#2563EB] hover:bg-[#F3F8FF]",
+  };
+};
+
+const clearSuggestedReplies = () => {
+  if (idleGuideTimerRef.current) {
+    window.clearTimeout(idleGuideTimerRef.current);
+    idleGuideTimerRef.current = null;
+  }
+  setSuggestedReplies([]);
+  setGuideQuestion("");
 };
 
 const stopSpeechInput = (forceAbort = false) => {
@@ -2135,6 +2367,25 @@ const unlockAudioAndMic = async () => {
               )}
 
               <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(8,12,16,0.16)_0%,rgba(8,12,16,0.05)_34%,rgba(8,12,16,0.42)_100%)]" />
+              <div className="absolute left-4 top-5 z-30 hidden md:left-6 md:top-6 md:block">
+                <button
+                  type="button"
+                  onClick={() => setArControlsOpen((prev) => !prev)}
+                  className={`flex h-11 items-center gap-2 rounded-2xl px-3.5 text-xs font-semibold text-white shadow-lg backdrop-blur transition-all duration-200 ${
+                    arControlsOpen
+                      ? "bg-white/22 ring-2 ring-white/65 shadow-[0_8px_24px_rgba(245,158,11,0.24)]"
+                      : "bg-black/45 hover:bg-black/60"
+                  }`}
+                  title={arControlsOpen ? "收起 AR 控制" : "打開 AR 控制"}
+                >
+                  <Camera size={16} />
+                  <span>AR</span>
+                  <ChevronDown
+                    size={15}
+                    className={`transition-transform duration-300 ${arControlsOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+              </div>
               <div className="absolute right-4 top-5 z-30 flex flex-col items-center gap-2 md:right-6 md:top-6 md:flex-row md:gap-3">
                 <button
                   className={`flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-lg backdrop-blur transition-all duration-200 ${
@@ -2147,77 +2398,63 @@ const unlockAudioAndMic = async () => {
                 >
                   <MessageCircle size={20} />
                 </button>
-                {!chatPanelOpen && (
-                  <>
-                    <div className="relative" ref={desktopDropdownRef}>
-                      <button
-                        className="flex h-11 w-11 items-center justify-center rounded-2xl bg-black/45 text-white shadow-lg backdrop-blur hover:bg-black/60"
-                        onClick={() => setShowDropdown(!showDropdown)}
-                      >
-                        <MoreHorizontal size={18} />
-                      </button>
-
-                      {showDropdown && (
-                        <div className="absolute right-0 top-16 z-30 bg-white rounded-xl shadow-xl border p-2 w-56 text-slate-700">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!canEditBot) return;
-                              setShowDropdown(false);
-                              onEdit();
-                            }}
-                            disabled={!canEditBot}
-                            className={`flex items-center gap-2 rounded-lg w-full p-2 ${
-                              canEditBot
-                                ? "hover:bg-slate-100"
-                                : "text-slate-300 cursor-not-allowed"
-                            }`}
-                          >
-                            <Edit size={16} /> 編輯機器人
-                          </button>
-                          <button
-                            onClick={handleCopy}
-                            className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded-lg w-full"
-                          >
-                            {copied ? <Check size={16} /> : <LinkIcon size={16} />}
-                            {copied ? "已複製" : "複製分享連結"}
-                          </button>
-                          <button
-                            className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded-lg w-full"
-                            onClick={() => {
-                              setShowDropdown(false);
-                              void startScreenRecording();
-                            }}
-                          >
-                            <Copy size={16} /> {isRecordingScreen ? "結束錄製並下載" : "錄製畫面"}
-                          </button>
-                          <button
-                            className="flex items-center gap-2 p-2 hover:bg-red-50 text-red-600 rounded-lg w-full"
-                            onClick={() => {
-                              setShowDropdown(false);
-                              setShowDeleteConfirm(true);
-                            }}
-                          >
-                            <Trash2 size={16} /> 刪除機器人
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                {!isSharedView && (
+                  <div className="relative" data-top-menu-root="publish-preview">
                     <button
-                      className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/90 text-slate-700 shadow-lg hover:bg-white"
-                      onClick={handleCloseWithInterrupt}
+                      className="flex h-11 w-11 items-center justify-center rounded-2xl bg-black/45 text-white shadow-lg backdrop-blur transition-all duration-200 hover:bg-black/60"
+                      onClick={() => setShowTopMenu((prev) => !prev)}
+                      title="更多操作"
                     >
-                      <X size={18} />
+                      <MoreHorizontal size={18} />
                     </button>
-                  </>
+                    {showTopMenu ? (
+                      <div className="absolute right-0 top-14 w-40 overflow-hidden rounded-2xl border border-white/15 bg-[#18181b]/92 p-1.5 text-sm text-white shadow-2xl backdrop-blur">
+                        <button
+                          className="flex w-full items-center rounded-xl px-3 py-2.5 text-left transition hover:bg-white/10"
+                          onClick={() => {
+                            setShowTopMenu(false);
+                            onEdit();
+                          }}
+                        >
+                          編輯機器人
+                        </button>
+                        <button
+                          className="flex w-full items-center rounded-xl px-3 py-2.5 text-left transition hover:bg-white/10"
+                          onClick={() => {
+                            setShowTopMenu(false);
+                            void handleCopyShareLink();
+                          }}
+                        >
+                          複製共享連結
+                        </button>
+                        <button
+                          className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-red-300 transition hover:bg-red-500/10"
+                          onClick={() => {
+                            setShowTopMenu(false);
+                            setShowDeleteConfirm(true);
+                          }}
+                        >
+                          刪除機器人
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+                {!chatPanelOpen && (
+                  <button
+                    className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/90 text-slate-700 shadow-lg hover:bg-white"
+                    onClick={handleCloseWithInterrupt}
+                  >
+                    <X size={18} />
+                  </button>
                 )}
               </div>
               {cameraBackgroundReady && (
                 <>
-                  <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-red-500/90 px-2.5 py-1 text-[10px] font-semibold tracking-[0.24em] text-white shadow-[0_0_12px_rgba(239,68,68,0.45)]">
+                  <div className="pointer-events-none absolute left-6 top-20 rounded-full bg-red-500/90 px-2.5 py-1 text-[10px] font-semibold tracking-[0.24em] text-white shadow-[0_0_12px_rgba(239,68,68,0.45)]">
                     REC
                   </div>
-                  <div className="pointer-events-none absolute right-4 top-4 text-[10px] font-medium tracking-[0.24em] text-white/90">
+                  <div className="pointer-events-none absolute right-6 top-20 text-[10px] font-medium tracking-[0.24em] text-white/90">
                     LIVE CAMERA
                   </div>
                   <div className="pointer-events-none absolute inset-0 hidden md:block">
@@ -2229,87 +2466,135 @@ const unlockAudioAndMic = async () => {
                 </>
               )}
 
-              <div className="absolute bottom-4 left-4 z-10 hidden max-w-[280px] flex-col gap-2 md:flex">
-                <button
-                  onClick={() => {
-                    void startCameraBackground();
-                  }}
-                  className="rounded-full bg-black/45 px-4 py-2 text-xs font-semibold text-white backdrop-blur hover:bg-black/60"
-                >
-                  {cameraBackgroundLoading
-                    ? "相機背景啟動中..."
-                    : cameraBackgroundReady
-                    ? "重新連接相機背景"
-                    : isMobileClient
-                    ? "開啟手機相機背景"
-                    : "開啟相機背景"}
-                </button>
-                {!cameraBackgroundReady && (
-                  <div className="max-w-[280px] rounded-2xl bg-black/35 px-3 py-2 text-[11px] leading-5 text-white/90 backdrop-blur">
-                    {cameraBackgroundError
-                      ? `相機未啟用：${cameraBackgroundError}`
-                      : cameraBackgroundLoading
-                      ? "正在請求相機權限..."
-                      : "目前使用原本背景圖，點擊上方按鈕可切換為電腦相機畫面。"}
-                  </div>
-                )}
-                {cameraBackgroundReady && (
-                  <>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={stopCameraBackground}
-                        className="rounded-full bg-black/45 px-4 py-2 text-xs font-semibold text-white backdrop-blur hover:bg-black/60"
-                      >
-                        關閉 AR
-                      </button>
-                      <button
-                        onClick={resetArCharacterPose}
-                        className="rounded-full bg-black/45 px-4 py-2 text-xs font-semibold text-white backdrop-blur hover:bg-black/60"
-                      >
-                        重置位置
-                      </button>
-                    </div>
-                    {!isMobileClient && (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => nudgeCharacterScale(-0.08)}
-                          className="rounded-full bg-black/45 px-3 py-2 text-xs font-semibold text-white backdrop-blur hover:bg-black/60"
-                        >
-                          縮小
-                        </button>
-                        <button
-                          onClick={() => nudgeCharacterScale(0.08)}
-                          className="rounded-full bg-black/45 px-3 py-2 text-xs font-semibold text-white backdrop-blur hover:bg-black/60"
-                        >
-                          放大
-                        </button>
-                        <div className="rounded-full bg-black/35 px-3 py-2 text-[11px] font-semibold text-white/90 backdrop-blur">
-                          比例 {Math.round(characterScale * 100)}%
-                        </div>
-                      </div>
-                    )}
-                    <div className="max-w-[280px] rounded-2xl bg-black/35 px-3 py-2 text-[11px] leading-5 text-white/90 backdrop-blur">
-                      {isMobileClient
-                        ? "單指拖動角色，雙指捏合可縮放大小。"
-                        : "拖動角色可移動位置，使用縮放按鈕可調整人物大小。"}
-                    </div>
-                  </>
-                )}
-                <button
-                  onClick={() => {
-                    void startScreenRecording();
-                  }}
-                  className={`rounded-full px-4 py-2 text-xs font-semibold text-white backdrop-blur ${
-                    isRecordingScreen ? "bg-red-600/85 hover:bg-red-700/90" : "bg-black/45 hover:bg-black/60"
+              <div className="absolute left-6 top-20 z-20 hidden md:block">
+                <div
+                  className={`w-[320px] origin-top-left overflow-hidden rounded-[20px] border bg-slate-950/42 text-white shadow-[0_18px_52px_rgba(15,23,42,0.28)] backdrop-blur-xl transition-all duration-300 ${
+                    arControlsOpen
+                      ? "translate-y-0 scale-100 border-white/18 opacity-100"
+                      : "pointer-events-none -translate-y-2 scale-95 border-transparent opacity-0"
                   }`}
                 >
-                  {isRecordingScreen ? "結束錄製並下載" : "開始錄製畫面"}
-                </button>
-                {recordingError ? (
-                  <div className="max-w-[280px] rounded-2xl bg-black/35 px-3 py-2 text-[11px] leading-5 text-white/90 backdrop-blur">
-                    錄製未啟用：{recordingError}
+                  <div className="flex items-center justify-between border-b border-white/12 px-4 py-3">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/58">
+                        AR BACKGROUND
+                      </div>
+                      <div className="mt-0.5 text-sm font-semibold">相機背景</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${
+                          cameraBackgroundReady
+                            ? "bg-emerald-400/18 text-emerald-100 ring-1 ring-emerald-300/35"
+                            : cameraBackgroundLoading
+                            ? "bg-amber-300/18 text-amber-100 ring-1 ring-amber-200/35"
+                            : "bg-white/10 text-white/72 ring-1 ring-white/14"
+                        }`}
+                      >
+                        {cameraBackgroundReady ? "已連接" : cameraBackgroundLoading ? "啟動中" : "未啟用"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setArControlsOpen(false)}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 text-white/78 ring-1 ring-white/12 transition hover:bg-white/16"
+                        title="收起 AR 控制"
+                      >
+                        <ChevronDown size={16} className="rotate-90" />
+                      </button>
+                    </div>
                   </div>
-                ) : null}
+
+                  <div className="space-y-3 px-4 py-3.5">
+                    <p className="text-xs leading-5 text-white/74">
+                      {cameraBackgroundError
+                        ? `相機未啟用：${cameraBackgroundError}`
+                        : cameraBackgroundReady
+                        ? isMobileClient
+                          ? "可拖動角色位置，雙指捏合調整大小。"
+                          : "可拖動角色位置，並用下方工具調整角色大小。"
+                        : cameraBackgroundLoading
+                        ? "正在請求相機權限..."
+                        : "啟用後會以電腦相機畫面取代目前背景。"}
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => {
+                          void startCameraBackground();
+                        }}
+                        disabled={cameraBackgroundLoading}
+                        className="flex h-10 items-center justify-center gap-2 rounded-xl bg-white text-xs font-semibold text-slate-950 shadow-sm transition hover:bg-slate-100 disabled:cursor-wait disabled:opacity-70"
+                      >
+                        <Camera size={15} />
+                        {cameraBackgroundLoading
+                          ? "啟動中..."
+                          : cameraBackgroundReady
+                          ? "重新連接"
+                          : isMobileClient
+                          ? "開啟手機相機"
+                          : "開啟相機"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          void startScreenRecording();
+                        }}
+                        className={`flex h-10 items-center justify-center gap-2 rounded-xl text-xs font-semibold transition ${
+                          isRecordingScreen
+                            ? "bg-red-500 text-white shadow-[0_10px_24px_rgba(239,68,68,0.28)] hover:bg-red-600"
+                            : "bg-white/12 text-white ring-1 ring-white/12 hover:bg-white/18"
+                        }`}
+                      >
+                        <Square size={14} />
+                        {isRecordingScreen ? "結束並下載" : "開始錄製"}
+                      </button>
+                    </div>
+
+                    {cameraBackgroundReady && (
+                      <div className="space-y-2 border-t border-white/12 pt-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={stopCameraBackground}
+                            className="h-9 rounded-xl bg-white/10 px-3 text-xs font-semibold text-white ring-1 ring-white/12 transition hover:bg-white/16"
+                          >
+                            關閉 AR
+                          </button>
+                          <button
+                            onClick={resetArCharacterPose}
+                            className="h-9 rounded-xl bg-white/10 px-3 text-xs font-semibold text-white ring-1 ring-white/12 transition hover:bg-white/16"
+                          >
+                            重置位置
+                          </button>
+                        </div>
+
+                        {!isMobileClient && (
+                          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                            <button
+                              onClick={() => nudgeCharacterScale(-0.08)}
+                              className="h-9 rounded-xl bg-white/10 px-3 text-xs font-semibold text-white ring-1 ring-white/12 transition hover:bg-white/16"
+                            >
+                              縮小
+                            </button>
+                            <div className="min-w-[72px] rounded-xl bg-black/20 px-3 py-2 text-center text-[11px] font-semibold text-white/82 ring-1 ring-white/10">
+                              {Math.round(characterScale * 100)}%
+                            </div>
+                            <button
+                              onClick={() => nudgeCharacterScale(0.08)}
+                              className="h-9 rounded-xl bg-white/10 px-3 text-xs font-semibold text-white ring-1 ring-white/12 transition hover:bg-white/16"
+                            >
+                              放大
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {recordingError ? (
+                      <div className="rounded-xl bg-red-500/14 px-3 py-2 text-[11px] leading-5 text-red-50 ring-1 ring-red-300/18">
+                        錄製未啟用：{recordingError}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
               </div>
 
               {cameraBackgroundReady ? (
@@ -2629,7 +2914,7 @@ const unlockAudioAndMic = async () => {
 
             {/* 右侧聊天 */}
             <div
-              className={`absolute inset-x-3 bottom-3 top-[38%] z-30 overflow-hidden rounded-[2rem] border border-white/18 bg-[#f7f1e6]/95 shadow-[0_24px_70px_rgba(0,0,0,0.34)] backdrop-blur-xl transition-all duration-300 md:relative md:inset-auto md:h-full md:rounded-none md:border-l md:border-r-0 md:border-t-0 md:border-b-0 md:border-slate-200 md:bg-slate-50 md:shadow-none md:backdrop-blur-0 ${
+              className={`absolute inset-x-3 bottom-3 top-[54%] z-30 overflow-hidden rounded-[2rem] border border-white/18 bg-[#f7f1e6]/95 shadow-[0_24px_70px_rgba(0,0,0,0.34)] backdrop-blur-xl transition-all duration-300 md:relative md:inset-auto md:h-full md:rounded-none md:border-l md:border-r-0 md:border-t-0 md:border-b-0 md:border-slate-200 md:bg-slate-50 md:shadow-none md:backdrop-blur-0 ${
                 chatPanelOpen
                   ? "translate-y-0 opacity-100 md:w-[44%]"
                   : "pointer-events-none translate-y-8 opacity-0 md:pointer-events-auto md:w-0 md:translate-y-0"
@@ -2727,8 +3012,42 @@ const unlockAudioAndMic = async () => {
               </div>
 
               {/* input */}
-              <div className="border-t border-[#decfb9] bg-[#fffaf1]/92 p-3">
-                {guidedMode && (
+              <div className="border-t border-[#decfb9] bg-[#fffaf1] p-2">
+                {suggestedReplies.length > 0 ? (
+                  <div className="mb-1.5 rounded-[20px] border border-[#ecdba8] bg-[#fffaf1]/96 px-1.5 py-1.5 shadow-[0_6px_14px_rgba(218,184,100,0.07)]">
+                    <div className="mb-1.5 flex items-center justify-between gap-1.5 px-1">
+                      <div className="flex items-center gap-1 text-[10px] font-black text-[#C77B09]">
+                        <span className="h-1.5 w-1.5 rounded-full bg-[#F6B51E]" />
+                        引導模式進行中
+                      </div>
+                      <button
+                        type="button"
+                        onClick={clearSuggestedReplies}
+                        className="rounded-full border border-rose-100 bg-white/92 px-2 py-0.5 text-[9px] font-black text-rose-500 shadow-sm transition hover:bg-rose-50"
+                      >
+                        退出引導
+                      </button>
+                    </div>
+                    <div className="space-y-1">
+                      {suggestedReplies.map((reply) => {
+                        const meta = getSuggestedReplyMeta(reply.tier);
+                        const Icon = meta.icon;
+                        return (
+                          <button
+                            key={`${reply.tier}-${reply.text}`}
+                            type="button"
+                            onClick={() => void sendMessage(reply.sendText || reply.text, reply.text)}
+                            className={`flex min-h-[34px] w-full items-center gap-1.5 rounded-full border px-3 py-1 text-left text-[10px] font-black shadow-[0_2px_6px_rgba(148,163,184,0.06)] transition active:scale-[0.99] ${meta.className}`}
+                          >
+                            <Icon className="h-3.5 w-3.5 shrink-0" />
+                            <span className="shrink-0">{reply.label}</span>
+                            <span className="min-w-0 truncate text-[10px] font-bold text-[#475569]">{reply.text}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : guidedMode ? (
                   <div className="mb-2 rounded-2xl border border-amber-200 bg-amber-50/80 p-2">
                     <div className="mb-2 text-xs text-amber-800">
                       引導模式進行中 {guidedStepIndex > 0 && guidedTotalSteps > 0 ? `(Step ${guidedStepIndex}/${guidedTotalSteps})` : ""}
@@ -2740,7 +3059,7 @@ const unlockAudioAndMic = async () => {
                       <button onClick={() => void sendMessage("退出引導")} className="rounded-lg bg-white px-3 py-1 text-xs text-rose-700 border border-rose-200">退出引導</button>
                     </div>
                   </div>
-                )}
+                ) : null}
                 {awaitingAudioGesture && (
                   <div className="mb-2 text-xs text-amber-600">
                     已收到回覆語音，請點一下畫面以恢復播放。

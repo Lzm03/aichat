@@ -18,7 +18,7 @@ const colorMap: Record<string, string> = {
 export const BotCard: React.FC<BotCardProps> = ({ bot, onEdit }) => {
   return (
     <div
-      className="bg-white p-6 rounded-3xl shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] transition-all duration-300 flex flex-col group cursor-pointer hover:-translate-y-1 hover:shadow-xl"
+      className="bg-white p-6 rounded-3xl shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] transition-all duration-300 flex h-full min-h-[260px] flex-col group cursor-pointer hover:-translate-y-1 hover:shadow-xl"
       onClick={onEdit}
     >
       {/* 顶部：头像 + 可见开关 */}
@@ -52,7 +52,7 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onEdit }) => {
       </div>
 
       {/* 底部：互动次数 */}
-      <div className="mt-auto pt-4 border-t border-slate-100">
+      <div className="mt-auto pt-4">
         <p className="text-sm text-slate-500">今日互動 {bot.interactions} 次</p>
       </div>
     </div>
