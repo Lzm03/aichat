@@ -114,7 +114,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const isDeveloperAccount = Boolean(currentUser.permissions?.canManageAllAccounts);
+  const isDeveloperAccount = currentUser.email.trim().toLowerCase() === "lzm200303@gmail.com";
 
   useEffect(() => {
     setFullName(currentUser.fullName || "");

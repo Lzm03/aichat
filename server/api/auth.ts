@@ -1,10 +1,7 @@
 import express from "express";
 import crypto from "crypto";
 import { pool } from "../db.ts";
-import { canManageAllAccounts } from "../config/account-overrides.ts";
 import {
-  type AppError,
-  type AuthUser,
   type AppRole,
   DEFAULT_MONTHLY_CREDIT_LIMIT,
   DEFAULT_USER_PREFERENCES,
@@ -15,10 +12,11 @@ import {
   getUserFeatureSummary,
   maybeAssignLegacyDataByEmail,
   normalizeUserPreferences,
+  recordFeatureUsage,
+  ensureFeatureAvailable,
   resetOwnFeatureUsage,
   listAccountsForAdmin,
   sanitizeUser,
-  consumeFeatureUsage,
   setUserFeatureLimit,
   setUserFeatureUsage,
   signToken,
@@ -30,25 +28,7 @@ import {
 
 const router = express.Router();
 
-type FeatureKeyParam =
-  | "voice_messages"
-  | "voice_audition_preview"
-  | "avatar_ai_generate"
-  | "background_ai_generate"
-  | "bot_publish"
-  | "chat_messages";
-
-type ProfileUserRow = AuthUser & { password_hash: string };
-
-function getErrorStatus(error: unknown, fallback = 500) {
-  return (error as AppError | undefined)?.status || fallback;
-}
-
-function getErrorMessage(error: unknown, fallback: string) {
-  return (error as Error | undefined)?.message || fallback;
-}
-
-function issueAuthResponse(row: AuthUser) {
+function issueAuthResponse(row: any) {
   const token = signToken({
     sub: row.id,
     email: row.email,
@@ -154,11 +134,12 @@ router.post("/features/:key/consume", async (req, res) => {
 
   try {
     const amount = Math.max(1, Number(req.body?.amount || 1));
-    const features = await consumeFeatureUsage(payload.sub, req.params.key as FeatureKeyParam, amount, req.body?.meta || {});
+    await ensureFeatureAvailable(payload.sub, req.params.key as any, amount);
+    const features = await recordFeatureUsage(payload.sub, req.params.key as any, amount, req.body?.meta || {});
     return res.json({ ok: true, features });
   } catch (error) {
     console.error("POST /api/auth/features/:key/consume failed:", error);
-    return res.status(getErrorStatus(error)).json({ error: getErrorMessage(error, "failed to consume feature") });
+    return res.status((error as any)?.status || 500).json({ error: (error as any)?.message || "failed to consume feature" });
   }
 });
 
@@ -177,7 +158,7 @@ router.post("/features/reset", async (req, res) => {
     return res.json({ ok: true, features: await resetOwnFeatureUsage(payload.sub) });
   } catch (error) {
     console.error("POST /api/auth/features/reset failed:", error);
-    return res.status(getErrorStatus(error)).json({ error: getErrorMessage(error, "failed to reset features") });
+    return res.status((error as any)?.status || 500).json({ error: (error as any)?.message || "failed to reset features" });
   }
 });
 
@@ -208,7 +189,7 @@ router.put("/profile", async (req, res) => {
        WHERE id=$1`,
       [payload.sub]
     );
-    const currentUser = currentUserResult.rows[0] as ProfileUserRow | undefined;
+    const currentUser = currentUserResult.rows[0];
     if (!currentUser) {
       return res.status(404).json({ error: "user not found" });
     }
@@ -221,7 +202,7 @@ router.put("/profile", async (req, res) => {
     const shouldUpdatePassword = Boolean(newPassword);
 
     if (shouldUpdateEmail || shouldUpdatePassword) {
-      if (!currentPassword || !verifyPassword(currentPassword, currentUser.password_hash)) {
+      if (!currentPassword || !verifyPassword(currentPassword, (currentUser as any).password_hash)) {
         return res.status(401).json({ error: "current password is incorrect" });
       }
     }
@@ -262,7 +243,7 @@ router.put("/profile", async (req, res) => {
       return res.status(404).json({ error: "user not found" });
     }
 
-    const updatedEmail = (result.rows[0] as AuthUser | undefined)?.email;
+    const updatedEmail = (result.rows[0] as any)?.email;
     if (updatedEmail) {
       await pool.query(
         `UPDATE bots
@@ -288,7 +269,7 @@ router.get("/admin/accounts", async (req, res) => {
   try {
     return res.json({ accounts: await listAccountsForAdmin(payload.sub) });
   } catch (error) {
-    return res.status(getErrorStatus(error)).json({ error: getErrorMessage(error, "failed to load accounts") });
+    return res.status((error as any)?.status || 500).json({ error: (error as any)?.message || "failed to load accounts" });
   }
 });
 
@@ -316,7 +297,7 @@ router.post("/admin/accounts", async (req, res) => {
 
   try {
     const admin = await findUserById(payload.sub);
-    if (!admin || !canManageAllAccounts(admin.email)) {
+    if (!admin || admin.email.trim().toLowerCase() !== "lzm200303@gmail.com") {
       return res.status(403).json({ error: "forbidden" });
     }
 
@@ -363,7 +344,7 @@ router.post("/admin/accounts/:userId/reset-features", async (req, res) => {
   try {
     return res.json({ ok: true, features: await resetFeatureUsageForUser(payload.sub, req.params.userId) });
   } catch (error) {
-    return res.status(getErrorStatus(error)).json({ error: getErrorMessage(error, "failed to reset account features") });
+    return res.status((error as any)?.status || 500).json({ error: (error as any)?.message || "failed to reset account features" });
   }
 });
 
@@ -375,7 +356,7 @@ router.delete("/admin/accounts/:userId", async (req, res) => {
 
   try {
     const admin = await findUserById(payload.sub);
-    if (!admin || !canManageAllAccounts(admin.email)) {
+    if (!admin || admin.email.trim().toLowerCase() !== "lzm200303@gmail.com") {
       return res.status(403).json({ error: "forbidden" });
     }
     const targetUserId = String(req.params.userId || "").trim();
@@ -406,7 +387,7 @@ router.delete("/admin/accounts/:userId", async (req, res) => {
     return res.json({ ok: true });
   } catch (error) {
     console.error("DELETE /api/auth/admin/accounts/:userId failed:", error);
-    return res.status(getErrorStatus(error)).json({ error: getErrorMessage(error, "failed to delete account") });
+    return res.status((error as any)?.status || 500).json({ error: (error as any)?.message || "failed to delete account" });
   }
 });
 
@@ -420,10 +401,10 @@ router.put("/admin/accounts/:userId/features/:key", async (req, res) => {
     const used = Math.max(0, Number(req.body?.used || 0));
     return res.json({
       ok: true,
-      features: await setUserFeatureUsage(payload.sub, req.params.userId, req.params.key as FeatureKeyParam, used),
+      features: await setUserFeatureUsage(payload.sub, req.params.userId, req.params.key as any, used),
     });
   } catch (error) {
-    return res.status(getErrorStatus(error)).json({ error: getErrorMessage(error, "failed to update feature usage") });
+    return res.status((error as any)?.status || 500).json({ error: (error as any)?.message || "failed to update feature usage" });
   }
 });
 
@@ -437,10 +418,10 @@ router.put("/admin/accounts/:userId/features/:key/limit", async (req, res) => {
     const limit = Math.max(0, Number(req.body?.limit ?? 0));
     return res.json({
       ok: true,
-      features: await setUserFeatureLimit(payload.sub, req.params.userId, req.params.key as FeatureKeyParam, limit),
+      features: await setUserFeatureLimit(payload.sub, req.params.userId, req.params.key as any, limit),
     });
   } catch (error) {
-    return res.status(getErrorStatus(error)).json({ error: getErrorMessage(error, "failed to update feature limit") });
+    return res.status((error as any)?.status || 500).json({ error: (error as any)?.message || "failed to update feature limit" });
   }
 });
 

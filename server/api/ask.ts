@@ -6,13 +6,13 @@ import multer from "multer";
 import crypto from "crypto";
 import { pool } from "../db.ts";
 import {
-  type AppError,
   assertUserCanSpend,
   consumeUserCredits,
-  consumeFeatureUsage,
   ensurePlatformTables,
+  ensureFeatureAvailable,
   getAuthUser,
   getBearerToken,
+  recordFeatureUsage,
   verifyToken,
   findUserById,
   requireAuth,
@@ -56,30 +56,6 @@ async function maybeMockModelReply(userPrompt: string): Promise<string | null> {
 }
 
 type TeachingTaskType = "email";
-type AskFileBody = {
-  modelProvider?: unknown;
-  systemPrompt?: unknown;
-};
-type AskUrlBody = {
-  systemPrompt?: unknown;
-  url?: unknown;
-  modelProvider?: unknown;
-};
-type AskRequestBody = {
-  systemPrompt?: unknown;
-  userPrompt?: unknown;
-  stream?: unknown;
-  usageType?: unknown;
-  botId?: unknown;
-  sharedBotId?: unknown;
-  modelProvider?: unknown;
-  mode?: unknown;
-  source?: unknown;
-  reply?: unknown;
-  recentMessages?: unknown;
-  idleTrigger?: unknown;
-  currentQuestion?: unknown;
-};
 type ChatImageInput = {
   mimeType: string;
   data: string;
@@ -188,36 +164,14 @@ async function getActiveTeachingSession(userId: string, botId: string): Promise<
 }
 
 async function startTeachingSession(userId: string, botId: string, taskType: TeachingTaskType) {
+  await pool.query(`UPDATE teaching_sessions SET mode='aborted', updated_at=NOW() WHERE user_id=$1 AND bot_id=$2 AND mode IN ('guiding','waiting_student','feedback','paused')`, [userId, botId]);
   const steps = getTaskSteps();
   const id = crypto.randomUUID();
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query(
-      `SELECT id
-       FROM teaching_sessions
-       WHERE user_id=$1 AND bot_id=$2
-       FOR UPDATE`,
-      [userId, botId]
-    );
-    await client.query(
-      `UPDATE teaching_sessions
-       SET mode='aborted', updated_at=NOW()
-       WHERE user_id=$1 AND bot_id=$2 AND mode IN ('guiding','waiting_student','feedback','paused')`,
-      [userId, botId]
-    );
-    await client.query(
-      `INSERT INTO teaching_sessions (id, user_id, bot_id, task_type, mode, step_index, total_steps, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,'guiding',1,$5,NOW(),NOW())`,
-      [id, userId, botId, taskType, steps.length]
-    );
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
+  await pool.query(
+    `INSERT INTO teaching_sessions (id, user_id, bot_id, task_type, mode, step_index, total_steps, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,'guiding',1,$5,NOW(),NOW())`,
+    [id, userId, botId, taskType, steps.length]
+  );
   return { id, stepIndex: 1, totalSteps: steps.length, taskType };
 }
 
@@ -375,11 +329,8 @@ async function askDeepSeek(systemPrompt: string, userPrompt: string, onToken: (t
   const r = await fetchDeepSeekWithRetry(requestBody);
 
   const decoder = new TextDecoder();
-  if (!r.body) {
-    throw new Error("DeepSeek streaming response body missing");
-  }
-  for await (const chunk of r.body) {
-    const text = typeof chunk === "string" ? chunk : decoder.decode(chunk);
+  for await (const chunk of r.body as any) {
+    const text = decoder.decode(chunk);
     const lines = text.split("\n");
     for (const line of lines) {
       if (!line.startsWith("data:")) continue;
@@ -439,19 +390,6 @@ type RecentChatMessage = {
   role: "user" | "bot";
   content: string;
 };
-
-function getErrorStatus(error: unknown, fallback = 500) {
-  return (error as AppError | undefined)?.status || fallback;
-}
-
-function getErrorMessage(error: unknown, fallback: string) {
-  return (error as Error | undefined)?.message || fallback;
-}
-
-function getErrorCode(error: unknown) {
-  const maybeError = error as { code?: unknown } | undefined;
-  return String(maybeError?.code || "");
-}
 
 function normalizeChatModelProvider(input: unknown): ChatModelProvider {
   return String(input || "").trim().toLowerCase() === "gemini" ? "gemini" : "deepseek";
@@ -1277,7 +1215,7 @@ async function askModelStream(
 }
 
 function remapModelProviderError(error: unknown) {
-  const message = getErrorMessage(error, "");
+  const message = String((error as any)?.message || "");
   if (
     /Missing GOOGLE_CLOUD_PROJECT/i.test(message) ||
     /Could not load the default credentials/i.test(message) ||
@@ -1322,9 +1260,9 @@ async function fetchDeepSeekWithRetry(body: Record<string, unknown>, retries = 2
       }
 
       return response;
-    } catch (error: unknown) {
+    } catch (error: any) {
       lastError = error;
-      const code = getErrorCode(error);
+      const code = String(error?.code || "");
       const shouldRetry =
         attempt < retries &&
         (code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ECONNREFUSED");
@@ -1442,8 +1380,8 @@ async function resolveChatActor(req: Request, sharedBotId?: string, botId?: stri
 
   const normalizedBotId = String(sharedBotId || botId || "").trim();
   if (!normalizedBotId) {
-    const error = new Error("missing bearer token") as AppError;
-    error.status = 401;
+    const error = new Error("missing bearer token");
+    (error as any).status = 401;
     throw error;
   }
 
@@ -1459,15 +1397,15 @@ async function resolveChatActor(req: Request, sharedBotId?: string, botId?: stri
   );
   const ownerId = String(result.rows[0]?.owner_id || "").trim();
   if (!ownerId) {
-    const error = new Error("shared bot not found") as AppError;
-    error.status = 404;
+    const error = new Error("shared bot not found");
+    (error as any).status = 404;
     throw error;
   }
 
   const user = await findUserById(ownerId);
   if (!user) {
-    const error = new Error("shared bot owner not found") as AppError;
-    error.status = 404;
+    const error = new Error("shared bot owner not found");
+    (error as any).status = 404;
     throw error;
   }
 
@@ -1628,8 +1566,7 @@ router.post("/ask-file", requireAuth, upload.any(), async (req: Request, res: Re
   try {
     const authUser = getAuthUser(req);
     await assertUserCanSpend(authUser!.id, 4);
-    const body = (req.body || {}) as AskFileBody;
-    const modelProvider = normalizeChatModelProvider(body.modelProvider);
+    const modelProvider = normalizeChatModelProvider((req.body as any)?.modelProvider);
     const files = ((req.files as Express.Multer.File[] | undefined) || []).filter(Boolean);
     if (!files.length) return res.status(400).json({ error: "缺少文件" });
 
@@ -1653,7 +1590,7 @@ router.post("/ask-file", requireAuth, upload.any(), async (req: Request, res: Re
       .join("\n\n")
       .trim();
     const normalizedPromptText = combinedText.slice(0, MAX_FILE_PROMPT_CHARS);
-    const systemPrompt = String(body.systemPrompt || "");
+    const systemPrompt: string = (req.body as any)?.systemPrompt || "";
     const reply = await askModelOnce(modelProvider, systemPrompt, normalizedPromptText);
     await consumeUserCredits(authUser!.id, "ask_file", 4, {
       fileNames: files.map((file) => file.originalname),
@@ -1670,16 +1607,16 @@ router.post("/ask-file", requireAuth, upload.any(), async (req: Request, res: Re
         extractedLength: part.extractedText.length,
       })),
     });
-  } catch (err: unknown) {
+  } catch (err: any) {
     console.error("❌ 文件解析錯誤:", err);
-    const code = getErrorCode(err);
+    const code = String(err?.code || "");
     const isNetworkReset =
       code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ECONNREFUSED";
-    res.status(getErrorStatus(err)).json({
+    res.status(err?.status || 500).json({
       error: isNetworkReset
         ? "文件文字已提取，但 AI 解析服務連線中斷，請稍後重試。"
-        : getErrorMessage(err, "unknown error"),
-      detail: getErrorMessage(err, "unknown error"),
+        : err.message,
+      detail: err?.message || "unknown error",
       code: code || undefined,
     });
   }
@@ -1689,10 +1626,8 @@ router.post("/ask-url", requireAuth, async (req: Request, res: Response) => {
   try {
     const authUser = getAuthUser(req);
     await assertUserCanSpend(authUser!.id, 2);
-    const body = (req.body || {}) as AskUrlBody;
-    const systemPrompt = String(body.systemPrompt || "");
-    const url = String(body.url || "");
-    const selectedModelProvider = normalizeChatModelProvider(body.modelProvider || "deepseek");
+    const { systemPrompt = "", url = "", modelProvider = "deepseek" } = req.body as any;
+    const selectedModelProvider = normalizeChatModelProvider(modelProvider);
     if (!url || typeof url !== "string") return res.status(400).json({ error: "缺少網址" });
     const targetUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
     let pageText = "";
@@ -1708,15 +1643,14 @@ router.post("/ask-url", requireAuth, async (req: Request, res: Response) => {
     const reply = await askModelOnce(selectedModelProvider, systemPrompt, pageText);
     await consumeUserCredits(authUser!.id, "ask_url", 2, { url: targetUrl, modelProvider: selectedModelProvider });
     return res.json({ reply, extractedText: pageText, sourceUrl: targetUrl, modelProvider: selectedModelProvider });
-  } catch (err: unknown) {
+  } catch (err: any) {
     console.error("❌ URL 解析錯誤:", err);
-    return res.status(getErrorStatus(err)).json({ error: getErrorMessage(err, "網址解析失敗") });
+    return res.status(err?.status || 500).json({ error: err.message });
   }
 });
 
 router.post("/ask", upload.any(), async (req: Request, res: Response) => {
   try {
-    const body = (req.body || {}) as AskRequestBody;
     const {
       systemPrompt = "",
       userPrompt = "",
@@ -1727,13 +1661,13 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
       modelProvider = "deepseek",
       mode = "",
       source = "direct",
-    } = body;
+    } = req.body || {};
     const actor = await resolveChatActor(req, String(sharedBotId || ""), String(botId || ""));
     const authUser = actor.user;
     await assertUserCanSpend(authUser.id, 1);
+    if (usageType === "chat_message") await ensureFeatureAvailable(authUser.id, "chat_messages", 1);
 
     const normalized = String(userPrompt || "").trim();
-    const systemPromptText = String(systemPrompt || "");
     const selectedModelProvider = normalizeChatModelProvider(modelProvider);
     const wantsStream = normalizeStreamFlag(stream);
     const chatImages = selectedModelProvider === "gemini" ? extractChatImages(req) : [];
@@ -1750,7 +1684,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
         : [];
     const contextualPrompt = buildContextualUserPrompt(normalizedPrompt, recentChatMessages);
     const active = actor.shared ? null : await getActiveTeachingSession(authUser.id, normalizedBotId);
-    const respondTeaching = async (payload: Record<string, unknown>) => {
+    const respondTeaching = async (payload: Record<string, any>) => {
       if (usageType === "chat_message") {
         const replyText = String(payload?.reply || "").trim();
         const normalizedSource = String(source || (actor.shared ? "shared_bot" : "direct")).slice(0, 32);
@@ -1772,19 +1706,19 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     };
 
     if (mode === "dialogue_enhancement") {
-      const reply = String(body.reply || "").trim();
+      const reply = String(req.body?.reply || "").trim();
       if (!reply) {
         return res.status(400).json({ error: "Missing reply" });
       }
       const enhancement = await buildDialogueEnhancement(
         selectedModelProvider,
-        systemPromptText,
+        systemPrompt,
         normalizedPrompt,
         reply,
-        normalizeRecentMessages(body.recentMessages),
+        normalizeRecentMessages(req.body?.recentMessages),
         {
-          idleTrigger: Boolean(body.idleTrigger),
-          currentQuestion: String(body.currentQuestion || "").trim(),
+          idleTrigger: Boolean(req.body?.idleTrigger),
+          currentQuestion: String(req.body?.currentQuestion || "").trim(),
         }
       );
       return res.json(enhancement);
@@ -1926,17 +1860,12 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
         if (isDebugLogEnabled) console.log("[ask] requesting model reply");
         reply =
           (await maybeMockModelReply(normalizedPrompt)) ??
-          (await askModelOnce(selectedModelProvider, systemPromptText, contextualPrompt, chatImages));
+          (await askModelOnce(selectedModelProvider, systemPrompt, contextualPrompt, chatImages));
         if (isDebugLogEnabled) console.log("[ask] model reply received length=%s", reply.length);
       } catch (error) {
         throw remapModelProviderError(error);
       }
-      if (usageType === "chat_message") {
-        await consumeFeatureUsage(authUser.id, "chat_messages", 1, {
-          usageType,
-          source: actor.shared ? "shared_bot" : "direct",
-        });
-      }
+      if (usageType === "chat_message") await recordFeatureUsage(authUser.id, "chat_messages", 1, { usageType, source: actor.shared ? "shared_bot" : "direct" });
       if (usageType === "chat_message") {
         await recordBotChatMessages({
           botId: normalizedBotId,
@@ -1968,7 +1897,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
         streamedReply = mocked;
         res.write(`data:${mocked}\n\n`);
       } else {
-        await askModelStream(selectedModelProvider, systemPromptText, contextualPrompt, (token: string) => {
+        await askModelStream(selectedModelProvider, systemPrompt, contextualPrompt, (token: string) => {
           streamedReply += token;
           res.write(`data:${token}\n\n`);
         }, chatImages);
@@ -1976,12 +1905,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     } catch (error) {
       throw remapModelProviderError(error);
     }
-    if (usageType === "chat_message") {
-      await consumeFeatureUsage(authUser.id, "chat_messages", 1, {
-        usageType,
-        source: actor.shared ? "shared_bot" : "direct",
-      });
-    }
+    if (usageType === "chat_message") await recordFeatureUsage(authUser.id, "chat_messages", 1, { usageType, source: actor.shared ? "shared_bot" : "direct" });
     if (usageType === "chat_message") {
       await recordBotChatMessages({
         botId: normalizedBotId,
@@ -1999,9 +1923,9 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     }
     await consumeUserCredits(authUser.id, "ask", 1, { streaming: true, promptLength: normalizedPrompt.length, source: actor.shared ? "shared_bot" : "direct", modelProvider: selectedModelProvider, imageCount: chatImages.length });
     res.end();
-  } catch (err: unknown) {
+  } catch (err: any) {
     console.error(err);
-    res.status(getErrorStatus(err)).json({ error: getErrorMessage(err, "聊天請求失敗") });
+    res.status(err?.status || 500).json({ error: err.message });
   }
 });
 

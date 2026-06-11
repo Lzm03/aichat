@@ -1,26 +1,20 @@
 import express from "express";
 import crypto from "crypto";
 import { pool } from "../db.ts";
-import { toDb, toClient, type BotDbShape } from "../botMapper.ts";
+import { toDb, toClient } from "../botMapper.js";
 import { getOrCreateWebmSequence, getPublicBase } from "./webm-sequence.ts";
 import { canManageAllAccounts } from "../config/account-overrides.ts";
 import {
-  consumeFeatureUsage,
+  ensureFeatureAvailable,
   ensurePlatformTables,
   getAuthUser,
   optionalAuth,
+  recordFeatureUsage,
   requireAuth,
 } from "../lib/platform-auth.ts";
 
 const router = express.Router();
 type SequenceVideoEntry = { key: "idle" | "thinking" | "talking"; url: string };
-type ChatMessageRow = {
-  user_id: string;
-  bot_id: string;
-  content: string;
-  source: string;
-  created_at: string;
-};
 type KnowledgeBuckets = {
   basic: string[];
   deep: string[];
@@ -39,57 +33,12 @@ type KnowledgePoint = {
   completed: boolean;
 };
 
-type AssessmentStatus = "warning" | "knowledge" | "normal";
-
-type AssessmentRow = {
-  id: string;
-  studentId: string;
-  name: string;
-  mastery: number;
-  output: string;
-  outputLevel: number;
-  outputText: string;
-  interaction: string;
-  interactionCode: string;
-  interactionText: string;
-  interactionDepth: number;
-  rounds: number;
-  mode: string;
-  activeInputCount: number;
-  assistedInputCount: number;
-  directInputCount: number;
-  directInputChars: number;
-  voiceInputCount: number;
-  guidedInputCount: number;
-  activeInputRate: number;
-  assistedInputRate: number;
-  status: AssessmentStatus;
-  statusText: string;
-  weightedBots?: number;
-  weightedOutputLevel?: number;
-};
-
-type SequenceManifestResult = {
-  manifestUrl?: string;
-  folderUrl?: string;
-  frameCount?: number;
-  fps?: number;
-  width?: number;
-  height?: number;
-};
-
-type SequenceReportItem = {
-  botId: string;
-  name: string;
-  sequences: Partial<Record<SequenceVideoEntry["key"], SequenceManifestResult | { error: string }>>;
-};
-
 function fallbackOpeningMessage(name: string) {
   const safeName = (name || "").trim() || "AI 助手";
   return `你好，我是${safeName}，我們一起開始今天的學習吧。`;
 }
 
-async function generateOpeningMessage(bot: Pick<BotDbShape, "name" | "knowledge_base" | "security_prompt">) {
+async function generateOpeningMessage(bot: any) {
   const apiKey = String(process.env.DEEPSEEK_API_KEY || "").trim();
   if (!apiKey) {
     return fallbackOpeningMessage(String(bot?.name || ""));
@@ -295,7 +244,7 @@ function interactionBand(depth: number) {
   return { code: "Y4", text: "高度投入" };
 }
 
-function classifyStatus(level: number, depth: number): { status: AssessmentStatus; statusText: string } {
+function classifyStatus(level: number, depth: number) {
   if (level <= 1 || depth < 0.35) return { status: "warning", statusText: "卡關預警" };
   if (level >= 3 || depth >= 0.75) return { status: "knowledge", statusText: "知識溢出" };
   return { status: "normal", statusText: "正常探索" };
@@ -345,7 +294,7 @@ function buildAssessmentRow(input: {
   index: number;
   messages: Array<{ content: string; createdAt: string; source?: string }>;
   buckets: KnowledgeBuckets;
-}): AssessmentRow {
+}) {
   const messageContents = input.messages.map((message) => String(message.content || ""));
   const outputLevel = scoreOutputLevel(messageContents, input.buckets);
   const interactionTurn = input.messages.length;
@@ -408,7 +357,7 @@ function buildWeightedAssessmentRow(input: {
     messages: Array<{ content: string; createdAt: string; source?: string }>;
     buckets: KnowledgeBuckets;
   }>;
-}): AssessmentRow {
+}) {
   if (!input.items.length) {
     return buildAssessmentRow({ student: input.student, index: input.index, messages: [], buckets: { basic: [], deep: [] } });
   }
@@ -670,7 +619,7 @@ router.get("/teacher/assessment-report", requireAuth, async (req, res) => {
            ORDER BY created_at ASC`,
           [user.id, botIds]
         )
-      : { rows: [] as ChatMessageRow[] };
+      : { rows: [] as any[] };
 
     const messagesByStudentBot = new Map<string, Array<{ content: string; createdAt: string; source?: string }>>();
     for (const row of messageRows.rows) {
@@ -716,18 +665,19 @@ router.get("/teacher/assessment-report", requireAuth, async (req, res) => {
 
     const interactionSummary = rows.reduce(
       (acc, row) => {
-        const active = Number(row.activeInputCount || 0);
-        const assisted = Number(row.assistedInputCount || 0);
+        const typedRow = row as any;
+        const active = Number(typedRow.activeInputCount || 0);
+        const assisted = Number(typedRow.assistedInputCount || 0);
         acc.independent += active;
         acc.assisted += assisted;
         acc.totalInputs += active + assisted;
-        acc.totalActiveChars += Number(row.directInputChars || 0);
-        acc.totalActiveMessages += Number(row.directInputCount || 0);
+        acc.totalActiveChars += Number(typedRow.directInputChars || 0);
+        acc.totalActiveMessages += Number(typedRow.directInputCount || 0);
         acc.points.push({
-          name: row.name,
-          x: Math.max(0, Math.min(100, Number(row.activeInputRate ?? Math.round((row.interactionDepth || 0) * 100)))),
-          y: Math.max(0, Math.min(100, Math.round(row.mastery || 0))),
-          status: row.status,
+          name: typedRow.name,
+          x: Math.max(0, Math.min(100, Number(typedRow.activeInputRate ?? Math.round((typedRow.interactionDepth || 0) * 100)))),
+          y: Math.max(0, Math.min(100, Math.round(typedRow.mastery || 0))),
+          status: typedRow.status,
         });
         return acc;
       },
@@ -760,12 +710,10 @@ router.get("/teacher/assessment-report", requireAuth, async (req, res) => {
       interactionSummary: {
         independentRate: interactionSummary.totalInputs ? Math.round((interactionSummary.independent / interactionSummary.totalInputs) * 100) : 0,
         assistedRate: interactionSummary.totalInputs ? Math.round((interactionSummary.assisted / interactionSummary.totalInputs) * 100) : 0,
-        averageFreeInputLength: interactionSummary.totalActiveMessages
-          ? Math.round(interactionSummary.totalActiveChars / interactionSummary.totalActiveMessages)
+        averageFreeInputLength: rows.length
+          ? Math.max(8, Math.round(interactionSummary.totalActiveChars / Math.max(1, interactionSummary.totalActiveMessages || 1)))
           : 0,
-        averageBubbleDependency: rows.length
-          ? Number((interactionSummary.assisted / rows.length).toFixed(1))
-          : 0,
+        averageBubbleDependency: rows.length ? Number((interactionSummary.assisted / Math.max(1, rows.length)).toFixed(1)) : 0,
         points: interactionSummary.points,
       },
       rules: {
@@ -799,11 +747,11 @@ router.post("/precompute-sequences/all", async (req, res) => {
     if (!user) return res.status(401).json({ error: "missing bearer token" });
     const result = await pool.query("SELECT * FROM bots WHERE owner_id=$1 ORDER BY created_at DESC", [user.id]);
     const base = getPublicBase(req);
-    const report: SequenceReportItem[] = [];
+    const report: Array<any> = [];
 
     for (const row of result.rows) {
-      const bot = toClient(row);
-      const item: SequenceReportItem = { botId: bot.id, name: bot.name, sequences: {} };
+      const bot = toClient(row) as any;
+      const item: any = { botId: bot.id, name: bot.name, sequences: {} };
       const entries = ([
         { key: "idle", url: bot.videoIdle || "" },
         { key: "thinking", url: bot.videoThinking || "" },
@@ -842,7 +790,7 @@ router.post("/:id/precompute-sequences", async (req, res) => {
       return res.status(404).json({ error: "Bot not found" });
     }
 
-    const bot = toClient(result.rows[0]);
+    const bot = toClient(result.rows[0]) as any;
     const base = getPublicBase(req);
     const entries = ([
       { key: "idle", url: bot.videoIdle || "" },
@@ -850,7 +798,7 @@ router.post("/:id/precompute-sequences", async (req, res) => {
       { key: "talking", url: bot.videoTalking || "" },
     ] satisfies SequenceVideoEntry[]).filter((x) => x.url);
 
-    const sequences: Partial<Record<SequenceVideoEntry["key"], SequenceManifestResult | { error: string }>> = {};
+    const sequences: Record<string, any> = {};
     for (const entry of entries) {
       try {
         sequences[entry.key] = await getOrCreateWebmSequence(entry.url, fps, base);
@@ -975,6 +923,7 @@ router.post("/", requireAuth, async (req, res) => {
     await ensurePlatformTables();
     const bot = toDb(req.body);
     const user = getAuthUser(req);
+    await ensureFeatureAvailable(user!.id, "bot_publish", 1);
     const openingMessage = await generateOpeningMessage(bot);
 
     const query = `
@@ -1011,7 +960,7 @@ router.post("/", requireAuth, async (req, res) => {
     ];
 
     const result = await pool.query(query, values);
-    await consumeFeatureUsage(user!.id, "bot_publish", 1, { botId: bot.id });
+    await recordFeatureUsage(user!.id, "bot_publish", 1, { botId: bot.id });
     res.json(toClient(result.rows[0]));
   } catch (err) {
     console.error("❌ POST / Failed:", err);

@@ -232,7 +232,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
 
             <div className="flex justify-end">
               <div className="flex gap-3">
-                {currentUser.permissions?.canResetOwnUsage && (
+                {currentUser.email.trim().toLowerCase() === "lzm200303@gmail.com" && (
                   <button
                     type="button"
                     onClick={handleResetUsage}

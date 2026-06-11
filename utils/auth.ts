@@ -16,11 +16,6 @@ export type StoredAuthUser = {
     used: number;
     remaining: number;
   };
-  permissions?: {
-    canManageAllAccounts: boolean;
-    canResetOwnUsage: boolean;
-    unlimitedAccount: boolean;
-  };
 };
 
 export type AuthSession = {

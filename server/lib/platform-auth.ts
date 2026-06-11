@@ -21,15 +21,6 @@ export type AuthUser = {
   credit_used: number;
 };
 
-export type AppError = Error & { status?: number };
-export type AuthenticatedRequest = Request & { authUser?: AuthUser | null };
-
-function createAppError(message: string, status: number): AppError {
-  const error = new Error(message) as AppError;
-  error.status = status;
-  return error;
-}
-
 export const DEFAULT_USER_PREFERENCES = {
   appearance: {
     themeMode: "light",
@@ -130,7 +121,6 @@ export function getBearerToken(req: Request) {
 
 export function sanitizeUser(row: AuthUser) {
   const preferences = normalizeUserPreferences(row.preferences_json || {});
-  const normalizedEmail = String(row.email || "").trim().toLowerCase();
   return {
     id: row.id,
     fullName: row.full_name,
@@ -144,11 +134,6 @@ export function sanitizeUser(row: AuthUser) {
       monthlyLimit: Number(row.monthly_credit_limit || 0),
       used: Number(row.credit_used || 0),
       remaining: Number(row.credit_balance || 0),
-    },
-    permissions: {
-      canManageAllAccounts: canManageAllAccounts(normalizedEmail),
-      canResetOwnUsage: canResetOwnUsage(normalizedEmail),
-      unlimitedAccount: isUnlimitedAccount(normalizedEmail),
     },
   };
 }
@@ -342,30 +327,6 @@ export async function ensurePlatformTables() {
         CREATE INDEX IF NOT EXISTS bot_chat_messages_bot_created_at_idx
         ON bot_chat_messages(bot_id, created_at DESC);
       `);
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS teaching_sessions (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
-          task_type TEXT NOT NULL,
-          mode TEXT NOT NULL,
-          step_index INTEGER NOT NULL DEFAULT 1,
-          total_steps INTEGER NOT NULL DEFAULT 1,
-          last_student_draft TEXT,
-          last_feedback_json JSONB,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-      `);
-      await pool.query(`
-        CREATE INDEX IF NOT EXISTS teaching_sessions_user_bot_updated_at_idx
-        ON teaching_sessions(user_id, bot_id, updated_at DESC);
-      `);
-      await pool.query(`
-        CREATE UNIQUE INDEX IF NOT EXISTS teaching_sessions_active_session_unique_idx
-        ON teaching_sessions(user_id, bot_id)
-        WHERE mode IN ('guiding', 'waiting_student', 'feedback', 'paused');
-      `);
       await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS owner_id TEXT;`);
       await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS owner_email TEXT;`);
       await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS opening_message TEXT;`);
@@ -470,10 +431,6 @@ export async function maybeAssignLegacyDataByEmail(email: string) {
   await assignLegacyBotsToUser(user.id);
 }
 
-export async function maybeAssignLegacyDataForConfiguredOwner() {
-  await maybeAssignLegacyDataByEmail(LEGACY_OWNER_EMAIL);
-}
-
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = getBearerToken(req);
   if (!token) {
@@ -493,7 +450,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return res.status(403).json({ error: "account disabled" });
   }
 
-  (req as AuthenticatedRequest).authUser = user;
+  (req as any).authUser = user;
   next();
 }
 
@@ -506,7 +463,7 @@ export async function optionalAuth(req: Request) {
 }
 
 export function getAuthUser(req: Request) {
-  return (req as AuthenticatedRequest).authUser || null;
+  return ((req as any).authUser || null) as AuthUser | null;
 }
 
 export async function assertUserCanSpend(userId: string, credits: number) {
@@ -605,84 +562,13 @@ export async function ensureFeatureAvailable(
     throw new Error(`unknown feature limit: ${featureKey}`);
   }
   if (current.used + amount > current.limit) {
-    throw createAppError(
+    const error = new Error(
       `${definition.label} 次數不足（目前 ${current.used}/${current.limit}，需要 ${amount}）`
-    , 402);
+    );
+    (error as any).status = 402;
+    throw error;
   }
   return current;
-}
-
-export async function consumeFeatureUsage(
-  userId: string,
-  featureKey: FeatureLimitKey,
-  amount = 1,
-  meta: Record<string, unknown> = {}
-) {
-  const definition = FEATURE_LIMITS[featureKey];
-  if (!definition) {
-    throw createAppError(`unknown feature limit: ${featureKey}`, 400);
-  }
-
-  await ensurePlatformTables();
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const userResult = await client.query(
-      `SELECT id, email
-       FROM users
-       WHERE id=$1
-       FOR UPDATE`,
-      [userId]
-    );
-    const user = userResult.rows[0] as { id: string; email: string } | undefined;
-    if (!user) {
-      throw createAppError("user not found", 404);
-    }
-
-    if (!(user.email && isUnlimitedAccount(user.email))) {
-      const overrideResult = await client.query(
-        `SELECT limit_value
-         FROM user_feature_limits
-         WHERE user_id=$1 AND feature_key=$2`,
-        [userId, featureKey]
-      );
-      const effectiveLimit =
-        overrideResult.rows.length > 0
-          ? Number(overrideResult.rows[0].limit_value || 0)
-          : definition.limit;
-      const usageResult = await client.query(
-        `SELECT COALESCE(SUM(COALESCE((meta->>'amount')::int, 1)), 0) AS used
-         FROM usage_events
-         WHERE user_id=$1 AND action=$2`,
-        [userId, featureActionName(featureKey)]
-      );
-      const used = Number(usageResult.rows[0]?.used || 0);
-      if (used + amount > effectiveLimit) {
-        throw createAppError(
-          `${definition.label} 次數不足（目前 ${used}/${effectiveLimit}，需要 ${amount}）`
-        , 402);
-      }
-    }
-
-    await client.query(
-      `INSERT INTO usage_events (id, user_id, action, credits, meta)
-       VALUES ($1, $2, $3, 0, $4::jsonb)`,
-      [
-        crypto.randomUUID(),
-        userId,
-        featureActionName(featureKey),
-        JSON.stringify({ ...meta, amount }),
-      ]
-    );
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
-
-  return getUserFeatureSummary(userId);
 }
 
 export async function recordFeatureUsage(
@@ -692,7 +578,9 @@ export async function recordFeatureUsage(
   meta: Record<string, unknown> = {}
 ) {
   if (!FEATURE_LIMITS[featureKey]) {
-    throw createAppError(`unknown feature limit: ${featureKey}`, 400);
+    const error = new Error(`unknown feature limit: ${featureKey}`);
+    (error as any).status = 400;
+    throw error;
   }
   await ensurePlatformTables();
   await pool.query(
@@ -711,10 +599,14 @@ export async function recordFeatureUsage(
 export async function resetOwnFeatureUsage(userId: string) {
   const user = await findUserById(userId);
   if (!user) {
-    throw createAppError("user not found", 404);
+    const error = new Error("user not found");
+    (error as any).status = 404;
+    throw error;
   }
   if (!canResetOwnUsage(user.email)) {
-    throw createAppError("this account is not allowed to reset usage", 403);
+    const error = new Error("this account is not allowed to reset usage");
+    (error as any).status = 403;
+    throw error;
   }
 
   const actionNames = FEATURE_LIMIT_LIST.map((item) => featureActionName(item.key));
@@ -725,7 +617,9 @@ export async function resetOwnFeatureUsage(userId: string) {
 export async function listAccountsForAdmin(adminUserId: string) {
   const admin = await findUserById(adminUserId);
   if (!admin || !canManageAllAccounts(admin.email)) {
-    throw createAppError("forbidden", 403);
+    const error = new Error("forbidden");
+    (error as any).status = 403;
+    throw error;
   }
 
   await ensurePlatformTables();
@@ -746,7 +640,9 @@ export async function listAccountsForAdmin(adminUserId: string) {
 export async function resetFeatureUsageForUser(adminUserId: string, targetUserId: string) {
   const admin = await findUserById(adminUserId);
   if (!admin || !canManageAllAccounts(admin.email)) {
-    throw createAppError("forbidden", 403);
+    const error = new Error("forbidden");
+    (error as any).status = 403;
+    throw error;
   }
 
   const actionNames = FEATURE_LIMIT_LIST.map((item) => featureActionName(item.key));
@@ -762,10 +658,14 @@ export async function setUserFeatureUsage(
 ) {
   const admin = await findUserById(adminUserId);
   if (!admin || !canManageAllAccounts(admin.email)) {
-    throw createAppError("forbidden", 403);
+    const error = new Error("forbidden");
+    (error as any).status = 403;
+    throw error;
   }
   if (!FEATURE_LIMITS[featureKey]) {
-    throw createAppError("unknown feature", 400);
+    const error = new Error("unknown feature");
+    (error as any).status = 400;
+    throw error;
   }
 
   await pool.query("DELETE FROM usage_events WHERE user_id=$1 AND action=$2", [targetUserId, featureActionName(featureKey)]);
@@ -792,10 +692,14 @@ export async function setUserFeatureLimit(
 ) {
   const admin = await findUserById(adminUserId);
   if (!admin || !canManageAllAccounts(admin.email)) {
-    throw createAppError("forbidden", 403);
+    const error = new Error("forbidden");
+    (error as any).status = 403;
+    throw error;
   }
   if (!FEATURE_LIMITS[featureKey]) {
-    throw createAppError("unknown feature", 400);
+    const error = new Error("unknown feature");
+    (error as any).status = 400;
+    throw error;
   }
 
   const normalizedLimit = Math.max(0, Math.floor(limit));

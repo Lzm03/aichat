@@ -4,11 +4,12 @@ import { pool } from "../db.ts";
 import { recordMinimaxTtsUsage } from "../lib/minimax-usage.ts";
 import {
   assertUserCanSpend,
-  consumeFeatureUsage,
   consumeUserCredits,
+  ensureFeatureAvailable,
   getAuthUser,
   getBearerToken,
   findUserById,
+  recordFeatureUsage,
   requireAuth,
   verifyToken,
   ensurePlatformTables,
@@ -148,6 +149,11 @@ router.post("/tts", async (req, res) => {
       return res.end(mockAudio);
     }
     await assertUserCanSpend(authUser.id, 2);
+    if (usageType === "preview_audition") {
+      await ensureFeatureAvailable(authUser.id, "voice_audition_preview", 1);
+    } else {
+      await ensureFeatureAvailable(authUser.id, "voice_messages", 1);
+    }
     const token = process.env.MINIMAX_TOKEN;
 
     const result = await fetch(
@@ -190,15 +196,9 @@ router.post("/tts", async (req, res) => {
     // Track MiniMax TTS usage for estimated balance visualization.
     recordMinimaxTtsUsage(String(text || ""));
     if (usageType === "preview_audition") {
-      await consumeFeatureUsage(authUser.id, "voice_audition_preview", 1, {
-        voiceId: String(voiceId || ""),
-        source: actor.shared ? "shared_bot" : "direct",
-      });
+      await recordFeatureUsage(authUser.id, "voice_audition_preview", 1, { voiceId: String(voiceId || ""), source: actor.shared ? "shared_bot" : "direct" });
     } else {
-      await consumeFeatureUsage(authUser.id, "voice_messages", 1, {
-        voiceId: String(voiceId || ""),
-        source: actor.shared ? "shared_bot" : "direct",
-      });
+      await recordFeatureUsage(authUser.id, "voice_messages", 1, { voiceId: String(voiceId || ""), source: actor.shared ? "shared_bot" : "direct" });
     }
     await consumeUserCredits(authUser.id, "tts", 2, {
       voiceId: String(voiceId || ""),
