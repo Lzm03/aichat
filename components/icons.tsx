@@ -50,6 +50,8 @@ import {
   MoreHorizontal,
   Grip,
   Lightbulb,
+  MousePointer2,
+  Hand,
 } from 'lucide-react';
 
 export const Icons = {
@@ -104,4 +106,6 @@ export const Icons = {
   more: MoreHorizontal,
   grip: Grip,
   lightbulb: Lightbulb,
+  pointer: MousePointer2,
+  hand: Hand,
 };

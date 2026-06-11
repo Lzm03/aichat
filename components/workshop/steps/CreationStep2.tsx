@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Icons } from "../../icons";
 import { motion } from "framer-motion";
 import { usePlatformDialog } from "../../../hooks/usePlatformDialog";
@@ -62,6 +62,16 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   const [newPointKeywords, setNewPointKeywords] = useState("");
   const [newPointAssessment, setNewPointAssessment] = useState("");
   const [newPointTier, setNewPointTier] = useState<KnowledgeTier>("basic_fact");
+  const [graphMode, setGraphMode] = useState<"select" | "pan">("select");
+  const [graphPan, setGraphPan] = useState({ x: 0, y: 0 });
+  const [dragState, setDragState] = useState<{ active: boolean; startX: number; startY: number; originX: number; originY: number }>({
+    active: false,
+    startX: 0,
+    startY: 0,
+    originX: 0,
+    originY: 0,
+  });
+  const graphViewportRef = useRef<HTMLDivElement | null>(null);
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
 
   const baseUrl = import.meta.env.VITE_API_URL;
@@ -497,6 +507,56 @@ JSON 必須符合以下結構：
     backgroundPosition: "center",
   } as const;
 
+  const startGraphPan = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (graphMode !== "pan") return;
+    event.preventDefault();
+    setDragState({
+      active: true,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: graphPan.x,
+      originY: graphPan.y,
+    });
+  };
+
+  const moveGraphPan = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!dragState.active || graphMode !== "pan") return;
+    setGraphPan({
+      x: dragState.originX + event.clientX - dragState.startX,
+      y: dragState.originY + event.clientY - dragState.startY,
+    });
+  };
+
+  const endGraphPan = () => {
+    setDragState((prev) => ({ ...prev, active: false }));
+  };
+
+  const scrollGraphPan = (event: React.WheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setGraphPan((prev) => ({
+      x: prev.x - event.deltaX,
+      y: prev.y - event.deltaY,
+    }));
+  };
+
+  useEffect(() => {
+    const viewport = graphViewportRef.current;
+    if (!viewport) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setGraphPan((prev) => ({
+        x: prev.x - event.deltaX,
+        y: prev.y - event.deltaY,
+      }));
+    };
+
+    viewport.addEventListener("wheel", handleWheel, { passive: false });
+    return () => viewport.removeEventListener("wheel", handleWheel);
+  }, [status, viewMode]);
+
   // --------------------------
   // 🔥 自動觸發文件解析
   // --------------------------
@@ -733,11 +793,23 @@ JSON 必須符合以下結構：
             <div className="rounded-[24px] border border-slate-200 bg-gradient-to-b from-[#fbfcff] via-white to-[#f8fbff] p-4 md:p-6">
               {viewMode === "graph" ? (
               <>
-              <div className="hidden md:block overflow-x-auto">
+              <div className="hidden md:block overflow-hidden">
                 <div
-                  className="relative h-[400px] w-[980px] min-w-[980px] overflow-hidden rounded-[24px] border border-slate-100 bg-white/80 px-10 py-8"
+                  ref={graphViewportRef}
+                  className={`relative h-[400px] w-full overflow-hidden overscroll-contain rounded-[24px] border border-slate-100 bg-white/80 px-10 py-8 ${
+                    graphMode === "pan" ? "cursor-grab active:cursor-grabbing" : "cursor-default"
+                  }`}
                   style={dottedBgStyle}
+                  onMouseDown={startGraphPan}
+                  onMouseMove={moveGraphPan}
+                  onMouseUp={endGraphPan}
+                  onMouseLeave={endGraphPan}
+                  onWheel={scrollGraphPan}
                 >
+                  <div
+                    className="absolute inset-0"
+                    style={{ transform: `translate(${graphPan.x}px, ${graphPan.y}px)` }}
+                  >
                   <svg
                     className="absolute inset-0 h-full w-full pointer-events-none"
                     viewBox="0 0 980 400"
@@ -819,6 +891,38 @@ JSON 必須符合以下結構：
                       </div>
                     </div>
                   ))}
+                  </div>
+                  <div className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center rounded-full border border-slate-200 bg-white p-1.5 shadow-[0_10px_28px_rgba(15,23,42,0.08)]">
+                    <button
+                      type="button"
+                      onClick={() => setGraphMode("select")}
+                      className={`flex h-9 w-9 items-center justify-center rounded-full transition ${
+                        graphMode === "select" ? "bg-indigo-100 text-indigo-600" : "text-slate-500 hover:bg-slate-100"
+                      }`}
+                      aria-label="選取模式"
+                    >
+                      <Icons.pointer className="h-5 w-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGraphMode("pan")}
+                      className={`flex h-9 w-9 items-center justify-center rounded-full transition ${
+                        graphMode === "pan" ? "bg-indigo-100 text-indigo-600" : "text-slate-500 hover:bg-slate-100"
+                      }`}
+                      aria-label="拖動畫布"
+                    >
+                      <Icons.hand className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setGraphPan({ x: 0, y: 0 })}
+                    className="absolute bottom-4 right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-slate-50 hover:text-indigo-600"
+                    aria-label="回正圖譜"
+                    title="回正圖譜"
+                  >
+                    <Icons.rotate className="h-5 w-5" />
+                  </button>
                 </div>
               </div>
 
@@ -859,18 +963,18 @@ JSON 必須符合以下結構：
                     </div>
                     <div className="space-y-2.5">
                       {basicFacts.map((point) => (
-                        <div key={point.id} className="rounded-[18px] border border-slate-200 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
+                        <div key={point.id} className="relative rounded-[18px] border border-slate-200 bg-white px-4 py-3 pr-28 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
+                          <span className="absolute right-4 top-3 rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">基礎事實</span>
                           <div className="flex items-start gap-3">
                             <div className="flex pt-1 text-slate-300">
                               <Icons.grip className="h-3.5 w-3.5" />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
                                 <div>
                                   <p className="text-[15px] font-black tracking-tight text-slate-900">{point.title}</p>
                                   <p className="mt-0.5 text-[13px] text-slate-500">{point.content || point.assessmentCriteria || point.keywords.join("、") || "尚未補充說明"}</p>
                                 </div>
-                                <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">基礎事實</span>
                               </div>
                               <div className="mt-3 flex flex-wrap gap-2">
                                 <button type="button" onClick={() => toggleKnowledgeTier(point.id)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700">切換為深度理解</button>
@@ -889,13 +993,14 @@ JSON 必須符合以下結構：
                     </div>
                     <div className="space-y-2.5">
                       {deepPoints.map((point) => (
-                        <div key={point.id} className="rounded-[18px] border border-violet-200 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(167,139,250,0.06)]">
+                        <div key={point.id} className="relative rounded-[18px] border border-violet-200 bg-white px-4 py-3 pr-28 shadow-[0_8px_20px_rgba(167,139,250,0.06)]">
+                          <span className="absolute right-4 top-3 rounded-lg bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-600">深度理解</span>
                           <div className="flex items-start gap-3">
                             <div className="flex pt-1 text-violet-300">
                               <Icons.grip className="h-3.5 w-3.5" />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
                                 <div>
                                   <div className="flex items-center gap-2">
                                     <p className="text-[15px] font-black tracking-tight text-slate-900">{point.title}</p>
@@ -903,7 +1008,6 @@ JSON 必須符合以下結構：
                                   </div>
                                   <p className="mt-0.5 text-[13px] text-slate-500">{point.content || point.assessmentCriteria || point.keywords.join("、") || "尚未補充說明"}</p>
                                 </div>
-                                <span className="rounded-lg bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-600">深度理解</span>
                               </div>
                               <div className="mt-3 flex flex-wrap gap-2">
                                 <button type="button" onClick={() => toggleKnowledgeTier(point.id)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700">切換為基礎知識</button>
@@ -932,8 +1036,6 @@ JSON 必須符合以下結構：
               <div className="md:col-span-2">
                 <textarea value={newPointContent} onChange={(e) => setNewPointContent(e.target.value)} rows={3} placeholder="補充說明，輸入完整知識點內容" className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm" />
               </div>
-              <input value={newPointKeywords} onChange={(e) => setNewPointKeywords(e.target.value)} placeholder="關鍵詞，以頓號或逗號分隔" className="rounded-xl border border-slate-200 bg-white p-3 text-sm" />
-              <input value={newPointAssessment} onChange={(e) => setNewPointAssessment(e.target.value)} placeholder="評估標準" className="rounded-xl border border-slate-200 bg-white p-3 text-sm" />
               <div className="flex flex-wrap gap-2">
                 {([
                   { value: "basic_fact", label: "基礎事實" },
@@ -973,7 +1075,7 @@ JSON 必須符合以下結構：
         <div className="mt-3">
           <p className="mb-2 text-xs font-semibold text-slate-700">角色性格（可多選）</p>
           <div className="flex flex-wrap gap-2">
-            {["耐心", "嚴謹", "幽默", "溫柔", "直接"].map((trait) => (
+            {["耐心", "嚴謹", "幽默", "溫柔", "直接", "理性", "熱情", "活潑"].map((trait) => (
               <button
                 key={trait}
                 type="button"
@@ -997,7 +1099,7 @@ JSON 必須符合以下結構：
           <div>
             <p className="mb-1.5 text-xs font-semibold text-slate-700">說話風格</p>
             <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2">
-              {["文言文", "西洋", "口語", "引導式"].map((style) => (
+              {["文言文", "西洋", "口語", "引導式", "正式", "親切對話", "簡潔"].map((style) => (
                 <button
                   key={style}
                   type="button"
