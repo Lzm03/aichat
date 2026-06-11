@@ -710,10 +710,12 @@ router.get("/teacher/assessment-report", requireAuth, async (req, res) => {
       interactionSummary: {
         independentRate: interactionSummary.totalInputs ? Math.round((interactionSummary.independent / interactionSummary.totalInputs) * 100) : 0,
         assistedRate: interactionSummary.totalInputs ? Math.round((interactionSummary.assisted / interactionSummary.totalInputs) * 100) : 0,
-        averageFreeInputLength: rows.length
-          ? Math.max(8, Math.round(interactionSummary.totalActiveChars / Math.max(1, interactionSummary.totalActiveMessages || 1)))
+        averageFreeInputLength: interactionSummary.totalActiveMessages
+          ? Math.round(interactionSummary.totalActiveChars / interactionSummary.totalActiveMessages)
           : 0,
-        averageBubbleDependency: rows.length ? Number((interactionSummary.assisted / Math.max(1, rows.length)).toFixed(1)) : 0,
+        averageBubbleDependency: rows.length
+          ? Number((interactionSummary.assisted / rows.length).toFixed(1))
+          : 0,
         points: interactionSummary.points,
       },
       rules: {
