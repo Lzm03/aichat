@@ -109,7 +109,7 @@ export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, onNotifi
   const okCount = providers.filter((p) => p.status === "ok").length;
   const totalCount = providers.length || 1;
   const lockedCount = primaryFeatures.filter((feature) => feature.locked).length;
-  const canViewProviderUsage = currentUser?.email?.trim().toLowerCase() === "lzm200303@gmail.com";
+  const canViewProviderUsage = Boolean(currentUser?.permissions?.canManageAllAccounts);
 
   return (
     <header className="sticky top-0 z-20 flex flex-col gap-2 border-b border-slate-200/80 bg-white/80 px-3 py-3 backdrop-blur-sm sm:px-5 lg:flex-row lg:items-center lg:justify-between lg:gap-2 lg:px-8 lg:py-4">

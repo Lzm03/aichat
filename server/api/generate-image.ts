@@ -1,12 +1,10 @@
 import express from "express";
 import axios from "axios";
-import path from "path";
 import {
   assertUserCanSpend,
+  consumeFeatureUsage,
   consumeUserCredits,
-  ensureFeatureAvailable,
   getAuthUser,
-  recordFeatureUsage,
   requireAuth,
 } from "../lib/platform-auth.ts";
 
@@ -28,9 +26,6 @@ router.post("/", requireAuth, async (req, res) => {
     if (!prompt) {
       return res.status(400).json({ error: "Missing prompt" });
     }
-    if (featureKey === "avatar_ai_generate" || featureKey === "background_ai_generate") {
-      await ensureFeatureAvailable(authUser!.id, featureKey, 1);
-    }
 
     const response = await axios.post(
       "https://api.x.ai/v1/images/generations",
@@ -48,7 +43,7 @@ router.post("/", requireAuth, async (req, res) => {
 
     const imageUrl = response.data?.data?.[0]?.url;
     if (featureKey === "avatar_ai_generate" || featureKey === "background_ai_generate") {
-      await recordFeatureUsage(authUser!.id, featureKey, 1, {
+      await consumeFeatureUsage(authUser!.id, featureKey, 1, {
         promptLength: String(prompt || "").length,
       });
     }

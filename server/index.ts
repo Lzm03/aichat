@@ -25,7 +25,7 @@ import tokenUsageRoute from "./api/token-usage.ts";
 import webmSequenceRoute from "./api/webm-sequence.ts";
 import { pool } from "./db.ts";
 import { uploadsDir } from "./lib/uploads-dir.ts";
-import { ensurePlatformTables, maybeAssignLegacyDataByEmail } from "./lib/platform-auth.ts";
+import { ensurePlatformTables, maybeAssignLegacyDataForConfiguredOwner } from "./lib/platform-auth.ts";
 
 const app = express();
 const allowedOrigins = new Set(
@@ -183,7 +183,7 @@ let server: ReturnType<typeof app.listen> | null = null;
 async function start() {
   await ensurePlatformTables();
   try {
-    await maybeAssignLegacyDataByEmail("lzm200303@gmail.com");
+    await maybeAssignLegacyDataForConfiguredOwner();
   } catch (error) {
     // Keep startup healthy even if legacy migration assignment fails.
     console.warn("Legacy account assignment skipped:", error);

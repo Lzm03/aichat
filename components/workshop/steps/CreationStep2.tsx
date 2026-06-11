@@ -64,14 +64,14 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   const [newPointTier, setNewPointTier] = useState<KnowledgeTier>("basic_fact");
   const [graphMode, setGraphMode] = useState<"select" | "pan">("select");
   const [graphPan, setGraphPan] = useState({ x: 0, y: 0 });
-  const [dragState, setDragState] = useState<{ active: boolean; startX: number; startY: number; originX: number; originY: number }>({
+  const [dragState, setDragState] = useState<{ active: boolean; pointerId: number | null; startX: number; startY: number; originX: number; originY: number }>({
     active: false,
+    pointerId: null,
     startX: 0,
     startY: 0,
     originX: 0,
     originY: 0,
   });
-  const graphViewportRef = useRef<HTMLDivElement | null>(null);
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
 
   const baseUrl = import.meta.env.VITE_API_URL;
@@ -507,11 +507,13 @@ JSON 必須符合以下結構：
     backgroundPosition: "center",
   } as const;
 
-  const startGraphPan = (event: React.MouseEvent<HTMLDivElement>) => {
+  const startGraphPan = (event: React.PointerEvent<HTMLDivElement>) => {
     if (graphMode !== "pan") return;
     event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
     setDragState({
       active: true,
+      pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       originX: graphPan.x,
@@ -519,19 +521,24 @@ JSON 必須符合以下結構：
     });
   };
 
-  const moveGraphPan = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (!dragState.active || graphMode !== "pan") return;
+  const moveGraphPan = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragState.active || dragState.pointerId !== event.pointerId || graphMode !== "pan") return;
+    event.preventDefault();
     setGraphPan({
       x: dragState.originX + event.clientX - dragState.startX,
       y: dragState.originY + event.clientY - dragState.startY,
     });
   };
 
-  const endGraphPan = () => {
-    setDragState((prev) => ({ ...prev, active: false }));
+  const endGraphPan = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (dragState.pointerId !== null && event.currentTarget.hasPointerCapture(dragState.pointerId)) {
+      event.currentTarget.releasePointerCapture(dragState.pointerId);
+    }
+    setDragState((prev) => ({ ...prev, active: false, pointerId: null }));
   };
 
   const scrollGraphPan = (event: React.WheelEvent<HTMLDivElement>) => {
+    if (graphMode !== "pan") return;
     event.preventDefault();
     event.stopPropagation();
     setGraphPan((prev) => ({
@@ -541,21 +548,10 @@ JSON 必須符合以下結構：
   };
 
   useEffect(() => {
-    const viewport = graphViewportRef.current;
-    if (!viewport) return;
-
-    const handleWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      setGraphPan((prev) => ({
-        x: prev.x - event.deltaX,
-        y: prev.y - event.deltaY,
-      }));
-    };
-
-    viewport.addEventListener("wheel", handleWheel, { passive: false });
-    return () => viewport.removeEventListener("wheel", handleWheel);
-  }, [status, viewMode]);
+    if (graphMode !== "pan" && dragState.active) {
+      setDragState((prev) => ({ ...prev, active: false, pointerId: null }));
+    }
+  }, [graphMode, dragState.active]);
 
   // --------------------------
   // 🔥 自動觸發文件解析
@@ -795,15 +791,17 @@ JSON 必須符合以下結構：
               <>
               <div className="hidden md:block overflow-hidden">
                 <div
-                  ref={graphViewportRef}
                   className={`relative h-[400px] w-full overflow-hidden overscroll-contain rounded-[24px] border border-slate-100 bg-white/80 px-10 py-8 ${
                     graphMode === "pan" ? "cursor-grab active:cursor-grabbing" : "cursor-default"
                   }`}
-                  style={dottedBgStyle}
-                  onMouseDown={startGraphPan}
-                  onMouseMove={moveGraphPan}
-                  onMouseUp={endGraphPan}
-                  onMouseLeave={endGraphPan}
+                  style={{
+                    ...dottedBgStyle,
+                    touchAction: graphMode === "pan" ? "none" : "pan-y",
+                  }}
+                  onPointerDown={startGraphPan}
+                  onPointerMove={moveGraphPan}
+                  onPointerUp={endGraphPan}
+                  onPointerCancel={endGraphPan}
                   onWheel={scrollGraphPan}
                 >
                   <div
