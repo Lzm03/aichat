@@ -85,9 +85,10 @@ type InteractionPoint = {
 };
 
 const getMasteryTone = (mastery: number) => {
-  if (mastery >= 85) return { label: '高掌握', color: 'emerald', bar: 'bg-emerald-500', soft: 'bg-emerald-50 text-emerald-700', ring: 'ring-emerald-100' };
-  if (mastery >= 65) return { label: '穩定掌握', color: 'blue', bar: 'bg-blue-500', soft: 'bg-blue-50 text-blue-700', ring: 'ring-blue-100' };
-  return { label: '需要加強', color: 'amber', bar: 'bg-amber-500', soft: 'bg-amber-50 text-amber-700', ring: 'ring-amber-100' };
+  if (mastery >= 90) return { label: '已掌握', color: 'emerald', bar: 'bg-emerald-500', soft: 'bg-emerald-50 text-emerald-700', ring: 'ring-emerald-100' };
+  if (mastery >= 70) return { label: '接近掌握', color: 'blue', bar: 'bg-blue-500', soft: 'bg-blue-50 text-blue-700', ring: 'ring-blue-100' };
+  if (mastery >= 40) return { label: '進行中', color: 'amber', bar: 'bg-amber-500', soft: 'bg-amber-50 text-amber-700', ring: 'ring-amber-100' };
+  return { label: '需要加強', color: 'rose', bar: 'bg-rose-500', soft: 'bg-rose-50 text-rose-700', ring: 'ring-rose-100' };
 };
 
 const trackingToneConfig = {
@@ -892,21 +893,6 @@ export const StudentLearningReportCard = () => {
                                   <span className="rounded-full bg-white px-3 py-1 text-[11px] font-black text-slate-700 shadow-sm">互動 {selectedDetailStudent.interaction}</span>
                                   <span className="rounded-full bg-white px-3 py-1 text-[11px] font-black text-slate-700 shadow-sm">{selectedDetailStudent.rounds} 輪對話</span>
                                   <span className="rounded-full bg-white px-3 py-1 text-[11px] font-black text-slate-700 shadow-sm">{selectedDetailStudent.mode}</span>
-                                </div>
-                              </div>
-
-                              <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-                                <div className="flex items-center justify-between">
-                                  <h4 className="text-[11px] font-black text-slate-900">近期建議</h4>
-                                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black text-slate-500">可操作</span>
-                                </div>
-                                <p className="mt-2 text-[11px] leading-relaxed text-slate-600">
-                                  先維持學生在 L2 的穩定回答，再補一題要求比較前後因果關係的追問，幫助他往 L3 遷移。
-                                </p>
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                  <span className="rounded-lg bg-indigo-50 px-2.5 py-1.5 text-[10px] font-black text-indigo-700">追問因果</span>
-                                  <span className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[10px] font-black text-emerald-700">補強證據</span>
-                                  <span className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-[10px] font-black text-amber-700">延伸比較</span>
                                 </div>
                               </div>
 
