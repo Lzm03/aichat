@@ -6,6 +6,7 @@ import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Responsi
 import { readAuthSession } from '../../utils/auth';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { API_BASE } from '../../utils/api';
+import { parsePromptSource } from '../../utils/chat-prompt';
 
 // Mock Data
 const classList = [
@@ -83,11 +84,26 @@ type InteractionPoint = {
   status: string;
 };
 
-const knowledgeTracking = [
-  { level: 'L1 基礎事實', state: '已掌握', note: '學生能正確回答', detail: '出生地、求學經歷、行醫經歷', tone: 'green' },
-  { level: 'L2 理解關聯', state: '已掌握', note: '學生能正確回答', detail: '棄醫從革原因、上書李鴻章、建立興中會', tone: 'green' },
-  { level: 'L3 深度遷移', state: '深度理解', note: '已建立知識網絡，形成關聯', detail: '三民主義內涵、革命對後世影響', tone: 'blue' },
-];
+const getMasteryTone = (mastery: number) => {
+  if (mastery >= 85) return { label: '高掌握', color: 'emerald', bar: 'bg-emerald-500', soft: 'bg-emerald-50 text-emerald-700', ring: 'ring-emerald-100' };
+  if (mastery >= 65) return { label: '穩定掌握', color: 'blue', bar: 'bg-blue-500', soft: 'bg-blue-50 text-blue-700', ring: 'ring-blue-100' };
+  return { label: '需要加強', color: 'amber', bar: 'bg-amber-500', soft: 'bg-amber-50 text-amber-700', ring: 'ring-amber-100' };
+};
+
+const trackingToneConfig = {
+  green: {
+    dot: 'bg-emerald-400 shadow-[0_0_0_3px_rgba(16,185,129,0.12)]',
+    badge: 'bg-emerald-50 text-emerald-700',
+    border: 'border-emerald-100',
+    fill: 'from-emerald-500 to-emerald-400',
+  },
+  blue: {
+    dot: 'bg-indigo-500 shadow-[0_0_0_3px_rgba(99,102,241,0.12)]',
+    badge: 'bg-indigo-50 text-indigo-700',
+    border: 'border-indigo-100',
+    fill: 'from-indigo-500 to-sky-400',
+  },
+} as const;
 
 const radarData = [
   { subject: '記憶', A: 90, fullMark: 100 },
@@ -154,6 +170,83 @@ export const StudentLearningReportCard = () => {
     () => sharedBots.find((bot) => bot.id === selectedBotId) || sharedBots[0] || null,
     [sharedBots, selectedBotId]
   );
+  const selectedBotKnowledge = useMemo(() => {
+    const parsed = parsePromptSource({
+      roleName: selectedBot?.name,
+      knowledgeBase: selectedBot?.knowledgeBase || '',
+    });
+    const basicPoints = parsed.knowledgePoints.filter((item) => item.tier === 'basic_fact');
+    const deepPoints = parsed.knowledgePoints.filter((item) => item.tier === 'deep_understanding');
+    const backgroundSummary = parsed.characterBackground || parsed.knowledgeSummary || '目前尚未提供角色知識庫摘要。';
+    const buildItem = (
+      level: string,
+      state: string,
+      note: string,
+      title: string,
+      tone: keyof typeof trackingToneConfig,
+      width: number
+    ) => ({ level, state, note, title, tone, width });
+    const outputRank: Record<string, number> = { L0: 0, L1: 1, L2: 2, L3: 3 };
+    const currentRank = outputRank[selectedDetailStudent?.output || 'L0'] ?? 0;
+    const studentMastery = Number(selectedDetailStudent?.mastery || 0);
+    const resolveStudentProgress = (levelRank: number) => {
+      const gap = Math.max(0, currentRank - levelRank);
+      const ahead = Math.max(0, levelRank - currentRank);
+      let width = 0;
+      if (gap > 0) {
+        width = studentMastery + gap * 8;
+      } else if (ahead === 0) {
+        width = studentMastery - (levelRank === 3 ? 8 : 0);
+      } else {
+        const baseFactor = levelRank === 1 ? 0.78 : levelRank === 2 ? 0.62 : 0.38;
+        width = studentMastery * baseFactor;
+      }
+      return Math.max(8, Math.min(100, Math.round(width)));
+    };
+    const resolveState = (width: number) => {
+      if (width >= 95) return '已掌握';
+      if (width >= 70) return '接近掌握';
+      if (width >= 40) return '進行中';
+      return '待加強';
+    };
+    const summary = [
+      basicPoints[0]
+        ? (() => {
+            const width = resolveStudentProgress(1);
+            return buildItem('L1 基礎事實', resolveState(width), basicPoints[0].assessmentCriteria || '可直接回憶基本資料', basicPoints[0].title, 'green', width);
+          })()
+        : buildItem('L1 基礎事實', '待加強', '請在角色知識庫中補充知識點分級', '目前尚未偵測到可用的基礎事實知識點', 'green', 12),
+      deepPoints[0]
+        ? (() => {
+            const width = resolveStudentProgress(2);
+            return buildItem('L2 理解關聯', resolveState(width), deepPoints[0].assessmentCriteria || '能把事實串成因果', deepPoints[0].title, 'green', width);
+          })()
+        : buildItem('L2 理解關聯', '待加強', '請在角色知識庫中補充知識點分級', '目前尚未偵測到可用的理解關聯知識點', 'green', 12),
+      deepPoints[1]
+        ? (() => {
+            const width = resolveStudentProgress(3);
+            return buildItem('L3 深度遷移', resolveState(width), deepPoints[1].assessmentCriteria || '已能跨段落建立關聯', deepPoints[1].title, 'blue', width);
+          })()
+        : buildItem('L3 深度遷移', '待加強', '請在角色知識庫中補充知識點分級', '目前尚未偵測到可用的深度遷移知識點', 'blue', 12),
+    ];
+    return { roleName: parsed.roleName || selectedBot?.name || '共享 Bot', backgroundSummary, basicPoints, deepPoints, summary };
+  }, [selectedBot, selectedDetailStudent?.output, selectedDetailStudent?.mastery]);
+  const selectedStudentLevel = selectedDetailStudent?.output || 'L0';
+  const selectedStudentMastery = Number(selectedDetailStudent?.mastery || 0);
+  const getStudentLevelWidth = (level: 'L1 基礎事實' | 'L2 理解關聯' | 'L3 深度遷移') => {
+    const outputRank: Record<string, number> = { L0: 0, L1: 1, L2: 2, L3: 3 };
+    const currentRank = outputRank[selectedStudentLevel] ?? 0;
+    if (level === 'L1 基礎事實') {
+      if (currentRank >= 1) return Math.min(100, Math.max(18, selectedStudentMastery + 18));
+      return Math.max(12, Math.min(55, Math.round(selectedStudentMastery * 0.7)));
+    }
+    if (level === 'L2 理解關聯') {
+      if (currentRank >= 2) return Math.min(100, Math.max(22, selectedStudentMastery + 8));
+      return Math.max(12, Math.min(70, Math.round(selectedStudentMastery * 0.8)));
+    }
+    if (currentRank >= 3) return Math.min(100, Math.max(28, selectedStudentMastery + 2));
+    return Math.max(12, Math.min(72, Math.round(selectedStudentMastery * 0.55)));
+  };
   const inputRate = interactionSummary.independentRate || 0;
   const assistedRate = interactionSummary.assistedRate || 0;
   const aiModeInsight = (() => {
@@ -763,29 +856,99 @@ export const StudentLearningReportCard = () => {
                       transition={{ type: "spring", stiffness: 260, damping: 30 }}
                       className="absolute inset-y-0 right-0 z-20 w-full overflow-y-auto border-l border-slate-100 bg-white shadow-[-18px_0_40px_rgba(15,23,42,0.18)] sm:w-[460px]"
                     >
-                      <div className="flex items-start justify-between border-b border-slate-100 px-4 py-4 sm:px-5 sm:py-5">
-                        <div>
-                          <h3 className="text-xs font-black text-slate-900 sm:text-sm">{selectedDetailStudent.name} — 知識掌握追蹤</h3>
-                          <p className="mt-1 text-[10px] font-semibold text-slate-500 sm:text-[11px]">總掌握度 {selectedDetailStudent.mastery}%</p>
-                        </div>
-                        <button type="button" onClick={() => setSelectedDetailStudent(null)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
-                          <X className="h-4.5 w-4.5" />
-                        </button>
-                      </div>
-                      <div className="space-y-3.5 p-4 sm:space-y-4 sm:p-5">
-                        {knowledgeTracking.map((item) => (
-                          <div key={item.level} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-                            <h4 className="text-[11px] font-black text-slate-900">【{item.level}】</h4>
-                            <div className="mt-3 flex items-start gap-2.5">
-                              <span className={`mt-1 h-2.5 w-2.5 rounded-full ${item.tone === 'green' ? 'bg-emerald-400' : 'bg-indigo-500'} shadow-[0_0_0_3px_rgba(99,102,241,0.08)]`} />
-                              <div>
-                                <p className="text-[11px] font-bold text-slate-800">{item.state} <span className="text-[10px] font-medium text-slate-400">({item.note})</span></p>
-                                <p className="mt-1.5 text-[11px] leading-relaxed text-slate-600">{item.detail}</p>
+                      {(() => {
+                        const mastery = Number(selectedDetailStudent.mastery || 0);
+                        const tone = getMasteryTone(mastery);
+                        return (
+                          <>
+                            <div className="flex items-start justify-between border-b border-slate-100 px-4 py-4 sm:px-5 sm:py-5">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <h3 className="truncate text-xs font-black text-slate-900 sm:text-sm">{selectedDetailStudent.name} — 知識掌握追蹤</h3>
+                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${tone.soft}`}>{tone.label}</span>
+                                </div>
+                                <p className="mt-1 text-[10px] font-semibold text-slate-500 sm:text-[11px]">總掌握度 {mastery}%</p>
                               </div>
+                              <button type="button" onClick={() => setSelectedDetailStudent(null)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                                <X className="h-4.5 w-4.5" />
+                              </button>
                             </div>
-                          </div>
-                        ))}
-                      </div>
+                            <div className="space-y-4 px-4 py-4 sm:space-y-4.5 sm:px-5 sm:py-5">
+                              <div className={`rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50 to-white p-4 shadow-sm ring-1 ${tone.ring}`}>
+                                <div className="flex items-center justify-between gap-3">
+                                  <div>
+                                    <p className="text-[11px] font-black text-slate-500">整體狀態</p>
+                                    <p className="mt-1 text-sm font-bold text-slate-900">{selectedDetailStudent.output} · {selectedDetailStudent.outputText}</p>
+                                  </div>
+                                  <div className={`rounded-2xl px-3 py-2 text-right ${tone.soft}`}>
+                                    <div className="text-[10px] font-black uppercase tracking-wide">掌握度</div>
+                                    <div className="text-lg font-black leading-none">{mastery}%</div>
+                                  </div>
+                                </div>
+                                <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-slate-200">
+                                  <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${mastery}%` }} />
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <span className="rounded-full bg-white px-3 py-1 text-[11px] font-black text-slate-700 shadow-sm">互動 {selectedDetailStudent.interaction}</span>
+                                  <span className="rounded-full bg-white px-3 py-1 text-[11px] font-black text-slate-700 shadow-sm">{selectedDetailStudent.rounds} 輪對話</span>
+                                  <span className="rounded-full bg-white px-3 py-1 text-[11px] font-black text-slate-700 shadow-sm">{selectedDetailStudent.mode}</span>
+                                </div>
+                              </div>
+
+                              <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                  <h4 className="text-[11px] font-black text-slate-900">近期建議</h4>
+                                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black text-slate-500">可操作</span>
+                                </div>
+                                <p className="mt-2 text-[11px] leading-relaxed text-slate-600">
+                                  先維持學生在 L2 的穩定回答，再補一題要求比較前後因果關係的追問，幫助他往 L3 遷移。
+                                </p>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <span className="rounded-lg bg-indigo-50 px-2.5 py-1.5 text-[10px] font-black text-indigo-700">追問因果</span>
+                                  <span className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[10px] font-black text-emerald-700">補強證據</span>
+                                  <span className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-[10px] font-black text-amber-700">延伸比較</span>
+                                </div>
+                              </div>
+
+                              <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <h4 className="text-[11px] font-black text-slate-900">知識掌握分層</h4>
+                                    <p className="mt-1 text-[10px] font-medium text-slate-500">依據目前角色「{selectedBotKnowledge.roleName}」的知識庫內容自動整理。</p>
+                                  </div>
+                                  <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-slate-500 shadow-sm">L1 → L3</span>
+                                </div>
+                                <p className="mt-3 text-[11px] leading-relaxed text-slate-600">{selectedBotKnowledge.backgroundSummary}</p>
+                              </div>
+
+                              {selectedBotKnowledge.summary.map((item) => (
+                                <div key={item.level} className={`rounded-2xl border bg-white p-4 shadow-sm ${trackingToneConfig[item.tone].border}`}>
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <h4 className="text-[11px] font-black text-slate-900">【{item.level}】</h4>
+                                      <p className="mt-1 text-[10px] font-medium text-slate-500">{item.note}</p>
+                                    </div>
+                                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${trackingToneConfig[item.tone].badge}`}>
+                                      {item.state}
+                                    </span>
+                                  </div>
+                                  <div className="mt-3 flex items-start gap-2.5">
+                                    <span className={`mt-1 h-2.5 w-2.5 rounded-full ${trackingToneConfig[item.tone].dot}`} />
+                                    <div>
+                                      <p className="text-[11px] font-bold text-slate-800">
+                                        {item.title}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                                    <div className={`h-full rounded-full bg-gradient-to-r ${trackingToneConfig[item.tone].fill}`} style={{ width: `${getStudentLevelWidth(item.level as 'L1 基礎事實' | 'L2 理解關聯' | 'L3 深度遷移')}%` }} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </motion.aside>
                   )}
                 </AnimatePresence>
