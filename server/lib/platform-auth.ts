@@ -327,6 +327,45 @@ export async function ensurePlatformTables() {
         CREATE INDEX IF NOT EXISTS bot_chat_messages_bot_created_at_idx
         ON bot_chat_messages(bot_id, created_at DESC);
       `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS conversations (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          bot_id TEXT REFERENCES bots(id) ON DELETE SET NULL,
+          title TEXT NOT NULL,
+          type TEXT NOT NULL DEFAULT 'bot_learning',
+          status TEXT NOT NULL DEFAULT 'active',
+          last_message_preview TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          deleted_at TIMESTAMPTZ
+        );
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS conversation_messages (
+          id TEXT PRIMARY KEY,
+          conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          bot_id TEXT REFERENCES bots(id) ON DELETE SET NULL,
+          role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+          content TEXT NOT NULL,
+          message_type TEXT NOT NULL DEFAULT 'normal' CHECK (message_type IN ('normal', 'quiz_question', 'quiz_answer', 'quiz_result')),
+          metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS conversations_user_bot_updated_idx
+        ON conversations(user_id, bot_id, updated_at DESC);
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS conversation_messages_conversation_created_idx
+        ON conversation_messages(conversation_id, created_at ASC);
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS conversations_deleted_at_idx
+        ON conversations(deleted_at);
+      `);
       await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS owner_id TEXT;`);
       await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS owner_email TEXT;`);
       await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS opening_message TEXT;`);

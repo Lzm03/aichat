@@ -18,6 +18,14 @@ import {
   requireAuth,
 } from "../lib/platform-auth.ts";
 import {
+  createConversation,
+  getConversationForUser,
+  mapConversationRow,
+  saveConversationMessage,
+  updateConversationPreview,
+  updateConversationTitleFromFirstMessage,
+} from "../lib/conversations.ts";
+import {
   getAI,
   getVertexAccessToken,
   getVertexAIConfig,
@@ -1661,6 +1669,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
       modelProvider = "deepseek",
       mode = "",
       source = "direct",
+      conversationId = "",
     } = req.body || {};
     const actor = await resolveChatActor(req, String(sharedBotId || ""), String(botId || ""));
     const authUser = actor.user;
@@ -1678,12 +1687,59 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
       console.log("[ask] provider=%s stream=%s shared=%s vertex=%s", selectedModelProvider, wantsStream, Boolean(sharedBotId), isVertexAIEnabled());
     }
     const normalizedBotId = String(botId || "default");
+    const normalizedConversationId = String(conversationId || "").trim();
     const recentChatMessages =
       usageType === "chat_message"
         ? await fetchRecentBotChatMessages(normalizedBotId, authUser.id, 6)
         : [];
     const contextualPrompt = buildContextualUserPrompt(normalizedPrompt, recentChatMessages);
     const active = actor.shared ? null : await getActiveTeachingSession(authUser.id, normalizedBotId);
+    let activeConversation =
+      usageType === "chat_message" && !actor.shared
+        ? normalizedConversationId
+          ? await getConversationForUser(normalizedConversationId, authUser.id)
+          : await createConversation({
+              userId: authUser.id,
+              botId: normalizedBotId || null,
+              title: "新的對話",
+              type: "bot_learning",
+            })
+        : null;
+    if (usageType === "chat_message" && !actor.shared && normalizedConversationId && !activeConversation) {
+      return res.status(404).json({ error: "找不到對話紀錄" });
+    }
+
+    const persistUserMessage = async () => {
+      if (!activeConversation || actor.shared || usageType !== "chat_message" || !normalizedPrompt) return;
+      await saveConversationMessage({
+        conversationId: activeConversation.id,
+        userId: authUser.id,
+        botId: normalizedBotId || null,
+        role: "user",
+        content: normalizedPrompt,
+        messageType: "normal",
+      });
+      await updateConversationPreview(activeConversation.id, authUser.id, normalizedPrompt);
+      const maybeRenamed = await updateConversationTitleFromFirstMessage(activeConversation.id, authUser.id);
+      if (maybeRenamed) activeConversation = maybeRenamed;
+    };
+
+    const persistAssistantMessage = async (replyText: string) => {
+      if (!activeConversation || actor.shared || usageType !== "chat_message") return;
+      const safeReply = String(replyText || "").trim();
+      if (!safeReply) return;
+      await saveConversationMessage({
+        conversationId: activeConversation.id,
+        userId: authUser.id,
+        botId: normalizedBotId || null,
+        role: "assistant",
+        content: safeReply,
+        messageType: "normal",
+      });
+      const refreshed = await updateConversationPreview(activeConversation.id, authUser.id, safeReply);
+      if (refreshed) activeConversation = refreshed;
+    };
+
     const respondTeaching = async (payload: Record<string, any>) => {
       if (usageType === "chat_message") {
         const replyText = String(payload?.reply || "").trim();
@@ -1702,7 +1758,11 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
           source: normalizedSource,
         });
       }
-      return res.json(payload);
+      return res.json({
+        ...payload,
+        conversation: activeConversation ? mapConversationRow(activeConversation) : null,
+        conversationId: activeConversation?.id || null,
+      });
     };
 
     if (mode === "dialogue_enhancement") {
@@ -1854,6 +1914,8 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
       return respondTeaching({ reply: composed, teachingMode: true, stepIndex: session.step_index, totalSteps: session.total_steps, taskType: session.task_type, evaluation });
     }
 
+    await persistUserMessage();
+
     if (!wantsStream) {
       let reply = "";
       try {
@@ -1881,15 +1943,25 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
           source: String(source || (actor.shared ? "shared_bot" : "direct")).slice(0, 32),
         });
       }
+      await persistAssistantMessage(reply);
       if (isDebugLogEnabled) console.log("[ask] consuming credits");
       await consumeUserCredits(authUser.id, "ask", 1, { streaming: false, promptLength: normalizedPrompt.length, source: actor.shared ? "shared_bot" : "direct", modelProvider: selectedModelProvider, imageCount: chatImages.length });
       if (isDebugLogEnabled) console.log("[ask] sending json response");
-      return res.json({ reply, teachingMode: false, modelProvider: selectedModelProvider });
+      return res.json({
+        reply,
+        teachingMode: false,
+        modelProvider: selectedModelProvider,
+        conversation: activeConversation ? mapConversationRow(activeConversation) : null,
+        conversationId: activeConversation?.id || null,
+      });
     }
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
+    if (activeConversation?.id) {
+      res.setHeader("X-Conversation-Id", activeConversation.id);
+    }
     let streamedReply = "";
     try {
       const mocked = await maybeMockModelReply(normalizedPrompt);
@@ -1921,11 +1993,16 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
         source: String(source || (actor.shared ? "shared_bot" : "direct")).slice(0, 32),
       });
     }
+    await persistAssistantMessage(streamedReply);
     await consumeUserCredits(authUser.id, "ask", 1, { streaming: true, promptLength: normalizedPrompt.length, source: actor.shared ? "shared_bot" : "direct", modelProvider: selectedModelProvider, imageCount: chatImages.length });
     res.end();
   } catch (err: any) {
     console.error(err);
-    res.status(err?.status || 500).json({ error: err.message });
+    const fallbackMessage =
+      String(err?.message || "").trim() === "找不到對話紀錄"
+        ? "找不到對話紀錄"
+        : "AI 回覆暫時失敗，請稍後再試。";
+    res.status(err?.status || 500).json({ error: fallbackMessage });
   }
 });
 

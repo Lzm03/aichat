@@ -6,6 +6,7 @@ import {
   Mic,
   Square,
   MessageCircle,
+  MessagesSquare,
   ChevronDown,
   Camera,
   MoreHorizontal,
@@ -15,10 +16,21 @@ import {
 } from "lucide-react";
 import { SequencePngPlayer } from "./SequencePngPlayer";
 import { API_BASE } from "../../utils/api";
+import {
+  createConversation as createConversationRecord,
+  deleteConversation as deleteConversationRecord,
+  getMessages,
+  listConversations,
+  renameConversation as renameConversationRecord,
+  sendConversationMessage,
+} from "../../utils/chat-api";
 import { buildChatSystemPrompt } from "../../utils/chat-prompt";
+import { readAuthSession } from "../../utils/auth";
 import { usePlatformDialog } from "../../hooks/usePlatformDialog";
 import { PlatformDialog } from "../system/PlatformDialog";
 import { markTrialEndedPopupPending } from "../../utils/trial-popup";
+import { ConversationHistoryDrawer } from "../chat/ConversationHistoryDrawer";
+import type { ConversationMessage, ConversationSummary } from "../../types/chat";
 
 interface PublishSuccessModalProps {
   isOpen: boolean;
@@ -34,6 +46,14 @@ type SuggestedReply = {
   label: string;
   text: string;
   sendText?: string;
+};
+
+type ChatMessage = {
+  role: "user" | "bot";
+  content: string;
+  guidedTitle?: string;
+  guidedBody?: string;
+  imagePreviews?: string[];
 };
 
 const GUIDE_HINT_DELAY_MS = 1600;
@@ -62,7 +82,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
   
   const lastTTS = useRef(0);
-  const [messages, setMessages] = useState<{ role: "user" | "bot"; content: string; guidedTitle?: string; guidedBody?: string; imagePreviews?: string[] }[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [suggestedReplies, setSuggestedReplies] = useState<SuggestedReply[]>([]);
   const [guideQuestion, setGuideQuestion] = useState("");
 
@@ -108,19 +128,29 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showTopMenu, setShowTopMenu] = useState(false);
   const [chatPanelOpen, setChatPanelOpen] = useState(false);
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [conversationSearch, setConversationSearch] = useState("");
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [historyMenuConversationId, setHistoryMenuConversationId] = useState<string | null>(null);
+  const [historyActionLoading, setHistoryActionLoading] = useState(false);
   const [arControlsOpen, setArControlsOpen] = useState(false);
   const [guidedMode, setGuidedMode] = useState(false);
   const [guidedStepIndex, setGuidedStepIndex] = useState(0);
   const [guidedTotalSteps, setGuidedTotalSteps] = useState(0);
   const [modelProvider, setModelProvider] = useState<"deepseek" | "gemini">("deepseek");
   const [showModelMenu, setShowModelMenu] = useState(false);
-  const { dialog, closeDialog, showAlert } = usePlatformDialog();
+  const { dialog, closeDialog, showAlert, showConfirm } = usePlatformDialog();
   const [seqIdle, setSeqIdle] = useState<any>(null);
   const [seqThinking, setSeqThinking] = useState<any>(null);
   const [seqTalking, setSeqTalking] = useState<any>(null);
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
   const chatImageInputRef = useRef<HTMLInputElement | null>(null);
   const previewUrlsRef = useRef<Set<string>>(new Set());
+  const conversationMessagesCacheRef = useRef<Map<string, ChatMessage[]>>(new Map());
+  const conversationPrefetchingRef = useRef<Set<string>>(new Set());
   const stageCaptureRef = useRef<HTMLDivElement | null>(null);
   const stageBackgroundImageRef = useRef<HTMLImageElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
@@ -168,6 +198,130 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     knowledgeBase: botConfig.knowledgeBase,
     securityPrompt: botConfig.securityPrompt,
   });
+  const authSession = readAuthSession();
+  const canUseHistory = Boolean(authSession?.user?.id) && !isSharedView;
+
+  const buildOpeningMessage = React.useCallback(() => {
+    return String(configuredOpeningMessage || "").trim() || buildDefaultOpeningMessage();
+  }, [buildDefaultOpeningMessage, configuredOpeningMessage]);
+
+  const resetConversationView = React.useCallback(
+    (nextConversationId?: string | null) => {
+      stopAllSpeech();
+      setCurrentConversationId(nextConversationId ?? null);
+      setGuidedMode(false);
+      setGuidedStepIndex(0);
+      setGuidedTotalSteps(0);
+      setSuggestedReplies([]);
+      setGuideQuestion("");
+      setBotState("idle");
+      setIsStopAvailable(false);
+      setMessages([{ role: "bot", content: buildOpeningMessage() }]);
+    },
+    [buildOpeningMessage]
+  );
+
+  const syncConversationList = React.useCallback(
+    (updater: (prev: ConversationSummary[]) => ConversationSummary[]) => {
+      setConversations((prev) => updater(prev).sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt)));
+    },
+    []
+  );
+
+  const isEmptyConversation = React.useCallback((conversation: ConversationSummary) => {
+    const preview = String(conversation.lastMessagePreview || "").trim();
+    return conversation.title === "新的對話" && !preview;
+  }, []);
+
+  const mapConversationMessagesToChatMessages = React.useCallback(
+    (historyMessages: ConversationMessage[]) => {
+      const restoredMessages: ChatMessage[] = historyMessages.map((message) => ({
+        role: message.role === "assistant" ? "bot" : "user",
+        content: message.content,
+      }));
+      return restoredMessages.length
+        ? restoredMessages
+        : ([{ role: "bot", content: buildOpeningMessage() }] as ChatMessage[]);
+    },
+    [buildOpeningMessage]
+  );
+
+  const prefetchConversationMessages = React.useCallback(
+    async (conversationId: string) => {
+      if (
+        !conversationId ||
+        conversationMessagesCacheRef.current.has(conversationId) ||
+        conversationPrefetchingRef.current.has(conversationId)
+      ) {
+        return;
+      }
+      conversationPrefetchingRef.current.add(conversationId);
+      try {
+        const historyMessages = await getMessages(conversationId);
+        conversationMessagesCacheRef.current.set(
+          conversationId,
+          mapConversationMessagesToChatMessages(historyMessages)
+        );
+      } catch (error) {
+        console.warn("prefetch conversation messages failed", error);
+      } finally {
+        conversationPrefetchingRef.current.delete(conversationId);
+      }
+    },
+    [mapConversationMessagesToChatMessages]
+  );
+
+  const fetchConversationHistory = React.useCallback(async () => {
+    if (!canUseHistory || !botConfig?.id) return;
+    setHistoryLoading(true);
+    setHistoryError("");
+    try {
+      const rows = await listConversations(botConfig.id, conversationSearch.trim() || undefined);
+      setConversations(rows);
+      rows.slice(0, 6).forEach((conversation) => {
+        void prefetchConversationMessages(conversation.id);
+      });
+    } catch (error) {
+      console.error(error);
+      setHistoryError("無法載入聊天紀錄，請稍後再試。");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [botConfig?.id, canUseHistory, conversationSearch, prefetchConversationMessages]);
+
+  const restoreConversation = React.useCallback(
+    async (conversation: ConversationSummary) => {
+      stopAllSpeech();
+      setHistoryActionLoading(true);
+      setHistoryError("");
+      setCurrentConversationId(conversation.id);
+      setChatPanelOpen(true);
+      setHistoryDrawerOpen(false);
+      const cachedMessages = conversationMessagesCacheRef.current.get(conversation.id);
+      if (cachedMessages) {
+        setMessages(cachedMessages);
+      }
+      setGuidedMode(false);
+      setGuidedStepIndex(0);
+      setGuidedTotalSteps(0);
+      setSuggestedReplies([]);
+      setGuideQuestion("");
+      setBotState("idle");
+      setIsStopAvailable(false);
+      try {
+        const historyMessages = await getMessages(conversation.id);
+        const restoredMessages = mapConversationMessagesToChatMessages(historyMessages);
+        conversationMessagesCacheRef.current.set(conversation.id, restoredMessages);
+        setMessages(restoredMessages);
+      } catch (error) {
+        console.error(error);
+        setHistoryError("無法載入聊天紀錄，請稍後再試。");
+      } finally {
+        setHistoryActionLoading(false);
+      }
+    },
+    [mapConversationMessagesToChatMessages]
+  );
 
   const handleCopyShareLink = async () => {
     if (!shareableLink) return;
@@ -315,7 +469,29 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     setChatPanelOpen(false);
+    setHistoryDrawerOpen(false);
+    setHistoryMenuConversationId(null);
+    conversationMessagesCacheRef.current.clear();
+    conversationPrefetchingRef.current.clear();
   }, [isOpen, botConfig?.id]);
+
+  useEffect(() => {
+    if (!currentConversationId || messages.length === 0) return;
+    conversationMessagesCacheRef.current.set(currentConversationId, messages);
+  }, [currentConversationId, messages]);
+
+  useEffect(() => {
+    if (!isOpen || !canUseHistory || !botConfig?.id) return;
+    void fetchConversationHistory();
+  }, [isOpen, canUseHistory, botConfig?.id, fetchConversationHistory]);
+
+  useEffect(() => {
+    if (!historyDrawerOpen || !canUseHistory || !botConfig?.id) return;
+    const timeout = window.setTimeout(() => {
+      void fetchConversationHistory();
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [historyDrawerOpen, canUseHistory, botConfig?.id, conversationSearch, fetchConversationHistory]);
 
   useEffect(() => {
     if (!chatPanelOpen || !isMobileClient) return;
@@ -1182,8 +1358,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     playing.current = false;
     setIsStopAvailable(false);
 
-    const openingMessage =
-      String(configuredOpeningMessage || "").trim() || buildDefaultOpeningMessage();
+    const openingMessage = buildOpeningMessage();
     const sessionId = ttsSessionRef.current;
 
     if (!voicePlaybackEnabledRef.current) {
@@ -1241,7 +1416,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
           setOpeningReady(true);
         }
       });
-  }, [botName, configuredOpeningMessage, isOpen, voiceId, permissionReady, shouldRequirePermission, buildDefaultOpeningMessage]);
+  }, [botName, configuredOpeningMessage, isOpen, voiceId, permissionReady, shouldRequirePermission, buildOpeningMessage]);
   
   
 
@@ -1691,23 +1866,15 @@ const sendMessage = async (
       sharedBotId: isSharedView ? botConfig.id : undefined,
     };
     const usesGeminiImages = modelProvider === "gemini" && queuedImages.length > 0;
-    const response = await fetch(`${baseUrl}/api/ask`, {
-      method: "POST",
-      headers: usesGeminiImages ? undefined : requestHeaders,
-      body: usesGeminiImages
-        ? (() => {
-            const form = new FormData();
-            Object.entries(requestPayload).forEach(([key, value]) => {
-              if (value !== undefined && value !== null) form.append(key, String(value));
-            });
-            queuedImages.forEach((file) => {
-              form.append("images", file);
-            });
-            return form;
-          })()
-        : JSON.stringify(requestPayload),
+    const { response, conversationId: responseConversationId } = await sendConversationMessage({
+      ...requestPayload,
+      conversationId: currentConversationId || undefined,
+      images: usesGeminiImages ? queuedImages : undefined,
       signal: controller.signal,
     });
+    if (responseConversationId) {
+      setCurrentConversationId(responseConversationId);
+    }
     activeRequestController.current = null;
     if (!response.ok) {
       const data = await response.json().catch(() => null);
@@ -1730,6 +1897,17 @@ const sendMessage = async (
 
     if (contentType.includes("application/json") || modelProvider === "gemini") {
       const data = await response.json().catch(() => null);
+      const nextConversationId = String(data?.conversationId || data?.conversation?.id || responseConversationId || "").trim();
+      if (nextConversationId) {
+        setCurrentConversationId(nextConversationId);
+      }
+      if (data?.conversation) {
+        syncConversationList((prev) => {
+          const next = prev.filter((item) => item.id !== data.conversation.id);
+          next.unshift(data.conversation as ConversationSummary);
+          return next;
+        });
+      }
       const baseReply = trimReplyToSingleQuestion(String(data?.reply || "").trim());
       const followUpQuestion = String(data?.followUpQuestion || data?.dialogueState?.follow_up_question || "").trim();
       const committedReply = [baseReply, followUpQuestion].filter(Boolean).join("\n\n");
@@ -1842,6 +2020,36 @@ const sendMessage = async (
 
     streamedReply += decoder.decode();
     const committedReply = trimReplyToSingleQuestion(streamedReply.trim());
+    if (responseConversationId) {
+      syncConversationList((prev) => {
+        const existing = prev.find((item) => item.id === responseConversationId);
+        const now = new Date().toISOString();
+        const title = existing?.title || "新的對話";
+        const nextConversation: ConversationSummary = existing || {
+          id: responseConversationId,
+          userId: authSession?.user.id || "",
+          botId: botConfig.id || null,
+          title,
+          type: "bot_learning",
+          status: "active",
+          lastMessagePreview: committedReply || userMsg,
+          createdAt: now,
+          updatedAt: now,
+        };
+        return [
+          {
+            ...nextConversation,
+            lastMessagePreview: committedReply || userMsg,
+            updatedAt: now,
+            title:
+              nextConversation.title === "新的對話" && userMsg.trim()
+                ? userMsg.replace(/\s+/g, " ").trim().slice(0, 20)
+                : nextConversation.title,
+          },
+          ...prev.filter((item) => item.id !== responseConversationId),
+        ];
+      });
+    }
     if (committedReply !== streamedReply.trim()) {
       setMessages(prev => {
         const newMessages = [...prev];
@@ -1868,6 +2076,109 @@ const sendMessage = async (
       },
     ]);
   }
+};
+
+const handleHistoryButtonClick = () => {
+  if (!canUseHistory) return;
+  setChatPanelOpen(true);
+  setHistoryDrawerOpen((prev) => !prev);
+};
+
+const handleChatPanelToggle = () => {
+  setChatPanelOpen((prev) => {
+    const next = !prev;
+    if (!next) {
+      setHistoryDrawerOpen(false);
+      setHistoryMenuConversationId(null);
+    }
+    return next;
+  });
+};
+
+const handleCreateConversation = async () => {
+  if (!canUseHistory || !botConfig?.id) return;
+  setHistoryActionLoading(true);
+  setHistoryError("");
+  try {
+    const existingEmptyConversation = conversations.find((conversation) => isEmptyConversation(conversation));
+    if (existingEmptyConversation) {
+      resetConversationView(existingEmptyConversation.id);
+      setCurrentConversationId(existingEmptyConversation.id);
+      setChatPanelOpen(true);
+      setHistoryDrawerOpen(false);
+      return;
+    }
+
+    const created = await createConversationRecord({
+      botId: botConfig.id,
+      title: "新的對話",
+      type: "bot_learning",
+    });
+    syncConversationList((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
+    resetConversationView(created.id);
+    setChatPanelOpen(true);
+    setHistoryDrawerOpen(false);
+  } catch (error) {
+    console.error(error);
+    setHistoryError("無法載入聊天紀錄，請稍後再試。");
+  } finally {
+    setHistoryActionLoading(false);
+  }
+};
+
+const handleRenameConversation = async (conversation: ConversationSummary) => {
+  const nextTitle = window.prompt("請輸入新的對話名稱", conversation.title)?.trim();
+  if (!nextTitle) return;
+  setHistoryActionLoading(true);
+  try {
+    const updated = await renameConversationRecord(conversation.id, nextTitle);
+    syncConversationList((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    setHistoryMenuConversationId(null);
+  } catch (error) {
+    console.error(error);
+    showAlert({
+      title: "重新命名失敗",
+      message: "請稍後再試。",
+      confirmText: "知道了",
+    });
+  } finally {
+    setHistoryActionLoading(false);
+  }
+};
+
+const handleDeleteConversation = async (conversation: ConversationSummary) => {
+  showConfirm({
+    title: "確定要刪除此對話嗎？",
+    message: "刪除後，此對話將不會出現在歷史紀錄中。",
+    confirmText: "刪除",
+    cancelText: "取消",
+    tone: "danger",
+    onConfirm: async () => {
+      setHistoryActionLoading(true);
+      try {
+        await deleteConversationRecord(conversation.id);
+        syncConversationList((prev) => prev.filter((item) => item.id !== conversation.id));
+        setHistoryMenuConversationId(null);
+        if (currentConversationId === conversation.id) {
+          resetConversationView(null);
+        }
+        showAlert({
+          title: "對話已刪除",
+          message: "此對話已從歷史紀錄中移除。",
+          confirmText: "知道了",
+        });
+      } catch (error) {
+        console.error(error);
+        showAlert({
+          title: "刪除失敗",
+          message: "請稍後再試。",
+          confirmText: "知道了",
+        });
+      } finally {
+        setHistoryActionLoading(false);
+      }
+    },
+  });
 };
 
 const appendChatImages = (files: FileList | File[]) => {
@@ -2434,10 +2745,23 @@ const unlockAudioAndMic = async () => {
                       ? "bg-white/22 ring-2 ring-white/65 shadow-[0_8px_24px_rgba(245,158,11,0.24)]"
                       : "bg-black/45 hover:bg-black/60"
                   }`}
-                  onClick={() => setChatPanelOpen((prev) => !prev)}
+                  onClick={handleChatPanelToggle}
                   title={chatPanelOpen ? "隱藏聊天框" : "顯示聊天框"}
                 >
                   <MessageCircle size={20} />
+                </button>
+                <button
+                  className={`flex h-11 items-center gap-2 rounded-2xl px-3.5 text-white shadow-lg backdrop-blur transition-all duration-200 ${
+                    historyDrawerOpen
+                      ? "bg-white/22 ring-2 ring-white/65 shadow-[0_8px_24px_rgba(245,158,11,0.24)]"
+                      : "bg-black/45 hover:bg-black/60"
+                  } ${canUseHistory ? "" : "cursor-not-allowed opacity-70"}`}
+                  onClick={handleHistoryButtonClick}
+                  title={historyDrawerOpen ? "關閉對話紀錄" : "打開對話紀錄"}
+                  disabled={!canUseHistory}
+                >
+                  <MessagesSquare size={20} />
+                  <span className="hidden text-xs font-semibold md:inline">對話紀錄</span>
                 </button>
                 {!isSharedView && (
                   <div className="relative" data-top-menu-root="publish-preview">
@@ -2637,6 +2961,34 @@ const unlockAudioAndMic = async () => {
                   </div>
                 </div>
               </div>
+
+              <ConversationHistoryDrawer
+                open={historyDrawerOpen}
+                loading={historyLoading || historyActionLoading}
+                error={historyError}
+                search={conversationSearch}
+                selectedConversationId={currentConversationId}
+                conversations={conversations}
+                activeMenuConversationId={historyMenuConversationId}
+                onClose={() => {
+                  setHistoryDrawerOpen(false);
+                  setHistoryMenuConversationId(null);
+                }}
+                onSearchChange={setConversationSearch}
+                onCreateConversation={() => {
+                  void handleCreateConversation();
+                }}
+                onSelectConversation={(conversation) => {
+                  void restoreConversation(conversation);
+                }}
+                onToggleMenu={setHistoryMenuConversationId}
+                onRenameConversation={(conversation) => {
+                  void handleRenameConversation(conversation);
+                }}
+                onDeleteConversation={(conversation) => {
+                  void handleDeleteConversation(conversation);
+                }}
+              />
 
               {cameraBackgroundReady ? (
                 <div ref={arStageRef} className="absolute inset-0 overscroll-none touch-none">
