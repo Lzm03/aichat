@@ -30,7 +30,7 @@ import { usePlatformDialog } from "../../hooks/usePlatformDialog";
 import { PlatformDialog } from "../system/PlatformDialog";
 import { markTrialEndedPopupPending } from "../../utils/trial-popup";
 import { ConversationHistoryDrawer } from "../chat/ConversationHistoryDrawer";
-import type { ConversationMessage, ConversationMessagesPage, ConversationSummary } from "../../types/chat";
+import type { ConversationMessage, ConversationSummary } from "../../types/chat";
 
 interface PublishSuccessModalProps {
   isOpen: boolean;
@@ -55,15 +55,6 @@ type ChatMessage = {
   guidedBody?: string;
   imagePreviews?: string[];
 };
-
-type CachedConversationMessages = {
-  messages: ChatMessage[];
-  hasMore: boolean;
-  oldestMessageCreatedAt: string | null;
-};
-
-const INITIAL_MESSAGE_PAGE_SIZE = 20;
-const MAX_CACHED_CONVERSATIONS = 5;
 
 const GUIDE_HINT_DELAY_MS = 1600;
 const IDLE_GUIDE_DELAY_MS = 15000;
@@ -158,11 +149,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
   const chatImageInputRef = useRef<HTMLInputElement | null>(null);
   const previewUrlsRef = useRef<Set<string>>(new Set());
-  const conversationMessagesCacheRef = useRef<Map<string, CachedConversationMessages>>(new Map());
+  const conversationMessagesCacheRef = useRef<Map<string, ChatMessage[]>>(new Map());
   const conversationPrefetchingRef = useRef<Set<string>>(new Set());
-  const [hasMoreHistoryMessages, setHasMoreHistoryMessages] = useState(false);
-  const [oldestLoadedMessageCreatedAt, setOldestLoadedMessageCreatedAt] = useState<string | null>(null);
-  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const stageCaptureRef = useRef<HTMLDivElement | null>(null);
   const stageBackgroundImageRef = useRef<HTMLImageElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
@@ -221,9 +209,6 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     (nextConversationId?: string | null) => {
       stopAllSpeech();
       setCurrentConversationId(nextConversationId ?? null);
-      setHasMoreHistoryMessages(false);
-      setOldestLoadedMessageCreatedAt(null);
-      setLoadingOlderMessages(false);
       setGuidedMode(false);
       setGuidedStepIndex(0);
       setGuidedTotalSteps(0);
@@ -261,18 +246,6 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     [buildOpeningMessage]
   );
 
-  const writeConversationCache = React.useCallback((conversationId: string, cacheEntry: CachedConversationMessages) => {
-    const next = new Map(conversationMessagesCacheRef.current);
-    next.delete(conversationId);
-    next.set(conversationId, cacheEntry);
-    while (next.size > MAX_CACHED_CONVERSATIONS) {
-      const oldestKey = next.keys().next().value;
-      if (!oldestKey) break;
-      next.delete(oldestKey);
-    }
-    conversationMessagesCacheRef.current = next;
-  }, []);
-
   const prefetchConversationMessages = React.useCallback(
     async (conversationId: string) => {
       if (
@@ -284,19 +257,18 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       }
       conversationPrefetchingRef.current.add(conversationId);
       try {
-        const historyPage = await getMessages(conversationId, { limit: INITIAL_MESSAGE_PAGE_SIZE });
-        writeConversationCache(conversationId, {
-          messages: mapConversationMessagesToChatMessages(historyPage.messages),
-          hasMore: historyPage.pageInfo.hasMore,
-          oldestMessageCreatedAt: historyPage.pageInfo.oldestMessageCreatedAt,
-        });
+        const historyMessages = await getMessages(conversationId);
+        conversationMessagesCacheRef.current.set(
+          conversationId,
+          mapConversationMessagesToChatMessages(historyMessages)
+        );
       } catch (error) {
         console.warn("prefetch conversation messages failed", error);
       } finally {
         conversationPrefetchingRef.current.delete(conversationId);
       }
     },
-    [mapConversationMessagesToChatMessages, writeConversationCache]
+    [mapConversationMessagesToChatMessages]
   );
 
   const fetchConversationHistory = React.useCallback(async () => {
@@ -325,13 +297,9 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       setCurrentConversationId(conversation.id);
       setChatPanelOpen(true);
       setHistoryDrawerOpen(false);
-      setHasMoreHistoryMessages(false);
-      setOldestLoadedMessageCreatedAt(null);
       const cachedMessages = conversationMessagesCacheRef.current.get(conversation.id);
       if (cachedMessages) {
-        setMessages(cachedMessages.messages);
-        setHasMoreHistoryMessages(cachedMessages.hasMore);
-        setOldestLoadedMessageCreatedAt(cachedMessages.oldestMessageCreatedAt);
+        setMessages(cachedMessages);
       }
       setGuidedMode(false);
       setGuidedStepIndex(0);
@@ -341,16 +309,10 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       setBotState("idle");
       setIsStopAvailable(false);
       try {
-        const historyPage = await getMessages(conversation.id, { limit: INITIAL_MESSAGE_PAGE_SIZE });
-        const restoredMessages = mapConversationMessagesToChatMessages(historyPage.messages);
-        writeConversationCache(conversation.id, {
-          messages: restoredMessages,
-          hasMore: historyPage.pageInfo.hasMore,
-          oldestMessageCreatedAt: historyPage.pageInfo.oldestMessageCreatedAt,
-        });
+        const historyMessages = await getMessages(conversation.id);
+        const restoredMessages = mapConversationMessagesToChatMessages(historyMessages);
+        conversationMessagesCacheRef.current.set(conversation.id, restoredMessages);
         setMessages(restoredMessages);
-        setHasMoreHistoryMessages(historyPage.pageInfo.hasMore);
-        setOldestLoadedMessageCreatedAt(historyPage.pageInfo.oldestMessageCreatedAt);
       } catch (error) {
         console.error(error);
         setHistoryError("無法載入聊天紀錄，請稍後再試。");
@@ -358,7 +320,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
         setHistoryActionLoading(false);
       }
     },
-    [mapConversationMessagesToChatMessages, writeConversationCache]
+    [mapConversationMessagesToChatMessages]
   );
 
   const handleCopyShareLink = async () => {
@@ -515,13 +477,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
   useEffect(() => {
     if (!currentConversationId || messages.length === 0) return;
-    const existing = conversationMessagesCacheRef.current.get(currentConversationId);
-    if (!existing) return;
-    writeConversationCache(currentConversationId, {
-      ...existing,
-      messages,
-    });
-  }, [currentConversationId, messages, writeConversationCache]);
+    conversationMessagesCacheRef.current.set(currentConversationId, messages);
+  }, [currentConversationId, messages]);
 
   useEffect(() => {
     if (!isOpen || !canUseHistory || !botConfig?.id) return;
@@ -2224,38 +2181,6 @@ const handleDeleteConversation = async (conversation: ConversationSummary) => {
   });
 };
 
-const handleLoadOlderMessages = async () => {
-  if (!currentConversationId || !oldestLoadedMessageCreatedAt || loadingOlderMessages) return;
-  setLoadingOlderMessages(true);
-  try {
-    const historyPage: ConversationMessagesPage = await getMessages(currentConversationId, {
-      limit: INITIAL_MESSAGE_PAGE_SIZE,
-      before: oldestLoadedMessageCreatedAt,
-    });
-    const olderMessages = mapConversationMessagesToChatMessages(historyPage.messages).filter(
-      (message) => !(message.role === "bot" && message.content === buildOpeningMessage())
-    );
-    if (olderMessages.length > 0) {
-      setMessages((prev) => [...olderMessages, ...prev]);
-    }
-    setHasMoreHistoryMessages(historyPage.pageInfo.hasMore);
-    setOldestLoadedMessageCreatedAt(historyPage.pageInfo.oldestMessageCreatedAt);
-    const existing = conversationMessagesCacheRef.current.get(currentConversationId);
-    if (existing) {
-      writeConversationCache(currentConversationId, {
-        messages: olderMessages.length > 0 ? [...olderMessages, ...existing.messages] : existing.messages,
-        hasMore: historyPage.pageInfo.hasMore,
-        oldestMessageCreatedAt: historyPage.pageInfo.oldestMessageCreatedAt,
-      });
-    }
-  } catch (error) {
-    console.error(error);
-    setHistoryError("無法載入更早訊息，請稍後再試。");
-  } finally {
-    setLoadingOlderMessages(false);
-  }
-};
-
 const appendChatImages = (files: FileList | File[]) => {
   const nextFiles = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
   if (!nextFiles.length) return;
@@ -3410,18 +3335,6 @@ const unlockAudioAndMic = async () => {
                       suggestedReplies.length > 0 || guidedMode ? "pb-44 md:pb-52" : "pb-3.5"
                     }`}
                   >
-                {currentConversationId && (hasMoreHistoryMessages || loadingOlderMessages) ? (
-                  <div className="flex justify-center pb-1">
-                    <button
-                      type="button"
-                      onClick={() => void handleLoadOlderMessages()}
-                      disabled={loadingOlderMessages}
-                      className="rounded-full border border-[#e7d7bf] bg-white/88 px-3 py-1.5 text-xs font-semibold text-[#6f604c] shadow-sm transition hover:bg-[#fffaf1] disabled:cursor-wait disabled:opacity-70"
-                    >
-                      {loadingOlderMessages ? "正在載入..." : "載入更早訊息"}
-                    </button>
-                  </div>
-                ) : null}
                 {messages.map((m, i) => (
                   <div
                     key={i}
