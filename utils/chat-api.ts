@@ -2,6 +2,7 @@ import { API_BASE } from "./api";
 import type {
   ConversationDetail,
   ConversationMessage,
+  ConversationMessagesPage,
   ConversationSummary,
   SendConversationMessageRequest,
 } from "../types/chat";
@@ -61,10 +62,15 @@ export async function deleteConversation(conversationId: string) {
   await parseJson<{ ok: true }>(response);
 }
 
-export async function getMessages(conversationId: string) {
-  const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/messages`);
-  const data = await parseJson<{ messages: ConversationMessage[] }>(response);
-  return data.messages;
+export async function getMessages(conversationId: string, options?: { limit?: number; before?: string }) {
+  const params = new URLSearchParams();
+  if (options?.limit) params.set("limit", String(options.limit));
+  if (options?.before) params.set("before", options.before);
+  const query = params.toString();
+  const response = await fetch(
+    `${API_BASE}/api/conversations/${conversationId}/messages${query ? `?${query}` : ""}`
+  );
+  return parseJson<ConversationMessagesPage>(response);
 }
 
 export async function saveMessage(

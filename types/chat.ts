@@ -32,6 +32,15 @@ export type ConversationMessage = {
   createdAt: string;
 };
 
+export type ConversationMessagesPage = {
+  messages: ConversationMessage[];
+  pageInfo: {
+    limit: number;
+    hasMore: boolean;
+    oldestMessageCreatedAt: string | null;
+  };
+};
+
 export type SendConversationMessageRequest = {
   systemPrompt: string;
   userPrompt: string;
