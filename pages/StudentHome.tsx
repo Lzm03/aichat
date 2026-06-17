@@ -16,6 +16,7 @@ type SharedBot = {
   avatarUrl?: string;
   interactions?: number;
   teacherName?: string;
+  hasPendingQuiz?: boolean;
 };
 
 const navItems = [
@@ -98,11 +99,13 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
                 <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-indigo-400 to-violet-700 text-white shadow-md ring-4 ring-slate-50 sm:h-14 sm:w-14">
                   {companion.avatarUrl ? <img src={companion.avatarUrl} alt="" className="h-full w-full object-cover" /> : <Bot className="h-7 w-7 sm:h-8 sm:w-8" />}
                 </div>
-                <span className="rounded-md bg-amber-50 px-1.5 py-1 text-[9px] font-bold text-amber-500 sm:px-2 sm:text-[10px]">教師分享</span>
+                {companion.hasPendingQuiz ? (
+                  <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-1 text-[9px] font-bold text-amber-600 sm:px-2 sm:text-[10px]">測試題</span>
+                ) : null}
               </div>
               <h2 className="mt-5 truncate text-base font-black sm:mt-6 sm:text-lg">{companion.name}</h2>
               <span className="mt-2 inline-block rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-500">{companion.subject || "未分類"}</span>
-              <div className="mt-4 border-t border-slate-100 pt-4 text-xs text-slate-400 sm:mt-6 sm:pt-5 sm:text-sm">來自 {companion.teacherName || "老師"}</div>
+              <div className="mt-4 border-t border-slate-100 pt-4 text-xs text-slate-400 sm:mt-6 sm:pt-5 sm:text-sm">今日互動 {companion.interactions || 0} 次</div>
             </motion.button>
           ))}
         </div>

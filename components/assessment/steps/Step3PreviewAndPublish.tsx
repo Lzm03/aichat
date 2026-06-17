@@ -1,10 +1,31 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Edit3, BarChart2, ChevronDown, Save, Rocket, ArrowLeft, PlusCircle, X, Search, Eye } from 'lucide-react';
+import { Sparkles, Edit3, BarChart2, ChevronDown, Save, Rocket, ArrowLeft, PlusCircle, X, Search, Eye, LoaderCircle } from 'lucide-react';
+import { API_BASE } from '../../../utils/api';
 
 interface Step3PreviewAndPublishProps {
   onPrev: () => void;
   onPublish: () => void;
+  initialQuiz?: {
+    id: string;
+    title: string;
+    botId: string;
+    targetGrade: string;
+    questionCount: number;
+    questionTypeMode: string;
+  } | null;
+  initialQuestions?: Array<{
+    id: number | string;
+    type: string;
+    cognitiveLevel: string;
+    levelColor: string;
+    content: string;
+    options?: string[];
+    answer: string;
+    explanation?: string;
+    points?: number;
+    difficulty?: string;
+  }>;
 }
 
 const mockQuestions = [
@@ -52,13 +73,21 @@ const mockQuestions = [
   }
 ];
 
-export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({ onPrev, onPublish }) => {
+export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
+  onPrev,
+  onPublish,
+  initialQuiz,
+  initialQuestions = [],
+}) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [title, setTitle] = useState('中三古文練習 - 桃花源記');
+  const [title, setTitle] = useState(initialQuiz?.title || 'AI 測驗草稿');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [selectedHistoryQuestions, setSelectedHistoryQuestions] = useState<number[]>([]);
-  const [questions, setQuestions] = useState(mockQuestions);
+  const [questions, setQuestions] = useState(initialQuestions.length ? initialQuestions : mockQuestions);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishError, setPublishError] = useState('');
+  const [draftSaved, setDraftSaved] = useState(false);
 
   const mockHistoryAssessments = [
     {
@@ -95,6 +124,36 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({ 
   };
 
   const visibleQuestions = isExpanded ? questions : questions.slice(0, 2);
+
+  const handlePublishQuiz = async () => {
+    if (!initialQuiz?.id) {
+      onPublish();
+      return;
+    }
+    setPublishError('');
+    setIsPublishing(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/${initialQuiz.id}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(data?.error || '發佈測驗失敗，請稍後再試。'));
+      }
+      onPublish();
+    } catch (error) {
+      setPublishError(error instanceof Error ? error.message : '發佈測驗失敗，請稍後再試。');
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  const handleSaveDraft = () => {
+    setDraftSaved(true);
+    setPublishError('');
+    window.setTimeout(() => setDraftSaved(false), 2200);
+  };
 
   return (
     <motion.div 
@@ -225,19 +284,30 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({ 
               <Eye className="w-4 h-4" /> 
               預覽
             </button>
-            <button className="flex items-center gap-2 px-6 py-3.5 rounded-full text-sm font-bold text-slate-700 bg-white/80 backdrop-blur-sm border border-slate-200 hover:bg-white transition-all shadow-sm active:scale-95">
+            <button onClick={handleSaveDraft} className="flex items-center gap-2 px-6 py-3.5 rounded-full text-sm font-bold text-slate-700 bg-white/80 backdrop-blur-sm border border-slate-200 hover:bg-white transition-all shadow-sm active:scale-95">
               <Save className="w-4 h-4" /> 
-              儲存草稿
+              {draftSaved ? '已儲存草稿' : '儲存草稿'}
             </button>
             <button 
-              onClick={onPublish}
-              className="flex items-center gap-2 px-8 py-3.5 rounded-full text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-200/50 hover:-translate-y-0.5 transition-all active:scale-95"
+              onClick={() => void handlePublishQuiz()}
+              disabled={isPublishing}
+              className="flex items-center gap-2 px-8 py-3.5 rounded-full text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-200/50 hover:-translate-y-0.5 transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
             >
-              <Rocket className="w-4 h-4" /> 
-              立即發佈
+              {isPublishing ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4" />}
+              {isPublishing ? '發佈中...' : '立即發佈'}
             </button>
           </div>
         </div>
+        {publishError ? (
+          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+            {publishError}
+          </div>
+        ) : null}
+        {draftSaved ? (
+          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+            草稿已保留，回到智能評測首頁後會出現在草稿箱。
+          </div>
+        ) : null}
       </div>
 
       {/* 右側滑出面板 (History Question Picker Drawer) */}

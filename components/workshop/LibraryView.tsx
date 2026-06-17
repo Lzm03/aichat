@@ -85,6 +85,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       interactions: raw.interactions,
       accuracy: raw.accuracy,
       isVisible: raw.isVisible,
+      hasPublishedQuiz: Boolean(raw.hasPublishedQuiz),
+      hasPendingQuiz: Boolean(raw.hasPendingQuiz),
+      activeQuizId: raw.activeQuizId || "",
+      activeQuizTitle: raw.activeQuizTitle || "",
     }));
 
   useEffect(() => {
@@ -146,6 +150,24 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       .finally(() => {
         setBotsLoading(false);
       });
+  }, []);
+
+  useEffect(() => {
+    const handleQuizPendingChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ botId?: string; hasPendingQuiz?: boolean }>).detail;
+      const botId = String(detail?.botId || "").trim();
+      if (!botId) return;
+      setBots((current) =>
+        current.map((bot) =>
+          bot.id === botId ? { ...bot, hasPendingQuiz: Boolean(detail?.hasPendingQuiz) } : bot
+        )
+      );
+    };
+
+    window.addEventListener("quiz-pending-changed", handleQuizPendingChanged as EventListener);
+    return () => {
+      window.removeEventListener("quiz-pending-changed", handleQuizPendingChanged as EventListener);
+    };
   }, []);
 
   const deleteBot = async (botId: string) => {

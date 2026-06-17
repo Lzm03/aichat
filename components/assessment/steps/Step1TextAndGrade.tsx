@@ -1,9 +1,42 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UploadCloud, FileText, Settings2, Lightbulb, ArrowRight, BookOpen, X } from 'lucide-react';
+import { UploadCloud, FileText, Settings2, Lightbulb, ArrowRight, BookOpen, X, Bot, LoaderCircle } from 'lucide-react';
+import { API_BASE } from '../../../utils/api';
+
+interface PublishBotOption {
+  id: string;
+  name: string;
+  subject?: string;
+  isVisible?: boolean;
+}
+
+type GeneratedQuestion = {
+  id: number | string;
+  type: string;
+  cognitiveLevel: string;
+  levelColor: string;
+  content: string;
+  options?: string[];
+  answer: string;
+  explanation?: string;
+  points?: number;
+  difficulty?: string;
+};
+
+type GeneratedQuizPayload = {
+  quiz: {
+    id: string;
+    title: string;
+    botId: string;
+    targetGrade: string;
+    questionCount: number;
+    questionTypeMode: string;
+  };
+  questions: GeneratedQuestion[];
+};
 
 interface Step1TextAndGradeProps {
-  onNext: () => void;
+  onGenerated: (payload: GeneratedQuizPayload) => void;
 }
 
 const mockHistoryTexts = [
@@ -11,11 +44,16 @@ const mockHistoryTexts = [
   { id: 2, title: '現代文閱讀 - 故鄉', content: '我冒了嚴寒，回到相隔二千餘里，別了二十餘年的故鄉去。\n\n時候既然是深冬；漸近故鄉時，天氣又陰晦了，冷風吹進船艙中，嗚嗚的響，從篷隙向外一望，蒼黃的天底下，遠近橫著幾個蕭索的荒村，沒有一些活氣。我的心禁不住悲涼起來了。\n\n阿！這不是我二十年來時時記得的故鄉？' }
 ];
 
-export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onNext }) => {
+export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerated }) => {
   const [text, setText] = useState('');
   const [grade, setGrade] = useState('P1-P3');
   const [questionCount, setQuestionCount] = useState(5);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [publishBots, setPublishBots] = useState<PublishBotOption[]>([]);
+  const [selectedBotId, setSelectedBotId] = useState('');
+  const [loadingBots, setLoadingBots] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const handleImportHistory = (content: string) => {
     setText(content);
@@ -34,6 +72,99 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onNext }) 
         return '💡 AI 將著重於高階認知層級，模擬公開試題型與深度。';
       default:
         return '💡 AI 將根據所選年級自動調整題目難度與認知層級。';
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+
+    fetch(`${API_BASE}/api/teachers/me/available-quiz-bots`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!active) return;
+        const next = Array.isArray(data?.bots)
+          ? data.bots
+              .map((item: any) => ({
+                id: String(item.id || ''),
+                name: String(item.name || '未命名 Bot'),
+                subject: item.subject ? String(item.subject) : '',
+                isVisible: true,
+              }))
+              .filter((item: PublishBotOption) => item.id)
+          : [];
+        setPublishBots(next);
+        setSelectedBotId((prev) => prev || String(next[0]?.id || ''));
+      })
+      .catch(() => {
+        if (!active) return;
+        setPublishBots([]);
+      })
+      .finally(() => {
+        if (active) setLoadingBots(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleGenerate = async () => {
+    const trimmedText = text.trim();
+    if (!selectedBotId) {
+      setErrorMessage('請先選擇要發布測驗的 AI Bot。');
+      return;
+    }
+    if (!trimmedText) {
+      setErrorMessage('請先輸入測驗文本。');
+      return;
+    }
+    if (!grade) {
+      setErrorMessage('請先選擇目標年級。');
+      return;
+    }
+    if (!Number.isFinite(questionCount) || questionCount < 1 || questionCount > 15) {
+      setErrorMessage('請選擇有效的題目數量。');
+      return;
+    }
+
+    setErrorMessage('');
+    setIsGenerating(true);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          botId: selectedBotId,
+          sourceText: trimmedText,
+          targetGrade: grade,
+          questionCount,
+          questionTypeMode: 'ai_auto',
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(data?.error || 'AI 題目生成失敗，請稍後再試。'));
+      }
+
+      onGenerated({
+        quiz: {
+          id: String(data?.quiz?.id || data?.quizId || ''),
+          title: String(data?.quiz?.title || ''),
+          botId: String(data?.quiz?.botId || selectedBotId),
+          targetGrade: String(data?.quiz?.targetGrade || grade),
+          questionCount: Number(data?.quiz?.questionCount || questionCount),
+          questionTypeMode: String(data?.quiz?.questionTypeMode || 'ai_auto'),
+        },
+        questions: Array.isArray(data?.questions) ? data.questions : [],
+      });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'AI 題目生成失敗，請稍後再試。');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -84,7 +215,42 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onNext }) 
             <h2 className="text-lg font-bold text-slate-800">測驗設定</h2>
           </div>
 
-          {/* 區塊 A：目標年級 */}
+          {/* 區塊 A：發佈 Bot */}
+          <div className="space-y-3">
+            <label className="block text-sm font-bold text-slate-700">發佈到 Bot</label>
+            <div className="relative">
+              <select
+                value={selectedBotId}
+                onChange={(e) => setSelectedBotId(e.target.value)}
+                className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 rounded-xl px-4 py-3 pr-10 outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-medium disabled:opacity-60"
+                disabled={loadingBots || publishBots.length === 0}
+              >
+                {loadingBots && <option value="">載入 Bot 中...</option>}
+                {!loadingBots && publishBots.length === 0 && <option value="">暫無可用 Bot</option>}
+                {publishBots.map((bot) => (
+                  <option key={bot.id} value={bot.id}>
+                    {bot.name}{bot.subject ? ` · ${bot.subject}` : ''}{bot.isVisible ? ' · 已分享' : ''}
+                  </option>
+                ))}
+              </select>
+              <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-400">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+              </div>
+            </div>
+
+            <motion.div
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-violet-50 text-violet-700 text-sm p-4 rounded-xl flex items-start gap-2 leading-relaxed"
+            >
+              <span className="shrink-0 mt-0.5"><Bot className="w-4 h-4 text-violet-500" /></span>
+              <span>
+                這裡只顯示目前帳戶已分享的 Bot，並可選擇本次測驗要發佈到哪個教學角色。
+              </span>
+            </motion.div>
+          </div>
+
+          {/* 區塊 B：目標年級 */}
           <div className="space-y-3">
             <label className="block text-sm font-bold text-slate-700">目標年級</label>
             <div className="relative">
@@ -115,7 +281,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onNext }) 
             </motion.div>
           </div>
 
-          {/* 區塊 B：題目數量 */}
+          {/* 區塊 C：題目數量 */}
           <div className="space-y-4 pt-4 border-t border-slate-100">
             <div className="flex items-center justify-between">
               <label className="block text-sm font-bold text-slate-700">題目數量</label>
@@ -142,14 +308,30 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onNext }) 
         </div>
       </div>
 
+      {errorMessage ? (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+          {errorMessage}
+        </div>
+      ) : null}
+
       {/* 底部導航 */}
       <div className="flex justify-end pt-4">
         <button 
-          onClick={onNext}
-          className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white px-8 py-3.5 rounded-full font-bold hover:shadow-lg hover:shadow-indigo-200/50 hover:-translate-y-0.5 transition-all active:scale-95"
+          onClick={() => void handleGenerate()}
+          disabled={isGenerating}
+          className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white px-8 py-3.5 rounded-full font-bold hover:shadow-lg hover:shadow-indigo-200/50 hover:-translate-y-0.5 transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0 disabled:hover:shadow-none"
         >
-          下一步：認知策略
-          <ArrowRight className="w-5 h-5" />
+          {isGenerating ? (
+            <>
+              <LoaderCircle className="w-5 h-5 animate-spin" />
+              AI 正在生成題目...
+            </>
+          ) : (
+            <>
+              下一步：預覽與發佈
+              <ArrowRight className="w-5 h-5" />
+            </>
+          )}
         </button>
       </div>
 

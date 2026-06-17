@@ -12,6 +12,7 @@ import {
   recordFeatureUsage,
   requireAuth,
 } from "../lib/platform-auth.ts";
+import { ensureQuizTables } from "./quizzes.ts";
 
 const router = express.Router();
 type SequenceVideoEntry = { key: "idle" | "thinking" | "talking"; url: string };
@@ -425,13 +426,40 @@ function buildWeightedAssessmentRow(input: {
 /* -------------------- GET ALL BOTS -------------------- */
 router.get("/", requireAuth, async (req, res) => {
   try {
-    await ensurePlatformTables();
+    await ensureQuizTables();
     const user = getAuthUser(req);
     const result = await pool.query(
-      "SELECT * FROM bots WHERE owner_id=$1 ORDER BY created_at DESC",
-      [user?.id]
+      `SELECT
+        b.*,
+        q.id AS active_quiz_id,
+        q.title AS active_quiz_title,
+        qa.status AS active_quiz_attempt_status
+      FROM bots b
+      LEFT JOIN LATERAL (
+        SELECT id, title
+        FROM quizzes
+        WHERE bot_id=b.id AND status='published'
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT 1
+      ) q ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT status
+        FROM quiz_attempts
+        WHERE quiz_id=q.id AND student_id=$2
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT 1
+      ) qa ON TRUE
+      WHERE b.owner_id=$1
+      ORDER BY b.created_at DESC`,
+      [user?.id, user?.id]
     );
-    res.json(result.rows.map(toClient));
+    res.json(result.rows.map((row) => ({
+      ...toClient(row),
+      hasPublishedQuiz: Boolean(row.active_quiz_id),
+      hasPendingQuiz: Boolean(row.active_quiz_id) && row.active_quiz_attempt_status !== "completed",
+      activeQuizId: row.active_quiz_id || "",
+      activeQuizTitle: row.active_quiz_title || "",
+    })));
   } catch (err) {
     console.error("❌ GET / Failed:", err);
     res.status(500).json({ error: "Failed to fetch bots" });
@@ -532,17 +560,44 @@ router.put("/:id/shares", requireAuth, async (req, res) => {
 router.get("/shared/with-me", requireAuth, async (req, res) => {
   try {
     await ensurePlatformTables();
+    await ensureQuizTables();
     const user = getAuthUser(req);
     const result = await pool.query(
-      `SELECT b.*, u.full_name AS teacher_name
+      `SELECT
+         b.*,
+         u.full_name AS teacher_name,
+         q.id AS active_quiz_id,
+         q.title AS active_quiz_title,
+         qa.status AS active_quiz_attempt_status
        FROM bot_student_shares s
        JOIN bots b ON b.id = s.bot_id
        JOIN users u ON u.id = s.teacher_id
+       LEFT JOIN LATERAL (
+         SELECT id, title
+         FROM quizzes
+         WHERE bot_id=b.id AND status='published'
+         ORDER BY updated_at DESC, created_at DESC
+         LIMIT 1
+       ) q ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT status
+         FROM quiz_attempts
+         WHERE quiz_id=q.id AND student_id=$1
+         ORDER BY updated_at DESC, created_at DESC
+         LIMIT 1
+       ) qa ON TRUE
        WHERE s.student_id=$1
        ORDER BY s.created_at DESC`,
       [user?.id]
     );
-    return res.json(result.rows.map((row) => ({ ...toClient(row), teacherName: row.teacher_name || "" })));
+    return res.json(result.rows.map((row) => ({
+      ...toClient(row),
+      teacherName: row.teacher_name || "",
+      hasPublishedQuiz: Boolean(row.active_quiz_id),
+      hasPendingQuiz: Boolean(row.active_quiz_id) && row.active_quiz_attempt_status !== "completed",
+      activeQuizId: row.active_quiz_id || "",
+      activeQuizTitle: row.active_quiz_title || "",
+    })));
   } catch (err) {
     console.error("GET /shared/with-me Failed:", err);
     return res.status(500).json({ error: "Failed to load shared bots" });
@@ -898,21 +953,65 @@ router.post("/:id/interactions", async (req, res) => {
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
   try {
-    await ensurePlatformTables();
+    await ensureQuizTables();
     const user = await optionalAuth(req);
     const result = user
       ? await pool.query(
-          `SELECT * FROM bots WHERE id=$1 AND (
+          `SELECT
+             bots.*,
+             q.id AS active_quiz_id,
+             q.title AS active_quiz_title,
+             qa.status AS active_quiz_attempt_status
+           FROM bots
+           LEFT JOIN LATERAL (
+             SELECT id, title
+             FROM quizzes
+             WHERE bot_id=bots.id AND status='published'
+             ORDER BY updated_at DESC, created_at DESC
+             LIMIT 1
+           ) q ON TRUE
+           LEFT JOIN LATERAL (
+             SELECT status
+             FROM quiz_attempts
+             WHERE quiz_id=q.id AND student_id=$2
+             ORDER BY updated_at DESC, created_at DESC
+             LIMIT 1
+           ) qa ON TRUE
+           WHERE bots.id=$1 AND (
             owner_id=$2 OR is_visible=true OR EXISTS (
               SELECT 1 FROM bot_student_shares s WHERE s.bot_id=bots.id AND s.student_id=$2
             )
           )`,
           [id, user.id]
         )
-      : await pool.query("SELECT * FROM bots WHERE id=$1 AND is_visible=true", [id]);
+      : await pool.query(
+          `SELECT
+             bots.*,
+             q.id AS active_quiz_id,
+             q.title AS active_quiz_title,
+             NULL::TEXT AS active_quiz_attempt_status
+           FROM bots
+           LEFT JOIN LATERAL (
+             SELECT id, title
+             FROM quizzes
+             WHERE bot_id=bots.id AND status='published'
+             ORDER BY updated_at DESC, created_at DESC
+             LIMIT 1
+           ) q ON TRUE
+           WHERE bots.id=$1 AND is_visible=true`,
+          [id]
+        );
     if (result.rows.length === 0) return res.status(404).json({ error: "Bot not found" });
 
-    res.json(toClient(result.rows[0]));
+    res.json({
+      ...toClient(result.rows[0]),
+      hasPublishedQuiz: Boolean(result.rows[0].active_quiz_id),
+      hasPendingQuiz:
+        Boolean(result.rows[0].active_quiz_id) &&
+        result.rows[0].active_quiz_attempt_status !== "completed",
+      activeQuizId: result.rows[0].active_quiz_id || "",
+      activeQuizTitle: result.rows[0].active_quiz_title || "",
+    });
   } catch (err) {
     console.error("❌ GET /:id Failed:", err);
     res.status(500).json({ error: "Failed to fetch bot" });

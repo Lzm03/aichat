@@ -1,6 +1,6 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageCircleMore, Plus, Search, X } from "lucide-react";
+import { LoaderCircle, MessageCircleMore, Plus, RefreshCw, Search, X } from "lucide-react";
 import type { ConversationSummary } from "../../types/chat";
 import { ConversationListItem } from "./ConversationListItem";
 
@@ -14,10 +14,12 @@ type ConversationHistoryDrawerProps = {
   loading: boolean;
   error: string;
   search: string;
+  refreshing?: boolean;
   selectedConversationId: string | null;
   conversations: ConversationSummary[];
   activeMenuConversationId: string | null;
   onClose: () => void;
+  onRefresh: () => void;
   onSearchChange: (value: string) => void;
   onCreateConversation: () => void;
   onSelectConversation: (conversation: ConversationSummary) => void;
@@ -64,10 +66,12 @@ export const ConversationHistoryDrawer: React.FC<ConversationHistoryDrawerProps>
   loading,
   error,
   search,
+  refreshing = false,
   selectedConversationId,
   conversations,
   activeMenuConversationId,
   onClose,
+  onRefresh,
   onSearchChange,
   onCreateConversation,
   onSelectConversation,
@@ -93,13 +97,24 @@ export const ConversationHistoryDrawer: React.FC<ConversationHistoryDrawerProps>
                 <MessageCircleMore size={18} />
                 <span className="text-base font-semibold">對話紀錄</span>
               </div>
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-white/80 hover:text-slate-800"
-              >
-                <X size={18} />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={onRefresh}
+                  className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-white/80 hover:text-slate-800"
+                  title="重新整理對話紀錄"
+                >
+                  {refreshing ? <LoaderCircle size={17} className="animate-spin" /> : <RefreshCw size={17} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-white/80 hover:text-slate-800"
+                  title="關閉對話紀錄"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
             <div className="space-y-3 px-5 py-4">

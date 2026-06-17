@@ -17,7 +17,6 @@ import {
 import { SequencePngPlayer } from "./SequencePngPlayer";
 import { API_BASE } from "../../utils/api";
 import {
-  createConversation as createConversationRecord,
   deleteConversation as deleteConversationRecord,
   getMessages,
   listConversations,
@@ -54,6 +53,34 @@ type ChatMessage = {
   guidedTitle?: string;
   guidedBody?: string;
   imagePreviews?: string[];
+};
+
+type ActiveQuizSummary = {
+  id: string;
+  title: string;
+  botId: string;
+  targetGrade?: string;
+  questionCount: number;
+  status: string;
+};
+
+type ActiveQuizAttempt = {
+  id: string;
+  status: "pending" | "deferred" | "in_progress" | "completed";
+  currentIndex: number;
+  score: number;
+  totalPoints: number;
+  result?: Record<string, any>;
+};
+
+type QuizPreviewQuestion = {
+  id: string | number;
+  type: string;
+  cognitiveLevel: string;
+  levelColor: string;
+  content: string;
+  options?: string[];
+  answer: string;
 };
 
 const GUIDE_HINT_DELAY_MS = 1600;
@@ -130,6 +157,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [chatPanelOpen, setChatPanelOpen] = useState(false);
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyRefreshing, setHistoryRefreshing] = useState(false);
   const [historyError, setHistoryError] = useState("");
   const [conversationSearch, setConversationSearch] = useState("");
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -142,6 +170,18 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [guidedTotalSteps, setGuidedTotalSteps] = useState(0);
   const [modelProvider, setModelProvider] = useState<"deepseek" | "gemini">("deepseek");
   const [showModelMenu, setShowModelMenu] = useState(false);
+  const [activeQuiz, setActiveQuiz] = useState<ActiveQuizSummary | null>(null);
+  const [activeQuizAttempt, setActiveQuizAttempt] = useState<ActiveQuizAttempt | null>(null);
+  const [quizUiState, setQuizUiState] = useState<"hidden" | "banner" | "prompt" | "later" | "taking" | "result">("hidden");
+  const [quizQuestion, setQuizQuestion] = useState<QuizPreviewQuestion | null>(null);
+  const [quizPrefetchedQuestion, setQuizPrefetchedQuestion] = useState<QuizPreviewQuestion | null>(null);
+  const [quizCurrentIndex, setQuizCurrentIndex] = useState(0);
+  const [quizTotalQuestions, setQuizTotalQuestions] = useState(0);
+  const [quizSelectedAnswer, setQuizSelectedAnswer] = useState("");
+  const [quizTextAnswer, setQuizTextAnswer] = useState("");
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [quizSubmitting, setQuizSubmitting] = useState(false);
+  const [quizResult, setQuizResult] = useState<Record<string, any> | null>(null);
   const { dialog, closeDialog, showAlert, showConfirm } = usePlatformDialog();
   const [seqIdle, setSeqIdle] = useState<any>(null);
   const [seqThinking, setSeqThinking] = useState<any>(null);
@@ -151,6 +191,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const previewUrlsRef = useRef<Set<string>>(new Set());
   const conversationMessagesCacheRef = useRef<Map<string, ChatMessage[]>>(new Map());
   const conversationPrefetchingRef = useRef<Set<string>>(new Set());
+  const lastHistoryBotIdRef = useRef<string | null>(null);
   const stageCaptureRef = useRef<HTMLDivElement | null>(null);
   const stageBackgroundImageRef = useRef<HTMLImageElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
@@ -199,7 +240,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     securityPrompt: botConfig.securityPrompt,
   });
   const authSession = readAuthSession();
-  const canUseHistory = Boolean(authSession?.user?.id) && !isSharedView;
+  const canUseHistory = Boolean(authSession?.user?.id);
 
   const buildOpeningMessage = React.useCallback(() => {
     return String(configuredOpeningMessage || "").trim() || buildDefaultOpeningMessage();
@@ -271,9 +312,11 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     [mapConversationMessagesToChatMessages]
   );
 
-  const fetchConversationHistory = React.useCallback(async () => {
+  const fetchConversationHistory = React.useCallback(async (options?: { silent?: boolean }) => {
     if (!canUseHistory || !botConfig?.id) return;
-    setHistoryLoading(true);
+    const shouldShowLoading = !options?.silent && conversations.length === 0;
+    if (shouldShowLoading) setHistoryLoading(true);
+    if (options?.silent && conversations.length > 0) setHistoryRefreshing(true);
     setHistoryError("");
     try {
       const rows = await listConversations(botConfig.id, conversationSearch.trim() || undefined);
@@ -285,9 +328,15 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       console.error(error);
       setHistoryError("無法載入聊天紀錄，請稍後再試。");
     } finally {
-      setHistoryLoading(false);
+      if (shouldShowLoading) setHistoryLoading(false);
+      if (options?.silent && conversations.length > 0) setHistoryRefreshing(false);
     }
-  }, [botConfig?.id, canUseHistory, conversationSearch, prefetchConversationMessages]);
+  }, [botConfig?.id, canUseHistory, conversationSearch, conversations.length, prefetchConversationMessages]);
+
+  const closeHistoryDrawer = React.useCallback(() => {
+    setHistoryDrawerOpen(false);
+    setHistoryMenuConversationId(null);
+  }, []);
 
   const restoreConversation = React.useCallback(
     async (conversation: ConversationSummary) => {
@@ -468,11 +517,19 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
+    const currentBotId = botConfig?.id || null;
+    const botChanged = lastHistoryBotIdRef.current !== currentBotId;
     setChatPanelOpen(false);
     setHistoryDrawerOpen(false);
     setHistoryMenuConversationId(null);
-    conversationMessagesCacheRef.current.clear();
-    conversationPrefetchingRef.current.clear();
+    if (botChanged) {
+      setConversations([]);
+      setHistoryError("");
+      setHistoryLoading(false);
+      conversationMessagesCacheRef.current.clear();
+      conversationPrefetchingRef.current.clear();
+      lastHistoryBotIdRef.current = currentBotId;
+    }
   }, [isOpen, botConfig?.id]);
 
   useEffect(() => {
@@ -482,16 +539,16 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
   useEffect(() => {
     if (!isOpen || !canUseHistory || !botConfig?.id) return;
-    void fetchConversationHistory();
-  }, [isOpen, canUseHistory, botConfig?.id, fetchConversationHistory]);
+    void fetchConversationHistory({ silent: conversations.length > 0 });
+  }, [isOpen, canUseHistory, botConfig?.id, conversations.length, fetchConversationHistory]);
 
   useEffect(() => {
     if (!historyDrawerOpen || !canUseHistory || !botConfig?.id) return;
     const timeout = window.setTimeout(() => {
-      void fetchConversationHistory();
+      void fetchConversationHistory({ silent: conversations.length > 0 });
     }, 250);
     return () => window.clearTimeout(timeout);
-  }, [historyDrawerOpen, canUseHistory, botConfig?.id, conversationSearch, fetchConversationHistory]);
+  }, [historyDrawerOpen, canUseHistory, botConfig?.id, conversationSearch, conversations.length, fetchConversationHistory]);
 
   useEffect(() => {
     if (!chatPanelOpen || !isMobileClient) return;
@@ -2079,17 +2136,19 @@ const sendMessage = async (
 };
 
 const handleHistoryButtonClick = () => {
-  if (!canUseHistory) return;
-  setChatPanelOpen(true);
-  setHistoryDrawerOpen((prev) => !prev);
+  if (!canUseHistory || !chatPanelOpen) return;
+  setHistoryDrawerOpen((prev) => {
+    const next = !prev;
+    if (!next) setHistoryMenuConversationId(null);
+    return next;
+  });
 };
 
 const handleChatPanelToggle = () => {
   setChatPanelOpen((prev) => {
     const next = !prev;
     if (!next) {
-      setHistoryDrawerOpen(false);
-      setHistoryMenuConversationId(null);
+      closeHistoryDrawer();
     }
     return next;
   });
@@ -2108,14 +2167,8 @@ const handleCreateConversation = async () => {
       setHistoryDrawerOpen(false);
       return;
     }
-
-    const created = await createConversationRecord({
-      botId: botConfig.id,
-      title: "新的對話",
-      type: "bot_learning",
-    });
-    syncConversationList((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
-    resetConversationView(created.id);
+    resetConversationView(null);
+    setCurrentConversationId(null);
     setChatPanelOpen(true);
     setHistoryDrawerOpen(false);
   } catch (error) {
@@ -2668,6 +2721,158 @@ const unlockAudioAndMic = async () => {
   };
   if (!isOpen) return null;
 
+  useEffect(() => {
+    if (!isOpen || !botConfig?.id) return;
+    let cancelled = false;
+    setQuizLoading(true);
+    fetch(`${API_BASE}/api/bots/${botConfig.id}/active-quiz`)
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || "載入測驗失敗");
+        return data;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        const quiz = data?.quiz || null;
+        const attempt = data?.attempt || null;
+        setActiveQuiz(quiz);
+        setActiveQuizAttempt(attempt);
+        setQuizQuestion(null);
+        setQuizPrefetchedQuestion(data?.currentQuestion || null);
+        setQuizSelectedAnswer("");
+        setQuizTextAnswer("");
+        setQuizResult(attempt?.result || null);
+        if (!quiz) {
+          setQuizUiState("hidden");
+          return;
+        }
+        if (attempt?.status === "completed") {
+          setQuizUiState("result");
+        } else {
+          setQuizCurrentIndex(Number(attempt?.currentIndex || 0));
+          setQuizUiState("banner");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setQuizUiState("hidden");
+      })
+      .finally(() => {
+        if (!cancelled) setQuizLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, botConfig?.id]);
+
+  const openQuizPrompt = () => {
+    if (!activeQuiz) return;
+    setQuizUiState("prompt");
+  };
+
+  const deferQuiz = async () => {
+    if (!activeQuiz) return;
+    setQuizSubmitting(true);
+    setQuizUiState("banner");
+    try {
+      await fetch(`${API_BASE}/api/quizzes/${activeQuiz.id}/attempts/defer`, {
+        method: "POST",
+        headers: requestHeaders,
+      });
+    } finally {
+      setQuizSubmitting(false);
+    }
+  };
+
+  const startQuiz = async () => {
+    if (!activeQuiz) return;
+    setQuizSubmitting(true);
+    if (quizPrefetchedQuestion) {
+      setQuizQuestion(quizPrefetchedQuestion);
+      setQuizCurrentIndex(Number(activeQuizAttempt?.currentIndex || 0));
+      setQuizTotalQuestions(Number(activeQuiz.questionCount || 0));
+      setQuizSelectedAnswer("");
+      setQuizTextAnswer("");
+      setQuizUiState("taking");
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/quizzes/${activeQuiz.id}/attempts/start`, {
+        method: "POST",
+        headers: requestHeaders,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "開始測驗失敗");
+      setQuizQuestion(data?.currentQuestion || null);
+      setQuizPrefetchedQuestion(data?.currentQuestion || null);
+      setQuizCurrentIndex(Number(data?.attempt?.currentIndex || 0));
+      setQuizTotalQuestions(Number(data?.totalQuestions || activeQuiz.questionCount || 0));
+      setQuizSelectedAnswer("");
+      setQuizUiState("taking");
+    } catch (error) {
+      showAlert({
+        title: "測驗無法開始",
+        message: error instanceof Error ? error.message : "開始測驗失敗，請稍後再試。",
+      });
+    } finally {
+      setQuizSubmitting(false);
+    }
+  };
+
+  const submitQuizAnswer = async () => {
+    const answerToSubmit = quizQuestion?.options?.length ? quizSelectedAnswer : quizTextAnswer.trim();
+    if (!activeQuiz || !quizQuestion || !answerToSubmit) return;
+    setQuizSubmitting(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/quizzes/${activeQuiz.id}/attempts/answer`, {
+        method: "POST",
+        headers: requestHeaders,
+        body: JSON.stringify({
+          botId: botConfig.id,
+          questionIndex: quizCurrentIndex,
+          answer: answerToSubmit,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "提交答案失敗");
+      if (data?.status === "completed") {
+        setQuizResult(data?.result || null);
+        setQuizUiState("result");
+        setQuizQuestion(null);
+        setQuizSelectedAnswer("");
+      } else {
+        setQuizQuestion(data?.nextQuestion || null);
+        setQuizCurrentIndex((prev) => prev + 1);
+        setQuizTotalQuestions(Number(data?.totalQuestions || quizTotalQuestions));
+        setQuizSelectedAnswer("");
+        setQuizTextAnswer("");
+      }
+    } catch (error) {
+      showAlert({
+        title: "提交失敗",
+        message: error instanceof Error ? error.message : "提交答案失敗，請稍後再試。",
+      });
+    } finally {
+      setQuizSubmitting(false);
+    }
+  };
+
+  const retryQuiz = async () => {
+    if (!activeQuiz) return;
+    setQuizSubmitting(true);
+    try {
+      await fetch(`${API_BASE}/api/quizzes/${activeQuiz.id}/attempts/reset`, {
+        method: "POST",
+        headers: requestHeaders,
+      });
+      setQuizResult(null);
+      setQuizUiState("prompt");
+    } finally {
+      setQuizSubmitting(false);
+    }
+  };
+
+  const isQuizTaking = quizUiState === "taking" && Boolean(activeQuiz && quizQuestion);
+  const shouldDisableRegularChat = shouldShowBooting || (shouldRequirePermission && !permissionReady) || isQuizTaking;
+
   return (
     <>
       {isOpen && (
@@ -2750,19 +2955,20 @@ const unlockAudioAndMic = async () => {
                 >
                   <MessageCircle size={20} />
                 </button>
-                <button
-                  className={`flex h-11 items-center gap-2 rounded-2xl px-3.5 text-white shadow-lg backdrop-blur transition-all duration-200 ${
-                    historyDrawerOpen
-                      ? "bg-white/22 ring-2 ring-white/65 shadow-[0_8px_24px_rgba(245,158,11,0.24)]"
-                      : "bg-black/45 hover:bg-black/60"
-                  } ${canUseHistory ? "" : "cursor-not-allowed opacity-70"}`}
-                  onClick={handleHistoryButtonClick}
-                  title={historyDrawerOpen ? "關閉對話紀錄" : "打開對話紀錄"}
-                  disabled={!canUseHistory}
-                >
-                  <MessagesSquare size={20} />
-                  <span className="hidden text-xs font-semibold md:inline">對話紀錄</span>
-                </button>
+                {chatPanelOpen && canUseHistory ? (
+                  <button
+                    className={`flex h-11 items-center gap-2 rounded-2xl px-3.5 text-white shadow-lg backdrop-blur transition-all duration-200 ${
+                      historyDrawerOpen
+                        ? "bg-white/22 ring-2 ring-white/65 shadow-[0_8px_24px_rgba(245,158,11,0.24)]"
+                        : "bg-black/45 hover:bg-black/60"
+                    }`}
+                    onClick={handleHistoryButtonClick}
+                    title={historyDrawerOpen ? "關閉對話紀錄" : "打開對話紀錄"}
+                  >
+                    <MessagesSquare size={20} />
+                    <span className="hidden text-xs font-semibold md:inline">對話紀錄</span>
+                  </button>
+                ) : null}
                 {!isSharedView && (
                   <div className="relative" data-top-menu-root="publish-preview">
                     <button
@@ -2963,16 +3169,17 @@ const unlockAudioAndMic = async () => {
               </div>
 
               <ConversationHistoryDrawer
-                open={historyDrawerOpen}
+                open={historyDrawerOpen && chatPanelOpen}
                 loading={historyLoading || historyActionLoading}
+                refreshing={historyRefreshing}
                 error={historyError}
                 search={conversationSearch}
                 selectedConversationId={currentConversationId}
                 conversations={conversations}
                 activeMenuConversationId={historyMenuConversationId}
-                onClose={() => {
-                  setHistoryDrawerOpen(false);
-                  setHistoryMenuConversationId(null);
+                onClose={closeHistoryDrawer}
+                onRefresh={() => {
+                  void fetchConversationHistory({ silent: conversations.length > 0 });
                 }}
                 onSearchChange={setConversationSearch}
                 onCreateConversation={() => {
@@ -2989,6 +3196,16 @@ const unlockAudioAndMic = async () => {
                   void handleDeleteConversation(conversation);
                 }}
               />
+
+              {historyDrawerOpen && chatPanelOpen ? (
+                <button
+                  type="button"
+                  aria-label="關閉對話紀錄"
+                  className="absolute inset-0 z-[35] cursor-default bg-transparent"
+                  onClick={closeHistoryDrawer}
+                />
+              ) : null}
+
 
               {cameraBackgroundReady ? (
                 <div ref={arStageRef} className="absolute inset-0 overscroll-none touch-none">
@@ -3318,11 +3535,18 @@ const unlockAudioAndMic = async () => {
               <div className="flex items-center justify-between border-b border-[#decfb9] bg-[#fffaf1]/86 p-3.5">
                 <div className="min-w-0">
                   <div className="text-base font-bold leading-tight text-[#241b12] break-words">{botName}</div>
+                  <div className="mt-1 flex items-center gap-2 text-xs font-semibold text-emerald-600">
+                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                    已發佈上線
+                  </div>
                 </div>
 
                 <button
                   className="ml-2 rounded-full p-2 text-[#6f604c] hover:bg-[#eadfce]"
-                  onClick={() => setChatPanelOpen(false)}
+                  onClick={() => {
+                    setChatPanelOpen(false);
+                    closeHistoryDrawer();
+                  }}
                 >
                   <X size={20} />
                 </button>
@@ -3390,6 +3614,112 @@ const unlockAudioAndMic = async () => {
                     )}
                   </div>
                 ))}
+
+                    {activeQuiz && quizUiState === "banner" ? (
+                      <div className="mb-3 flex items-center justify-between gap-2 rounded-[18px] bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-2.5 text-white shadow-[0_10px_24px_rgba(79,70,229,0.16)]">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="text-base">⚡</span>
+                          <div className="truncate text-sm font-black">你有一個待完成的知識測試</div>
+                        </div>
+                        <button type="button" onClick={openQuizPrompt} className="shrink-0 rounded-full bg-white/16 px-3 py-1.5 text-xs font-black text-white ring-1 ring-white/16 transition hover:bg-white/22">
+                          點擊開展測試
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {activeQuiz && quizUiState === "prompt" ? (
+                      <div className="mb-3 rounded-[20px] border border-indigo-100 bg-[#EEF2FF] p-4 shadow-[0_10px_24px_rgba(99,102,241,0.08)]">
+                        <div className="flex items-center gap-2 text-indigo-900">
+                          <span className="text-lg">⚡</span>
+                          <span className="text-base font-black">{activeQuiz.title}</span>
+                        </div>
+                        <p className="mt-2 text-sm font-semibold leading-7 text-indigo-900">我們現在開始測試。準備好了嗎？請回答我接下來的問題！</p>
+                        <div className="mt-4 flex flex-wrap gap-2.5">
+                          <button type="button" onClick={() => void startQuiz()} disabled={quizSubmitting} className="rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-black text-white shadow-[0_8px_18px_rgba(79,70,229,0.22)] transition hover:bg-indigo-700 disabled:opacity-60">準備答題</button>
+                          <button type="button" onClick={() => void deferQuiz()} disabled={quizSubmitting} className="rounded-full border border-slate-200 bg-white px-6 py-2.5 text-sm font-black text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:opacity-60">稍後作答</button>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {activeQuiz && quizUiState === "taking" && quizQuestion ? (
+                      <div className="mb-4 rounded-[22px] border border-slate-200 bg-white p-3.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                        <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                          <div className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-violet-500 transition-all" style={{ width: `${Math.max(8, ((quizCurrentIndex + 1) / Math.max(1, quizTotalQuestions)) * 100)}%` }} />
+                        </div>
+                        <div className="rounded-[16px] border border-indigo-100 bg-[#EEF2FF] p-3.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 text-lg font-black text-white">{quizCurrentIndex + 1}</div>
+                            <span className={`rounded-full px-3 py-1 text-[11px] font-bold ${quizQuestion.levelColor}`}>{quizQuestion.cognitiveLevel}</span>
+                            <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-500">{quizQuestion.type}</span>
+                          </div>
+                          <div className="mt-3 text-[15px] font-black leading-8 text-slate-800">{quizQuestion.content}</div>
+                        </div>
+                        <div className="mt-3 space-y-2.5">
+                          {(quizQuestion.options || []).length ? (
+                            (quizQuestion.options || []).map((option) => {
+                              const selected = quizSelectedAnswer === option;
+                              return (
+                                <button key={option} type="button" onClick={() => setQuizSelectedAnswer(option)} className={`flex w-full items-center gap-3 rounded-[16px] border px-4 py-3.5 text-left text-sm font-bold transition ${selected ? "border-indigo-300 bg-indigo-50 text-indigo-700 shadow-[0_8px_18px_rgba(99,102,241,0.10)]" : "border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:bg-indigo-50/40"}`}>
+                                  <span className={`h-7 w-7 shrink-0 rounded-full border-2 ${selected ? "border-indigo-500 bg-indigo-100" : "border-slate-300 bg-white"}`} />
+                                  <span>{option}</span>
+                                </button>
+                              );
+                            })
+                          ) : (
+                            <textarea
+                              value={quizTextAnswer}
+                              onChange={(event) => setQuizTextAnswer(event.target.value)}
+                              placeholder="請輸入你的答案..."
+                              className="min-h-[160px] w-full resize-none rounded-[18px] border border-slate-200 bg-white px-5 py-4 text-sm font-medium leading-7 text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100/60"
+                            />
+                          )}
+                        </div>
+                        <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
+                          <button type="button" disabled className="rounded-full px-5 py-2 text-sm font-black text-slate-300">上一題</button>
+                          <button type="button" onClick={() => void submitQuizAnswer()} disabled={(!(quizQuestion.options || []).length ? !quizTextAnswer.trim() : !quizSelectedAnswer) || quizSubmitting} className="rounded-full bg-indigo-600 px-7 py-2.5 text-sm font-black text-white shadow-[0_8px_20px_rgba(79,70,229,0.20)] transition hover:bg-indigo-700 disabled:opacity-50">
+                            {quizSubmitting && quizCurrentIndex + 1 >= quizTotalQuestions ? "Gemini 計分中..." : quizCurrentIndex + 1 >= quizTotalQuestions ? "完成作答" : "下一題"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {activeQuiz && quizUiState === "result" && quizResult ? (
+                      <div className="mb-4 space-y-5">
+                        <div className="inline-flex max-w-[80%] items-start gap-2.5 rounded-[22px] border border-indigo-100 bg-[#EEF2FF] px-5 py-4 shadow-sm">
+                          <span className="mt-0.5 text-lg">⚡</span>
+                          <div>
+                            <div className="text-base font-black text-indigo-900">{quizResult.title || activeQuiz.title}</div>
+                            <div className="mt-1.5 text-[16px] font-black leading-7 text-indigo-900">測驗已結束。以下是你的結算報告。</div>
+                          </div>
+                        </div>
+                        <div className="rounded-[22px] border border-slate-200 bg-white p-4 text-slate-900 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
+                          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                            <div>
+                              <div className="text-sm font-black text-slate-500">測驗結果結算</div>
+                              <div className="mt-1 line-clamp-1 text-lg font-black text-slate-900">{quizResult.title}</div>
+                            </div>
+                            <div className="flex items-end gap-1 text-indigo-600">
+                              <div className="text-5xl font-black leading-none">{quizResult.score}</div>
+                              <div className="mb-1 text-base font-black">分</div>
+                            </div>
+                          </div>
+                          <div className="mt-4 flex items-center gap-4">
+                            <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-4xl font-black text-indigo-600 ring-1 ring-indigo-100">
+                              {quizResult.grade}
+                              <span className="absolute -bottom-2 right-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-slate-600 shadow-sm ring-1 ring-slate-100">等級</span>
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xl font-black leading-tight text-slate-900">{quizResult.grade === "A" ? "表現出色" : quizResult.grade === "B" ? "掌握不錯" : quizResult.grade === "C" ? "持續前進" : "打穩基礎"}</div>
+                              <div className="mt-1.5 text-sm font-semibold leading-6 text-slate-500">{quizResult.message}</div>
+                            </div>
+                          </div>
+                          <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4">
+                            <button type="button" onClick={() => { if (typeof window !== "undefined") { window.dispatchEvent(new CustomEvent("quiz-pending-changed", { detail: { botId: botConfig.id, hasPendingQuiz: true } })); } void retryQuiz(); }} disabled={quizSubmitting} className="rounded-full border border-slate-200 bg-white px-5 py-2 text-sm font-black text-slate-600 transition hover:bg-slate-50 disabled:opacity-60">再測一次</button>
+                            <button type="button" onClick={() => { setQuizUiState("hidden"); if (typeof window !== "undefined") { window.dispatchEvent(new CustomEvent("quiz-pending-changed", { detail: { botId: botConfig.id, hasPendingQuiz: false } })); } }} className="rounded-full bg-indigo-600 px-5 py-2 text-sm font-black text-white transition hover:bg-indigo-700">完成結算</button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
 
                 {/* thinking bubble */}
                 {botState === "thinking" && !voiceLimitMessage && (
@@ -3471,11 +3801,12 @@ const unlockAudioAndMic = async () => {
                 )}
                 <div className="mb-2 flex items-center">
                   <div className="relative" data-model-menu-root="publish-chat">
-                    <button
-                      type="button"
-                      onClick={() => setShowModelMenu((prev) => !prev)}
-                      className="flex items-center gap-2 rounded-full border border-[#e1d4bf] bg-white/92 px-3 py-1.5 text-xs font-medium text-[#4b3f31] shadow-sm transition hover:bg-[#fffaf1]"
-                    >
+                  <button
+                    type="button"
+                    onClick={() => setShowModelMenu((prev) => !prev)}
+                    disabled={shouldDisableRegularChat}
+                    className="flex items-center gap-2 rounded-full border border-[#e1d4bf] bg-white/92 px-3 py-1.5 text-xs font-medium text-[#4b3f31] shadow-sm transition hover:bg-[#fffaf1] disabled:cursor-not-allowed disabled:opacity-45"
+                  >
                       <span>{modelProvider === "deepseek" ? "DeepSeek" : "Gemini"}</span>
                       <ChevronDown size={14} className={`transition-transform ${showModelMenu ? "rotate-180" : ""}`} />
                     </button>
@@ -3544,7 +3875,7 @@ const unlockAudioAndMic = async () => {
                       <button
                         type="button"
                         onClick={() => chatImageInputRef.current?.click()}
-                        disabled={shouldBlockChat || chatImages.length >= 4}
+                        disabled={shouldDisableRegularChat || chatImages.length >= 4}
                         className="mr-2 flex h-10 w-10 items-center justify-center rounded-full border border-[#e1d4bf] bg-white text-lg leading-none text-[#6f604c] hover:bg-[#fffaf1] disabled:opacity-40"
                         title="上傳圖片"
                       >
@@ -3554,7 +3885,7 @@ const unlockAudioAndMic = async () => {
                   ) : null}
                   <button
                     onClick={startSpeechInput}
-                    disabled={shouldBlockChat}
+                    disabled={shouldDisableRegularChat}
                     className={`p-3 mr-2 rounded-full border ${
                       isListening
                         ? "bg-red-50 border-red-300 text-red-600"
@@ -3568,7 +3899,7 @@ const unlockAudioAndMic = async () => {
                     ref={inputRef}
                     className={`flex-1 min-w-0 rounded-xl bg-transparent px-3 py-2 text-sm outline-none resize-none max-h-32 overflow-y-hidden leading-6 ${
                       isChatDragActive ? "bg-[#f6ead7] ring-2 ring-[#e7cda8]" : ""
-                    }`}
+                    } disabled:text-slate-400 disabled:placeholder:text-slate-300`}
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={(e) => {
@@ -3577,7 +3908,7 @@ const unlockAudioAndMic = async () => {
                         void sendMessage(undefined, undefined, "direct");
                       }
                     }}
-                    disabled={shouldBlockChat}
+                    disabled={shouldDisableRegularChat}
                     placeholder="輸入訊息，或按麥克風說話..."
                     rows={1}
                     style={{ height: "40px" }}
@@ -3600,7 +3931,7 @@ const unlockAudioAndMic = async () => {
                   />
                   <button
                     onClick={stopAllSpeech}
-                    disabled={!isStopAvailable}
+                    disabled={!isStopAvailable || shouldDisableRegularChat}
                     className="p-3 mr-2 text-[#6f604c] bg-white rounded-full hover:bg-[#fffaf1] disabled:opacity-40 disabled:cursor-not-allowed"
                     title="停止回覆與語音"
                   >
@@ -3610,7 +3941,7 @@ const unlockAudioAndMic = async () => {
                     onClick={() => {
                       void sendMessage(undefined, undefined, "direct");
                     }}
-                    disabled={shouldBlockChat || (!inputText.trim() && chatImages.length === 0)}
+                    disabled={shouldDisableRegularChat || (!inputText.trim() && chatImages.length === 0)}
                     className="p-3 bg-[#2e2418] text-white rounded-full hover:bg-[#463727] disabled:opacity-40"
                   >
                     <Send size={16} />

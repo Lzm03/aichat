@@ -1,5 +1,4 @@
 import React from "react";
-import { IosToggle } from "../shared/IosToggle";
 import type { AiBot } from "../../types";
 
 interface BotCardProps {
@@ -21,7 +20,7 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onEdit }) => {
       className="bg-white p-6 rounded-3xl shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] transition-all duration-300 flex h-full min-h-[260px] flex-col group cursor-pointer hover:-translate-y-1 hover:shadow-xl"
       onClick={onEdit}
     >
-      {/* 顶部：头像 + 可见开关 */}
+      {/* 顶部：头像 + 测试题角标 */}
       <div className="flex items-start justify-between">
         <img
           src={bot.avatarUrl || undefined}
@@ -29,9 +28,12 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onEdit }) => {
           className="w-16 h-16 rounded-full object-cover border-4 border-white shadow-sm"
         />
 
-        {/* ⭐ 阻止冒泡，不进入编辑模式 */}
-        <div onClick={(e) => e.stopPropagation()}>
-          <IosToggle initialValue={bot.isVisible} label="公開可見" botId={bot.id} />
+        <div className="flex flex-col items-end gap-2">
+          {bot.hasPendingQuiz ? (
+            <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-600 shadow-sm">
+              測試題
+            </span>
+          ) : null}
         </div>
       </div>
 

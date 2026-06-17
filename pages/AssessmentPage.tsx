@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Icons } from '../components/icons';
 import { Edit3, FileText, Users, CheckCircle2, Clock, PenTool, AlertCircle, ArrowRight, ShieldAlert } from 'lucide-react';
@@ -6,11 +6,7 @@ import { AssessmentWizard } from '../components/assessment/AssessmentWizard';
 import { AssessmentLibrary } from '../components/assessment/AssessmentLibrary';
 import { GradingWorkspaceHome } from '../components/assessment/GradingWorkspaceHome';
 import { AiAlertPlayground } from '../components/assessment/AiAlertPlayground';
-
-const mockDrafts = [
-  { id: 1, title: '中三古文練習', date: '2023-10-25', subject: '中文' },
-  { id: 2, title: '物理力學單元測驗', date: '2023-10-24', subject: '物理' },
-];
+import { API_BASE } from '../utils/api';
 
 const mockPublished = [
   { id: 3, title: '常識科期中模擬考', status: '批改中', participants: 32, total: 35, subject: '常識' },
@@ -20,6 +16,26 @@ const mockPublished = [
 
 export const AssessmentPage: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'wizard' | 'library' | 'grading' | 'alerts'>('dashboard');
+  const [drafts, setDrafts] = useState<Array<{ id: string; title: string; date: string; questionCount: number }>>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+
+  useEffect(() => {
+    if (view !== 'dashboard') return;
+    setDraftsLoading(true);
+    fetch(`${API_BASE}/api/quizzes/drafts`)
+      .then((res) => res.json())
+      .then((data) => {
+        const items = Array.isArray(data?.drafts) ? data.drafts : [];
+        setDrafts(items.map((item: any) => ({
+          id: String(item.id),
+          title: String(item.title || '未命名測驗'),
+          date: item.updatedAt ? new Date(item.updatedAt).toISOString().slice(0, 10) : '',
+          questionCount: Number(item.questionCount || 0),
+        })));
+      })
+      .catch(() => setDrafts([]))
+      .finally(() => setDraftsLoading(false));
+  }, [view]);
 
   if (view === 'wizard') {
     return <AssessmentWizard onBack={() => setView('dashboard')} />;
@@ -132,12 +148,14 @@ export const AssessmentPage: React.FC = () => {
               草稿箱
             </h2>
             <span className="text-xs font-medium bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full">
-              {mockDrafts.length} 份
+              {drafts.length} 份
             </span>
           </div>
           
           <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
-            {mockDrafts.slice(0, 2).map(draft => (
+            {draftsLoading ? (
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm font-semibold text-slate-400">正在載入草稿...</div>
+            ) : drafts.length ? drafts.slice(0, 4).map(draft => (
               <div key={draft.id} className="group p-4 rounded-2xl border border-slate-100 hover:border-indigo-100 hover:bg-indigo-50/30 transition-all flex items-center justify-between cursor-pointer">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -147,12 +165,15 @@ export const AssessmentPage: React.FC = () => {
                     <span className="text-xs text-slate-400">{draft.date}</span>
                   </div>
                   <h3 className="font-semibold text-slate-700 group-hover:text-indigo-700 transition-colors">{draft.title}</h3>
+                  <p className="mt-1 text-xs text-slate-400">{draft.questionCount} 題</p>
                 </div>
                 <button className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-white group-hover:text-indigo-600 group-hover:shadow-sm transition-all">
                   <Edit3 className="w-4 h-4" />
                 </button>
               </div>
-            ))}
+            )) : (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm font-semibold text-slate-400">還沒有草稿</div>
+            )}
           </div>
         </div>
 

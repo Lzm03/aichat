@@ -1695,37 +1695,46 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     const contextualPrompt = buildContextualUserPrompt(normalizedPrompt, recentChatMessages);
     const active = actor.shared ? null : await getActiveTeachingSession(authUser.id, normalizedBotId);
     let activeConversation =
-      usageType === "chat_message" && !actor.shared
+      usageType === "chat_message"
         ? normalizedConversationId
           ? await getConversationForUser(normalizedConversationId, authUser.id)
-          : await createConversation({
-              userId: authUser.id,
-              botId: normalizedBotId || null,
-              title: "新的對話",
-              type: "bot_learning",
-            })
+          : null
         : null;
-    if (usageType === "chat_message" && !actor.shared && normalizedConversationId && !activeConversation) {
+    if (usageType === "chat_message" && normalizedConversationId && !activeConversation) {
       return res.status(404).json({ error: "找不到對話紀錄" });
     }
 
+    const ensureActiveConversation = async () => {
+      if (activeConversation || usageType !== "chat_message" || !normalizedPrompt) {
+        return activeConversation;
+      }
+      activeConversation = await createConversation({
+        userId: authUser.id,
+        botId: normalizedBotId || null,
+        title: "新的對話",
+        type: "bot_learning",
+      });
+      return activeConversation;
+    };
+
     const persistUserMessage = async () => {
-      if (!activeConversation || actor.shared || usageType !== "chat_message" || !normalizedPrompt) return;
+      const conversation = await ensureActiveConversation();
+      if (!conversation) return;
       await saveConversationMessage({
-        conversationId: activeConversation.id,
+        conversationId: conversation.id,
         userId: authUser.id,
         botId: normalizedBotId || null,
         role: "user",
         content: normalizedPrompt,
         messageType: "normal",
       });
-      await updateConversationPreview(activeConversation.id, authUser.id, normalizedPrompt);
-      const maybeRenamed = await updateConversationTitleFromFirstMessage(activeConversation.id, authUser.id);
+      await updateConversationPreview(conversation.id, authUser.id, normalizedPrompt);
+      const maybeRenamed = await updateConversationTitleFromFirstMessage(conversation.id, authUser.id);
       if (maybeRenamed) activeConversation = maybeRenamed;
     };
 
     const persistAssistantMessage = async (replyText: string) => {
-      if (!activeConversation || actor.shared || usageType !== "chat_message") return;
+      if (!activeConversation || usageType !== "chat_message") return;
       const safeReply = String(replyText || "").trim();
       if (!safeReply) return;
       await saveConversationMessage({
@@ -1741,6 +1750,9 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     };
 
     const respondTeaching = async (payload: Record<string, any>) => {
+      if (usageType === "chat_message" && normalizedPrompt) {
+        await persistUserMessage();
+      }
       if (usageType === "chat_message") {
         const replyText = String(payload?.reply || "").trim();
         const normalizedSource = String(source || (actor.shared ? "shared_bot" : "direct")).slice(0, 32);
@@ -1757,6 +1769,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
           userId: authUser.id,
           source: normalizedSource,
         });
+        await persistAssistantMessage(replyText);
       }
       return res.json({
         ...payload,

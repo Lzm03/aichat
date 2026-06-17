@@ -8,4 +8,8 @@ export interface AiBot {
   accuracy: number;
   isVisible: boolean;
   openingMessage?: string;
+  hasPublishedQuiz?: boolean;
+  hasPendingQuiz?: boolean;
+  activeQuizId?: string;
+  activeQuizTitle?: string;
 }

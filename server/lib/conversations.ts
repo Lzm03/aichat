@@ -145,6 +145,11 @@ export async function listConversationsForUser(input: {
     SELECT *
     FROM conversations
     WHERE ${clauses.join(" AND ")}
+      AND EXISTS (
+        SELECT 1
+        FROM conversation_messages
+        WHERE conversation_messages.conversation_id = conversations.id
+      )
     ORDER BY updated_at DESC
     LIMIT 100
     `,
