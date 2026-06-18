@@ -3,9 +3,11 @@ import { AssessmentStepper } from '../shared/AssessmentStepper';
 import { Icons } from '../icons';
 import { Step1TextAndGrade } from './steps/Step1TextAndGrade';
 import { Step3PreviewAndPublish } from './steps/Step3PreviewAndPublish';
+import { API_BASE } from '../../utils/api';
 
 interface AssessmentWizardProps {
   onBack: () => void;
+  draftId?: string | null;
 }
 
 type GeneratedQuestion = {
@@ -28,12 +30,39 @@ type GeneratedQuiz = {
   targetGrade: string;
   questionCount: number;
   questionTypeMode: string;
+  preferredQuestionTypes?: string[];
+  questionTypeDistribution?: Array<{ key: string; label?: string; count: number }>;
+  sourceText?: string;
 };
 
-export const AssessmentWizard: React.FC<AssessmentWizardProps> = ({ onBack }) => {
+export const AssessmentWizard: React.FC<AssessmentWizardProps> = ({ onBack, draftId = null }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [generatedQuiz, setGeneratedQuiz] = useState<GeneratedQuiz | null>(null);
   const [generatedQuestions, setGeneratedQuestions] = useState<GeneratedQuestion[]>([]);
+  const [loadingDraft, setLoadingDraft] = useState(Boolean(draftId));
+
+  React.useEffect(() => {
+    if (!draftId) return;
+    let active = true;
+    setLoadingDraft(true);
+    fetch(`${API_BASE}/api/quizzes/${draftId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!active) return;
+        if (data?.quiz) {
+          setGeneratedQuiz(data.quiz);
+          setGeneratedQuestions(Array.isArray(data.questions) ? data.questions : []);
+          setCurrentStep(2);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setLoadingDraft(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [draftId]);
 
   const handleNext = () => {
     if (currentStep < 2) setCurrentStep(prev => prev + 1);
@@ -58,7 +87,12 @@ export const AssessmentWizard: React.FC<AssessmentWizardProps> = ({ onBack }) =>
       <AssessmentStepper currentStep={currentStep} />
 
       <div className="mt-2 flex-1 flex flex-col">
-        {currentStep === 1 && (
+        {loadingDraft ? (
+          <div className="rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">
+            正在載入草稿內容...
+          </div>
+        ) : null}
+        {!loadingDraft && currentStep === 1 && (
           <Step1TextAndGrade
             onGenerated={(payload) => {
               setGeneratedQuiz(payload.quiz);
@@ -67,7 +101,7 @@ export const AssessmentWizard: React.FC<AssessmentWizardProps> = ({ onBack }) =>
             }}
           />
         )}
-        {currentStep === 2 && (
+        {!loadingDraft && currentStep === 2 && (
           <Step3PreviewAndPublish
             onPrev={handlePrev}
             onPublish={handlePublish}

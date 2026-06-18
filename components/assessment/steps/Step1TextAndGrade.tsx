@@ -31,6 +31,7 @@ type GeneratedQuizPayload = {
     targetGrade: string;
     questionCount: number;
     questionTypeMode: string;
+    sourceText?: string;
   };
   questions: GeneratedQuestion[];
 };
@@ -126,7 +127,6 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
       setErrorMessage('請選擇有效的題目數量。');
       return;
     }
-
     setErrorMessage('');
     setIsGenerating(true);
 
@@ -158,6 +158,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
           targetGrade: String(data?.quiz?.targetGrade || grade),
           questionCount: Number(data?.quiz?.questionCount || questionCount),
           questionTypeMode: String(data?.quiz?.questionTypeMode || 'ai_auto'),
+          sourceText: trimmedText,
         },
         questions: Array.isArray(data?.questions) ? data.questions : [],
       });
@@ -303,6 +304,9 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
               <span>1</span>
               <span>15</span>
             </div>
+            <div className="rounded-xl bg-slate-50 px-4 py-3 text-xs font-medium leading-6 text-slate-500">
+              這裡控制的是整份測驗的總題數。下一步後，AI 會根據目標年級與題目數量自動分配最適合的題型與內容。
+            </div>
           </div>
 
         </div>
@@ -324,7 +328,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
           {isGenerating ? (
             <>
               <LoaderCircle className="w-5 h-5 animate-spin" />
-              AI 正在生成題目...
+              正在生成題目...
             </>
           ) : (
             <>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Edit3, BarChart2, ChevronDown, Save, Rocket, ArrowLeft, PlusCircle, X, Search, Eye, LoaderCircle } from 'lucide-react';
 import { API_BASE } from '../../../utils/api';
@@ -27,6 +27,8 @@ interface Step3PreviewAndPublishProps {
     difficulty?: string;
   }>;
 }
+
+const QUESTION_TYPE_OPTIONS = ['多項選擇題', '填充題', '判斷題', '簡答題', '論述題'];
 
 const mockQuestions = [
   {
@@ -88,6 +90,19 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishError, setPublishError] = useState('');
   const [draftSaved, setDraftSaved] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [typeSelections, setTypeSelections] = useState<Record<string, string>>({});
+  const [rewritingQuestionId, setRewritingQuestionId] = useState<string | number | null>(null);
+  const [openTypePickerId, setOpenTypePickerId] = useState<string | number | null>(null);
+
+  useEffect(() => {
+    setTypeSelections(
+      questions.reduce<Record<string, string>>((acc, question) => {
+        acc[String(question.id)] = question.type;
+        return acc;
+      }, {})
+    );
+  }, [questions]);
 
   const mockHistoryAssessments = [
     {
@@ -149,10 +164,59 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
     }
   };
 
-  const handleSaveDraft = () => {
-    setDraftSaved(true);
+  const handleSaveDraft = async () => {
+    if (!initialQuiz?.id) return;
     setPublishError('');
-    window.setTimeout(() => setDraftSaved(false), 2200);
+    setIsSavingDraft(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/${initialQuiz.id}/draft`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(data?.error || '儲存草稿失敗，請稍後再試。'));
+      }
+      setDraftSaved(true);
+      window.setTimeout(() => setDraftSaved(false), 2200);
+    } catch (error) {
+      setPublishError(error instanceof Error ? error.message : '儲存草稿失敗，請稍後再試。');
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
+  const handleRewriteQuestionType = async (questionId: string | number) => {
+    if (!initialQuiz?.id) return;
+    const targetType = typeSelections[String(questionId)];
+    if (!targetType) return;
+    setPublishError('');
+    setRewritingQuestionId(questionId);
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/${initialQuiz.id}/questions/${questionId}/rewrite-type`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetType }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(data?.error || '修改題型失敗，請稍後再試。'));
+      }
+      const nextQuestion = data?.question
+        ? {
+            ...data.question,
+            options: Array.isArray(data.question.options) ? data.question.options : undefined,
+          }
+        : null;
+      setQuestions((prev) =>
+        prev.map((question: any) => (String(question.id) === String(questionId) && nextQuestion ? nextQuestion : question))
+      );
+    } catch (error) {
+      setPublishError(error instanceof Error ? error.message : '修改題型失敗，請稍後再試。');
+    } finally {
+      setRewritingQuestionId(null);
+    }
   };
 
   return (
@@ -187,9 +251,44 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
                   ✨ 來自歷史題庫
                 </div>
               )}
-              <div className="flex gap-2 mb-4">
+              <div className="flex flex-wrap items-center gap-2 mb-4">
                 <span className={`px-3 py-1 rounded-full text-xs font-bold ${q.levelColor}`}>{q.cognitiveLevel}</span>
                 <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">{q.type}</span>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setOpenTypePickerId((prev) => (prev === q.id ? null : q.id))}
+                    className="flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700 transition-colors hover:bg-indigo-100"
+                  >
+                    <span>{typeSelections[String(q.id)] || q.type}</span>
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${openTypePickerId === q.id ? 'rotate-180' : ''}`} />
+                  </button>
+                  {openTypePickerId === q.id ? (
+                    <div className="absolute left-0 top-full z-20 mt-2 min-w-[160px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
+                      {QUESTION_TYPE_OPTIONS.map((option) => {
+                        const active = (typeSelections[String(q.id)] || q.type) === option;
+                        return (
+                          <button
+                            key={option}
+                            type="button"
+                            onClick={() => {
+                              setTypeSelections((prev) => ({
+                                ...prev,
+                                [String(q.id)]: option,
+                              }));
+                              setOpenTypePickerId(null);
+                            }}
+                            className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-bold transition-colors ${
+                              active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            {option}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
               </div>
               
               <p className="text-slate-800 font-medium mb-4 text-lg leading-relaxed">
@@ -212,9 +311,13 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
               
               {/* 密度控制：Ghost 按鈕 */}
               <div className="flex items-center gap-2 pt-4 border-t border-slate-100">
-                <button className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors">
+                <button
+                  onClick={() => void handleRewriteQuestionType(q.id)}
+                  disabled={rewritingQuestionId === q.id}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                >
                   <Edit3 className="w-4 h-4" /> 
-                  修改此題
+                  {rewritingQuestionId === q.id ? '修改題型中...' : '修改題型'}
                 </button>
                 <button className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors">
                   <BarChart2 className="w-4 h-4" /> 
@@ -284,9 +387,9 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
               <Eye className="w-4 h-4" /> 
               預覽
             </button>
-            <button onClick={handleSaveDraft} className="flex items-center gap-2 px-6 py-3.5 rounded-full text-sm font-bold text-slate-700 bg-white/80 backdrop-blur-sm border border-slate-200 hover:bg-white transition-all shadow-sm active:scale-95">
-              <Save className="w-4 h-4" /> 
-              {draftSaved ? '已儲存草稿' : '儲存草稿'}
+            <button onClick={() => void handleSaveDraft()} disabled={isSavingDraft} className="flex items-center gap-2 px-6 py-3.5 rounded-full text-sm font-bold text-slate-700 bg-white/80 backdrop-blur-sm border border-slate-200 hover:bg-white transition-all shadow-sm active:scale-95 disabled:opacity-60">
+              <Save className="w-4 h-4" />
+              {isSavingDraft ? '儲存中...' : draftSaved ? '已儲存草稿' : '儲存草稿'}
             </button>
             <button 
               onClick={() => void handlePublishQuiz()}

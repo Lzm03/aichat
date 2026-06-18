@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Icons } from '../components/icons';
-import { Edit3, FileText, Users, CheckCircle2, Clock, PenTool, AlertCircle, ArrowRight, ShieldAlert } from 'lucide-react';
+import { Edit3, FileText, Users, CheckCircle2, Clock, PenTool, AlertCircle, ArrowRight, ShieldAlert, Trash2 } from 'lucide-react';
 import { AssessmentWizard } from '../components/assessment/AssessmentWizard';
 import { AssessmentLibrary } from '../components/assessment/AssessmentLibrary';
 import { GradingWorkspaceHome } from '../components/assessment/GradingWorkspaceHome';
@@ -18,6 +18,8 @@ export const AssessmentPage: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'wizard' | 'library' | 'grading' | 'alerts'>('dashboard');
   const [drafts, setDrafts] = useState<Array<{ id: string; title: string; date: string; questionCount: number }>>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
+  const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
+  const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
 
   useEffect(() => {
     if (view !== 'dashboard') return;
@@ -37,8 +39,26 @@ export const AssessmentPage: React.FC = () => {
       .finally(() => setDraftsLoading(false));
   }, [view]);
 
+  const handleDeleteDraft = async (draftId: string) => {
+    setDeletingDraftId(draftId);
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/${draftId}`, { method: 'DELETE' });
+      if (!response.ok) {
+        throw new Error('刪除草稿失敗');
+      }
+      setDrafts((prev) => prev.filter((draft) => draft.id !== draftId));
+      if (selectedDraftId === draftId) {
+        setSelectedDraftId(null);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setDeletingDraftId(null);
+    }
+  };
+
   if (view === 'wizard') {
-    return <AssessmentWizard onBack={() => setView('dashboard')} />;
+    return <AssessmentWizard onBack={() => { setSelectedDraftId(null); setView('dashboard'); }} draftId={selectedDraftId} />;
   }
 
   if (view === 'library') {
@@ -156,7 +176,14 @@ export const AssessmentPage: React.FC = () => {
             {draftsLoading ? (
               <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm font-semibold text-slate-400">正在載入草稿...</div>
             ) : drafts.length ? drafts.slice(0, 4).map(draft => (
-              <div key={draft.id} className="group p-4 rounded-2xl border border-slate-100 hover:border-indigo-100 hover:bg-indigo-50/30 transition-all flex items-center justify-between cursor-pointer">
+              <div
+                key={draft.id}
+                onClick={() => {
+                  setSelectedDraftId(draft.id);
+                  setView('wizard');
+                }}
+                className="group p-4 rounded-2xl border border-slate-100 hover:border-indigo-100 hover:bg-indigo-50/30 transition-all flex items-center justify-between cursor-pointer"
+              >
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-700">
@@ -167,9 +194,22 @@ export const AssessmentPage: React.FC = () => {
                   <h3 className="font-semibold text-slate-700 group-hover:text-indigo-700 transition-colors">{draft.title}</h3>
                   <p className="mt-1 text-xs text-slate-400">{draft.questionCount} 題</p>
                 </div>
-                <button className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-white group-hover:text-indigo-600 group-hover:shadow-sm transition-all">
-                  <Edit3 className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button type="button" className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-white group-hover:text-indigo-600 group-hover:shadow-sm transition-all">
+                    <Edit3 className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleDeleteDraft(draft.id);
+                    }}
+                    disabled={deletingDraftId === draft.id}
+                    className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-white hover:text-rose-600 hover:shadow-sm transition-all disabled:opacity-50"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             )) : (
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm font-semibold text-slate-400">還沒有草稿</div>

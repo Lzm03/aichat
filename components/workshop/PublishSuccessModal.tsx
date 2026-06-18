@@ -174,11 +174,13 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [activeQuizAttempt, setActiveQuizAttempt] = useState<ActiveQuizAttempt | null>(null);
   const [quizUiState, setQuizUiState] = useState<"hidden" | "banner" | "prompt" | "later" | "taking" | "result">("hidden");
   const [quizQuestion, setQuizQuestion] = useState<QuizPreviewQuestion | null>(null);
+  const [quizAllQuestions, setQuizAllQuestions] = useState<QuizPreviewQuestion[]>([]);
   const [quizPrefetchedQuestion, setQuizPrefetchedQuestion] = useState<QuizPreviewQuestion | null>(null);
   const [quizCurrentIndex, setQuizCurrentIndex] = useState(0);
   const [quizTotalQuestions, setQuizTotalQuestions] = useState(0);
   const [quizSelectedAnswer, setQuizSelectedAnswer] = useState("");
   const [quizTextAnswer, setQuizTextAnswer] = useState("");
+  const [quizAnswerMap, setQuizAnswerMap] = useState<Record<number, string>>({});
   const [quizLoading, setQuizLoading] = useState(false);
   const [quizSubmitting, setQuizSubmitting] = useState(false);
   const [quizResult, setQuizResult] = useState<Record<string, any> | null>(null);
@@ -2733,12 +2735,27 @@ const unlockAudioAndMic = async () => {
       })
       .then((data) => {
         if (cancelled) return;
+        if (data?.dismissed) {
+          setActiveQuiz(null);
+          setActiveQuizAttempt(null);
+          setQuizQuestion(null);
+          setQuizAllQuestions([]);
+          setQuizPrefetchedQuestion(null);
+          setQuizAnswerMap({});
+          setQuizSelectedAnswer("");
+          setQuizTextAnswer("");
+          setQuizResult(null);
+          setQuizUiState("hidden");
+          return;
+        }
         const quiz = data?.quiz || null;
         const attempt = data?.attempt || null;
         setActiveQuiz(quiz);
         setActiveQuizAttempt(attempt);
         setQuizQuestion(null);
+        setQuizAllQuestions(Array.isArray(data?.allQuestions) ? data.allQuestions : []);
         setQuizPrefetchedQuestion(data?.currentQuestion || null);
+        setQuizAnswerMap({});
         setQuizSelectedAnswer("");
         setQuizTextAnswer("");
         setQuizResult(attempt?.result || null);
@@ -2787,11 +2804,12 @@ const unlockAudioAndMic = async () => {
     if (!activeQuiz) return;
     setQuizSubmitting(true);
     if (quizPrefetchedQuestion) {
+      const prefetchedAnswer = quizAnswerMap[Number(activeQuizAttempt?.currentIndex || 0)] || "";
       setQuizQuestion(quizPrefetchedQuestion);
       setQuizCurrentIndex(Number(activeQuizAttempt?.currentIndex || 0));
       setQuizTotalQuestions(Number(activeQuiz.questionCount || 0));
-      setQuizSelectedAnswer("");
-      setQuizTextAnswer("");
+      setQuizSelectedAnswer((quizPrefetchedQuestion.options || []).length ? prefetchedAnswer : "");
+      setQuizTextAnswer((quizPrefetchedQuestion.options || []).length ? "" : prefetchedAnswer);
       setQuizUiState("taking");
     }
     try {
@@ -2801,11 +2819,14 @@ const unlockAudioAndMic = async () => {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "開始測驗失敗");
+      setQuizAllQuestions(Array.isArray(data?.allQuestions) ? data.allQuestions : []);
       setQuizQuestion(data?.currentQuestion || null);
       setQuizPrefetchedQuestion(data?.currentQuestion || null);
       setQuizCurrentIndex(Number(data?.attempt?.currentIndex || 0));
       setQuizTotalQuestions(Number(data?.totalQuestions || activeQuiz.questionCount || 0));
+      setQuizAnswerMap({});
       setQuizSelectedAnswer("");
+      setQuizTextAnswer("");
       setQuizUiState("taking");
     } catch (error) {
       showAlert({
@@ -2820,7 +2841,35 @@ const unlockAudioAndMic = async () => {
   const submitQuizAnswer = async () => {
     const answerToSubmit = quizQuestion?.options?.length ? quizSelectedAnswer : quizTextAnswer.trim();
     if (!activeQuiz || !quizQuestion || !answerToSubmit) return;
+    const previousQuestion = quizQuestion;
+    const previousSelectedAnswer = quizSelectedAnswer;
+    const previousTextAnswer = quizTextAnswer;
+    const isLastQuestion = quizCurrentIndex + 1 >= quizTotalQuestions;
     setQuizSubmitting(true);
+    setQuizAnswerMap((prev) => ({ ...prev, [quizCurrentIndex]: answerToSubmit }));
+    if (!isLastQuestion) {
+      const nextIndex = quizCurrentIndex + 1;
+      const nextQuestion = quizAllQuestions[nextIndex] || null;
+      const nextSavedAnswer = quizAnswerMap[nextIndex] || "";
+      setQuizCurrentIndex(nextIndex);
+      if (nextQuestion) {
+        setQuizQuestion(nextQuestion);
+        setQuizSelectedAnswer((nextQuestion.options || []).length ? nextSavedAnswer : "");
+        setQuizTextAnswer((nextQuestion.options || []).length ? "" : nextSavedAnswer);
+      } else {
+        setQuizSelectedAnswer("");
+        setQuizTextAnswer("");
+        setQuizQuestion({
+          id: `loading-${nextIndex}`,
+          type: "",
+          cognitiveLevel: "",
+          levelColor: "bg-slate-100 text-slate-500",
+          content: "正在載入下一題...",
+          options: [],
+          answer: "",
+        });
+      }
+    }
     try {
       const res = await fetch(`${API_BASE}/api/quizzes/${activeQuiz.id}/attempts/answer`, {
         method: "POST",
@@ -2840,12 +2889,16 @@ const unlockAudioAndMic = async () => {
         setQuizSelectedAnswer("");
       } else {
         setQuizQuestion(data?.nextQuestion || null);
-        setQuizCurrentIndex((prev) => prev + 1);
+        setQuizCurrentIndex(Number(data?.currentIndex ?? quizCurrentIndex + 1));
         setQuizTotalQuestions(Number(data?.totalQuestions || quizTotalQuestions));
         setQuizSelectedAnswer("");
         setQuizTextAnswer("");
       }
     } catch (error) {
+      setQuizQuestion(previousQuestion);
+      setQuizCurrentIndex((prev) => (isLastQuestion ? prev : Math.max(0, prev - 1)));
+      setQuizSelectedAnswer(previousSelectedAnswer);
+      setQuizTextAnswer(previousTextAnswer);
       showAlert({
         title: "提交失敗",
         message: error instanceof Error ? error.message : "提交答案失敗，請稍後再試。",
@@ -2853,6 +2906,18 @@ const unlockAudioAndMic = async () => {
     } finally {
       setQuizSubmitting(false);
     }
+  };
+
+  const goToPreviousQuizQuestion = () => {
+    if (quizCurrentIndex <= 0 || !quizAllQuestions.length) return;
+    const previousIndex = quizCurrentIndex - 1;
+    const previousQuestion = quizAllQuestions[previousIndex];
+    if (!previousQuestion) return;
+    const savedAnswer = quizAnswerMap[previousIndex] || "";
+    setQuizCurrentIndex(previousIndex);
+    setQuizQuestion(previousQuestion);
+    setQuizSelectedAnswer((previousQuestion.options || []).length ? savedAnswer : "");
+    setQuizTextAnswer((previousQuestion.options || []).length ? "" : savedAnswer);
   };
 
   const retryQuiz = async () => {
@@ -2869,6 +2934,50 @@ const unlockAudioAndMic = async () => {
       setQuizSubmitting(false);
     }
   };
+
+  const dismissQuizResult = async () => {
+    if (!activeQuiz) {
+      setQuizUiState("hidden");
+      return;
+    }
+    const quizId = activeQuiz.id;
+    setQuizUiState("hidden");
+    setQuizResult(null);
+    setActiveQuiz(null);
+    setActiveQuizAttempt(null);
+    setQuizQuestion(null);
+    setQuizAllQuestions([]);
+    setQuizPrefetchedQuestion(null);
+    setQuizAnswerMap({});
+    try {
+      await fetch(`${API_BASE}/api/quizzes/${quizId}/attempts/dismiss-result`, {
+        method: "POST",
+        headers: requestHeaders,
+      });
+    } catch {
+      // Ignore dismissal errors and still return the UI to chat mode.
+    }
+  };
+
+  const fillSegments = React.useMemo(() => {
+    if (!quizQuestion || quizQuestion.options?.length || quizQuestion.type !== "填充題") return null;
+    const matches = Array.from(String(quizQuestion.content || "").matchAll(/_{2,}|＿{2,}/g));
+    if (!matches.length) return null;
+    const rawAnswers = quizTextAnswer.split("|");
+    let lastIndex = 0;
+    return matches.map((match, index) => {
+      const start = match.index || 0;
+      const before = quizQuestion.content.slice(lastIndex, start);
+      lastIndex = start + match[0].length;
+      return {
+        before,
+        value: rawAnswers[index] || "",
+        index,
+        isLast: index === matches.length - 1,
+        after: index === matches.length - 1 ? quizQuestion.content.slice(lastIndex) : "",
+      };
+    });
+  }, [quizQuestion, quizTextAnswer]);
 
   const isQuizTaking = quizUiState === "taking" && Boolean(activeQuiz && quizQuestion);
   const shouldDisableRegularChat = shouldShowBooting || (shouldRequirePermission && !permissionReady) || isQuizTaking;
@@ -3665,6 +3774,24 @@ const unlockAudioAndMic = async () => {
                                 </button>
                               );
                             })
+                          ) : fillSegments ? (
+                            <div className="rounded-[18px] border border-slate-200 bg-[#fcfdff] px-5 py-4 text-[15px] font-black leading-10 text-slate-800">
+                              {fillSegments.map((segment) => (
+                                <React.Fragment key={segment.index}>
+                                  <span>{segment.before}</span>
+                                  <input
+                                    value={segment.value}
+                                    onChange={(event) => {
+                                      const raw = quizTextAnswer.split("|");
+                                      raw[segment.index] = event.target.value;
+                                      setQuizTextAnswer(raw.join("|"));
+                                    }}
+                                    className="mx-2 inline-block min-w-[96px] border-0 border-b-4 border-indigo-500 bg-indigo-50 px-2 py-1 text-center text-base font-black text-indigo-700 outline-none"
+                                  />
+                                  {segment.isLast ? <span>{segment.after}</span> : null}
+                                </React.Fragment>
+                              ))}
+                            </div>
                           ) : (
                             <textarea
                               value={quizTextAnswer}
@@ -3675,9 +3802,11 @@ const unlockAudioAndMic = async () => {
                           )}
                         </div>
                         <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
-                          <button type="button" disabled className="rounded-full px-5 py-2 text-sm font-black text-slate-300">上一題</button>
+                          <button type="button" onClick={goToPreviousQuizQuestion} disabled={quizCurrentIndex === 0 || quizSubmitting} className="rounded-full px-5 py-2 text-sm font-black text-slate-500 transition hover:bg-slate-50 disabled:text-slate-300">
+                            上一題
+                          </button>
                           <button type="button" onClick={() => void submitQuizAnswer()} disabled={(!(quizQuestion.options || []).length ? !quizTextAnswer.trim() : !quizSelectedAnswer) || quizSubmitting} className="rounded-full bg-indigo-600 px-7 py-2.5 text-sm font-black text-white shadow-[0_8px_20px_rgba(79,70,229,0.20)] transition hover:bg-indigo-700 disabled:opacity-50">
-                            {quizSubmitting && quizCurrentIndex + 1 >= quizTotalQuestions ? "Gemini 計分中..." : quizCurrentIndex + 1 >= quizTotalQuestions ? "完成作答" : "下一題"}
+                            {quizSubmitting && quizCurrentIndex + 1 >= quizTotalQuestions ? "計分中..." : quizCurrentIndex + 1 >= quizTotalQuestions ? "完成作答" : "下一題"}
                           </button>
                         </div>
                       </div>
@@ -3715,7 +3844,7 @@ const unlockAudioAndMic = async () => {
                           </div>
                           <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4">
                             <button type="button" onClick={() => { if (typeof window !== "undefined") { window.dispatchEvent(new CustomEvent("quiz-pending-changed", { detail: { botId: botConfig.id, hasPendingQuiz: true } })); } void retryQuiz(); }} disabled={quizSubmitting} className="rounded-full border border-slate-200 bg-white px-5 py-2 text-sm font-black text-slate-600 transition hover:bg-slate-50 disabled:opacity-60">再測一次</button>
-                            <button type="button" onClick={() => { setQuizUiState("hidden"); if (typeof window !== "undefined") { window.dispatchEvent(new CustomEvent("quiz-pending-changed", { detail: { botId: botConfig.id, hasPendingQuiz: false } })); } }} className="rounded-full bg-indigo-600 px-5 py-2 text-sm font-black text-white transition hover:bg-indigo-700">完成結算</button>
+                            <button type="button" onClick={() => { if (typeof window !== "undefined") { window.dispatchEvent(new CustomEvent("quiz-pending-changed", { detail: { botId: botConfig.id, hasPendingQuiz: false } })); } void dismissQuizResult(); }} className="rounded-full bg-indigo-600 px-5 py-2 text-sm font-black text-white transition hover:bg-indigo-700">完成結算</button>
                           </div>
                         </div>
                       </div>
