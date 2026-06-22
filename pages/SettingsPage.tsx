@@ -98,6 +98,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [accounts, setAccounts] = useState<ManagedAccount[]>([]);
   const [selectedUserId, setSelectedUserId] = useState("");
+  const [accountSearch, setAccountSearch] = useState("");
   const [featureDrafts, setFeatureDrafts] = useState<Record<string, { used: string; limit: string }>>({});
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
@@ -155,6 +156,23 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
     () => accounts.find((item) => item.user.id === selectedUserId) || null,
     [accounts, selectedUserId]
   );
+
+  const filteredAccounts = useMemo(() => {
+    const keyword = accountSearch.trim().toLowerCase();
+    if (!keyword) return accounts;
+    return accounts.filter((account) => {
+      const fullName = String(account.user.fullName || "").toLowerCase();
+      const email = String(account.user.email || "").toLowerCase();
+      return fullName.includes(keyword) || email.includes(keyword);
+    });
+  }, [accounts, accountSearch]);
+
+  useEffect(() => {
+    if (!accountSearch.trim()) return;
+    if (!filteredAccounts.length) return;
+    if (filteredAccounts.some((account) => account.user.id === selectedUserId)) return;
+    setSelectedUserId(filteredAccounts[0].user.id);
+  }, [accountSearch, filteredAccounts, selectedUserId]);
 
   useEffect(() => {
     if (!selectedAccount) {
@@ -904,17 +922,31 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                     </div>
                   </div>
 
-                  <select
-                    value={selectedUserId}
-                    onChange={(event) => setSelectedUserId(event.target.value)}
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
-                  >
-                    {accounts.map((account) => (
-                      <option key={account.user.id} value={account.user.id}>
-                        {account.user.fullName} ({account.user.email})
-                      </option>
-                    ))}
-                  </select>
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={accountSearch}
+                      onChange={(event) => setAccountSearch(event.target.value)}
+                      placeholder="搜尋姓名或 email"
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                    />
+                    <select
+                      value={selectedUserId}
+                      onChange={(event) => setSelectedUserId(event.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+                    >
+                      {filteredAccounts.map((account) => (
+                        <option key={account.user.id} value={account.user.id}>
+                          {account.user.fullName} ({account.user.email})
+                        </option>
+                      ))}
+                    </select>
+                    {filteredAccounts.length === 0 && (
+                      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-xs text-slate-500">
+                        找不到符合條件的帳戶，試試輸入完整或部分 email。
+                      </div>
+                    )}
+                  </div>
 
                   {selectedAccount ? (
                     <div className="space-y-3">
