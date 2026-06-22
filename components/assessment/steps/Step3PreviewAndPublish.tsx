@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Edit3, BarChart2, ChevronDown, Save, Rocket, ArrowLeft, PlusCircle, X, Search, Eye, LoaderCircle } from 'lucide-react';
+import { Sparkles, Edit3, BarChart2, ChevronDown, Save, Rocket, ArrowLeft, PlusCircle, X, Search, Eye, LoaderCircle, FolderPlus, CheckCircle2 } from 'lucide-react';
 import { API_BASE } from '../../../utils/api';
 
 interface Step3PreviewAndPublishProps {
@@ -29,6 +29,14 @@ interface Step3PreviewAndPublishProps {
 }
 
 const QUESTION_TYPE_OPTIONS = ['多項選擇題', '填充題', '判斷題', '簡答題', '論述題'];
+
+type QuestionBankSummary = {
+  id: string;
+  title: string;
+  questionCount: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
 
 const mockQuestions = [
   {
@@ -94,6 +102,19 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
   const [typeSelections, setTypeSelections] = useState<Record<string, string>>({});
   const [rewritingQuestionId, setRewritingQuestionId] = useState<string | number | null>(null);
   const [openTypePickerId, setOpenTypePickerId] = useState<string | number | null>(null);
+  const [editingQuestionId, setEditingQuestionId] = useState<string | number | null>(null);
+  const [typeEditingQuestionId, setTypeEditingQuestionId] = useState<string | number | null>(null);
+  const [questionDrafts, setQuestionDrafts] = useState<Record<string, { content: string; options: string[]; answer: string }>>({});
+  const [savingQuestionId, setSavingQuestionId] = useState<string | number | null>(null);
+  const [isBankModalOpen, setIsBankModalOpen] = useState(false);
+  const [bankModalStep, setBankModalStep] = useState<'list' | 'create'>('list');
+  const [questionBanks, setQuestionBanks] = useState<QuestionBankSummary[]>([]);
+  const [loadingQuestionBanks, setLoadingQuestionBanks] = useState(false);
+  const [activeBankQuestionId, setActiveBankQuestionId] = useState<string | number | null>(null);
+  const [creatingBank, setCreatingBank] = useState(false);
+  const [savingBankQuestionId, setSavingBankQuestionId] = useState<string | number | null>(null);
+  const [newBankTitle, setNewBankTitle] = useState('');
+  const [bankSuccessMessage, setBankSuccessMessage] = useState('');
 
   useEffect(() => {
     setTypeSelections(
@@ -219,6 +240,187 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
     }
   };
 
+  const handleStartTypeEditing = (question: any, options?: { openPicker?: boolean }) => {
+    setTypeEditingQuestionId(question.id);
+    setTypeSelections((prev) => ({
+      ...prev,
+      [String(question.id)]: prev[String(question.id)] || question.type,
+    }));
+    setEditingQuestionId(null);
+    setOpenTypePickerId(options?.openPicker ? question.id : null);
+  };
+
+  const handleStartEditing = (question: any) => {
+    setEditingQuestionId(question.id);
+    setQuestionDrafts((prev) => ({
+      ...prev,
+      [String(question.id)]: {
+        content: question.content || "",
+        options: Array.isArray(question.options) ? question.options : [],
+        answer: question.answer || "",
+      },
+    }));
+    setTypeEditingQuestionId(null);
+    setOpenTypePickerId(null);
+  };
+
+  const handleCancelEditing = (question: any) => {
+    setEditingQuestionId(null);
+    setTypeSelections((prev) => ({
+      ...prev,
+      [String(question.id)]: question.type,
+    }));
+  };
+
+  const handleCancelTypeEditing = (question: any) => {
+    setTypeEditingQuestionId(null);
+    setOpenTypePickerId(null);
+    setTypeSelections((prev) => ({
+      ...prev,
+      [String(question.id)]: question.type,
+    }));
+  };
+
+  const handleSaveQuestion = async (question: any) => {
+    if (!initialQuiz?.id) return;
+    const draft = questionDrafts[String(question.id)];
+    if (!draft) return;
+
+    setPublishError('');
+    setSavingQuestionId(question.id);
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/${initialQuiz.id}/questions/${question.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: draft.content,
+          options: draft.options,
+          answer: draft.answer,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(data?.error || '修改題目失敗，請稍後再試。'));
+      }
+
+      const nextQuestion = data?.question
+        ? {
+            ...data.question,
+            options: Array.isArray(data.question.options) ? data.question.options : undefined,
+          }
+        : null;
+      setQuestions((prev) =>
+        prev.map((item: any) => (String(item.id) === String(question.id) && nextQuestion ? nextQuestion : item))
+      );
+      setEditingQuestionId(null);
+    } catch (error) {
+      setPublishError(error instanceof Error ? error.message : '修改題目失敗，請稍後再試。');
+    } finally {
+      setSavingQuestionId(null);
+    }
+  };
+
+  const handleConfirmEditing = async (question: any) => {
+    await handleRewriteQuestionType(question.id);
+    setTypeEditingQuestionId(null);
+    setOpenTypePickerId(null);
+  };
+
+  const loadQuestionBanks = async () => {
+    setLoadingQuestionBanks(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/question-banks`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(data?.error || '載入題庫失敗，請稍後再試。'));
+      }
+      setQuestionBanks(Array.isArray(data?.banks) ? data.banks : []);
+    } catch (error) {
+      setPublishError(error instanceof Error ? error.message : '載入題庫失敗，請稍後再試。');
+    } finally {
+      setLoadingQuestionBanks(false);
+    }
+  };
+
+  const openBankModal = (questionId: string | number) => {
+    if (isBankModalOpen && String(activeBankQuestionId) === String(questionId)) {
+      setIsBankModalOpen(false);
+      setBankModalStep('list');
+      setNewBankTitle('');
+      setBankSuccessMessage('');
+      return;
+    }
+    setActiveBankQuestionId(questionId);
+    setIsBankModalOpen(true);
+    setBankModalStep('list');
+    setNewBankTitle('');
+    setBankSuccessMessage('');
+    void loadQuestionBanks();
+  };
+
+  const handleAttachQuestionToBank = async (bankId: string, questionId: string | number) => {
+    if (!initialQuiz?.id) return;
+    setPublishError('');
+    setBankSuccessMessage('');
+    setSavingBankQuestionId(questionId);
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/question-banks/${bankId}/questions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quizId: initialQuiz.id,
+          questionId,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(data?.error || '加入題庫失敗，請稍後再試。'));
+      }
+      setBankSuccessMessage(data?.duplicated ? '這道題已經在該題庫中了。' : '題目已加入題庫。');
+      await loadQuestionBanks();
+      window.setTimeout(() => {
+        setIsBankModalOpen(false);
+        setBankSuccessMessage('');
+      }, 900);
+    } catch (error) {
+      setPublishError(error instanceof Error ? error.message : '加入題庫失敗，請稍後再試。');
+    } finally {
+      setSavingBankQuestionId(null);
+    }
+  };
+
+  const handleCreateBankAndAttach = async () => {
+    if (!activeBankQuestionId) return;
+    const title = newBankTitle.trim();
+    if (!title) {
+      setPublishError('請先輸入題庫名稱。');
+      return;
+    }
+    setPublishError('');
+    setCreatingBank(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/question-banks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(data?.error || '建立題庫失敗，請稍後再試。'));
+      }
+      const createdBankId = String(data?.bank?.id || '');
+      if (!createdBankId) {
+        throw new Error('建立題庫失敗，請稍後再試。');
+      }
+      setQuestionBanks((prev) => [data.bank, ...prev]);
+      await handleAttachQuestionToBank(createdBankId, activeBankQuestionId);
+    } catch (error) {
+      setPublishError(error instanceof Error ? error.message : '建立題庫失敗，請稍後再試。');
+    } finally {
+      setCreatingBank(false);
+    }
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 10 }}
@@ -244,83 +446,293 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
               animate={{ opacity: 1, height: 'auto', marginBottom: 16 }}
               exit={{ opacity: 0, height: 0, marginBottom: 0 }}
               transition={{ duration: 0.3, delay: index * 0.05 }}
-              className="bg-white rounded-[24px] p-6 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] border border-slate-100 overflow-hidden relative"
+              className="bg-white rounded-[24px] p-6 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] border border-slate-100 overflow-visible relative"
             >
               {q.isFromHistory && (
                 <div className="absolute top-0 right-0 bg-emerald-50 text-emerald-600 text-xs font-bold px-3 py-1 rounded-bl-xl border-b border-l border-emerald-100">
                   ✨ 來自歷史題庫
                 </div>
               )}
-              <div className="flex flex-wrap items-center gap-2 mb-4">
-                <span className={`px-3 py-1 rounded-full text-xs font-bold ${q.levelColor}`}>{q.cognitiveLevel}</span>
-                <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">{q.type}</span>
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${q.levelColor}`}>{q.cognitiveLevel}</span>
+                  {typeEditingQuestionId === q.id ? (
+                    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5">
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setOpenTypePickerId((prev) => (prev === q.id ? null : q.id))}
+                          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
+                        >
+                          <span>{typeSelections[String(q.id)] || q.type}</span>
+                          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${openTypePickerId === q.id ? 'rotate-180' : ''}`} />
+                        </button>
+                        {openTypePickerId === q.id ? (
+                          <div className="absolute left-0 top-full z-20 mt-1.5 min-w-[160px] rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
+                            {QUESTION_TYPE_OPTIONS.map((option) => {
+                              const active = (typeSelections[String(q.id)] || q.type) === option;
+                              return (
+                                <button
+                                  key={option}
+                                  type="button"
+                                  onClick={() => {
+                                    setTypeSelections((prev) => ({
+                                      ...prev,
+                                      [String(q.id)]: option,
+                                    }));
+                                    setOpenTypePickerId(null);
+                                  }}
+                                  className={`flex w-full items-center rounded-lg px-2.5 py-1.5 text-left text-xs font-bold transition-colors ${
+                                    active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  {option}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleConfirmEditing(q)}
+                        disabled={rewritingQuestionId === q.id}
+                        className="rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+                      >
+                        {rewritingQuestionId === q.id ? '修改中...' : '確定更改'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCancelTypeEditing(q)}
+                        className="rounded-lg bg-slate-200 px-3.5 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-300"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleStartTypeEditing(q, { openPicker: true })}
+                      className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 transition hover:bg-slate-200"
+                    >
+                      {q.type}
+                      <ChevronDown className="h-3 w-3 opacity-70" />
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleStartEditing(q)}
+                  className="shrink-0 flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  編輯題目
+                </button>
+              </div>
+              {editingQuestionId === q.id ? (
+                <div className="space-y-4 mb-6">
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">題目內容</label>
+                    <textarea
+                      value={questionDrafts[String(q.id)]?.content || ''}
+                      onChange={(e) =>
+                        setQuestionDrafts((prev) => ({
+                          ...prev,
+                          [String(q.id)]: {
+                            content: e.target.value,
+                            options: prev[String(q.id)]?.options || [],
+                            answer: prev[String(q.id)]?.answer || '',
+                          },
+                        }))
+                      }
+                      rows={3}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-800 outline-none transition focus:border-indigo-400 focus:bg-white"
+                    />
+                  </div>
+
+                  {Array.isArray(questionDrafts[String(q.id)]?.options) && questionDrafts[String(q.id)]!.options.length > 0 ? (
+                    <div className="space-y-2">
+                      <label className="block text-sm font-bold text-slate-700">選項內容</label>
+                      {questionDrafts[String(q.id)]!.options.map((opt, optionIndex) => (
+                        <input
+                          key={`${q.id}-option-${optionIndex}`}
+                          type="text"
+                          value={opt}
+                          onChange={(e) =>
+                            setQuestionDrafts((prev) => ({
+                              ...prev,
+                              [String(q.id)]: {
+                                content: prev[String(q.id)]?.content || '',
+                                options: (prev[String(q.id)]?.options || []).map((item, idx) =>
+                                  idx === optionIndex ? e.target.value : item
+                                ),
+                                answer: prev[String(q.id)]?.answer || '',
+                              },
+                            }))
+                          }
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-indigo-400 focus:bg-white"
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">參考答案</label>
+                    <textarea
+                      value={questionDrafts[String(q.id)]?.answer || ''}
+                      onChange={(e) =>
+                        setQuestionDrafts((prev) => ({
+                          ...prev,
+                          [String(q.id)]: {
+                            content: prev[String(q.id)]?.content || '',
+                            options: prev[String(q.id)]?.options || [],
+                            answer: e.target.value,
+                          },
+                        }))
+                      }
+                      rows={2}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-indigo-400 focus:bg-white"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleCancelEditing(q)}
+                      className="rounded-xl bg-slate-200 px-5 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-300"
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveQuestion(q)}
+                      disabled={savingQuestionId === q.id}
+                      className="rounded-xl bg-indigo-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+                    >
+                      {savingQuestionId === q.id ? '保存中...' : '保存修改'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="text-slate-800 font-medium mb-4 text-lg leading-relaxed">
+                    <span className="text-slate-400 mr-2">{q.id}.</span>
+                    {q.content}
+                  </p>
+
+                  {q.options && (
+                    <div className="space-y-2 mb-6 ml-6">
+                      {q.options.map(opt => (
+                        <div key={opt} className="px-4 py-2.5 bg-slate-50 rounded-xl text-sm text-slate-700 border border-slate-100">{opt}</div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="bg-slate-50 p-4 rounded-xl text-sm text-slate-600 mb-6 border border-slate-100">
+                    <span className="font-bold text-slate-700 mr-2">參考答案：</span>
+                    {q.answer}
+                  </div>
+                </>
+              )}
+              
+              <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                 <div className="relative">
                   <button
                     type="button"
-                    onClick={() => setOpenTypePickerId((prev) => (prev === q.id ? null : q.id))}
-                    className="flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700 transition-colors hover:bg-indigo-100"
+                    onClick={() => openBankModal(q.id)}
+                    className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-indigo-600"
                   >
-                    <span>{typeSelections[String(q.id)] || q.type}</span>
-                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${openTypePickerId === q.id ? 'rotate-180' : ''}`} />
+                    <FolderPlus className="w-4 h-4" />
+                    添加到題庫
+                    <ChevronDown className={`h-4 w-4 transition-transform ${isBankModalOpen && activeBankQuestionId === q.id ? 'rotate-180' : ''}`} />
                   </button>
-                  {openTypePickerId === q.id ? (
-                    <div className="absolute left-0 top-full z-20 mt-2 min-w-[160px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
-                      {QUESTION_TYPE_OPTIONS.map((option) => {
-                        const active = (typeSelections[String(q.id)] || q.type) === option;
-                        return (
-                          <button
-                            key={option}
-                            type="button"
-                            onClick={() => {
-                              setTypeSelections((prev) => ({
-                                ...prev,
-                                [String(q.id)]: option,
-                              }));
-                              setOpenTypePickerId(null);
-                            }}
-                            className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-bold transition-colors ${
-                              active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'
-                            }`}
-                          >
-                            {option}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
+
+                  <AnimatePresence>
+                    {isBankModalOpen && activeBankQuestionId === q.id ? (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                        className="absolute left-0 top-full z-30 mt-2.5 w-[200px] max-w-[calc(100vw-40px)]"
+                      >
+                        {bankModalStep === 'list' ? (
+                          <div className="rounded-[18px] border border-slate-200 bg-white p-3 shadow-[0_16px_30px_rgba(15,23,42,0.12)]">
+                            <button
+                              type="button"
+                              onClick={() => setBankModalStep('create')}
+                              className="flex items-center gap-2 text-[12px] font-bold text-indigo-600 transition hover:text-indigo-700"
+                            >
+                              <PlusCircle className="h-4 w-4 shrink-0" />
+                              新建題庫
+                            </button>
+
+                            <div className="my-3 h-px bg-slate-100" />
+
+                            <div className="space-y-3">
+                              {loadingQuestionBanks ? (
+                                <div className="text-[11px] font-semibold text-slate-400">載入題庫中...</div>
+                              ) : questionBanks.length ? (
+                                questionBanks.map((bank) => (
+                                  <button
+                                    key={bank.id}
+                                    type="button"
+                                    onClick={() => activeBankQuestionId && void handleAttachQuestionToBank(bank.id, activeBankQuestionId)}
+                                    disabled={savingBankQuestionId === activeBankQuestionId}
+                                    className="flex w-full items-center justify-between gap-2 text-left text-[11px] font-bold text-slate-700 transition hover:text-indigo-600 disabled:opacity-60"
+                                  >
+                                    <span className="truncate">{bank.title}</span>
+                                    <span className="shrink-0 text-[11px] font-semibold text-slate-400">{bank.questionCount} 題</span>
+                                  </button>
+                                ))
+                              ) : (
+                                <div className="rounded-2xl bg-slate-50 px-3 py-4 text-[11px] font-medium leading-5 text-slate-400">
+                                  目前還沒有題庫，先建立第一個題庫吧。
+                                </div>
+                              )}
+                            </div>
+
+                            {bankSuccessMessage ? (
+                              <div className="mt-3 flex items-center gap-2 rounded-2xl bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-700">
+                                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                                {bankSuccessMessage}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div className="rounded-[18px] border border-slate-200 bg-white p-3 shadow-[0_16px_30px_rgba(15,23,42,0.12)]">
+                            <input
+                              type="text"
+                              value={newBankTitle}
+                              onChange={(e) => setNewBankTitle(e.target.value)}
+                              placeholder="輸入新題庫名稱..."
+                              className="w-full rounded-[16px] border-[3px] border-indigo-500 px-3.5 py-3 text-[12px] font-bold text-slate-700 outline-none placeholder:text-slate-300"
+                            />
+
+                            <div className="mt-3 flex gap-2.5">
+                              <button
+                                type="button"
+                                onClick={() => void handleCreateBankAndAttach()}
+                                disabled={creatingBank}
+                                className="flex-1 rounded-[14px] bg-indigo-400 px-3 py-2.5 text-[12px] font-bold text-white transition hover:bg-indigo-500 disabled:opacity-60"
+                              >
+                                {creatingBank ? '確認中...' : '確認'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setBankModalStep('list')}
+                                className="flex-1 rounded-[14px] bg-slate-100 px-3 py-2.5 text-[12px] font-bold text-slate-600 transition hover:bg-slate-200"
+                              >
+                                返回
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
                 </div>
-              </div>
-              
-              <p className="text-slate-800 font-medium mb-4 text-lg leading-relaxed">
-                <span className="text-slate-400 mr-2">{q.id}.</span>
-                {q.content}
-              </p>
-              
-              {q.options && (
-                <div className="space-y-2 mb-6 ml-6">
-                  {q.options.map(opt => (
-                    <div key={opt} className="px-4 py-2.5 bg-slate-50 rounded-xl text-sm text-slate-700 border border-slate-100">{opt}</div>
-                  ))}
-                </div>
-              )}
-              
-              <div className="bg-slate-50 p-4 rounded-xl text-sm text-slate-600 mb-6 border border-slate-100">
-                <span className="font-bold text-slate-700 mr-2">參考答案：</span> 
-                {q.answer}
-              </div>
-              
-              {/* 密度控制：Ghost 按鈕 */}
-              <div className="flex items-center gap-2 pt-4 border-t border-slate-100">
-                <button
-                  onClick={() => void handleRewriteQuestionType(q.id)}
-                  disabled={rewritingQuestionId === q.id}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Edit3 className="w-4 h-4" /> 
-                  {rewritingQuestionId === q.id ? '修改題型中...' : '修改題型'}
-                </button>
-                <button className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors">
-                  <BarChart2 className="w-4 h-4" /> 
+                <button className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-indigo-600">
+                  <BarChart2 className="w-4 h-4" />
                   加入圖表提示
                 </button>
               </div>

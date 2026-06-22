@@ -185,6 +185,7 @@ export async function ensureQuizTables() {
       difficulty TEXT NOT NULL DEFAULT 'medium',
       order_index INTEGER NOT NULL DEFAULT 0,
       preview_payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
@@ -195,6 +196,41 @@ export async function ensureQuizTables() {
     ADD COLUMN IF NOT EXISTS preferred_question_types_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     ADD COLUMN IF NOT EXISTS question_type_distribution_json JSONB NOT NULL DEFAULT '[]'::jsonb
   `);
+  await pool.query(`
+    ALTER TABLE quiz_questions
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS question_banks (
+      id TEXT PRIMARY KEY,
+      teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS question_bank_questions (
+      id TEXT PRIMARY KEY,
+      bank_id TEXT NOT NULL REFERENCES question_banks(id) ON DELETE CASCADE,
+      source_quiz_id TEXT REFERENCES quizzes(id) ON DELETE SET NULL,
+      source_question_id TEXT,
+      question_type TEXT NOT NULL,
+      cognitive_level TEXT NOT NULL,
+      question_text TEXT NOT NULL,
+      options_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+      correct_answer TEXT NOT NULL,
+      explanation TEXT NOT NULL DEFAULT '',
+      points INTEGER NOT NULL DEFAULT 1,
+      difficulty TEXT NOT NULL DEFAULT 'medium',
+      order_index INTEGER NOT NULL DEFAULT 0,
+      preview_payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (bank_id, source_quiz_id, source_question_id)
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS question_banks_teacher_updated_idx ON question_banks(teacher_id, updated_at DESC);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS question_bank_questions_bank_order_idx ON question_bank_questions(bank_id, order_index ASC, created_at ASC);`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS quiz_attempts (
       id TEXT PRIMARY KEY,
@@ -704,6 +740,70 @@ async function canUserAccessQuizBot(botId: string, user: { id: string; role?: st
   return Boolean(sharedBot.rowCount);
 }
 
+async function listQuestionBanksForTeacher(teacherId: string, includeQuestions = false) {
+  const bankResult = await pool.query(
+    `SELECT qb.id, qb.title, qb.created_at, qb.updated_at, COUNT(qbq.id)::int AS question_count
+     FROM question_banks qb
+     LEFT JOIN question_bank_questions qbq ON qbq.bank_id = qb.id
+     WHERE qb.teacher_id=$1
+     GROUP BY qb.id
+     ORDER BY qb.updated_at DESC, qb.created_at DESC`,
+    [teacherId]
+  );
+
+  if (!includeQuestions || !bankResult.rowCount) {
+    return bankResult.rows.map((row) => ({
+      id: String(row.id),
+      title: String(row.title || ""),
+      questionCount: Number(row.question_count || 0),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  }
+
+  const bankIds = bankResult.rows.map((row) => String(row.id));
+  const questionResult = await pool.query(
+    `SELECT id, bank_id, question_type, cognitive_level, question_text, options_json, correct_answer, explanation, points, difficulty, order_index, preview_payload_json
+     FROM question_bank_questions
+     WHERE bank_id = ANY($1::text[])
+     ORDER BY bank_id ASC, order_index ASC, created_at ASC`,
+    [bankIds]
+  );
+
+  const questionMap = new Map<string, any[]>();
+  for (const row of questionResult.rows) {
+    const bankId = String(row.bank_id);
+    const list = questionMap.get(bankId) || [];
+    list.push(
+      buildPreviewQuestion(
+        {
+          ...(row.preview_payload_json || {}),
+          id: Number(row.order_index || 0) + 1,
+          type: row.question_type,
+          cognitiveLevel: row.cognitive_level,
+          content: row.question_text,
+          options: row.options_json,
+          answer: row.correct_answer,
+          explanation: row.explanation,
+          points: row.points,
+          difficulty: row.difficulty,
+        },
+        Number(row.order_index || 0)
+      )
+    );
+    questionMap.set(bankId, list);
+  }
+
+  return bankResult.rows.map((row) => ({
+    id: String(row.id),
+    title: String(row.title || ""),
+    questionCount: Number(row.question_count || 0),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    questions: questionMap.get(String(row.id)) || [],
+  }));
+}
+
 function buildQuizResult(score: number, totalPoints: number) {
   const safeTotal = Math.max(1, totalPoints);
   const percent = Math.round((score / safeTotal) * 100);
@@ -1100,6 +1200,59 @@ router.get("/quizzes/drafts", requireAuth, async (req, res) => {
   }
 });
 
+router.get("/quizzes/question-banks", requireAuth, async (req, res) => {
+  try {
+    await ensureQuizTables();
+    const user = getAuthUser(req);
+    if (!user || !["teacher", "admin"].includes(user.role)) {
+      return res.status(403).json({ error: "teacher account required" });
+    }
+
+    const includeQuestions = String(req.query?.includeQuestions || "").trim() === "1";
+    const banks = await listQuestionBanksForTeacher(user.id, includeQuestions);
+    return res.json({ ok: true, banks });
+  } catch (error) {
+    console.error("GET /quizzes/question-banks Failed:", error);
+    return res.status(500).json({ error: "載入題庫失敗，請稍後再試。" });
+  }
+});
+
+router.post("/quizzes/question-banks", requireAuth, async (req, res) => {
+  try {
+    await ensureQuizTables();
+    const user = getAuthUser(req);
+    if (!user || !["teacher", "admin"].includes(user.role)) {
+      return res.status(403).json({ error: "teacher account required" });
+    }
+
+    const title = String(req.body?.title || "").trim();
+    if (!title) {
+      return res.status(400).json({ error: "請輸入題庫名稱。" });
+    }
+
+    const id = `bank_${crypto.randomUUID()}`;
+    await pool.query(
+      `INSERT INTO question_banks (id, teacher_id, title)
+       VALUES ($1, $2, $3)`,
+      [id, user.id, title]
+    );
+
+    return res.json({
+      ok: true,
+      bank: {
+        id,
+        title,
+        questionCount: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error("POST /quizzes/question-banks Failed:", error);
+    return res.status(500).json({ error: "建立題庫失敗，請稍後再試。" });
+  }
+});
+
 router.get("/quizzes/:id", requireAuth, async (req, res) => {
   try {
     await ensureQuizTables();
@@ -1493,6 +1646,213 @@ router.post("/quizzes/:id/questions/:questionId/rewrite-type", requireAuth, asyn
   } catch (error) {
     console.error("POST /quizzes/:id/questions/:questionId/rewrite-type Failed:", error);
     return res.status(500).json({ error: "修改題型失敗，請稍後再試。" });
+  }
+});
+
+router.patch("/quizzes/:id/questions/:questionId", requireAuth, async (req, res) => {
+  try {
+    await ensureQuizTables();
+    const user = getAuthUser(req);
+    if (!user || !["teacher", "admin"].includes(user.role)) {
+      return res.status(403).json({ error: "teacher account required" });
+    }
+
+    const quizId = String(req.params.id || "").trim();
+    const questionId = String(req.params.questionId || "").trim();
+    if (!quizId || !questionId) {
+      return res.status(400).json({ error: "缺少必要參數。" });
+    }
+
+    const content = String(req.body?.content || "").trim();
+    const answer = String(req.body?.answer || "").trim();
+    const explanation = String(req.body?.explanation || "").trim();
+    const options = normalizeOptions(req.body?.options);
+
+    if (!content) {
+      return res.status(400).json({ error: "題目內容不能為空。" });
+    }
+    if (!answer) {
+      return res.status(400).json({ error: "參考答案不能為空。" });
+    }
+
+    const displayOrderIndex = Number.isFinite(Number(questionId)) ? Math.max(0, Number(questionId) - 1) : -1;
+    const questionResult = await pool.query(
+      `SELECT qq.id, qq.question_type, qq.cognitive_level, qq.question_text, qq.options_json, qq.correct_answer, qq.explanation, qq.points, qq.difficulty, qq.order_index, qq.preview_payload_json
+       FROM quiz_questions qq
+       INNER JOIN quizzes q ON q.id = qq.quiz_id
+       WHERE qq.quiz_id=$2 AND q.teacher_id=$4 AND (qq.id=$1 OR qq.order_index=$3)`,
+      [questionId, quizId, displayOrderIndex, user.id]
+    );
+    if (!questionResult.rowCount) return res.status(404).json({ error: "Question not found" });
+
+    const questionRow = questionResult.rows[0];
+    const questionType = normalizeQuestionType(String(questionRow.question_type || ""));
+    const finalOptions = questionType === "多項選擇題"
+      ? options.slice(0, 4)
+      : questionType === "判斷題"
+      ? ["A. 正確", "B. 錯誤"]
+      : [];
+
+    const finalQuestion = buildPreviewQuestion(
+      {
+        ...(questionRow.preview_payload_json || {}),
+        id: Number(questionRow.order_index || 0) + 1,
+        type: questionType,
+        cognitiveLevel: questionRow.cognitive_level,
+        content,
+        options: finalOptions,
+        answer,
+        explanation,
+        points: questionRow.points,
+        difficulty: questionRow.difficulty,
+      },
+      Number(questionRow.order_index || 0)
+    );
+
+    await pool.query(
+      `UPDATE quiz_questions
+       SET question_text=$1,
+           options_json=$2::jsonb,
+           correct_answer=$3,
+           explanation=$4,
+           preview_payload_json=$5::jsonb,
+           updated_at=NOW()
+       WHERE id=$6 AND quiz_id=$7`,
+      [
+        finalQuestion.content,
+        JSON.stringify(finalQuestion.options || []),
+        finalQuestion.answer,
+        finalQuestion.explanation || "",
+        JSON.stringify(finalQuestion),
+        String(questionRow.id),
+        quizId,
+      ]
+    );
+
+    return res.json({ ok: true, question: finalQuestion });
+  } catch (error) {
+    console.error("PATCH /quizzes/:id/questions/:questionId Failed:", error);
+    return res.status(500).json({ error: "修改題目失敗，請稍後再試。" });
+  }
+});
+
+router.post("/quizzes/question-banks/:bankId/questions", requireAuth, async (req, res) => {
+  try {
+    await ensureQuizTables();
+    const user = getAuthUser(req);
+    if (!user || !["teacher", "admin"].includes(user.role)) {
+      return res.status(403).json({ error: "teacher account required" });
+    }
+
+    const bankId = String(req.params.bankId || "").trim();
+    const quizId = String(req.body?.quizId || "").trim();
+    const questionId = String(req.body?.questionId || "").trim();
+    if (!bankId || !quizId || !questionId) {
+      return res.status(400).json({ error: "缺少必要參數。" });
+    }
+
+    const bankResult = await pool.query(
+      `SELECT id, title
+       FROM question_banks
+       WHERE id=$1 AND teacher_id=$2`,
+      [bankId, user.id]
+    );
+    if (!bankResult.rowCount) {
+      return res.status(404).json({ error: "題庫不存在。" });
+    }
+
+    const displayOrderIndex = Number.isFinite(Number(questionId)) ? Math.max(0, Number(questionId) - 1) : -1;
+    const questionResult = await pool.query(
+      `SELECT qq.id, qq.question_type, qq.cognitive_level, qq.question_text, qq.options_json, qq.correct_answer, qq.explanation, qq.points, qq.difficulty, qq.order_index, qq.preview_payload_json
+       FROM quiz_questions qq
+       INNER JOIN quizzes q ON q.id = qq.quiz_id
+       WHERE qq.quiz_id=$2 AND q.teacher_id=$4 AND (qq.id=$1 OR qq.order_index=$3)`,
+      [questionId, quizId, displayOrderIndex, user.id]
+    );
+    if (!questionResult.rowCount) {
+      return res.status(404).json({ error: "題目不存在。" });
+    }
+
+    const questionRow = questionResult.rows[0];
+    const previewQuestion = buildPreviewQuestion(
+      {
+        ...(questionRow.preview_payload_json || {}),
+        id: Number(questionRow.order_index || 0) + 1,
+        type: questionRow.question_type,
+        cognitiveLevel: questionRow.cognitive_level,
+        content: questionRow.question_text,
+        options: questionRow.options_json,
+        answer: questionRow.correct_answer,
+        explanation: questionRow.explanation,
+        points: questionRow.points,
+        difficulty: questionRow.difficulty,
+      },
+      Number(questionRow.order_index || 0)
+    );
+
+    const existingResult = await pool.query(
+      `SELECT 1
+       FROM question_bank_questions
+       WHERE bank_id=$1 AND source_quiz_id=$2 AND source_question_id=$3
+       LIMIT 1`,
+      [bankId, quizId, String(questionRow.id)]
+    );
+
+    if (!existingResult.rowCount) {
+      const orderIndexResult = await pool.query(
+        `SELECT COALESCE(MAX(order_index), -1) AS max_order
+         FROM question_bank_questions
+         WHERE bank_id=$1`,
+        [bankId]
+      );
+      const nextOrderIndex = Number(orderIndexResult.rows[0]?.max_order || -1) + 1;
+
+      await pool.query(
+        `INSERT INTO question_bank_questions (
+          id, bank_id, source_quiz_id, source_question_id, question_type, cognitive_level, question_text,
+          options_json, correct_answer, explanation, points, difficulty, order_index, preview_payload_json
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7,
+          $8::jsonb, $9, $10, $11, $12, $13, $14::jsonb
+        )`,
+        [
+          `bank_question_${crypto.randomUUID()}`,
+          bankId,
+          quizId,
+          String(questionRow.id),
+          previewQuestion.type,
+          previewQuestion.cognitiveLevel,
+          previewQuestion.content,
+          JSON.stringify(previewQuestion.options || []),
+          previewQuestion.answer,
+          previewQuestion.explanation || "",
+          Number(previewQuestion.points || 1),
+          previewQuestion.difficulty || "medium",
+          nextOrderIndex,
+          JSON.stringify(previewQuestion),
+        ]
+      );
+    }
+
+    await pool.query(
+      `UPDATE question_banks
+       SET updated_at=NOW()
+       WHERE id=$1`,
+      [bankId]
+    );
+
+    return res.json({
+      ok: true,
+      bank: {
+        id: String(bankResult.rows[0].id),
+        title: String(bankResult.rows[0].title || ""),
+      },
+      question: previewQuestion,
+      duplicated: Boolean(existingResult.rowCount),
+    });
+  } catch (error) {
+    console.error("POST /quizzes/question-banks/:bankId/questions Failed:", error);
+    return res.status(500).json({ error: "加入題庫失敗，請稍後再試。" });
   }
 });
 

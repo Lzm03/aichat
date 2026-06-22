@@ -45,6 +45,13 @@ const mockHistoryTexts = [
   { id: 2, title: '現代文閱讀 - 故鄉', content: '我冒了嚴寒，回到相隔二千餘里，別了二十餘年的故鄉去。\n\n時候既然是深冬；漸近故鄉時，天氣又陰晦了，冷風吹進船艙中，嗚嗚的響，從篷隙向外一望，蒼黃的天底下，遠近橫著幾個蕭索的荒村，沒有一些活氣。我的心禁不住悲涼起來了。\n\n阿！這不是我二十年來時時記得的故鄉？' }
 ];
 
+const DEFAULT_QUESTION_COUNT_BY_GRADE: Record<string, number> = {
+  'P1-P3': 5,
+  'P4-P6': 8,
+  'S1-S3': 10,
+  'S4-S6': 12,
+};
+
 export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerated }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [text, setText] = useState('');
@@ -300,7 +307,11 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
             <div className="relative">
               <select 
                 value={grade}
-                onChange={(e) => setGrade(e.target.value)}
+                onChange={(e) => {
+                  const nextGrade = e.target.value;
+                  setGrade(nextGrade);
+                  setQuestionCount(DEFAULT_QUESTION_COUNT_BY_GRADE[nextGrade] || 5);
+                }}
                 className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 rounded-xl px-4 py-3 pr-10 outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-medium"
               >
                 <option value="P1-P3">小一至小三 (P1-P3)</option>

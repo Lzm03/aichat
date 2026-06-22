@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Icons } from '../components/icons';
 import { Edit3, FileText, Users, CheckCircle2, Clock, PenTool, AlertCircle, ArrowRight, ShieldAlert, Trash2 } from 'lucide-react';
@@ -8,11 +8,13 @@ import { GradingWorkspaceHome } from '../components/assessment/GradingWorkspaceH
 import { AiAlertPlayground } from '../components/assessment/AiAlertPlayground';
 import { API_BASE } from '../utils/api';
 
-const mockPublished = [
-  { id: 3, title: '常識科期中模擬考', status: '批改中', participants: 32, total: 35, subject: '常識' },
-  { id: 4, title: '英文閱讀理解 Week 4', status: '已發佈', participants: 40, total: 40, subject: '英文' },
-  { id: 5, title: '數學代數基礎', status: '已發佈', participants: 38, total: 40, subject: '數學' },
-];
+type QuestionBankSummary = {
+  id: string;
+  title: string;
+  questionCount: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
 
 export const AssessmentPage: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'wizard' | 'library' | 'grading' | 'alerts'>('dashboard');
@@ -20,6 +22,8 @@ export const AssessmentPage: React.FC = () => {
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
+  const [questionBanks, setQuestionBanks] = useState<QuestionBankSummary[]>([]);
+  const [questionBanksLoading, setQuestionBanksLoading] = useState(false);
 
   useEffect(() => {
     if (view !== 'dashboard') return;
@@ -38,6 +42,27 @@ export const AssessmentPage: React.FC = () => {
       .catch(() => setDrafts([]))
       .finally(() => setDraftsLoading(false));
   }, [view]);
+
+  useEffect(() => {
+    if (view !== 'dashboard') return;
+    setQuestionBanksLoading(true);
+    fetch(`${API_BASE}/api/quizzes/question-banks`)
+      .then((res) => res.json())
+      .then((data) => {
+        const items = Array.isArray(data?.banks) ? data.banks : [];
+        setQuestionBanks(items.map((item: any) => ({
+          id: String(item.id || ''),
+          title: String(item.title || '未命名題庫'),
+          questionCount: Number(item.questionCount || 0),
+          createdAt: item.createdAt ? String(item.createdAt) : '',
+          updatedAt: item.updatedAt ? String(item.updatedAt) : '',
+        })));
+      })
+      .catch(() => setQuestionBanks([]))
+      .finally(() => setQuestionBanksLoading(false));
+  }, [view]);
+
+  const visibleQuestionBanks = useMemo(() => questionBanks.slice(0, 2), [questionBanks]);
 
   const handleDeleteDraft = async (draftId: string) => {
     setDeletingDraftId(draftId);
@@ -233,7 +258,11 @@ export const AssessmentPage: React.FC = () => {
           </div>
           
           <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
-            {mockPublished.slice(0, 2).map(item => (
+            {questionBanksLoading ? (
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm font-semibold text-slate-400">
+                正在載入題庫...
+              </div>
+            ) : visibleQuestionBanks.length ? visibleQuestionBanks.map(item => (
               <div 
                 key={item.id} 
                 onClick={() => setView('library')}
@@ -241,35 +270,27 @@ export const AssessmentPage: React.FC = () => {
               >
                 <div className="flex items-start justify-between mb-2">
                   <h3 className="font-semibold text-slate-700">{item.title}</h3>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0 ml-2 ${
-                    item.status === '已發佈' 
-                      ? 'bg-emerald-100 text-emerald-700' 
-                      : 'bg-sky-100 text-sky-700'
-                  }`}>
-                    {item.status}
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0 ml-2 bg-indigo-100 text-indigo-700">
+                    題庫
                   </span>
                 </div>
                 
                 <div className="flex items-center gap-4 mt-3">
                   <div className="flex items-center gap-1.5 text-xs text-slate-500">
                     <Users className="w-3.5 h-3.5" />
-                    <span>{item.participants} / {item.total} 人作答</span>
+                    <span>{item.questionCount} 題已收錄</span>
                   </div>
-                  
-                  {item.status === '已發佈' ? (
-                    <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>批改完成</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5 text-xs text-sky-600 font-medium">
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>等待批改</span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>{item.updatedAt ? new Date(item.updatedAt).toISOString().slice(0, 10) : '剛剛更新'}</span>
+                  </div>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm font-semibold text-slate-400">
+                還沒有題庫，先到測驗預覽把題目加入題庫吧。
+              </div>
+            )}
           </div>
         </div>
 
