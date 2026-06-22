@@ -1,10 +1,17 @@
 import crypto from "crypto";
 import express from "express";
+import multer from "multer";
+import { createRequire } from "module";
 import { pool } from "../db.ts";
 import { requireAuth, getAuthUser, ensurePlatformTables } from "../lib/platform-auth.ts";
 import { getAI, getVertexAccessToken, getVertexAIConfig, isVertexAIEnabled } from "../lib/gemini-server.ts";
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
+const require = createRequire(import.meta.url);
+const pdfParse = require("pdf-parse");
+const AdmZip = require("adm-zip");
+const WordExtractor = require("word-extractor");
 
 type PreviewQuestion = {
   id: string | number;
@@ -58,6 +65,92 @@ const QUESTION_TYPE_KEY_BY_LABEL: Record<string, QuestionTypeKey> = {
   簡答題: "short",
   論述題: "essay",
 };
+
+async function extractTextFromPDF(buffer: Buffer): Promise<string> {
+  const parsed = await pdfParse(buffer);
+  return String(parsed?.text || "").trim();
+}
+
+function decodeXmlEntities(text: string) {
+  return text
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number.parseInt(dec, 10)));
+}
+
+function extractTextFromDocxBuffer(buffer: Buffer): string {
+  const zip = new AdmZip(buffer);
+  const entry = zip.getEntry("word/document.xml");
+  if (!entry) {
+    throw new Error("DOCX 內容讀取失敗");
+  }
+
+  const xml = entry.getData().toString("utf-8");
+  return decodeXmlEntities(
+    xml
+      .replace(/<\/w:p>/g, "\n")
+      .replace(/<w:tab\/>/g, "\t")
+      .replace(/<w:br\/>/g, "\n")
+      .replace(/<w:cr\/>/g, "\n")
+      .replace(/<[^>]+>/g, "")
+      .trim()
+  )
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+async function extractTextFromDocBuffer(buffer: Buffer): Promise<string> {
+  const extractor = new WordExtractor();
+  const document = await extractor.extract(buffer);
+  const text = [
+    typeof document?.getBody === "function" ? document.getBody() : "",
+    typeof document?.getFootnotes === "function" ? document.getFootnotes() : "",
+    typeof document?.getEndnotes === "function" ? document.getEndnotes() : "",
+    typeof document?.getHeaders === "function" ? document.getHeaders() : "",
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .replace(/\r/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (!text) {
+    throw new Error("DOC 內容讀取失敗");
+  }
+  return text;
+}
+
+async function extractAssessmentSourceText(file: Express.Multer.File): Promise<string> {
+  const lowerName = String(file.originalname || "").toLowerCase();
+  const mimeType = String(file.mimetype || "").toLowerCase();
+
+  if (lowerName.endsWith(".pdf") || mimeType === "application/pdf") {
+    return extractTextFromPDF(file.buffer);
+  }
+  if (
+    lowerName.endsWith(".docx") ||
+    mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ) {
+    return extractTextFromDocxBuffer(file.buffer);
+  }
+  if (lowerName.endsWith(".doc") || mimeType === "application/msword") {
+    return extractTextFromDocBuffer(file.buffer);
+  }
+  if (
+    lowerName.endsWith(".txt") ||
+    lowerName.endsWith(".md") ||
+    mimeType.startsWith("text/")
+  ) {
+    return file.buffer.toString("utf-8").replace(/\r/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  throw new Error(`不支援的文件格式：${file.originalname || "unknown"}`);
+}
 
 export async function ensureQuizTables() {
   await ensurePlatformTables();
@@ -1072,6 +1165,30 @@ router.get("/teachers/me/available-quiz-bots", requireAuth, async (req, res) => 
   } catch (error) {
     console.error("GET /teachers/me/available-quiz-bots Failed:", error);
     return res.status(500).json({ error: "Failed to load available quiz bots" });
+  }
+});
+
+router.post("/quizzes/source-text/upload", requireAuth, upload.single("file"), async (req, res) => {
+  try {
+    await ensureQuizTables();
+    const user = getAuthUser(req);
+    if (!user || !["teacher", "admin"].includes(user.role)) {
+      return res.status(403).json({ error: "teacher account required" });
+    }
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "請先選擇文件。" });
+    const text = await extractAssessmentSourceText(file);
+    if (!text) return res.status(400).json({ error: "文件內容為空，請更換文件再試。" });
+    return res.json({
+      ok: true,
+      filename: String(file.originalname || ""),
+      text,
+    });
+  } catch (error) {
+    console.error("POST /quizzes/source-text/upload Failed:", error);
+    return res.status(400).json({
+      error: error instanceof Error ? error.message : "文件解析失敗，請稍後再試。",
+    });
   }
 });
 

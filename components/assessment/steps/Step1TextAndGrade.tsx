@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UploadCloud, FileText, Settings2, Lightbulb, ArrowRight, BookOpen, X, Bot, LoaderCircle } from 'lucide-react';
 import { API_BASE } from '../../../utils/api';
@@ -46,6 +46,7 @@ const mockHistoryTexts = [
 ];
 
 export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerated }) => {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [text, setText] = useState('');
   const [grade, setGrade] = useState('P1-P3');
   const [questionCount, setQuestionCount] = useState(5);
@@ -55,10 +56,33 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
   const [loadingBots, setLoadingBots] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
 
   const handleImportHistory = (content: string) => {
     setText(content);
     setIsHistoryModalOpen(false);
+  };
+
+  const handleUploadDocument = async (file: File) => {
+    setErrorMessage('');
+    setIsUploadingDocument(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch(`${API_BASE}/api/quizzes/source-text/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(data?.error || '文檔上傳失敗，請稍後再試。'));
+      }
+      setText(String(data?.text || ''));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '文檔上傳失敗，請稍後再試。');
+    } finally {
+      setIsUploadingDocument(false);
+    }
   };
 
   const getAiGuide = (selectedGrade: string) => {
@@ -187,6 +211,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
             </h2>
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <button 
+                type="button"
                 onClick={() => setIsHistoryModalOpen(true)}
                 className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-bold text-indigo-600 bg-indigo-50 px-4 py-2 rounded-full hover:bg-indigo-100 transition-colors"
               >
@@ -194,11 +219,29 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
                 <span className="hidden sm:inline">從歷史題庫導入</span>
                 <span className="sm:hidden">題庫導入</span>
               </button>
-              <button className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-medium text-slate-600 bg-slate-50 px-4 py-2 rounded-full hover:bg-slate-100 transition-colors">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploadingDocument}
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-medium text-slate-600 bg-slate-50 px-4 py-2 rounded-full hover:bg-slate-100 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+              >
                 <UploadCloud className="w-4 h-4" />
-                <span className="hidden sm:inline">上傳文檔</span>
-                <span className="sm:hidden">上傳</span>
+                <span className="hidden sm:inline">{isUploadingDocument ? '文檔解析中...' : '上傳文檔'}</span>
+                <span className="sm:hidden">{isUploadingDocument ? '解析中' : '上傳'}</span>
               </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.txt,.md,text/plain,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    void handleUploadDocument(file);
+                  }
+                  event.currentTarget.value = '';
+                }}
+              />
             </div>
           </div>
           <textarea
