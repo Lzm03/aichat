@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Edit3, BarChart2, ChevronDown, Save, Rocket, ArrowLeft, PlusCircle, X, Search, Eye, LoaderCircle, FolderPlus, CheckCircle2 } from 'lucide-react';
+import { Sparkles, Edit3, ChevronDown, Save, Rocket, ArrowLeft, PlusCircle, X, Search, Eye, LoaderCircle, FolderPlus, CheckCircle2 } from 'lucide-react';
 import { API_BASE } from '../../../utils/api';
 
 interface Step3PreviewAndPublishProps {
@@ -635,16 +635,16 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
                 </>
               )}
               
-              <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+              <div className="flex items-center pt-4 border-t border-slate-100">
                 <div className="relative">
                   <button
                     type="button"
                     onClick={() => openBankModal(q.id)}
-                    className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-indigo-600"
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-indigo-600"
                   >
-                    <FolderPlus className="w-4 h-4" />
+                    <FolderPlus className="w-3.5 h-3.5" />
                     添加到題庫
-                    <ChevronDown className={`h-4 w-4 transition-transform ${isBankModalOpen && activeBankQuestionId === q.id ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isBankModalOpen && activeBankQuestionId === q.id ? 'rotate-180' : ''}`} />
                   </button>
 
                   <AnimatePresence>
@@ -731,10 +731,6 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
                     ) : null}
                   </AnimatePresence>
                 </div>
-                <button className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-indigo-600">
-                  <BarChart2 className="w-4 h-4" />
-                  加入圖表提示
-                </button>
               </div>
             </motion.div>
           ))}

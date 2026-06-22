@@ -1253,6 +1253,36 @@ router.post("/quizzes/question-banks", requireAuth, async (req, res) => {
   }
 });
 
+router.delete("/quizzes/question-banks/:bankId", requireAuth, async (req, res) => {
+  try {
+    await ensureQuizTables();
+    const user = getAuthUser(req);
+    if (!user || !["teacher", "admin"].includes(user.role)) {
+      return res.status(403).json({ error: "teacher account required" });
+    }
+
+    const bankId = String(req.params.bankId || "").trim();
+    if (!bankId) {
+      return res.status(400).json({ error: "缺少題庫 ID。" });
+    }
+
+    const deleted = await pool.query(
+      `DELETE FROM question_banks
+       WHERE id=$1 AND teacher_id=$2
+       RETURNING id`,
+      [bankId, user.id]
+    );
+    if (!deleted.rowCount) {
+      return res.status(404).json({ error: "題庫不存在。" });
+    }
+
+    return res.json({ ok: true, id: bankId });
+  } catch (error) {
+    console.error("DELETE /quizzes/question-banks/:bankId Failed:", error);
+    return res.status(500).json({ error: "刪除題庫失敗，請稍後再試。" });
+  }
+});
+
 router.get("/quizzes/:id", requireAuth, async (req, res) => {
   try {
     await ensureQuizTables();

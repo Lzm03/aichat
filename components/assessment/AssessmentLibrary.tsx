@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from '../icons';
-import { Search, BookOpen, Download, Share2, X, ChevronRight } from 'lucide-react';
+import { Search, BookOpen, Download, Share2, X, ChevronRight, Trash2 } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
 
 interface AssessmentLibraryProps {
@@ -65,6 +65,7 @@ export const AssessmentLibrary: React.FC<AssessmentLibraryProps> = ({ onBack }) 
   const [selectedBank, setSelectedBank] = useState<QuestionBank | null>(null);
   const [banks, setBanks] = useState<QuestionBank[]>([]);
   const [loadingBanks, setLoadingBanks] = useState(true);
+  const [deletingBankId, setDeletingBankId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -93,6 +94,25 @@ export const AssessmentLibrary: React.FC<AssessmentLibraryProps> = ({ onBack }) 
     if (!keyword) return banks;
     return banks.filter((bank) => String(bank.title || '').toLowerCase().includes(keyword));
   }, [banks, searchQuery]);
+
+  const handleDeleteBank = async (bankId: string) => {
+    setDeletingBankId(bankId);
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/question-banks/${bankId}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(data?.error || '刪除題庫失敗，請稍後再試。'));
+      }
+      setBanks((prev) => prev.filter((bank) => bank.id !== bankId));
+      setSelectedBank((prev) => (prev?.id === bankId ? null : prev));
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setDeletingBankId(null);
+    }
+  };
 
   return (
     <div className="h-full flex flex-col space-y-6">
@@ -134,9 +154,22 @@ export const AssessmentLibrary: React.FC<AssessmentLibraryProps> = ({ onBack }) 
                 <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
                   <BookOpen className="w-5 h-5" />
                 </div>
-                <span className="px-3 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full">
-                  題庫
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full">
+                    題庫
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleDeleteBank(item.id);
+                    }}
+                    disabled={deletingBankId === item.id}
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-50 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
 
               <div className="mb-6 flex-1">
@@ -195,6 +228,15 @@ export const AssessmentLibrary: React.FC<AssessmentLibraryProps> = ({ onBack }) 
                   <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 rounded-xl text-sm font-bold text-white hover:bg-indigo-700 transition-colors shadow-sm">
                     <Share2 className="w-4 h-4" />
                     分享題庫
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => selectedBank && void handleDeleteBank(selectedBank.id)}
+                    disabled={deletingBankId === selectedBank.id}
+                    className="flex items-center gap-2 px-4 py-2 bg-rose-50 rounded-xl text-sm font-bold text-rose-600 hover:bg-rose-100 transition-colors shadow-sm disabled:opacity-50"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    刪除題庫
                   </button>
                   <button
                     onClick={() => setSelectedBank(null)}
