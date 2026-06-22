@@ -651,9 +651,124 @@ function isObjectiveAnswerCorrect(studentAnswer: string, correctAnswer: string, 
   return normalizedStudent === normalizeAnswerForCompare(resolvedCorrect);
 }
 
+function splitReferenceAnswerVariants(referenceAnswer: string) {
+  return String(referenceAnswer || "")
+    .split(/\r?\n|\/|／|或|;|；/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function extractReferenceKeywords(referenceAnswer: string) {
+  return String(referenceAnswer || "")
+    .split(/[，。！？、；：,.\s()（）「」『』【】]+/)
+    .map((part) => normalizeAnswerForCompare(part))
+    .filter((part) => part.length >= 2);
+}
+
+function bigramDiceCoefficient(a: string, b: string) {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.length === 1 || b.length === 1) return a === b ? 1 : 0;
+  const aBigrams = new Map<string, number>();
+  const bBigrams = new Map<string, number>();
+  for (let i = 0; i < a.length - 1; i += 1) {
+    const gram = a.slice(i, i + 2);
+    aBigrams.set(gram, (aBigrams.get(gram) || 0) + 1);
+  }
+  for (let i = 0; i < b.length - 1; i += 1) {
+    const gram = b.slice(i, i + 2);
+    bBigrams.set(gram, (bBigrams.get(gram) || 0) + 1);
+  }
+  let overlap = 0;
+  aBigrams.forEach((count, gram) => {
+    overlap += Math.min(count, bBigrams.get(gram) || 0);
+  });
+  return (2 * overlap) / ((a.length - 1) + (b.length - 1));
+}
+
+function fastGradeReferenceAnswer(referenceAnswer: string, answer: string, maxPoints: number) {
+  const normalizedStudent = normalizeAnswerForCompare(answer);
+  const variants = splitReferenceAnswerVariants(referenceAnswer)
+    .map((variant) => ({
+      raw: variant,
+      normalized: normalizeAnswerForCompare(variant),
+      keywords: extractReferenceKeywords(variant),
+    }))
+    .filter((variant) => variant.normalized || variant.keywords.length);
+
+  if (!normalizedStudent || !variants.length) return null;
+
+  for (const variant of variants) {
+    if (variant.normalized && normalizedStudent === variant.normalized) {
+      return {
+        points: maxPoints,
+        feedback: "答案正確，已完成快速評分。",
+        gradedBy: "fast_exact",
+      };
+    }
+    if (
+      variant.normalized &&
+      variant.normalized.length >= 2 &&
+      (normalizedStudent.includes(variant.normalized) || variant.normalized.includes(normalizedStudent))
+    ) {
+      return {
+        points: maxPoints,
+        feedback: "答案與參考答案表述接近，已完成快速評分。",
+        gradedBy: "fast_contains",
+      };
+    }
+  }
+
+  let bestKeywordRatio = 0;
+  let bestSimilarity = 0;
+  for (const variant of variants) {
+    const matchedKeywords = variant.keywords.filter((keyword) => normalizedStudent.includes(keyword)).length;
+    const keywordRatio = variant.keywords.length ? matchedKeywords / variant.keywords.length : 0;
+    const similarity = variant.normalized ? bigramDiceCoefficient(normalizedStudent, variant.normalized) : 0;
+    bestKeywordRatio = Math.max(bestKeywordRatio, keywordRatio);
+    bestSimilarity = Math.max(bestSimilarity, similarity);
+  }
+
+  if (bestKeywordRatio >= 0.85 || bestSimilarity >= 0.88) {
+    return {
+      points: maxPoints,
+      feedback: "答案與參考答案高度接近，已完成快速評分。",
+      gradedBy: "fast_similarity_high",
+    };
+  }
+
+  if (bestKeywordRatio >= 0.6 || bestSimilarity >= 0.72) {
+    return {
+      points: maxPoints,
+      feedback: "答案核心內容相符，已完成快速評分。",
+      gradedBy: "fast_similarity_mid",
+    };
+  }
+
+  const hasAnyReferenceKeywords = variants.some((variant) => variant.keywords.length > 0);
+  const clearlyIncorrect =
+    (hasAnyReferenceKeywords && bestKeywordRatio === 0 && bestSimilarity <= 0.24) ||
+    (bestKeywordRatio <= 0.15 && bestSimilarity <= 0.18);
+
+  if (clearlyIncorrect) {
+    return {
+      points: 0,
+      feedback: "答案與參考答案差異較大，已完成快速判分。",
+      gradedBy: "fast_incorrect",
+    };
+  }
+
+  return null;
+}
+
 async function gradeSubjectiveAnswer(question: any, answer: string) {
   const maxPoints = Number(question.points || 1);
   const referenceAnswer = String(question.correctAnswer || "").trim();
+  const questionType = normalizeQuestionType(String(question.preview?.type || question.question_type || ""));
+  if ((questionType === "填充題" || questionType === "簡答題") && referenceAnswer) {
+    const fastResult = fastGradeReferenceAnswer(referenceAnswer, answer, maxPoints);
+    if (fastResult) return fastResult;
+  }
   const systemPrompt = "你是嚴謹但鼓勵學生的中文測驗評分老師。只輸出 JSON，不要 Markdown。";
   const userPrompt = `
 請根據題目、參考答案與學生答案評分。
@@ -1376,17 +1491,23 @@ router.post("/quizzes/:id/attempts/start", requireAuth, async (req, res) => {
     const quiz = quizResult.rows[0];
     const canAccess = await canUserAccessQuizBot(String(quiz.bot_id), user);
     if (!canAccess) return res.status(403).json({ error: "quiz access denied" });
+    const forceRestart = Boolean(req.body?.restart);
 
     const questions = await listQuizQuestions(quizId);
     const attempt = await getOrCreateAttempt(quizId, user.id, String(quiz.bot_id));
     const updated = await pool.query(
       `UPDATE quiz_attempts
        SET status='in_progress',
-           started_at=COALESCE(started_at, NOW()),
+           current_index=CASE
+             WHEN $2::boolean THEN 0
+             WHEN status IN ('pending', 'completed') THEN 0
+             ELSE current_index
+           END,
+           started_at=CASE WHEN $2::boolean THEN NOW() ELSE COALESCE(started_at, NOW()) END,
            updated_at=NOW()
        WHERE id=$1
        RETURNING *`,
-      [attempt.id]
+      [attempt.id, forceRestart]
     );
     const next = updated.rows[0];
     return res.json({

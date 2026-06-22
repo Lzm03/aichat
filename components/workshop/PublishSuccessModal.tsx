@@ -182,7 +182,10 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [quizTextAnswer, setQuizTextAnswer] = useState("");
   const [quizAnswerMap, setQuizAnswerMap] = useState<Record<number, string>>({});
   const [quizLoading, setQuizLoading] = useState(false);
+  const [quizStarting, setQuizStarting] = useState(false);
   const [quizSubmitting, setQuizSubmitting] = useState(false);
+  const [quizBackgroundSaving, setQuizBackgroundSaving] = useState(false);
+  const [quizRestarting, setQuizRestarting] = useState(false);
   const [quizResult, setQuizResult] = useState<Record<string, any> | null>(null);
   const { dialog, closeDialog, showAlert, showConfirm } = usePlatformDialog();
   const [seqIdle, setSeqIdle] = useState<any>(null);
@@ -1491,6 +1494,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const ttsInflight = useRef(0);
   const ttsTextQueue = useRef<{ seq: number; text: string }[]>([]);
   const ttsAudioMap = useRef<Map<number, string>>(new Map());
+  const quizSubmitQueueRef = useRef<Promise<any>>(Promise.resolve());
   const maxTtsInflight = 3;
   const speechRecognitionRef = useRef<any>(null);
   const sttStartingRef = useRef(false);
@@ -2685,6 +2689,8 @@ const unlockAudioAndMic = async () => {
     setMessages([]);
     setOpeningReady(false);
     setVoiceLimitMessage("");
+    setQuizBackgroundSaving(false);
+    quizSubmitQueueRef.current = Promise.resolve();
     voiceLimitNoticeShownRef.current = false;
     ttsErrorNoticeShownRef.current = false;
   }, [isOpen]);
@@ -2801,8 +2807,8 @@ const unlockAudioAndMic = async () => {
 
   const startQuiz = async () => {
     if (!activeQuiz) return;
-    setQuizSubmitting(true);
-    if (quizPrefetchedQuestion) {
+    setQuizStarting(true);
+    if (quizPrefetchedQuestion && !quizRestarting) {
       const prefetchedAnswer = quizAnswerMap[Number(activeQuizAttempt?.currentIndex || 0)] || "";
       setQuizQuestion(quizPrefetchedQuestion);
       setQuizCurrentIndex(Number(activeQuizAttempt?.currentIndex || 0));
@@ -2815,10 +2821,12 @@ const unlockAudioAndMic = async () => {
       const res = await fetch(`${API_BASE}/api/quizzes/${activeQuiz.id}/attempts/start`, {
         method: "POST",
         headers: requestHeaders,
+        body: JSON.stringify({ restart: quizRestarting }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "開始測驗失敗");
       setQuizAllQuestions(Array.isArray(data?.allQuestions) ? data.allQuestions : []);
+      setActiveQuizAttempt(data?.attempt || null);
       setQuizQuestion(data?.currentQuestion || null);
       setQuizPrefetchedQuestion(data?.currentQuestion || null);
       setQuizCurrentIndex(Number(data?.attempt?.currentIndex || 0));
@@ -2827,29 +2835,43 @@ const unlockAudioAndMic = async () => {
       setQuizSelectedAnswer("");
       setQuizTextAnswer("");
       setQuizUiState("taking");
+      setQuizRestarting(false);
     } catch (error) {
       showAlert({
         title: "測驗無法開始",
         message: error instanceof Error ? error.message : "開始測驗失敗，請稍後再試。",
       });
     } finally {
-      setQuizSubmitting(false);
+      setQuizStarting(false);
     }
   };
 
   const submitQuizAnswer = async () => {
     const answerToSubmit = quizQuestion?.options?.length ? quizSelectedAnswer : quizTextAnswer.trim();
     if (!activeQuiz || !quizQuestion || !answerToSubmit) return;
-    const previousQuestion = quizQuestion;
-    const previousSelectedAnswer = quizSelectedAnswer;
-    const previousTextAnswer = quizTextAnswer;
     const isLastQuestion = quizCurrentIndex + 1 >= quizTotalQuestions;
-    setQuizSubmitting(true);
-    setQuizAnswerMap((prev) => ({ ...prev, [quizCurrentIndex]: answerToSubmit }));
+    const submission = async () => {
+      const res = await fetch(`${API_BASE}/api/quizzes/${activeQuiz.id}/attempts/answer`, {
+        method: "POST",
+        headers: requestHeaders,
+        body: JSON.stringify({
+          botId: botConfig.id,
+          questionIndex: quizCurrentIndex,
+          answer: answerToSubmit,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "提交答案失敗");
+      return data;
+    };
+
+    const nextAnswerMap = { ...quizAnswerMap, [quizCurrentIndex]: answerToSubmit };
+    setQuizAnswerMap(nextAnswerMap);
+
     if (!isLastQuestion) {
       const nextIndex = quizCurrentIndex + 1;
       const nextQuestion = quizAllQuestions[nextIndex] || null;
-      const nextSavedAnswer = quizAnswerMap[nextIndex] || "";
+      const nextSavedAnswer = nextAnswerMap[nextIndex] || "";
       setQuizCurrentIndex(nextIndex);
       if (nextQuestion) {
         setQuizQuestion(nextQuestion);
@@ -2868,19 +2890,34 @@ const unlockAudioAndMic = async () => {
           answer: "",
         });
       }
+      setQuizBackgroundSaving(true);
+      quizSubmitQueueRef.current = quizSubmitQueueRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          const data = await submission();
+          setQuizAllQuestions((prev) => {
+            if (!data?.nextQuestion) return prev;
+            const nextQuestions = [...prev];
+            nextQuestions[nextIndex] = data.nextQuestion;
+            return nextQuestions;
+          });
+        })
+        .catch((error) => {
+          showAlert({
+            title: "答案同步失敗",
+            message: error instanceof Error ? error.message : "提交答案失敗，請稍後再試。",
+          });
+        })
+        .finally(() => {
+          setQuizBackgroundSaving(false);
+        });
+      return;
     }
+
+    setQuizSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE}/api/quizzes/${activeQuiz.id}/attempts/answer`, {
-        method: "POST",
-        headers: requestHeaders,
-        body: JSON.stringify({
-          botId: botConfig.id,
-          questionIndex: quizCurrentIndex,
-          answer: answerToSubmit,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "提交答案失敗");
+      await quizSubmitQueueRef.current.catch(() => undefined);
+      const data = await submission();
       if (data?.status === "completed") {
         setQuizResult(data?.result || null);
         setQuizUiState("result");
@@ -2894,10 +2931,6 @@ const unlockAudioAndMic = async () => {
         setQuizTextAnswer("");
       }
     } catch (error) {
-      setQuizQuestion(previousQuestion);
-      setQuizCurrentIndex((prev) => (isLastQuestion ? prev : Math.max(0, prev - 1)));
-      setQuizSelectedAnswer(previousSelectedAnswer);
-      setQuizTextAnswer(previousTextAnswer);
       showAlert({
         title: "提交失敗",
         message: error instanceof Error ? error.message : "提交答案失敗，請稍後再試。",
@@ -2922,6 +2955,17 @@ const unlockAudioAndMic = async () => {
   const retryQuiz = async () => {
     if (!activeQuiz) return;
     setQuizSubmitting(true);
+    setQuizBackgroundSaving(false);
+    setQuizRestarting(true);
+    quizSubmitQueueRef.current = Promise.resolve();
+    setActiveQuizAttempt(null);
+    setQuizQuestion(null);
+    setQuizPrefetchedQuestion(null);
+    setQuizCurrentIndex(0);
+    setQuizTotalQuestions(Number(activeQuiz.questionCount || 0));
+    setQuizAnswerMap({});
+    setQuizSelectedAnswer("");
+    setQuizTextAnswer("");
     try {
       await fetch(`${API_BASE}/api/quizzes/${activeQuiz.id}/attempts/reset`, {
         method: "POST",
@@ -2948,6 +2992,8 @@ const unlockAudioAndMic = async () => {
     setQuizAllQuestions([]);
     setQuizPrefetchedQuestion(null);
     setQuizAnswerMap({});
+    setQuizBackgroundSaving(false);
+    quizSubmitQueueRef.current = Promise.resolve();
     try {
       await fetch(`${API_BASE}/api/quizzes/${quizId}/attempts/dismiss-result`, {
         method: "POST",
@@ -3662,6 +3708,24 @@ const unlockAudioAndMic = async () => {
                 </button>
               </div>
 
+              {activeQuiz && quizUiState === "banner" ? (
+                <div className="border-b border-[#ebe5db] bg-white px-0 py-0">
+                  <div className="flex min-h-[40px] items-center justify-between gap-3 bg-[linear-gradient(90deg,#4f46e5_0%,#5b43ea_42%,#5638e7_100%)] px-4 py-1.5 text-white shadow-[0_10px_22px_rgba(79,70,229,0.18)]">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="text-[21px] leading-none text-[#ffd84d]">⚡</span>
+                      <div className="truncate text-[12px] font-black tracking-[0.01em]">你有一個待完成的知識測試</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={openQuizPrompt}
+                      className="shrink-0 rounded-full bg-white/18 px-3.5 py-1.5 text-[11px] font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ring-1 ring-white/10 backdrop-blur transition hover:bg-white/24"
+                    >
+                      點擊開展測試 →
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
               {/* messages */}
                   <div
                     ref={messagesRef}
@@ -3725,18 +3789,6 @@ const unlockAudioAndMic = async () => {
                   </div>
                 ))}
 
-                    {activeQuiz && quizUiState === "banner" ? (
-                      <div className="mb-3 flex items-center justify-between gap-2 rounded-[18px] bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-2.5 text-white shadow-[0_10px_24px_rgba(79,70,229,0.16)]">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="text-base">⚡</span>
-                          <div className="truncate text-sm font-black">你有一個待完成的知識測試</div>
-                        </div>
-                        <button type="button" onClick={openQuizPrompt} className="shrink-0 rounded-full bg-white/16 px-3 py-1.5 text-xs font-black text-white ring-1 ring-white/16 transition hover:bg-white/22">
-                          點擊開展測試
-                        </button>
-                      </div>
-                    ) : null}
-
                     {activeQuiz && quizUiState === "prompt" ? (
                       <div className="mb-3 rounded-[20px] border border-indigo-100 bg-[#EEF2FF] p-4 shadow-[0_10px_24px_rgba(99,102,241,0.08)]">
                         <div className="flex items-center gap-2 text-indigo-900">
@@ -3745,8 +3797,8 @@ const unlockAudioAndMic = async () => {
                         </div>
                         <p className="mt-2 text-sm font-semibold leading-7 text-indigo-900">我們現在開始測試。準備好了嗎？請回答我接下來的問題！</p>
                         <div className="mt-4 flex flex-wrap gap-2.5">
-                          <button type="button" onClick={() => void startQuiz()} disabled={quizSubmitting} className="rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-black text-white shadow-[0_8px_18px_rgba(79,70,229,0.22)] transition hover:bg-indigo-700 disabled:opacity-60">準備答題</button>
-                          <button type="button" onClick={() => void deferQuiz()} disabled={quizSubmitting} className="rounded-full border border-slate-200 bg-white px-6 py-2.5 text-sm font-black text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:opacity-60">稍後作答</button>
+                          <button type="button" onClick={() => void startQuiz()} disabled={quizStarting || quizSubmitting} className="rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-black text-white shadow-[0_8px_18px_rgba(79,70,229,0.22)] transition hover:bg-indigo-700 disabled:opacity-60">{quizStarting ? "載入題目..." : "準備答題"}</button>
+                          <button type="button" onClick={() => void deferQuiz()} disabled={quizStarting || quizSubmitting} className="rounded-full border border-slate-200 bg-white px-6 py-2.5 text-sm font-black text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:opacity-60">稍後作答</button>
                         </div>
                       </div>
                     ) : null}
@@ -3803,7 +3855,7 @@ const unlockAudioAndMic = async () => {
                           )}
                         </div>
                         <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
-                          <button type="button" onClick={goToPreviousQuizQuestion} disabled={quizCurrentIndex === 0 || quizSubmitting} className="rounded-full px-5 py-2 text-sm font-black text-slate-500 transition hover:bg-slate-50 disabled:text-slate-300">
+                          <button type="button" onClick={goToPreviousQuizQuestion} disabled={quizCurrentIndex === 0} className="rounded-full px-5 py-2 text-sm font-black text-slate-500 transition hover:bg-slate-50 disabled:text-slate-300">
                             上一題
                           </button>
                           <button type="button" onClick={() => void submitQuizAnswer()} disabled={(!(quizQuestion.options || []).length ? !quizTextAnswer.trim() : !quizSelectedAnswer) || quizSubmitting} className="rounded-full bg-indigo-600 px-7 py-2.5 text-sm font-black text-white shadow-[0_8px_20px_rgba(79,70,229,0.20)] transition hover:bg-indigo-700 disabled:opacity-50">
@@ -3834,9 +3886,12 @@ const unlockAudioAndMic = async () => {
                             </div>
                           </div>
                           <div className="mt-4 flex items-center gap-4">
-                            <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-4xl font-black text-indigo-600 ring-1 ring-indigo-100">
+                            <div className="relative flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-[28px] bg-[linear-gradient(180deg,rgba(226,233,244,0.92),rgba(204,214,230,0.72))] text-[46px] font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_16px_28px_rgba(148,163,184,0.18)] ring-1 ring-white/60">
+                              <div className="absolute inset-0 rounded-[28px] border border-white/40" />
                               {quizResult.grade}
-                              <span className="absolute -bottom-2 right-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-slate-600 shadow-sm ring-1 ring-slate-100">等級</span>
+                              <span className="absolute -bottom-1.5 right-[-4px] flex h-[30px] min-w-[50px] items-center justify-center rounded-full bg-white px-2.5 text-[12px] font-black text-slate-700 shadow-[0_10px_20px_rgba(148,163,184,0.22)] ring-1 ring-slate-200/80">
+                                等級
+                              </span>
                             </div>
                             <div className="min-w-0">
                               <div className="text-xl font-black leading-tight text-slate-900">{quizResult.grade === "A" ? "表現出色" : quizResult.grade === "B" ? "掌握不錯" : quizResult.grade === "C" ? "持續前進" : "打穩基礎"}</div>
