@@ -2721,7 +2721,6 @@ const unlockAudioAndMic = async () => {
     setShowDeleteConfirm(false);
     onDelete(botConfig.id);
   };
-  if (!isOpen) return null;
 
   useEffect(() => {
     if (!isOpen || !botConfig?.id) return;
@@ -2981,6 +2980,8 @@ const unlockAudioAndMic = async () => {
 
   const isQuizTaking = quizUiState === "taking" && Boolean(activeQuiz && quizQuestion);
   const shouldDisableRegularChat = shouldShowBooting || (shouldRequirePermission && !permissionReady) || isQuizTaking;
+
+  if (!isOpen) return null;
 
   return (
     <>
