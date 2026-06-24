@@ -3822,7 +3822,9 @@ const unlockAudioAndMic = async () => {
                               const selected = quizSelectedAnswer === option;
                               return (
                                 <button key={option} type="button" onClick={() => setQuizSelectedAnswer(option)} className={`flex w-full items-center gap-3 rounded-[16px] border px-4 py-3.5 text-left text-sm font-bold transition ${selected ? "border-indigo-300 bg-indigo-50 text-indigo-700 shadow-[0_8px_18px_rgba(99,102,241,0.10)]" : "border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:bg-indigo-50/40"}`}>
-                                  <span className={`h-7 w-7 shrink-0 rounded-full border-2 ${selected ? "border-indigo-500 bg-indigo-100" : "border-slate-300 bg-white"}`} />
+                                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 ${selected ? "border-indigo-500 bg-white" : "border-slate-300 bg-white"}`}>
+                                    {selected ? <span className="h-3.5 w-3.5 rounded-full bg-indigo-600" /> : null}
+                                  </span>
                                   <span>{option}</span>
                                 </button>
                               );

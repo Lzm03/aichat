@@ -246,9 +246,9 @@ function interactionBand(depth: number) {
 }
 
 function classifyStatus(level: number, depth: number) {
-  if (level <= 1 || depth < 0.35) return { status: "warning", statusText: "卡關預警" };
-  if (level >= 3 || depth >= 0.75) return { status: "knowledge", statusText: "知識溢出" };
-  return { status: "normal", statusText: "正常探索" };
+  if (level <= 1 || depth < 0.35) return { status: "warning", statusText: "未完成" };
+  if (level >= 3 || depth >= 0.75) return { status: "knowledge", statusText: "已完成" };
+  return { status: "normal", statusText: "進行中" };
 }
 
 function buildKnowledgePoints(
@@ -613,7 +613,7 @@ router.get("/teacher/assessment-report", requireAuth, async (req, res) => {
     }
 
     const studentResult = await pool.query(
-      `SELECT u.id, u.full_name, u.email
+      `SELECT u.id, u.full_name, u.email, u.avatar_url
        FROM teacher_students ts
        JOIN users u ON u.id = ts.student_id
        WHERE ts.teacher_id=$1 AND u.status='active'
@@ -666,10 +666,9 @@ router.get("/teacher/assessment-report", requireAuth, async (req, res) => {
     ));
     const messageRows = botIds.length
       ? await pool.query(
-          `SELECT user_id, bot_id, content, source, created_at
+          `SELECT user_id, bot_id, role, content, source, created_at
            FROM bot_chat_messages
            WHERE teacher_id=$1
-             AND role='user'
              AND bot_id = ANY($2)
            ORDER BY created_at ASC`,
           [user.id, botIds]
@@ -678,11 +677,53 @@ router.get("/teacher/assessment-report", requireAuth, async (req, res) => {
 
     const messagesByStudentBot = new Map<string, Array<{ content: string; createdAt: string; source?: string }>>();
     for (const row of messageRows.rows) {
+      if (row.role !== "user") continue;
       const key = `${row.user_id}:${row.bot_id}`;
       const list = messagesByStudentBot.get(key) || [];
       list.push({ content: String(row.content || ""), createdAt: String(row.created_at || ""), source: String(row.source || "direct") });
       messagesByStudentBot.set(key, list);
     }
+
+    const studentById = new Map(
+      studentResult.rows.map((student) => [
+        String(student.id),
+        {
+          id: String(student.id),
+          name: String(student.full_name || student.email || "學生"),
+          email: String(student.email || ""),
+          avatarUrl: String(student.avatar_url || ""),
+        },
+      ])
+    );
+    const chatRecordMap = new Map<string, any>();
+    for (const row of messageRows.rows) {
+      const student = studentById.get(String(row.user_id));
+      if (!student) continue;
+      const key = `${row.user_id}:${row.bot_id}`;
+      if (!chatRecordMap.has(key)) {
+        chatRecordMap.set(key, {
+          studentId: student.id,
+          studentName: student.name,
+          studentEmail: student.email,
+          studentAvatarUrl: student.avatarUrl,
+          botId: String(row.bot_id),
+          messages: [],
+        });
+      }
+      chatRecordMap.get(key).messages.push({
+        role: row.role === "bot" ? "bot" : "user",
+        content: String(row.content || ""),
+        source: String(row.source || "direct"),
+        createdAt: new Date(row.created_at).toISOString(),
+      });
+    }
+    const chatRecords = Array.from(chatRecordMap.values())
+      .map((record) => ({
+        ...record,
+        messageCount: record.messages.length,
+        lastActiveAt: record.messages[record.messages.length - 1]?.createdAt || null,
+      }))
+      .sort((a, b) => String(b.lastActiveAt || "").localeCompare(String(a.lastActiveAt || "")));
 
     const rows = studentResult.rows.map((student, index) => {
       const assignments = botByStudent.get(student.id) || [];
@@ -762,6 +803,7 @@ router.get("/teacher/assessment-report", requireAuth, async (req, res) => {
       selectedBotId: selectedBotId || (sharedBots[0]?.id || ""),
       selectedBot,
       knowledgePoints,
+      chatRecords,
       interactionSummary: {
         independentRate: interactionSummary.totalInputs ? Math.round((interactionSummary.independent / interactionSummary.totalInputs) * 100) : 0,
         assistedRate: interactionSummary.totalInputs ? Math.round((interactionSummary.assisted / interactionSummary.totalInputs) * 100) : 0,

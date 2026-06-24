@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from '../icons';
-import { Target, ArrowLeft, ChevronRight, AlertCircle, BookOpen, CheckCircle2, Sparkles, X, BarChart3, ChevronDown } from 'lucide-react';
+import { Target, ArrowLeft, ChevronRight, AlertCircle, BookOpen, CheckCircle2, Sparkles, X, BarChart3, ChevronDown, MessageCircle, Search, Clock3 } from 'lucide-react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
 import { readAuthSession } from '../../utils/auth';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
@@ -32,13 +32,13 @@ const studentData = [
 ];
 
 const classAssessmentRows = [
-  { id: '03', name: '學生 03', mastery: 92, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'knowledge', statusText: '知識溢出' },
-  { id: '04', name: '學生 04', mastery: 92, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'knowledge', statusText: '知識溢出' },
-  { id: '13', name: '學生 13', mastery: 92, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'knowledge', statusText: '知識溢出' },
-  { id: '14', name: '學生 14', mastery: 92, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'knowledge', statusText: '知識溢出' },
-  { id: '23', name: '學生 23', mastery: 91, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'normal', statusText: '正常探索' },
-  { id: '08', name: '學生 08', mastery: 74, output: 'L2', outputText: '正確回憶', interaction: 'Y2 持續互動', rounds: 5, mode: '引導回答', status: 'warning', statusText: '卡關預警' },
-  { id: '17', name: '學生 17', mastery: 68, output: 'L1', outputText: '簡短回應', interaction: 'Y1 初步參與', rounds: 3, mode: '被動回覆', status: 'warning', statusText: '卡關預警' },
+  { id: '03', name: '學生 03', mastery: 92, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'knowledge', statusText: '已完成' },
+  { id: '04', name: '學生 04', mastery: 92, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'knowledge', statusText: '已完成' },
+  { id: '13', name: '學生 13', mastery: 92, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'knowledge', statusText: '已完成' },
+  { id: '14', name: '學生 14', mastery: 92, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'knowledge', statusText: '已完成' },
+  { id: '23', name: '學生 23', mastery: 91, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'normal', statusText: '進行中' },
+  { id: '08', name: '學生 08', mastery: 74, output: 'L2', outputText: '正確回憶', interaction: 'Y2 持續互動', rounds: 5, mode: '引導回答', status: 'warning', statusText: '未完成' },
+  { id: '17', name: '學生 17', mastery: 68, output: 'L1', outputText: '簡短回應', interaction: 'Y1 初步參與', rounds: 3, mode: '被動回覆', status: 'warning', statusText: '未完成' },
 ];
 
 type AssessmentRow = (typeof classAssessmentRows)[number] & {
@@ -82,6 +82,24 @@ type InteractionPoint = {
   x: number;
   y: number;
   status: string;
+};
+
+type ChatRecordMessage = {
+  role: 'user' | 'bot';
+  content: string;
+  source: string;
+  createdAt: string;
+};
+
+type ChatRecord = {
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  studentAvatarUrl: string;
+  botId: string;
+  messageCount: number;
+  lastActiveAt: string | null;
+  messages: ChatRecordMessage[];
 };
 
 const getMasteryTone = (mastery: number) => {
@@ -150,7 +168,11 @@ export const StudentLearningReportCard = () => {
   const [assessmentError, setAssessmentError] = useState('');
   const [rankingPriority, setRankingPriority] = useState<'active' | 'passive'>('active');
   const [assessmentSortDirection, setAssessmentSortDirection] = useState<'desc' | 'asc'>('desc');
-  useBodyScrollLock(isClassDetailOpen || isRankingOpen);
+  const [chatRecords, setChatRecords] = useState<ChatRecord[]>([]);
+  const [isChatRecordsOpen, setIsChatRecordsOpen] = useState(false);
+  const [selectedChatStudentId, setSelectedChatStudentId] = useState('');
+  const [chatSearch, setChatSearch] = useState('');
+  useBodyScrollLock(isClassDetailOpen || isRankingOpen || isChatRecordsOpen);
 
   const filteredAssessmentRows = assessmentRows.filter((row) => detailFilter === 'all' || row.status === detailFilter);
   const sortedAssessmentRows = [...filteredAssessmentRows].sort((a, b) => {
@@ -171,6 +193,19 @@ export const StudentLearningReportCard = () => {
     () => sharedBots.find((bot) => bot.id === selectedBotId) || sharedBots[0] || null,
     [sharedBots, selectedBotId]
   );
+  const filteredChatRecords = useMemo(() => {
+    const keyword = chatSearch.trim().toLowerCase();
+    if (!keyword) return chatRecords;
+    return chatRecords.filter((record) =>
+      `${record.studentName} ${record.studentEmail} ${record.messages.map((message) => message.content).join(' ')}`
+        .toLowerCase()
+        .includes(keyword)
+    );
+  }, [chatRecords, chatSearch]);
+  const selectedChatRecord =
+    filteredChatRecords.find((record) => record.studentId === selectedChatStudentId) ||
+    filteredChatRecords[0] ||
+    null;
   const selectedBotKnowledge = useMemo(() => {
     const parsed = parsePromptSource({
       roleName: selectedBot?.name,
@@ -314,6 +349,10 @@ export const StudentLearningReportCard = () => {
         if (Array.isArray(data?.knowledgePoints)) {
           setKnowledgePoints(data.knowledgePoints);
         }
+        if (Array.isArray(data?.chatRecords)) {
+          setChatRecords(data.chatRecords);
+          setSelectedChatStudentId((current) => current || String(data.chatRecords[0]?.studentId || ''));
+        }
         if (data?.interactionSummary) {
           setInteractionSummary({
             independentRate: Number(data.interactionSummary.independentRate || 0),
@@ -354,6 +393,19 @@ export const StudentLearningReportCard = () => {
   const openBotReport = (botId: string) => {
     setSelectedBotId(botId);
     setViewLevel('report');
+  };
+
+  const formatChatTime = (value?: string | null) => {
+    if (!value) return '尚無時間';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '尚無時間';
+    return new Intl.DateTimeFormat('zh-HK', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(date);
   };
 
   return (
@@ -524,7 +576,7 @@ export const StudentLearningReportCard = () => {
                         </div>
                         <div className="absolute inset-0 bg-[linear-gradient(to_right,transparent_0,transparent_49.8%,rgba(203,213,225,0.7)_49.8%,rgba(203,213,225,0.7)_50.2%,transparent_50.2%),linear-gradient(to_bottom,transparent_0,transparent_49.8%,rgba(203,213,225,0.7)_49.8%,rgba(203,213,225,0.7)_50.2%,transparent_50.2%)]" />
                         <div className="absolute left-2 top-2 z-10 text-[11px] font-black text-slate-400">高效學握區</div>
-                        <div className="absolute right-2 top-2 z-10 text-[11px] font-black text-emerald-500">知識溢出</div>
+                        <div className="absolute right-2 top-2 z-10 text-[11px] font-black text-emerald-500">已完成</div>
                         <div className="absolute left-2 bottom-2 z-10 text-[11px] font-black text-slate-400">基礎/淺層參與區</div>
                         <div className="absolute right-2 bottom-2 z-10 text-[11px] font-black text-rose-400">無效卡關</div>
                         <div className="absolute inset-x-4 top-1/2 z-0 h-px -translate-y-1/2 bg-slate-200/90" />
@@ -565,7 +617,155 @@ export const StudentLearningReportCard = () => {
                   查看全班評估明細 <ChevronRight className="ml-2 inline h-4 w-4" />
                 </button>
               </div>
+
+              <button
+                type="button"
+                onClick={() => setIsChatRecordsOpen(true)}
+                className="group flex w-full items-center justify-between rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3.5 text-left transition hover:border-indigo-200 hover:bg-indigo-50"
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm">
+                    <MessageCircle className="h-4.5 w-4.5" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-xs font-black text-slate-900">學生與{selectedBot?.name || 'Bot'}對話記錄</span>
+                    <span className="mt-0.5 block truncate text-[10px] font-semibold text-slate-500">
+                      查看 {chatRecords.length} 位學生與「{selectedBot?.name || '目前 Bot'}」的學習對話
+                    </span>
+                  </span>
+                </span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-indigo-400 transition-transform group-hover:translate-x-0.5" />
+              </button>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isChatRecordsOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[140] bg-slate-950/45 p-3 backdrop-blur-sm sm:p-6"
+          >
+            <motion.div
+              initial={{ y: 18, opacity: 0, scale: 0.99 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 18, opacity: 0, scale: 0.99 }}
+              className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-[26px] bg-white shadow-2xl"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5 sm:px-5">
+                <h2 className="text-sm font-black text-slate-900 sm:text-base">學生與{selectedBot?.name || 'Bot'}對話記錄</h2>
+                <button type="button" onClick={() => setIsChatRecordsOpen(false)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[310px_minmax(0,1fr)]">
+                <aside className="flex min-h-0 flex-col border-b border-slate-100 bg-slate-50/70 md:border-b-0 md:border-r">
+                  <div className="p-3.5">
+                    <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+                      <Search className="h-4 w-4 text-slate-400" />
+                      <input
+                        value={chatSearch}
+                        onChange={(event) => setChatSearch(event.target.value)}
+                        placeholder="搜尋學生或對話內容"
+                        className="min-w-0 flex-1 bg-transparent text-xs font-semibold text-slate-700 outline-none placeholder:text-slate-400"
+                      />
+                    </label>
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3">
+                    {filteredChatRecords.map((record) => {
+                      const active = selectedChatRecord?.studentId === record.studentId;
+                      return (
+                        <button
+                          key={record.studentId}
+                          type="button"
+                          onClick={() => setSelectedChatStudentId(record.studentId)}
+                          className={`mb-1.5 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
+                            active ? 'bg-white shadow-sm ring-1 ring-indigo-100' : 'hover:bg-white/80'
+                          }`}
+                        >
+                          <span className={`flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-[11px] font-black ${active ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                            {record.studentAvatarUrl ? (
+                              <img src={record.studentAvatarUrl} alt={record.studentName} className="h-full w-full object-cover" />
+                            ) : (
+                              record.studentName.slice(0, 1)
+                            )}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center justify-between gap-2">
+                              <span className="truncate text-xs font-black text-slate-800">{record.studentName}</span>
+                              <span className="shrink-0 text-[9px] font-bold text-slate-400">{formatChatTime(record.lastActiveAt)}</span>
+                            </span>
+                            <span className="mt-1 block truncate text-[10px] font-semibold text-slate-500">
+                              {record.messageCount} 則訊息 · {record.messages.at(-1)?.content || '尚無對話'}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {!filteredChatRecords.length && (
+                      <div className="px-4 py-10 text-center text-[11px] font-semibold text-slate-400">找不到符合的對話記錄</div>
+                    )}
+                  </div>
+                </aside>
+
+                <section className="flex min-h-0 flex-col bg-white">
+                  {selectedChatRecord ? (
+                    <>
+                      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 sm:px-5">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-200 text-[11px] font-black text-slate-600">
+                            {selectedChatRecord.studentAvatarUrl ? (
+                              <img src={selectedChatRecord.studentAvatarUrl} alt={selectedChatRecord.studentName} className="h-full w-full object-cover" />
+                            ) : (
+                              selectedChatRecord.studentName.slice(0, 1)
+                            )}
+                          </span>
+                          <div>
+                            <h3 className="text-sm font-black text-slate-900">{selectedChatRecord.studentName}</h3>
+                            <p className="mt-0.5 text-[10px] font-semibold text-slate-400">{selectedChatRecord.studentEmail}</p>
+                          </div>
+                        </div>
+                        <span className="flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black text-slate-500">
+                          <Clock3 className="h-3 w-3" />
+                          {selectedChatRecord.messageCount} 則
+                        </span>
+                      </div>
+                      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50/50 px-4 py-5 sm:px-6">
+                        {selectedChatRecord.messages.map((message, index) => {
+                          const isStudent = message.role === 'user';
+                          return (
+                            <div key={`${message.createdAt}-${index}`} className={`flex ${isStudent ? 'justify-end' : 'justify-start'}`}>
+                              <div className={`max-w-[82%] sm:max-w-[72%] ${isStudent ? 'items-end' : 'items-start'} flex flex-col`}>
+                                <span className="mb-1 px-1 text-[9px] font-black text-slate-400">
+                                  {isStudent ? selectedChatRecord.studentName : selectedBot?.name || 'AI Bot'} · {formatChatTime(message.createdAt)}
+                                </span>
+                                <div className={`rounded-2xl px-3.5 py-2.5 text-xs font-semibold leading-relaxed shadow-sm ${
+                                  isStudent
+                                    ? 'rounded-br-md bg-indigo-600 text-white'
+                                    : 'rounded-bl-md border border-slate-100 bg-white text-slate-700'
+                                }`}>
+                                  {message.content}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+                      <MessageCircle className="h-8 w-8 text-slate-300" />
+                      <p className="mt-3 text-sm font-black text-slate-600">目前沒有可顯示的對話</p>
+                      <p className="mt-1 text-[11px] font-semibold text-slate-400">學生開始與這個 Bot 互動後，記錄會出現在這裡。</p>
+                    </div>
+                  )}
+                </section>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -768,9 +968,9 @@ export const StudentLearningReportCard = () => {
                     <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
                       {[
                         { key: 'all', label: `全部學生 (${assessmentCounts.all})` },
-                        { key: 'warning', label: `卡關預警 (${assessmentCounts.warning})` },
-                        { key: 'knowledge', label: `知識溢出 (${assessmentCounts.knowledge})` },
-                        { key: 'normal', label: `正常探索 (${assessmentCounts.normal})` },
+                        { key: 'warning', label: `未完成 (${assessmentCounts.warning})` },
+                        { key: 'knowledge', label: `已完成 (${assessmentCounts.knowledge})` },
+                        { key: 'normal', label: `進行中 (${assessmentCounts.normal})` },
                       ].map((item) => (
                         <button
                           key={item.key}
