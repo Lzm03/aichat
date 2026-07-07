@@ -440,11 +440,14 @@ function normalizeStreamFlag(input: unknown): boolean {
 }
 
 function clampChinesePhrase(input: string, maxLength = 10) {
-  const cleaned = String(input || "")
+  const withWordSpaces = String(input || "")
     .replace(/[「」『』"'`]/g, "")
     .replace(/[，。！？；：、,.!?;:()[\]{}]/g, " ")
-    .replace(/\s+/g, "")
+    .replace(/\s+/g, " ")
     .trim();
+  const containsLatinWords = /[A-Za-z]/.test(withWordSpaces);
+  const cleaned = containsLatinWords ? withWordSpaces : withWordSpaces.replace(/\s+/g, "");
+  if (containsLatinWords) return cleaned.slice(0, Math.max(maxLength * 4, 72)).trim();
   return cleaned.slice(0, maxLength);
 }
 
@@ -869,7 +872,11 @@ async function buildDialogueEnhancement(
   userPrompt: string,
   reply: string,
   recentMessages: RecentChatMessage[] = [],
-  options: { idleTrigger?: boolean; currentQuestion?: string } = {}
+  options: {
+    idleTrigger?: boolean;
+    currentQuestion?: string;
+    replyLanguage?: "cantonese" | "mandarin" | "english";
+  } = {}
 ) {
   const empty = emptyDialogueEnhancement();
   if (MOCK_UPSTREAM || !ENABLE_DIALOGUE_SUGGESTION_LLM) return empty;
@@ -880,6 +887,12 @@ async function buildDialogueEnhancement(
   const questionType = inferDialogueQuestionType(lastQuestion);
   const choiceOptions = extractChoiceOptions(lastQuestion);
   const point = pickDialogueKnowledgePointForQuestion(systemPrompt, lastQuestion, reply);
+  const guideLanguageRule =
+    options.replyLanguage === "english"
+      ? "OUTPUT LANGUAGE: Write followUpQuestion, every label, text, and sendText entirely in natural English. Labels must be: Key fact, Think deeper, Apply the idea."
+      : options.replyLanguage === "mandarin"
+        ? "輸出語言：followUpQuestion、label、text、sendText 必須全部使用繁體中文的標準普通話，禁止使用粵語詞與語氣詞（如係、嘅、喺、咗、佢、哋）。"
+        : "輸出語言：followUpQuestion、label、text、sendText 必須全部使用自然的香港粵語繁體中文。";
 
   const topic = clampChinesePhrase(
     String(point?.content || userPrompt || lastQuestion)
@@ -890,6 +903,7 @@ async function buildDialogueEnhancement(
   );
 
   const prompt = [
+    guideLanguageRule,
     "你是兒童中文學習平台的引導提示生成器，不是回答模板機器。",
     "請先理解角色知識庫、角色語氣、學生上一句話、Bot 剛剛回覆，以及 Bot 最後提出的問題，再生成 3 個可直接點選的學生回答。",
     "三個回答必須是『真的回答這一題』，要從角色知識庫中挑出最相關的內容來組織成自然句子，而不是套用固定句式。",
@@ -929,7 +943,7 @@ async function buildDialogueEnhancement(
   try {
     const raw = await askModelOnce(
       enhancementProvider,
-      "你只負責輸出符合格式的教學建議答案 JSON，不扮演任何角色。",
+      `${guideLanguageRule}\n你只負責輸出符合格式的教學建議答案 JSON，不扮演任何角色。`,
       prompt
     );
     const parsed = JSON.parse(cleanSuggestionJson(raw));
@@ -945,7 +959,7 @@ async function buildDialogueEnhancement(
         : generatedQuestion;
     let suggestedReplies = normalizeSuggestedReplies(parsed?.suggestedReplies, lastQuestion);
     const l1Reply = suggestedReplies.find((item) => item.tier === "L1");
-    if (l1Reply && l1ReplyLooksWeak(l1Reply, lastQuestion)) {
+    if (options.replyLanguage === "cantonese" && l1Reply && l1ReplyLooksWeak(l1Reply, lastQuestion)) {
       const repairedL1 = await repairL1WithModel(
         enhancementProvider,
         systemPrompt,
@@ -959,6 +973,7 @@ async function buildDialogueEnhancement(
       }
     }
     if (
+      options.replyLanguage === "cantonese" &&
       suggestedReplies.length === 3 &&
       suggestedReplies.some((item) => suggestedReplyLooksWeak(item, lastQuestion))
     ) {
@@ -1670,6 +1685,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
       mode = "",
       source = "direct",
       conversationId = "",
+      replyLanguage = "cantonese",
     } = req.body || {};
     const actor = await resolveChatActor(req, String(sharedBotId || ""), String(botId || ""));
     const authUser = actor.user;
@@ -1678,6 +1694,8 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
 
     const normalized = String(userPrompt || "").trim();
     const selectedModelProvider = normalizeChatModelProvider(modelProvider);
+    const normalizedReplyLanguage =
+      replyLanguage === "english" || replyLanguage === "mandarin" ? replyLanguage : "cantonese";
     const wantsStream = normalizeStreamFlag(stream);
     const chatImages = selectedModelProvider === "gemini" ? extractChatImages(req) : [];
     const normalizedPrompt = selectedModelProvider === "gemini" && chatImages.length > 0 && !normalized
@@ -1727,6 +1745,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
         role: "user",
         content: normalizedPrompt,
         messageType: "normal",
+        metadata: { replyLanguage: normalizedReplyLanguage },
       });
       await updateConversationPreview(conversation.id, authUser.id, normalizedPrompt);
       const maybeRenamed = await updateConversationTitleFromFirstMessage(conversation.id, authUser.id);
@@ -1744,12 +1763,24 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
         role: "assistant",
         content: safeReply,
         messageType: "normal",
+        metadata: { replyLanguage: normalizedReplyLanguage },
       });
       const refreshed = await updateConversationPreview(activeConversation.id, authUser.id, safeReply);
       if (refreshed) activeConversation = refreshed;
     };
 
     const respondTeaching = async (payload: Record<string, any>) => {
+      if (normalizedReplyLanguage !== "cantonese" && String(payload?.reply || "").trim()) {
+        const targetLanguage =
+          normalizedReplyLanguage === "english"
+            ? "natural, student-friendly English"
+            : "standard Mandarin written in Traditional Chinese; never use Cantonese words or particles";
+        payload.reply = await askModelOnce(
+          selectedModelProvider,
+          `Translate educational chat content into ${targetLanguage}. Preserve Step numbers, line breaks, examples, choices, and meaning. Output only the translated text.`,
+          String(payload.reply)
+        ).catch(() => payload.reply);
+      }
       if (usageType === "chat_message" && normalizedPrompt) {
         await persistUserMessage();
       }
@@ -1778,6 +1809,17 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
       });
     };
 
+    if (mode === "translate_text") {
+      const sourceText = String(req.body?.text || "").trim();
+      if (!sourceText) return res.status(400).json({ error: "Missing text" });
+      const translationPrompt =
+        normalizedReplyLanguage === "english"
+          ? "Translate into natural English while preserving the character voice and meaning. Output only the translation."
+          : "改寫成自然、標準的繁體中文普通話，保留角色語氣與原意，徹底移除粵語詞彙、句法和語氣詞。只輸出改寫結果。";
+      const translated = await askModelOnce(selectedModelProvider, translationPrompt, sourceText);
+      return res.json({ reply: translated });
+    }
+
     if (mode === "dialogue_enhancement") {
       const reply = String(req.body?.reply || "").trim();
       if (!reply) {
@@ -1792,6 +1834,10 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
         {
           idleTrigger: Boolean(req.body?.idleTrigger),
           currentQuestion: String(req.body?.currentQuestion || "").trim(),
+          replyLanguage:
+            req.body?.replyLanguage === "english" || req.body?.replyLanguage === "mandarin"
+              ? req.body.replyLanguage
+              : "cantonese",
         }
       );
       return res.json(enhancement);
@@ -1936,6 +1982,19 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
         reply =
           (await maybeMockModelReply(normalizedPrompt)) ??
           (await askModelOnce(selectedModelProvider, systemPrompt, contextualPrompt, chatImages));
+        if (normalizedReplyLanguage === "mandarin") {
+          reply = await askModelOnce(
+            selectedModelProvider,
+            "你是專業粵語轉繁體普通話編輯。把輸入完整改寫成自然、標準的普通話，使用繁體中文。保留原意、角色身份、段落與最多一個問題。徹底移除所有粵語詞彙、句法和語氣詞。不要解釋，只輸出改寫結果。",
+            reply
+          );
+        } else if (normalizedReplyLanguage === "english") {
+          reply = await askModelOnce(
+            selectedModelProvider,
+            "Translate the input into natural English. Preserve its meaning, character voice, paragraph structure, and at most one question. Output only the translation.",
+            reply
+          );
+        }
         if (isDebugLogEnabled) console.log("[ask] model reply received length=%s", reply.length);
       } catch (error) {
         throw remapModelProviderError(error);

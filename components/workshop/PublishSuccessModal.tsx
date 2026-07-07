@@ -55,6 +55,42 @@ type ChatMessage = {
   imagePreviews?: string[];
 };
 
+type ReplyLanguage = "cantonese" | "mandarin" | "english";
+
+const REPLY_LANGUAGE_OPTIONS: Array<{
+  value: ReplyLanguage;
+  label: string;
+  speechRecognitionLanguage: string;
+  ttsLanguage: "Chinese,Yue" | "Chinese" | "English";
+  guideLabels: [string, string, string];
+  prompt: string;
+}> = [
+  {
+    value: "cantonese",
+    label: "粵語",
+    speechRecognitionLanguage: "zh-HK",
+    ttsLanguage: "Chinese,Yue",
+    guideLabels: ["基礎事實", "深入思考", "價值遷移"],
+    prompt: "Reply in natural Hong Kong Cantonese written with Traditional Chinese characters and everyday Cantonese wording. Do not switch to Mandarin unless the user asks.",
+  },
+  {
+    value: "mandarin",
+    label: "普通話",
+    speechRecognitionLanguage: "zh-CN",
+    ttsLanguage: "Chinese",
+    guideLabels: ["基礎事實", "深入思考", "價值遷移"],
+    prompt: "MANDATORY FINAL-OUTPUT RULE: Reply only in natural Standard Mandarin written with Traditional Chinese characters. Before sending, rewrite the entire response into standard Mandarin grammar and vocabulary. Never imitate the character's Cantonese speech style. Do not output Cantonese words or particles, including 係、嘅、喺、咗、佢、哋、唔、冇、咁、啲、喎、噃、吓、畀、諗、睇、噉. Use 是、的、在、了、他們、不、沒有、這樣、一些、給、想、看 instead. This rule applies to every sentence, question, teaching hint, and suggested reply and overrides all persona style instructions.",
+  },
+  {
+    value: "english",
+    label: "English",
+    speechRecognitionLanguage: "en-US",
+    ttsLanguage: "English",
+    guideLabels: ["Key fact", "Think deeper", "Apply the idea"],
+    prompt: "Reply in clear, natural English. Do not switch to Chinese unless the user asks.",
+  },
+];
+
 type ActiveQuizSummary = {
   id: string;
   title: string;
@@ -85,6 +121,38 @@ type QuizPreviewQuestion = {
 
 const GUIDE_HINT_DELAY_MS = 1600;
 const IDLE_GUIDE_DELAY_MS = 15000;
+
+const normalizeMandarinTraditional = (text: string) =>
+  String(text || "")
+    .replace(/有冇/g, "有沒有")
+    .replace(/呢一個/g, "這一個")
+    .replace(/呢個/g, "這個")
+    .replace(/嗰一個/g, "那一個")
+    .replace(/嗰個/g, "那個")
+    .replace(/呢度/g, "這裡")
+    .replace(/嗰度/g, "那裡")
+    .replace(/我哋/g, "我們")
+    .replace(/你哋/g, "你們")
+    .replace(/佢哋/g, "他們")
+    .replace(/佢/g, "他")
+    .replace(/係咪/g, "是不是")
+    .replace(/唔係/g, "不是")
+    .replace(/冇/g, "沒有")
+    .replace(/唔/g, "不")
+    .replace(/喺/g, "在")
+    .replace(/畀/g, "給")
+    .replace(/嚟/g, "來")
+    .replace(/講/g, "說")
+    .replace(/諗/g, "想")
+    .replace(/睇/g, "看")
+    .replace(/咁/g, "這樣")
+    .replace(/啲/g, "一些")
+    .replace(/咗/g, "了")
+    .replace(/嘅/g, "的")
+    .replace(/係/g, "是")
+    .replace(/啱/g, "對")
+    .replace(/噉/g, "這樣")
+    .replace(/[喎噃吓呀㗎啦囉]/g, "");
 
 export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   isOpen,
@@ -169,6 +237,14 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [guidedStepIndex, setGuidedStepIndex] = useState(0);
   const [guidedTotalSteps, setGuidedTotalSteps] = useState(0);
   const [modelProvider, setModelProvider] = useState<"deepseek" | "gemini">("deepseek");
+  const [replyLanguage, setReplyLanguage] = useState<ReplyLanguage>(() => {
+    if (typeof window === "undefined") return "cantonese";
+    const saved = window.localStorage.getItem(`bot-reply-language:${botConfig.id}`);
+    return REPLY_LANGUAGE_OPTIONS.some((option) => option.value === saved)
+      ? (saved as ReplyLanguage)
+      : "cantonese";
+  });
+  const [translatedOpeningMessage, setTranslatedOpeningMessage] = useState("");
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [activeQuiz, setActiveQuiz] = useState<ActiveQuizSummary | null>(null);
   const [activeQuizAttempt, setActiveQuizAttempt] = useState<ActiveQuizAttempt | null>(null);
@@ -195,6 +271,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const chatImageInputRef = useRef<HTMLInputElement | null>(null);
   const previewUrlsRef = useRef<Set<string>>(new Set());
   const conversationMessagesCacheRef = useRef<Map<string, ChatMessage[]>>(new Map());
+  const conversationLanguageCacheRef = useRef<Map<string, ReplyLanguage>>(new Map());
   const conversationPrefetchingRef = useRef<Set<string>>(new Set());
   const lastHistoryBotIdRef = useRef<string | null>(null);
   const stageCaptureRef = useRef<HTMLDivElement | null>(null);
@@ -232,24 +309,111 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const interactionRecordedRef = useRef(false);
   const ttsErrorNoticeShownRef = useRef(false);
 
+  const selectedReplyLanguage =
+    REPLY_LANGUAGE_OPTIONS.find((option) => option.value === replyLanguage) || REPLY_LANGUAGE_OPTIONS[0];
   const buildDefaultOpeningMessage = React.useCallback(() => {
-    return `你好！我是 ${botName}，我們一起開始今天的學習吧。`;
-  }, [botName]);
+    if (replyLanguage === "english") return `Hi! I'm ${botName}. Let's start learning together.`;
+    if (replyLanguage === "mandarin") return `您好，我是${botName}。讓我們一起開始今天的學習吧。`;
+    return `你好！我係${botName}，我哋一齊開始今日嘅學習啦。`;
+  }, [botName, replyLanguage]);
   const shareableLink =
     botConfig?.id && typeof window !== "undefined"
       ? `${window.location.origin}/bot/${botConfig.id}`
       : "";
-  const chatSystemPrompt = buildChatSystemPrompt({
+  const chatSystemPrompt = `${buildChatSystemPrompt({
     roleName: botName,
     knowledgeBase: botConfig.knowledgeBase,
     securityPrompt: botConfig.securityPrompt,
-  });
+  })}\n\n# Required Reply Language\n${selectedReplyLanguage.prompt}\nThis language selection overrides any default response-language rule above.`;
   const authSession = readAuthSession();
   const canUseHistory = Boolean(authSession?.user?.id);
 
   const buildOpeningMessage = React.useCallback(() => {
-    return String(configuredOpeningMessage || "").trim() || buildDefaultOpeningMessage();
-  }, [buildDefaultOpeningMessage, configuredOpeningMessage]);
+    const customOpeningMessage = String(configuredOpeningMessage || "").trim();
+    if (customOpeningMessage) {
+      if (replyLanguage === "cantonese") return customOpeningMessage;
+      if (translatedOpeningMessage) return translatedOpeningMessage;
+    }
+    return buildDefaultOpeningMessage();
+  }, [buildDefaultOpeningMessage, configuredOpeningMessage, replyLanguage, translatedOpeningMessage]);
+
+  useEffect(() => {
+    const sourceText = String(configuredOpeningMessage || "").trim();
+    setTranslatedOpeningMessage("");
+    if (!sourceText || replyLanguage === "cantonese") return;
+    const controller = new AbortController();
+    void fetch(`${API_BASE}/api/ask`, {
+      method: "POST",
+      headers: requestHeaders,
+      signal: controller.signal,
+      body: JSON.stringify({
+        mode: "translate_text",
+        text: sourceText,
+        replyLanguage,
+        modelProvider,
+        botId: botConfig.id,
+        sharedBotId: isSharedView ? botConfig.id : undefined,
+        usageType: "opening_translation",
+      }),
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        const translated = String(data?.reply || "").trim();
+        if (translated) setTranslatedOpeningMessage(translated);
+      })
+      .catch((error) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          console.warn("opening message translation skipped", error);
+        }
+      });
+    return () => controller.abort();
+  }, [botConfig.id, configuredOpeningMessage, isSharedView, modelProvider, replyLanguage]);
+
+  const handleReplyLanguageChange = React.useCallback((nextLanguage: ReplyLanguage) => {
+    if (nextLanguage === replyLanguage) return;
+    stopAllSpeech();
+    activeRequestController.current?.abort();
+    activeRequestController.current = null;
+    generationIdRef.current += 1;
+    setMessages([]);
+    setSuggestedReplies([]);
+    setGuideQuestion("");
+    setGuidedMode(false);
+    setGuidedStepIndex(0);
+    setGuidedTotalSteps(0);
+    setCurrentConversationId(null);
+    setBotState("idle");
+    setReplyLanguage(nextLanguage);
+  }, [replyLanguage]);
+
+  useEffect(() => {
+    window.localStorage.setItem(`bot-reply-language:${botConfig.id}`, replyLanguage);
+  }, [botConfig.id, replyLanguage]);
+
+  useEffect(() => {
+    if (replyLanguage !== "mandarin") return;
+    setMessages((current) =>
+      current.map((message) =>
+        message.role === "bot"
+          ? {
+              ...message,
+              content: normalizeMandarinTraditional(message.content),
+              guidedBody: message.guidedBody
+                ? normalizeMandarinTraditional(message.guidedBody)
+                : message.guidedBody,
+            }
+          : message
+      )
+    );
+    setGuideQuestion((current) => normalizeMandarinTraditional(current));
+    setSuggestedReplies((current) =>
+      current.map((item) => ({
+        ...item,
+        text: normalizeMandarinTraditional(item.text),
+        sendText: item.sendText ? normalizeMandarinTraditional(item.sendText) : item.sendText,
+      }))
+    );
+  }, [replyLanguage]);
 
   const resetConversationView = React.useCallback(
     (nextConversationId?: string | null) => {
@@ -292,6 +456,26 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     [buildOpeningMessage]
   );
 
+  const detectConversationLanguage = React.useCallback(
+    (historyMessages: ConversationMessage[]): ReplyLanguage => {
+      const savedLanguage = [...historyMessages]
+        .reverse()
+        .map((message) => message.metadata?.replyLanguage)
+        .find((language) =>
+          language === "cantonese" || language === "mandarin" || language === "english"
+        );
+      if (savedLanguage) return savedLanguage as ReplyLanguage;
+      const assistantText = historyMessages
+        .filter((message) => message.role === "assistant")
+        .map((message) => message.content)
+        .join(" ");
+      if (/[A-Za-z]{4,}\s+[A-Za-z]{3,}/.test(assistantText)) return "english";
+      if (/[嘅係喺咗佢哋唔冇咁啲喎嚟]/.test(assistantText)) return "cantonese";
+      return "mandarin";
+    },
+    []
+  );
+
   const prefetchConversationMessages = React.useCallback(
     async (conversationId: string) => {
       if (
@@ -304,6 +488,10 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       conversationPrefetchingRef.current.add(conversationId);
       try {
         const historyMessages = await getMessages(conversationId);
+        conversationLanguageCacheRef.current.set(
+          conversationId,
+          detectConversationLanguage(historyMessages)
+        );
         conversationMessagesCacheRef.current.set(
           conversationId,
           mapConversationMessagesToChatMessages(historyMessages)
@@ -314,7 +502,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
         conversationPrefetchingRef.current.delete(conversationId);
       }
     },
-    [mapConversationMessagesToChatMessages]
+    [detectConversationLanguage, mapConversationMessagesToChatMessages]
   );
 
   const fetchConversationHistory = React.useCallback(async (options?: { silent?: boolean }) => {
@@ -352,6 +540,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       setChatPanelOpen(true);
       setHistoryDrawerOpen(false);
       const cachedMessages = conversationMessagesCacheRef.current.get(conversation.id);
+      const cachedLanguage = conversationLanguageCacheRef.current.get(conversation.id);
+      if (cachedLanguage) setReplyLanguage(cachedLanguage);
       if (cachedMessages) {
         setMessages(cachedMessages);
       }
@@ -364,6 +554,9 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       setIsStopAvailable(false);
       try {
         const historyMessages = await getMessages(conversation.id);
+        const conversationLanguage = detectConversationLanguage(historyMessages);
+        conversationLanguageCacheRef.current.set(conversation.id, conversationLanguage);
+        setReplyLanguage(conversationLanguage);
         const restoredMessages = mapConversationMessagesToChatMessages(historyMessages);
         conversationMessagesCacheRef.current.set(conversation.id, restoredMessages);
         setMessages(restoredMessages);
@@ -374,7 +567,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
         setHistoryActionLoading(false);
       }
     },
-    [mapConversationMessagesToChatMessages]
+    [detectConversationLanguage, mapConversationMessagesToChatMessages]
   );
 
   const handleCopyShareLink = async () => {
@@ -1376,6 +1569,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
   useLayoutEffect(() => {
     if (!isOpen) return;
+    if (currentConversationId) return;
     setOpeningReady(false);
     if (shouldRequirePermission && !permissionReady) {
       // Wait for explicit user authorization before booting opening voice.
@@ -1398,10 +1592,11 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       setIsBooting(false);
       setOpeningReady(true);
     }
-  }, [isOpen, voiceId, permissionReady, shouldRequirePermission]);
+  }, [currentConversationId, isOpen, voiceId, permissionReady, shouldRequirePermission]);
 
   useEffect(() => {
     if (!isOpen) return;
+    if (currentConversationId) return;
     if (shouldRequirePermission && !permissionReady) {
       stopAllSpeech();
       setMessages([]);
@@ -1478,7 +1673,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
           setOpeningReady(true);
         }
       });
-  }, [botName, configuredOpeningMessage, isOpen, voiceId, permissionReady, shouldRequirePermission, buildOpeningMessage]);
+  }, [botName, configuredOpeningMessage, currentConversationId, isOpen, voiceId, permissionReady, shouldRequirePermission, buildOpeningMessage]);
   
   
 
@@ -1542,6 +1737,7 @@ const requestTTSAudio = async (text: string, sessionId: number) => {
       body: JSON.stringify({
         text,
         voiceId,
+        language: selectedReplyLanguage.ttsLanguage,
         usageType: "chat_voice",
         sharedBotId: isSharedView ? botConfig.id : undefined,
       }),
@@ -1821,6 +2017,7 @@ const requestDialogueEnhancement = async ({
         currentQuestion,
         recentMessages,
         idleTrigger,
+        replyLanguage,
         modelProvider,
         botId: botConfig.id,
         usageType: "chat_message",
@@ -1832,11 +2029,15 @@ const requestDialogueEnhancement = async ({
     const data = await response.json().catch(() => null);
     const nextSuggestedReplies = Array.isArray(data?.suggestedReplies)
       ? data.suggestedReplies
-          .map((item: any) => ({
+          .map((item: any, index: number) => ({
             tier: item?.tier === "L2" || item?.tier === "L3" ? item.tier : "L1",
-            label: String(item?.label || "").trim(),
-            text: String(item?.text || "").trim(),
-            sendText: String(item?.sendText || "").trim(),
+            label: selectedReplyLanguage.guideLabels[index] || String(item?.label || "").trim(),
+            text: replyLanguage === "mandarin"
+              ? normalizeMandarinTraditional(String(item?.text || "").trim())
+              : String(item?.text || "").trim(),
+            sendText: replyLanguage === "mandarin"
+              ? normalizeMandarinTraditional(String(item?.sendText || "").trim())
+              : String(item?.sendText || "").trim(),
           }))
           .filter((item: SuggestedReply) => item.label && item.text)
           .slice(0, 3)
@@ -1923,7 +2124,8 @@ const sendMessage = async (
       modelProvider,
       botId: botConfig.id,
       source,
-      stream: !guidedMode && modelProvider !== "gemini",
+      replyLanguage,
+      stream: !guidedMode && modelProvider !== "gemini" && replyLanguage !== "mandarin",
       teachingHint: guidedMode ? "continue" : "auto",
       usageType: "chat_message",
       sharedBotId: isSharedView ? botConfig.id : undefined,
@@ -1971,7 +2173,10 @@ const sendMessage = async (
           return next;
         });
       }
-      const baseReply = trimReplyToSingleQuestion(String(data?.reply || "").trim());
+      const rawBaseReply = trimReplyToSingleQuestion(String(data?.reply || "").trim());
+      const baseReply = replyLanguage === "mandarin"
+        ? normalizeMandarinTraditional(rawBaseReply)
+        : rawBaseReply;
       const followUpQuestion = String(data?.followUpQuestion || data?.dialogueState?.follow_up_question || "").trim();
       const committedReply = [baseReply, followUpQuestion].filter(Boolean).join("\n\n");
       const guidedCard = Boolean(data?.teachingMode) ? parseGuidedCard(committedReply) : { title: "", body: committedReply };
@@ -2060,9 +2265,12 @@ const sendMessage = async (
           .join("");
         if (!token) continue;
         streamedReply += token;
+        const displayedStreamedReply = replyLanguage === "mandarin"
+          ? normalizeMandarinTraditional(streamedReply)
+          : streamedReply;
         setMessages(prev => {
           const newMessages = [...prev];
-          newMessages[newMessages.length - 1] = { role: "bot", content: streamedReply };
+          newMessages[newMessages.length - 1] = { role: "bot", content: displayedStreamedReply };
           return newMessages;
         });
 
@@ -2082,7 +2290,10 @@ const sendMessage = async (
     }
 
     streamedReply += decoder.decode();
-    const committedReply = trimReplyToSingleQuestion(streamedReply.trim());
+    const rawCommittedReply = trimReplyToSingleQuestion(streamedReply.trim());
+    const committedReply = replyLanguage === "mandarin"
+      ? normalizeMandarinTraditional(rawCommittedReply)
+      : rawCommittedReply;
     if (responseConversationId) {
       syncConversationList((prev) => {
         const existing = prev.find((item) => item.id === responseConversationId);
@@ -2454,8 +2665,8 @@ const startSpeechInput = async () => {
 
   const recognition = new SR();
   speechRecognitionRef.current = recognition;
-  // Force Hong Kong Chinese for better Cantonese behavior on mobile Chrome.
-  recognition.lang = "zh-HK";
+  // Match speech recognition to the currently selected reply language.
+  recognition.lang = selectedReplyLanguage.speechRecognitionLanguage;
   recognition.continuous = false;
   recognition.interimResults = true;
   recognition.maxAlternatives = 1;
@@ -3688,13 +3899,37 @@ const unlockAudioAndMic = async () => {
             >
               <div className={`flex h-full min-w-0 flex-col ${chatPanelOpen ? "" : "md:pointer-events-none"}`}>
               {/* header */}
-              <div className="flex items-center justify-between border-b border-[#decfb9] bg-[#fffaf1]/86 p-3.5">
+              <div className="flex items-center justify-between gap-3 border-b border-[#decfb9] bg-[#fffaf1]/86 p-3.5">
                 <div className="min-w-0">
                   <div className="text-base font-bold leading-tight text-[#241b12] break-words">{botName}</div>
                   <div className="mt-1 flex items-center gap-2 text-xs font-semibold text-emerald-600">
                     <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
                     已發佈上線
                   </div>
+                </div>
+
+                <div
+                  className="flex shrink-0 rounded-xl bg-[#eadfce]/80 p-1"
+                  role="radiogroup"
+                  aria-label="AI 回覆語言"
+                >
+                  {REPLY_LANGUAGE_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={replyLanguage === option.value}
+                      onClick={() => handleReplyLanguageChange(option.value)}
+                      className={`rounded-lg px-2 py-1.5 text-[11px] font-bold transition-all duration-200 md:px-2.5 ${
+                        replyLanguage === option.value
+                          ? "bg-white text-[#7c4d18] shadow-sm"
+                          : "text-[#786851] hover:text-[#3f3325]"
+                      }`}
+                      title={`切換 AI 回覆至${option.label}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
                 </div>
 
                 <button

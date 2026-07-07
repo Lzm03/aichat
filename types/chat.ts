@@ -38,6 +38,7 @@ export type SendConversationMessageRequest = {
   modelProvider: string;
   botId: string;
   source?: string;
+  replyLanguage?: "cantonese" | "mandarin" | "english";
   stream?: boolean;
   teachingHint?: string;
   usageType?: string;

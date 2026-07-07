@@ -128,7 +128,11 @@ router.get("/voices", async (req, res) => {
 
 router.post("/tts", async (req, res) => {
   try {
-    const { text, voiceId, usageType = "chat_voice", sharedBotId = "" } = req.body;
+    const { text, voiceId, language, usageType = "chat_voice", sharedBotId = "" } = req.body;
+    const languageBoost =
+      language === "English" || language === "Chinese" || language === "Chinese,Yue"
+        ? language
+        : "Chinese,Yue";
     const actor = await resolveTtsActor(req, String(sharedBotId || ""));
     const authUser = actor.user;
     if (MOCK_UPSTREAM) {
@@ -167,7 +171,7 @@ router.post("/tts", async (req, res) => {
         body: JSON.stringify({
           model: "speech-2.6-hd",
           text,
-          language_boost: "Chinese,Yue",
+          language_boost: languageBoost,
           voice_setting: {
             voice_id: voiceId,
             speed: 1.15,
@@ -202,6 +206,7 @@ router.post("/tts", async (req, res) => {
     }
     await consumeUserCredits(authUser.id, "tts", 2, {
       voiceId: String(voiceId || ""),
+      language: languageBoost,
       textLength: String(text || "").length,
       source: actor.shared ? "shared_bot" : "direct",
     });
