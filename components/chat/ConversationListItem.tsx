@@ -1,5 +1,5 @@
 import React from "react";
-import { MoreHorizontal, Trash2, Pencil } from "lucide-react";
+import { Check, MoreHorizontal, Trash2, Pencil } from "lucide-react";
 import type { ConversationSummary } from "../../types/chat";
 
 function formatUpdatedTime(value: string) {
@@ -15,7 +15,10 @@ type ConversationListItemProps = {
   conversation: ConversationSummary;
   selected: boolean;
   menuOpen: boolean;
+  selectionMode?: boolean;
+  checked?: boolean;
   onSelect: () => void;
+  onToggleSelected?: () => void;
   onToggleMenu: () => void;
   onRename: () => void;
   onDelete: () => void;
@@ -25,7 +28,10 @@ export const ConversationListItem: React.FC<ConversationListItemProps> = ({
   conversation,
   selected,
   menuOpen,
+  selectionMode = false,
+  checked = false,
   onSelect,
+  onToggleSelected,
   onToggleMenu,
   onRename,
   onDelete,
@@ -34,9 +40,12 @@ export const ConversationListItem: React.FC<ConversationListItemProps> = ({
     <div className="relative">
       <button
         type="button"
-        onClick={onSelect}
+        onClick={selectionMode ? onToggleSelected : onSelect}
+        aria-pressed={selectionMode ? checked : undefined}
         className={`w-full rounded-[22px] border px-4 py-3 text-left transition ${
-          selected
+          selectionMode && checked
+            ? "border-[#E8B86D] bg-[#FFF8ED] shadow-[0_10px_24px_rgba(148,101,29,0.1)]"
+            : selected
             ? "border-[#E8B86D] bg-[#FFF8ED] shadow-[0_10px_24px_rgba(148,101,29,0.12)]"
             : "border-[#EEE2CF] bg-white/90 hover:bg-[#FFFDF8]"
         }`}
@@ -50,28 +59,43 @@ export const ConversationListItem: React.FC<ConversationListItemProps> = ({
           </div>
           <div className="flex items-center gap-1">
             <span className="text-[11px] text-slate-400">{formatUpdatedTime(conversation.updatedAt)}</span>
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onToggleMenu();
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
+            {selectionMode ? (
+              <span
+                aria-hidden="true"
+                className={`flex h-6 w-6 items-center justify-center rounded-lg border transition ${
+                  checked
+                    ? "border-[#D99A3E] bg-[#E1A04B] text-white"
+                    : "border-[#D8C9B1] bg-white text-transparent"
+                }`}
+              >
+                <Check size={14} strokeWidth={3} />
+              </span>
+            ) : (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label={`開啟「${conversation.title}」選單`}
+                onClick={(event) => {
                   event.preventDefault();
+                  event.stopPropagation();
                   onToggleMenu();
-                }
-              }}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-[#F7EEDC] hover:text-slate-700"
-            >
-              <MoreHorizontal size={16} />
-            </span>
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onToggleMenu();
+                  }
+                }}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-[#F7EEDC] hover:text-slate-700"
+              >
+                <MoreHorizontal size={16} />
+              </span>
+            )}
           </div>
         </div>
       </button>
-      {menuOpen ? (
+      {!selectionMode && menuOpen ? (
         <div className="absolute right-3 top-12 z-20 w-32 rounded-2xl border border-[#EADAC0] bg-[#FFFDF8] p-1.5 shadow-[0_16px_40px_rgba(15,23,42,0.14)]">
           <button
             type="button"

@@ -72,6 +72,15 @@ export async function deleteConversation(conversationId: string) {
   await parseJson<{ ok: true }>(response);
 }
 
+export async function deleteConversations(conversationIds: string[]) {
+  const response = await fetch(`${API_BASE}/api/conversations`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ conversationIds }),
+  });
+  return parseJson<{ ok: true; deletedIds: string[]; count: number }>(response);
+}
+
 export async function getMessages(conversationId: string) {
   const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/messages`);
   const data = await parseJson<{ messages: ConversationMessage[] }>(response);

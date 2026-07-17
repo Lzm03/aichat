@@ -1,6 +1,16 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { LoaderCircle, MessageCircleMore, Plus, RefreshCw, Search, X } from "lucide-react";
+import {
+  Check,
+  ListChecks,
+  LoaderCircle,
+  MessageCircleMore,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import type { ConversationSummary } from "../../types/chat";
 import { ConversationListItem } from "./ConversationListItem";
 
@@ -18,6 +28,8 @@ type ConversationHistoryDrawerProps = {
   selectedConversationId: string | null;
   conversations: ConversationSummary[];
   activeMenuConversationId: string | null;
+  selectionMode?: boolean;
+  selectedConversationIds?: string[];
   onClose: () => void;
   onRefresh: () => void;
   onSearchChange: (value: string) => void;
@@ -26,6 +38,10 @@ type ConversationHistoryDrawerProps = {
   onToggleMenu: (conversationId: string | null) => void;
   onRenameConversation: (conversation: ConversationSummary) => void;
   onDeleteConversation: (conversation: ConversationSummary) => void;
+  onSelectionModeChange?: (active: boolean) => void;
+  onToggleConversationSelection?: (conversationId: string) => void;
+  onSetConversationSelection?: (conversationIds: string[]) => void;
+  onDeleteSelectedConversations?: () => void;
 };
 
 function getDayStart(date: Date) {
@@ -70,6 +86,8 @@ export const ConversationHistoryDrawer: React.FC<ConversationHistoryDrawerProps>
   selectedConversationId,
   conversations,
   activeMenuConversationId,
+  selectionMode,
+  selectedConversationIds,
   onClose,
   onRefresh,
   onSearchChange,
@@ -78,8 +96,64 @@ export const ConversationHistoryDrawer: React.FC<ConversationHistoryDrawerProps>
   onToggleMenu,
   onRenameConversation,
   onDeleteConversation,
+  onSelectionModeChange,
+  onToggleConversationSelection,
+  onSetConversationSelection,
+  onDeleteSelectedConversations,
 }) => {
   const groups = groupConversations(conversations);
+  const [localSelectionMode, setLocalSelectionMode] = React.useState(Boolean(selectionMode));
+  const [localSelectedConversationIds, setLocalSelectedConversationIds] = React.useState<string[]>(
+    selectedConversationIds || []
+  );
+  const selectedIds = new Set(localSelectedConversationIds);
+  const allSelected = conversations.length > 0 && conversations.every((conversation) => selectedIds.has(conversation.id));
+  const canDeleteSelected = typeof onDeleteSelectedConversations === "function";
+
+  React.useEffect(() => {
+    if (typeof selectionMode === "boolean") setLocalSelectionMode(selectionMode);
+  }, [selectionMode]);
+
+  React.useEffect(() => {
+    if (Array.isArray(selectedConversationIds)) {
+      setLocalSelectedConversationIds(selectedConversationIds);
+    }
+  }, [selectedConversationIds]);
+
+  React.useEffect(() => {
+    if (!open) {
+      setLocalSelectionMode(false);
+      setLocalSelectedConversationIds([]);
+      return;
+    }
+    const visibleIds = new Set(conversations.map((conversation) => conversation.id));
+    setLocalSelectedConversationIds((current) => current.filter((id) => visibleIds.has(id)));
+  }, [open, conversations]);
+
+  const handleSelectionModeToggle = () => {
+    const nextMode = !localSelectionMode;
+    setLocalSelectionMode(nextMode);
+    onToggleMenu(null);
+    if (!nextMode) {
+      setLocalSelectedConversationIds([]);
+    }
+    onSelectionModeChange?.(nextMode);
+  };
+
+  const handleToggleSelection = (conversationId: string) => {
+    setLocalSelectedConversationIds((current) =>
+      current.includes(conversationId)
+        ? current.filter((id) => id !== conversationId)
+        : [...current, conversationId]
+    );
+    onToggleConversationSelection?.(conversationId);
+  };
+
+  const handleSelectAll = () => {
+    const nextIds = allSelected ? [] : conversations.map((conversation) => conversation.id);
+    setLocalSelectedConversationIds(nextIds);
+    onSetConversationSelection?.(nextIds);
+  };
 
   return (
     <AnimatePresence>
@@ -98,14 +172,30 @@ export const ConversationHistoryDrawer: React.FC<ConversationHistoryDrawerProps>
                 <span className="text-base font-semibold">對話紀錄</span>
               </div>
               <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={onRefresh}
-                  className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-white/80 hover:text-slate-800"
-                  title="重新整理對話紀錄"
-                >
-                  {refreshing ? <LoaderCircle size={17} className="animate-spin" /> : <RefreshCw size={17} />}
-                </button>
+                {conversations.length > 0 && !error ? (
+                  <button
+                    type="button"
+                    onClick={handleSelectionModeToggle}
+                    className={`flex h-9 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-semibold transition ${
+                      localSelectionMode
+                        ? "bg-[#F5E8D2] text-[#8A5A21]"
+                        : "text-slate-500 hover:bg-white/80 hover:text-slate-800"
+                    }`}
+                  >
+                    <ListChecks size={15} />
+                    {localSelectionMode ? "完成" : "管理"}
+                  </button>
+                ) : null}
+                {!localSelectionMode ? (
+                  <button
+                    type="button"
+                    onClick={onRefresh}
+                    className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-white/80 hover:text-slate-800"
+                    title="重新整理對話紀錄"
+                  >
+                    {refreshing ? <LoaderCircle size={17} className="animate-spin" /> : <RefreshCw size={17} />}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={onClose}
@@ -118,14 +208,60 @@ export const ConversationHistoryDrawer: React.FC<ConversationHistoryDrawerProps>
             </div>
 
             <div className="space-y-3 px-5 py-4">
-              <button
-                type="button"
-                onClick={onCreateConversation}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#F59E0B] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(245,158,11,0.3)] transition hover:bg-[#E89009]"
-              >
-                <Plus size={16} />
-                新增對話
-              </button>
+              <AnimatePresence initial={false} mode="wait">
+                {localSelectionMode ? (
+                  <motion.div
+                    key="selection-actions"
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    className="flex items-center justify-between rounded-2xl border border-[#E6D6BC] bg-white/80 px-3 py-2"
+                  >
+                    <button
+                      type="button"
+                      onClick={handleSelectAll}
+                      className="flex min-h-9 items-center gap-2 rounded-xl px-2 text-sm font-medium text-slate-600 transition hover:bg-[#F8F0E4]"
+                    >
+                      <span
+                        className={`flex h-5 w-5 items-center justify-center rounded-md border ${
+                          allSelected
+                            ? "border-[#D99A3E] bg-[#E1A04B] text-white"
+                            : "border-[#D8C9B1] bg-white text-transparent"
+                        }`}
+                      >
+                        <Check size={12} strokeWidth={3} />
+                      </span>
+                      {allSelected ? "取消全選" : "全選"}
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400">已選 {localSelectedConversationIds.length} 項</span>
+                      <button
+                        type="button"
+                        onClick={onDeleteSelectedConversations}
+                        disabled={localSelectedConversationIds.length === 0 || !canDeleteSelected}
+                        title={canDeleteSelected ? undefined : "管理功能正在更新，請重新開啟對話紀錄"}
+                        className="flex min-h-9 items-center gap-1.5 rounded-xl bg-rose-50 px-3 text-sm font-semibold text-rose-600 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Trash2 size={14} />
+                        刪除
+                      </button>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.button
+                    key="create-conversation"
+                    type="button"
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 4 }}
+                    onClick={onCreateConversation}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#F59E0B] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(245,158,11,0.3)] transition hover:bg-[#E89009]"
+                  >
+                    <Plus size={16} />
+                    新增對話
+                  </motion.button>
+                )}
+              </AnimatePresence>
 
               <div className="flex items-center gap-2 rounded-2xl border border-[#EADDC8] bg-white/90 px-3 py-2.5">
                 <Search size={16} className="text-slate-400" />
@@ -156,7 +292,10 @@ export const ConversationHistoryDrawer: React.FC<ConversationHistoryDrawerProps>
                             conversation={conversation}
                             selected={selectedConversationId === conversation.id}
                             menuOpen={activeMenuConversationId === conversation.id}
+                            selectionMode={localSelectionMode}
+                            checked={selectedIds.has(conversation.id)}
                             onSelect={() => onSelectConversation(conversation)}
+                            onToggleSelected={() => handleToggleSelection(conversation.id)}
                             onToggleMenu={() =>
                               onToggleMenu(activeMenuConversationId === conversation.id ? null : conversation.id)
                             }

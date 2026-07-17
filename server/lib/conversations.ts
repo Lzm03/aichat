@@ -235,6 +235,19 @@ export async function deleteConversation(conversationId: string, userId: string)
   return Boolean(result.rowCount);
 }
 
+export async function deleteConversations(conversationIds: string[], userId: string) {
+  await ensureConversationTables();
+  const normalizedIds = [...new Set(conversationIds.map((id) => String(id || "").trim()).filter(Boolean))]
+    .slice(0, 100);
+  if (normalizedIds.length === 0) return [];
+
+  const result = await pool.query(
+    `DELETE FROM conversations WHERE user_id=$1 AND id=ANY($2::text[]) RETURNING id`,
+    [userId, normalizedIds]
+  );
+  return result.rows.map((row) => String(row.id));
+}
+
 export async function listConversationMessages(conversationId: string, userId: string) {
   await ensureConversationTables();
   const conversation = await getConversationForUser(conversationId, userId);

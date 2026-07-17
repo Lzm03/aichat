@@ -3,6 +3,7 @@ import { getAuthUser, requireAuth } from "../lib/platform-auth.ts";
 import {
   createConversation,
   deleteConversation,
+  deleteConversations,
   getConversationForUser,
   listConversationMessages,
   listConversationsForUser,
@@ -69,6 +70,30 @@ router.post("/", async (req, res) => {
     }
     console.error("POST /api/conversations failed:", error);
     return res.status(500).json({ error: "Failed to create conversation" });
+  }
+});
+
+router.delete("/", async (req, res) => {
+  try {
+    const user = getAuthUser(req);
+    if (!user) return res.status(401).json({ error: "missing bearer token" });
+    const requestedConversationIds: string[] = Array.isArray(req.body?.conversationIds)
+      ? req.body.conversationIds
+          .map((id: unknown) => String(id || "").trim())
+          .filter((id: string) => Boolean(id))
+      : [];
+    const conversationIds = [...new Set(requestedConversationIds)];
+    if (conversationIds.length === 0) {
+      return res.status(400).json({ error: "conversationIds is required" });
+    }
+    if (conversationIds.length > 100) {
+      return res.status(400).json({ error: "A maximum of 100 conversations can be deleted at once" });
+    }
+    const deletedIds = await deleteConversations(conversationIds, user.id);
+    return res.json({ ok: true, deletedIds, count: deletedIds.length });
+  } catch (error) {
+    console.error("DELETE /api/conversations failed:", error);
+    return res.status(500).json({ error: "Failed to delete conversations" });
   }
 });
 

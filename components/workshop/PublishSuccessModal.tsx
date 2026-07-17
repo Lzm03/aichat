@@ -21,6 +21,7 @@ import { SequencePngPlayer } from "./SequencePngPlayer";
 import { API_BASE } from "../../utils/api";
 import {
   deleteConversation as deleteConversationRecord,
+  deleteConversations as deleteConversationRecords,
   getMessages,
   listConversations,
   renameConversation as renameConversationRecord,
@@ -243,6 +244,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [isSwitchingTopic, setIsSwitchingTopic] = useState(false);
   const [topicError, setTopicError] = useState("");
   const [historyMenuConversationId, setHistoryMenuConversationId] = useState<string | null>(null);
+  const [historySelectionMode, setHistorySelectionMode] = useState(false);
+  const [selectedHistoryConversationIds, setSelectedHistoryConversationIds] = useState<string[]>([]);
   const [historyActionLoading, setHistoryActionLoading] = useState(false);
   const [arControlsOpen, setArControlsOpen] = useState(false);
   const [guidedMode, setGuidedMode] = useState(false);
@@ -594,6 +597,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const closeHistoryDrawer = React.useCallback(() => {
     setHistoryDrawerOpen(false);
     setHistoryMenuConversationId(null);
+    setHistorySelectionMode(false);
+    setSelectedHistoryConversationIds([]);
   }, []);
 
   const restoreConversation = React.useCallback(
@@ -793,6 +798,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     setChatPanelOpen(false);
     setHistoryDrawerOpen(false);
     setHistoryMenuConversationId(null);
+    setHistorySelectionMode(false);
+    setSelectedHistoryConversationIds([]);
     if (botChanged) {
       setConversations([]);
       setHistoryError("");
@@ -802,6 +809,11 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       lastHistoryBotIdRef.current = currentBotId;
     }
   }, [isOpen, botConfig?.id]);
+
+  useEffect(() => {
+    const visibleIds = new Set(conversations.map((conversation) => conversation.id));
+    setSelectedHistoryConversationIds((current) => current.filter((id) => visibleIds.has(id)));
+  }, [conversations]);
 
   useEffect(() => {
     if (!currentConversationId || messages.length === 0) return;
@@ -2584,6 +2596,8 @@ const handleDeleteConversation = async (conversation: ConversationSummary) => {
       try {
         await deleteConversationRecord(conversation.id);
         syncConversationList((prev) => prev.filter((item) => item.id !== conversation.id));
+        conversationMessagesCacheRef.current.delete(conversation.id);
+        conversationLanguageCacheRef.current.delete(conversation.id);
         setHistoryMenuConversationId(null);
         if (currentConversationId === conversation.id) {
           resetConversationView(null);
@@ -2598,6 +2612,70 @@ const handleDeleteConversation = async (conversation: ConversationSummary) => {
         showAlert({
           title: "刪除失敗",
           message: "請稍後再試。",
+          confirmText: "知道了",
+        });
+      } finally {
+        setHistoryActionLoading(false);
+      }
+    },
+  });
+};
+
+const handleHistorySelectionModeChange = (active: boolean) => {
+  setHistorySelectionMode(active);
+  setHistoryMenuConversationId(null);
+  if (!active) setSelectedHistoryConversationIds([]);
+};
+
+const handleToggleHistoryConversationSelection = (conversationId: string) => {
+  setSelectedHistoryConversationIds((current) =>
+    current.includes(conversationId)
+      ? current.filter((id) => id !== conversationId)
+      : [...current, conversationId]
+  );
+};
+
+const handleDeleteSelectedConversations = () => {
+  const visibleConversationIds = new Set(conversations.map((conversation) => conversation.id));
+  const conversationIds = selectedHistoryConversationIds.filter((id) => visibleConversationIds.has(id));
+  if (conversationIds.length === 0) return;
+
+  const deletingCurrentConversation = Boolean(
+    currentConversationId && conversationIds.includes(currentConversationId)
+  );
+  showConfirm({
+    title: `確定要刪除 ${conversationIds.length} 個對話嗎？`,
+    message: deletingCurrentConversation
+      ? "其中包含目前開啟的對話。刪除後，聊天畫面會重置，且這些對話無法復原。"
+      : "刪除後，這些對話將不會出現在歷史紀錄中，且無法復原。",
+    confirmText: `刪除 ${conversationIds.length} 項`,
+    cancelText: "取消",
+    tone: "danger",
+    onConfirm: async () => {
+      setHistoryActionLoading(true);
+      try {
+        const result = await deleteConversationRecords(conversationIds);
+        const deletedIds = new Set(result.deletedIds);
+        syncConversationList((current) => current.filter((conversation) => !deletedIds.has(conversation.id)));
+        deletedIds.forEach((id) => {
+          conversationMessagesCacheRef.current.delete(id);
+          conversationLanguageCacheRef.current.delete(id);
+        });
+        if (currentConversationId && deletedIds.has(currentConversationId)) {
+          resetConversationView(null);
+        }
+        setSelectedHistoryConversationIds([]);
+        setHistorySelectionMode(false);
+        showAlert({
+          title: "對話已刪除",
+          message: `已從歷史紀錄中移除 ${result.count} 個對話。`,
+          confirmText: "知道了",
+        });
+      } catch (error) {
+        console.error(error);
+        showAlert({
+          title: "批量刪除失敗",
+          message: "對話尚未刪除，請稍後再試。",
           confirmText: "知道了",
         });
       } finally {
@@ -3692,6 +3770,7 @@ const unlockAudioAndMic = async () => {
               </div>
 
               <ConversationHistoryDrawer
+                key={`conversation-history-${botConfig?.id || "unknown"}-bulk-v2`}
                 open={historyDrawerOpen && chatPanelOpen}
                 loading={historyLoading || historyActionLoading}
                 refreshing={historyRefreshing}
@@ -3700,11 +3779,16 @@ const unlockAudioAndMic = async () => {
                 selectedConversationId={currentConversationId}
                 conversations={conversations}
                 activeMenuConversationId={historyMenuConversationId}
+                selectionMode={historySelectionMode}
+                selectedConversationIds={selectedHistoryConversationIds}
                 onClose={closeHistoryDrawer}
                 onRefresh={() => {
                   void fetchConversationHistory({ silent: conversations.length > 0 });
                 }}
-                onSearchChange={setConversationSearch}
+                onSearchChange={(value) => {
+                  setConversationSearch(value);
+                  setSelectedHistoryConversationIds([]);
+                }}
                 onCreateConversation={() => {
                   void handleCreateConversation();
                 }}
@@ -3718,6 +3802,10 @@ const unlockAudioAndMic = async () => {
                 onDeleteConversation={(conversation) => {
                   void handleDeleteConversation(conversation);
                 }}
+                onSelectionModeChange={handleHistorySelectionModeChange}
+                onToggleConversationSelection={handleToggleHistoryConversationSelection}
+                onSetConversationSelection={setSelectedHistoryConversationIds}
+                onDeleteSelectedConversations={handleDeleteSelectedConversations}
               />
 
               {historyDrawerOpen && chatPanelOpen ? (
