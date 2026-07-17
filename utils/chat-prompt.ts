@@ -13,6 +13,8 @@ type PromptCompilerInput = {
   securityPrompt?: string;
 };
 
+export type ChatReplyLanguage = "cantonese" | "mandarin" | "english";
+
 type ParsedPromptSource = {
   roleName: string;
   characterBackground: string;
@@ -51,6 +53,24 @@ Your goal is NOT to spoon-feed information, but to guide the student toward inde
 10. If the student seems confused, lower the difficulty first; if the student is engaged, gently raise the cognitive depth.
 11. If you do not know, admit uncertainty honestly while preserving the role voice.
 `.trim();
+
+export function buildChatReplyLanguageRule(
+  replyLanguage: ChatReplyLanguage,
+  usesClassicalChineseStyle = false
+) {
+  if (usesClassicalChineseStyle) {
+    return replyLanguage === "english"
+      ? "Reply entirely in concise, dignified, aphoristic English that preserves the selected Classical Chinese voice while remaining student-friendly. Never output Chinese."
+      : "Every word of the final reply must use easy-to-understand Classical Chinese in Traditional Chinese. This register overrides Cantonese or Mandarin wording preferences; do not use modern Cantonese vocabulary or particles.";
+  }
+  if (replyLanguage === "english") {
+    return "Reply in clear, natural English. Do not switch to Chinese unless the user asks.";
+  }
+  if (replyLanguage === "mandarin") {
+    return "Reply only in natural Standard Mandarin written with Traditional Chinese characters. Never use Cantonese grammar, vocabulary, or particles. This rule applies to every sentence, question, and teaching hint.";
+  }
+  return "Reply in natural Hong Kong Cantonese written with Traditional Chinese characters and everyday Cantonese wording. Do not switch to Mandarin unless the user asks.";
+}
 
 function matchSection(source: string, label: string, fallbackLabels: string[] = []) {
   const labels = [label, ...fallbackLabels].map((item) => item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));

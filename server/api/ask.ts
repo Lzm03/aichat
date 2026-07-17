@@ -20,11 +20,23 @@ import {
 import {
   createConversation,
   getConversationForUser,
+  listConversationMessages,
   mapConversationRow,
   saveConversationMessage,
   updateConversationPreview,
+  updateConversationTopic,
   updateConversationTitleFromFirstMessage,
 } from "../lib/conversations.ts";
+import {
+  CharacterTopicError,
+  composeCharacterTopicPrompt,
+  getAccessibleCharacter,
+  resolveCharacterTopic,
+} from "../lib/character-topics.ts";
+import {
+  buildChatReplyLanguageRule,
+  buildChatSystemPrompt,
+} from "../../utils/chat-prompt.ts";
 import {
   getAI,
   getVertexAccessToken,
@@ -1719,6 +1731,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
       mode = "",
       source = "direct",
       conversationId = "",
+      topicId = "",
       replyLanguage = "cantonese",
     } = req.body || {};
     const actor = await resolveChatActor(req, String(sharedBotId || ""), String(botId || ""));
@@ -1730,25 +1743,12 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     const selectedModelProvider = normalizeChatModelProvider(modelProvider);
     const normalizedReplyLanguage =
       replyLanguage === "english" || replyLanguage === "mandarin" ? replyLanguage : "cantonese";
-    const usesClassicalChineseStyle = /Enforced Speaking Style[\s\S]*淺近文言文/.test(String(systemPrompt));
-    // English and Mandarin are buffered so their final language conversion is
-    // always applied; only Cantonese may be streamed directly.
-    const wantsStream = normalizedReplyLanguage === "cantonese" && normalizeStreamFlag(stream);
     const chatImages = selectedModelProvider === "gemini" ? extractChatImages(req) : [];
     const normalizedPrompt = selectedModelProvider === "gemini" && chatImages.length > 0 && !normalized
       ? "請描述這張圖片。"
       : normalized;
-    if (isDebugLogEnabled) {
-      console.log("[ask] provider=%s stream=%s shared=%s vertex=%s", selectedModelProvider, wantsStream, Boolean(sharedBotId), isVertexAIEnabled());
-    }
     const normalizedBotId = String(botId || "default");
     const normalizedConversationId = String(conversationId || "").trim();
-    const recentChatMessages =
-      usageType === "chat_message"
-        ? await fetchRecentBotChatMessages(normalizedBotId, authUser.id, 6)
-        : [];
-    const contextualPrompt = buildContextualUserPrompt(normalizedPrompt, recentChatMessages);
-    const active = actor.shared ? null : await getActiveTeachingSession(authUser.id, normalizedBotId);
     let activeConversation =
       usageType === "chat_message"
         ? normalizedConversationId
@@ -1758,6 +1758,68 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     if (usageType === "chat_message" && normalizedConversationId && !activeConversation) {
       return res.status(404).json({ error: "找不到對話紀錄" });
     }
+    if (
+      activeConversation &&
+      String(activeConversation.bot_id || "").trim() !== normalizedBotId
+    ) {
+      return res.status(400).json({ error: "對話與所選角色不相符" });
+    }
+
+    let activeTopic = null as Awaited<ReturnType<typeof resolveCharacterTopic>>;
+    let effectiveSystemPrompt = String(systemPrompt || "");
+    if (usageType === "chat_message" && normalizedBotId && normalizedBotId !== "default") {
+      const character = await getAccessibleCharacter(normalizedBotId, authUser.id);
+      if (!character) return res.status(404).json({ error: "Character not found" });
+      activeTopic = await resolveCharacterTopic({
+        characterId: normalizedBotId,
+        requestedTopicId: String(topicId || "").trim() || null,
+        conversationTopicId: activeConversation?.topic_id || null,
+      });
+      if (activeConversation && activeTopic && activeConversation.topic_id !== activeTopic.id) {
+        activeConversation = await updateConversationTopic(
+          activeConversation.id,
+          authUser.id,
+          activeTopic.id
+        );
+      }
+      const characterBasePrompt = buildChatSystemPrompt({
+        roleName: character.name,
+        knowledgeBase: character.knowledge_base || "",
+        securityPrompt: character.security_prompt || "",
+      });
+      const composedCharacterPrompt = composeCharacterTopicPrompt(
+        characterBasePrompt,
+        character,
+        activeTopic
+      );
+      const characterUsesClassicalChineseStyle =
+        /Enforced Speaking Style[\s\S]*淺近文言文/.test(composedCharacterPrompt);
+      effectiveSystemPrompt = `${composedCharacterPrompt}
+
+# Highest-Priority Required Reply Language
+${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChineseStyle)}`.trim();
+    }
+
+    const usesClassicalChineseStyle = /Enforced Speaking Style[\s\S]*淺近文言文/.test(effectiveSystemPrompt);
+    // English and Mandarin are buffered so their final language conversion is
+    // always applied; only Cantonese may be streamed directly.
+    const wantsStream = normalizedReplyLanguage === "cantonese" && normalizeStreamFlag(stream);
+    if (isDebugLogEnabled) {
+      console.log("[ask] provider=%s stream=%s shared=%s vertex=%s", selectedModelProvider, wantsStream, Boolean(sharedBotId), isVertexAIEnabled());
+    }
+    const storedConversationMessages =
+      usageType === "chat_message" && activeConversation
+        ? await listConversationMessages(activeConversation.id, authUser.id)
+        : null;
+    const recentChatMessages: RecentChatMessage[] = (storedConversationMessages || [])
+      .filter((message) => message.role === "user" || message.role === "assistant")
+      .slice(-6)
+      .map((message) => ({
+        role: message.role === "assistant" ? "bot" : "user",
+        content: sanitizeChatHistoryContent(String(message.content || "")),
+      }));
+    const contextualPrompt = buildContextualUserPrompt(normalizedPrompt, recentChatMessages);
+    const active = actor.shared ? null : await getActiveTeachingSession(authUser.id, normalizedBotId);
 
     const ensureActiveConversation = async () => {
       if (activeConversation || usageType !== "chat_message" || !normalizedPrompt) {
@@ -1766,6 +1828,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
       activeConversation = await createConversation({
         userId: authUser.id,
         botId: normalizedBotId || null,
+        topicId: activeTopic?.id || null,
         title: "新的對話",
         type: "bot_learning",
       });
@@ -1782,7 +1845,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
         role: "user",
         content: normalizedPrompt,
         messageType: "normal",
-        metadata: { replyLanguage: normalizedReplyLanguage },
+        metadata: { replyLanguage: normalizedReplyLanguage, topicId: activeTopic?.id || null },
       });
       await updateConversationPreview(conversation.id, authUser.id, normalizedPrompt);
       const maybeRenamed = await updateConversationTitleFromFirstMessage(conversation.id, authUser.id);
@@ -1800,7 +1863,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
         role: "assistant",
         content: safeReply,
         messageType: "normal",
-        metadata: { replyLanguage: normalizedReplyLanguage },
+        metadata: { replyLanguage: normalizedReplyLanguage, topicId: activeTopic?.id || null },
       });
       const refreshed = await updateConversationPreview(activeConversation.id, authUser.id, safeReply);
       if (refreshed) activeConversation = refreshed;
@@ -1883,7 +1946,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
       }
       const enhancement = await buildDialogueEnhancement(
         selectedModelProvider,
-        systemPrompt,
+        effectiveSystemPrompt,
         normalizedPrompt,
         reply,
         normalizeRecentMessages(req.body?.recentMessages),
@@ -2037,7 +2100,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
         if (isDebugLogEnabled) console.log("[ask] requesting model reply");
         reply =
           (await maybeMockModelReply(normalizedPrompt)) ??
-          (await askModelOnce(selectedModelProvider, systemPrompt, contextualPrompt, chatImages));
+          (await askModelOnce(selectedModelProvider, effectiveSystemPrompt, contextualPrompt, chatImages));
         if (normalizedReplyLanguage === "mandarin" && !usesClassicalChineseStyle) {
           reply = await askModelOnce(
             selectedModelProvider,
@@ -2093,7 +2156,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
         streamedReply = mocked;
         res.write(`data:${mocked}\n\n`);
       } else {
-        await askModelStream(selectedModelProvider, systemPrompt, contextualPrompt, (token: string) => {
+        await askModelStream(selectedModelProvider, effectiveSystemPrompt, contextualPrompt, (token: string) => {
           streamedReply += token;
           res.write(`data:${token}\n\n`);
         }, chatImages);
@@ -2123,7 +2186,9 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error(err);
     const fallbackMessage =
-      String(err?.message || "").trim() === "找不到對話紀錄"
+      err instanceof CharacterTopicError
+        ? err.message
+        : String(err?.message || "").trim() === "找不到對話紀錄"
         ? "找不到對話紀錄"
         : "AI 回覆暫時失敗，請稍後再試。";
     res.status(err?.status || 500).json({ error: fallbackMessage });

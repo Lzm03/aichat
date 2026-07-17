@@ -10,7 +10,13 @@ import {
   mapConversationRow,
   renameConversation,
   saveConversationMessage,
+  updateConversationTopic,
 } from "../lib/conversations.ts";
+import {
+  CharacterTopicError,
+  getAccessibleCharacter,
+  resolveCharacterTopic,
+} from "../lib/character-topics.ts";
 
 const router = express.Router();
 
@@ -38,16 +44,56 @@ router.post("/", async (req, res) => {
   try {
     const user = getAuthUser(req);
     if (!user) return res.status(401).json({ error: "missing bearer token" });
+    const botId = String(req.body?.botId || "").trim() || null;
+    let topicId: string | null = null;
+    if (botId) {
+      const character = await getAccessibleCharacter(botId, user.id);
+      if (!character) return res.status(404).json({ error: "Character not found" });
+      const topic = await resolveCharacterTopic({
+        characterId: botId,
+        requestedTopicId: String(req.body?.topicId || "").trim() || null,
+      });
+      topicId = topic?.id || null;
+    }
     const conversation = await createConversation({
       userId: user.id,
-      botId: String(req.body?.botId || "").trim() || null,
+      botId,
+      topicId,
       title: String(req.body?.title || "新的對話").trim() || "新的對話",
       type: String(req.body?.type || "bot_learning").trim() || "bot_learning",
     });
     return res.status(201).json({ conversation: mapConversationRow(conversation) });
   } catch (error) {
+    if (error instanceof CharacterTopicError) {
+      return res.status(error.status).json({ error: error.message, code: error.code });
+    }
     console.error("POST /api/conversations failed:", error);
     return res.status(500).json({ error: "Failed to create conversation" });
+  }
+});
+
+router.patch("/:conversationId/topic", async (req, res) => {
+  try {
+    const user = getAuthUser(req);
+    if (!user) return res.status(401).json({ error: "missing bearer token" });
+    const conversation = await getConversationForUser(req.params.conversationId, user.id);
+    if (!conversation) return res.status(404).json({ error: "Conversation not found" });
+    const topicId = String(req.body?.topicId || "").trim();
+    if (!topicId) return res.status(400).json({ error: "topicId is required" });
+    const characterId = String(conversation.bot_id || "").trim();
+    if (!characterId) return res.status(400).json({ error: "Conversation has no Character" });
+    const character = await getAccessibleCharacter(characterId, user.id);
+    if (!character) return res.status(404).json({ error: "Character not found" });
+    const topic = await resolveCharacterTopic({ characterId, requestedTopicId: topicId });
+    if (!topic) return res.status(404).json({ error: "Topic not found" });
+    const updated = await updateConversationTopic(conversation.id, user.id, topic.id);
+    return res.json({ conversation: mapConversationRow(updated!) });
+  } catch (error) {
+    if (error instanceof CharacterTopicError) {
+      return res.status(error.status).json({ error: error.message, code: error.code });
+    }
+    console.error("PATCH /api/conversations/:conversationId/topic failed:", error);
+    return res.status(500).json({ error: "Failed to switch Topic" });
   }
 });
 

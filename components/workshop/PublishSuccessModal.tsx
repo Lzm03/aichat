@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   X,
   Send,
@@ -13,6 +13,9 @@ import {
   Lightbulb,
   Brain,
   Rocket,
+  BookOpen,
+  Check,
+  Loader2,
 } from "lucide-react";
 import { SequencePngPlayer } from "./SequencePngPlayer";
 import { API_BASE } from "../../utils/api";
@@ -22,7 +25,9 @@ import {
   listConversations,
   renameConversation as renameConversationRecord,
   sendConversationMessage,
+  updateConversationTopic as updateConversationTopicRecord,
 } from "../../utils/chat-api";
+import { listCharacterTopics } from "../../utils/topic-api";
 import { buildChatSystemPrompt } from "../../utils/chat-prompt";
 import { readAuthSession } from "../../utils/auth";
 import { usePlatformDialog } from "../../hooks/usePlatformDialog";
@@ -30,6 +35,7 @@ import { PlatformDialog } from "../system/PlatformDialog";
 import { markTrialEndedPopupPending } from "../../utils/trial-popup";
 import { ConversationHistoryDrawer } from "../chat/ConversationHistoryDrawer";
 import type { ConversationMessage, ConversationSummary } from "../../types/chat";
+import type { CharacterTopicSummary } from "../../types/topics";
 
 interface PublishSuccessModalProps {
   isOpen: boolean;
@@ -48,7 +54,7 @@ type SuggestedReply = {
 };
 
 type ChatMessage = {
-  role: "user" | "bot";
+  role: "user" | "bot" | "event";
   content: string;
   guidedTitle?: string;
   guidedBody?: string;
@@ -230,6 +236,12 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [conversationSearch, setConversationSearch] = useState("");
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [availableTopics, setAvailableTopics] = useState<CharacterTopicSummary[]>([]);
+  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
+  const [isTopicSelectorOpen, setIsTopicSelectorOpen] = useState(false);
+  const [topicsLoading, setTopicsLoading] = useState(false);
+  const [isSwitchingTopic, setIsSwitchingTopic] = useState(false);
+  const [topicError, setTopicError] = useState("");
   const [historyMenuConversationId, setHistoryMenuConversationId] = useState<string | null>(null);
   const [historyActionLoading, setHistoryActionLoading] = useState(false);
   const [arControlsOpen, setArControlsOpen] = useState(false);
@@ -273,6 +285,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const conversationMessagesCacheRef = useRef<Map<string, ChatMessage[]>>(new Map());
   const conversationLanguageCacheRef = useRef<Map<string, ReplyLanguage>>(new Map());
   const conversationPrefetchingRef = useRef<Set<string>>(new Set());
+  const topicSelectorRef = useRef<HTMLDivElement | null>(null);
   const lastHistoryBotIdRef = useRef<string | null>(null);
   const stageCaptureRef = useRef<HTMLDivElement | null>(null);
   const stageBackgroundImageRef = useRef<HTMLImageElement | null>(null);
@@ -311,6 +324,11 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
   const selectedReplyLanguage =
     REPLY_LANGUAGE_OPTIONS.find((option) => option.value === replyLanguage) || REPLY_LANGUAGE_OPTIONS[0];
+  const selectedTopic =
+    availableTopics.find((topic) => topic.id === selectedTopicId) ||
+    availableTopics.find((topic) => topic.isDefault) ||
+    availableTopics[0] ||
+    null;
   const shareableLink =
     botConfig?.id && typeof window !== "undefined"
       ? `${window.location.origin}/bot/${botConfig.id}`
@@ -335,6 +353,36 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   }, [botName, replyLanguage, usesClassicalChineseStyle]);
   const authSession = readAuthSession();
   const canUseHistory = Boolean(authSession?.user?.id);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isOpen || !botConfig?.id) return;
+    setTopicsLoading(true);
+    setTopicError("");
+    setIsTopicSelectorOpen(false);
+    void listCharacterTopics(botConfig.id)
+      .then((data) => {
+        if (cancelled) return;
+        setAvailableTopics(data.topics);
+        setSelectedTopicId((current) =>
+          current && data.topics.some((topic) => topic.id === current)
+            ? current
+            : data.topics.find((topic) => topic.isDefault)?.id || data.topics[0]?.id || null
+        );
+      })
+      .catch((loadError) => {
+        if (cancelled) return;
+        setAvailableTopics([]);
+        setSelectedTopicId(null);
+        setTopicError(loadError instanceof Error ? loadError.message : "無法載入主題");
+      })
+      .finally(() => {
+        if (!cancelled) setTopicsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [botConfig?.id, isOpen]);
 
   const buildOpeningMessage = React.useCallback(() => {
     const customOpeningMessage = String(configuredOpeningMessage || "").trim();
@@ -440,9 +488,12 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       setGuideQuestion("");
       setBotState("idle");
       setIsStopAvailable(false);
+      setSelectedTopicId(
+        availableTopics.find((topic) => topic.isDefault)?.id || availableTopics[0]?.id || null
+      );
       setMessages([{ role: "bot", content: buildOpeningMessage() }]);
     },
-    [buildOpeningMessage]
+    [availableTopics, buildOpeningMessage]
   );
 
   const syncConversationList = React.useCallback(
@@ -460,7 +511,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const mapConversationMessagesToChatMessages = React.useCallback(
     (historyMessages: ConversationMessage[]) => {
       const restoredMessages: ChatMessage[] = historyMessages.map((message) => ({
-        role: message.role === "assistant" ? "bot" : "user",
+        role: message.role === "assistant" ? "bot" : message.role === "system" ? "event" : "user",
         content: message.content,
       }));
       return restoredMessages.length
@@ -551,6 +602,12 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       setHistoryActionLoading(true);
       setHistoryError("");
       setCurrentConversationId(conversation.id);
+      setSelectedTopicId(
+        conversation.topicId ||
+          availableTopics.find((topic) => topic.isDefault)?.id ||
+          availableTopics[0]?.id ||
+          null
+      );
       setChatPanelOpen(true);
       setHistoryDrawerOpen(false);
       const cachedMessages = conversationMessagesCacheRef.current.get(conversation.id);
@@ -581,7 +638,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
         setHistoryActionLoading(false);
       }
     },
-    [detectConversationLanguage, mapConversationMessagesToChatMessages]
+    [availableTopics, detectConversationLanguage, mapConversationMessagesToChatMessages]
   );
 
   const handleCopyShareLink = async () => {
@@ -658,8 +715,10 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       if (!(target instanceof Node)) return;
       if ((target as HTMLElement).closest?.("[data-model-menu-root='publish-chat']")) return;
       if ((target as HTMLElement).closest?.("[data-top-menu-root='publish-preview']")) return;
+      if ((target as HTMLElement).closest?.("[data-topic-selector-root='publish-chat']")) return;
       setShowModelMenu(false);
       setShowTopMenu(false);
+      setIsTopicSelectorOpen(false);
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
@@ -2014,6 +2073,7 @@ const requestDialogueEnhancement = async ({
     const currentQuestion = extractQuestionFromReply(reply);
     const recentMessages = [...messages]
       .filter((message, index, list) => {
+        if (message.role === "event") return false;
         const isLast = index === list.length - 1;
         const content = String(message.content || "").trim();
         return !(isLast && message.role === "bot" && content === reply.trim());
@@ -2034,6 +2094,7 @@ const requestDialogueEnhancement = async ({
         replyLanguage,
         modelProvider,
         botId: botConfig.id,
+        topicId: selectedTopicId || undefined,
         usageType: "chat_message",
         sharedBotId: isSharedView ? botConfig.id : undefined,
         stream: false,
@@ -2146,6 +2207,7 @@ const sendMessage = async (
       teachingHint: guidedMode ? "continue" : "auto",
       usageType: "chat_message",
       sharedBotId: isSharedView ? botConfig.id : undefined,
+      topicId: selectedTopicId || undefined,
     };
     const usesGeminiImages = modelProvider === "gemini" && queuedImages.length > 0;
     const { response, conversationId: responseConversationId } = await sendConversationMessage({
@@ -2184,6 +2246,9 @@ const sendMessage = async (
         setCurrentConversationId(nextConversationId);
       }
       if (data?.conversation) {
+        if (data.conversation.topicId) {
+          setSelectedTopicId(String(data.conversation.topicId));
+        }
         syncConversationList((prev) => {
           const next = prev.filter((item) => item.id !== data.conversation.id);
           next.unshift(data.conversation as ConversationSummary);
@@ -2320,6 +2385,7 @@ const sendMessage = async (
           id: responseConversationId,
           userId: authSession?.user.id || "",
           botId: botConfig.id || null,
+          topicId: selectedTopicId || null,
           title,
           type: "bot_learning",
           status: "active",
@@ -2378,6 +2444,73 @@ const handleHistoryButtonClick = () => {
   });
 };
 
+const handleTopicSwitch = async (nextTopic: CharacterTopicSummary) => {
+  if (isSwitchingTopic || nextTopic.id === selectedTopicId) {
+    setIsTopicSelectorOpen(false);
+    return;
+  }
+  const previousTopic = selectedTopic;
+  const previousTopicId = selectedTopicId;
+  const previousConversationTopicId = currentConversationId
+    ? conversations.find((conversation) => conversation.id === currentConversationId)?.topicId ?? previousTopicId
+    : null;
+
+  // Update the visible selection immediately. Persistence continues in the
+  // background and rolls back only if the server rejects the change.
+  setIsSwitchingTopic(true);
+  setTopicError("");
+  setSelectedTopicId(nextTopic.id);
+  setIsTopicSelectorOpen(false);
+  if (currentConversationId && canUseHistory) {
+    syncConversationList((current) =>
+      current.map((conversation) =>
+        conversation.id === currentConversationId
+          ? { ...conversation, topicId: nextTopic.id }
+          : conversation
+      )
+    );
+  }
+
+  try {
+    let updatedConversation: ConversationSummary | null = null;
+    if (currentConversationId && canUseHistory) {
+      updatedConversation = await updateConversationTopicRecord(currentConversationId, nextTopic.id);
+    }
+    if (updatedConversation) {
+      syncConversationList((current) =>
+        current.map((conversation) =>
+          conversation.id === updatedConversation!.id ? updatedConversation! : conversation
+        )
+      );
+    }
+    setMessages((current) => [
+      ...current,
+      {
+        role: "event",
+        content: previousTopic
+          ? `主題已由「${previousTopic.name}」切換為「${nextTopic.name}」`
+          : `目前主題：${nextTopic.name}`,
+      },
+    ]);
+  } catch (switchError) {
+    setSelectedTopicId(previousTopicId);
+    if (currentConversationId && canUseHistory) {
+      syncConversationList((current) =>
+        current.map((conversation) =>
+          conversation.id === currentConversationId
+            ? { ...conversation, topicId: previousConversationTopicId }
+            : conversation
+        )
+      );
+    }
+    const message = switchError instanceof Error ? switchError.message : "切換主題失敗，請稍後再試。";
+    setTopicError(message);
+    showAlert({ title: "切換主題失敗", message, confirmText: "知道了" });
+  } finally {
+    setIsSwitchingTopic(false);
+  }
+};
+
 const handleChatPanelToggle = () => {
   setChatPanelOpen((prev) => {
     const next = !prev;
@@ -2397,6 +2530,12 @@ const handleCreateConversation = async () => {
     if (existingEmptyConversation) {
       resetConversationView(existingEmptyConversation.id);
       setCurrentConversationId(existingEmptyConversation.id);
+      setSelectedTopicId(
+        existingEmptyConversation.topicId ||
+          availableTopics.find((topic) => topic.isDefault)?.id ||
+          availableTopics[0]?.id ||
+          null
+      );
       setChatPanelOpen(true);
       setHistoryDrawerOpen(false);
       return;
@@ -3917,12 +4056,94 @@ const unlockAudioAndMic = async () => {
               <div className={`flex h-full min-w-0 flex-col ${chatPanelOpen ? "" : "md:pointer-events-none"}`}>
               {/* header */}
               <div className="flex items-center justify-between gap-3 border-b border-[#decfb9] bg-[#fffaf1]/86 p-3.5">
-                <div className="min-w-0">
-                  <div className="text-base font-bold leading-tight text-[#241b12] break-words">{botName}</div>
-                  <div className="mt-1 flex items-center gap-2 text-xs font-semibold text-emerald-600">
-                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                    已發佈上線
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-base font-bold leading-tight text-[#241b12]">{botName}</div>
+                  <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600">
+                      <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                      已發佈上線
+                    </div>
+                    {availableTopics.length > 0 ? (
+                      <div
+                        ref={topicSelectorRef}
+                        className="relative min-w-0"
+                        data-topic-selector-root="publish-chat"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setIsTopicSelectorOpen((current) => !current)}
+                          disabled={topicsLoading || isSwitchingTopic}
+                          className="flex min-h-8 max-w-[11.5rem] items-center gap-1.5 rounded-lg border border-[#d9c8ae] bg-white/80 px-2.5 text-[11px] font-black text-[#6c4b22] shadow-sm transition hover:bg-white disabled:cursor-wait disabled:opacity-65"
+                          aria-haspopup="listbox"
+                          aria-expanded={isTopicSelectorOpen}
+                          title={selectedTopic?.name || "選擇主題"}
+                        >
+                          <BookOpen className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{selectedTopic?.name || "選擇主題"}</span>
+                          {isSwitchingTopic ? (
+                            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                          ) : (
+                            <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition ${isTopicSelectorOpen ? "rotate-180" : ""}`} />
+                          )}
+                        </button>
+
+                        <AnimatePresence>
+                          {isTopicSelectorOpen ? (
+                            <motion.div
+                              initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                              transition={{ duration: 0.14 }}
+                              className="absolute left-0 top-full z-[70] mt-2 w-72 max-w-[calc(100vw-3rem)] overflow-hidden rounded-2xl border border-[#ddcfba] bg-[#fffdf8] shadow-[0_20px_50px_rgba(69,52,31,0.24)]"
+                              role="listbox"
+                              aria-label="選擇對話主題"
+                            >
+                              <div className="border-b border-[#eee3d3] px-3.5 py-3">
+                                <div className="text-xs font-black text-[#2f251a]">選擇主題</div>
+                                <div className="mt-0.5 text-[10px] leading-4 text-[#8b7a64]">切換後，下一則回覆會使用新提示與知識。</div>
+                              </div>
+                              <div className="custom-scroll max-h-64 overflow-y-auto p-1.5">
+                                {availableTopics.map((topic) => {
+                                  const active = topic.id === selectedTopicId;
+                                  return (
+                                    <button
+                                      key={topic.id}
+                                      type="button"
+                                      role="option"
+                                      aria-selected={active}
+                                      onClick={() => void handleTopicSwitch(topic)}
+                                      disabled={isSwitchingTopic}
+                                      className={`flex min-h-14 w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition ${
+                                        active ? "bg-[#efe2cf]" : "hover:bg-[#f7f0e5]"
+                                      }`}
+                                    >
+                                      <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${active ? "bg-[#7c4d18] text-white" : "border border-[#d9c9b2] text-transparent"}`}>
+                                        <Check className="h-3 w-3" />
+                                      </span>
+                                      <span className="min-w-0 flex-1">
+                                        <span className="flex items-center gap-1.5 text-xs font-black text-[#30261b]">
+                                          <span className="truncate">{topic.name}</span>
+                                          {topic.isDefault ? <span className="shrink-0 text-[9px] font-black text-amber-700">預設</span> : null}
+                                        </span>
+                                        <span className="mt-0.5 line-clamp-2 block text-[10px] leading-4 text-[#7e6d58]">
+                                          {topic.description || "此主題尚未加入說明"}
+                                        </span>
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </motion.div>
+                          ) : null}
+                        </AnimatePresence>
+                      </div>
+                    ) : topicsLoading ? (
+                      <span className="flex items-center gap-1 text-[10px] font-semibold text-[#8b7a64]">
+                        <Loader2 className="h-3 w-3 animate-spin" /> 載入主題
+                      </span>
+                    ) : null}
                   </div>
+                  {topicError ? <div className="mt-1 truncate text-[10px] font-semibold text-rose-600">{topicError}</div> : null}
                 </div>
 
                 <div
@@ -3989,10 +4210,14 @@ const unlockAudioAndMic = async () => {
                   <div
                     key={i}
                     className={`flex ${
-                      m.role === "user" ? "justify-end" : "justify-start"
+                      m.role === "user" ? "justify-end" : m.role === "event" ? "justify-center" : "justify-start"
                     }`}
                   >
-                    {m.role === "bot" && m.guidedTitle ? (
+                    {m.role === "event" ? (
+                      <div className="max-w-[92%] rounded-full border border-[#dfd1bc] bg-[#f2e8d9]/85 px-3 py-1.5 text-center text-[10px] font-bold text-[#806d54]">
+                        {m.content}
+                      </div>
+                    ) : m.role === "bot" && m.guidedTitle ? (
                       <div className="max-w-[88%]">
                         <div className="mb-1 text-xs font-semibold text-[#7c6a54]">{m.guidedTitle}</div>
                         <div className="rounded-2xl rounded-bl-sm border border-[#e5d8c3] bg-white/88 p-3 text-sm leading-relaxed text-[#2b241b] shadow-sm whitespace-pre-wrap">

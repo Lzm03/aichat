@@ -15,7 +15,7 @@ export const Stepper: React.FC<StepperProps> = ({
   maxReachableStep = 1,
 }) => {
   return (
-    <div className="w-full bg-white p-2 sm:p-4 rounded-3xl shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)]">
+    <div className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] sm:px-5">
       <div className="flex items-start">
         {steps.map((step, index) => {
           const stepNumber = index + 1;
@@ -29,18 +29,18 @@ export const Stepper: React.FC<StepperProps> = ({
                 <button 
                   onClick={() => isEnabled && onStepClick(stepNumber)}
                   disabled={!isEnabled}
-                  className="flex flex-col items-center text-center px-1 disabled:cursor-default group"
+                  className="group flex flex-col items-center px-1 text-center disabled:cursor-default"
                 >
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${
-                    isCompleted ? 'bg-indigo-600 group-hover:bg-indigo-700' : isActive ? 'bg-indigo-600 ring-4 ring-indigo-200' : 'bg-slate-200'
+                  <div className={`flex h-8 w-8 items-center justify-center rounded-full transition-all duration-300 ${
+                    isCompleted ? 'bg-indigo-600 group-hover:bg-indigo-700' : isActive ? 'bg-indigo-600 ring-4 ring-indigo-100' : 'bg-slate-100'
                   }`}>
-                    {isCompleted ? <Icons.success className="w-6 h-6 text-white" /> : <span className={`font-bold ${isActive ? 'text-white' : 'text-slate-500'}`}>{stepNumber}</span>}
+                    {isCompleted ? <Icons.success className="h-5 w-5 text-white" /> : <span className={`text-sm font-bold ${isActive ? 'text-white' : 'text-slate-400'}`}>{stepNumber}</span>}
                   </div>
-                  <p className={`mt-2 text-xs w-20 font-medium transition-colors hidden sm:block ${isActive ? 'text-indigo-600' : isCompleted ? 'text-slate-700' : 'text-slate-500'}`}>{step}</p>
+                  <p className={`mt-2 hidden w-20 text-[11px] font-semibold transition-colors sm:block ${isActive ? 'text-indigo-600' : isCompleted ? 'text-slate-700' : 'text-slate-400'}`}>{step}</p>
                 </button>
               </div>
               {index < steps.length - 1 && (
-                <div className={`flex-1 h-1 mt-5 transition-colors duration-500 ${isCompleted || isActive ? 'bg-indigo-500' : 'bg-slate-200'}`}></div>
+                <div className={`mt-4 h-0.5 flex-1 transition-colors duration-500 ${isCompleted || isActive ? 'bg-indigo-500' : 'bg-slate-200'}`}></div>
               )}
             </React.Fragment>
           );

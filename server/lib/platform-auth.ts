@@ -332,6 +332,7 @@ export async function ensurePlatformTables() {
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           bot_id TEXT REFERENCES bots(id) ON DELETE SET NULL,
+          topic_id TEXT,
           title TEXT NOT NULL,
           type TEXT NOT NULL DEFAULT 'bot_learning',
           status TEXT NOT NULL DEFAULT 'active',
@@ -341,6 +342,7 @@ export async function ensurePlatformTables() {
           deleted_at TIMESTAMPTZ
         );
       `);
+      await pool.query(`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS topic_id TEXT;`);
       await pool.query(`
         CREATE TABLE IF NOT EXISTS conversation_messages (
           id TEXT PRIMARY KEY,

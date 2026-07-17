@@ -13,6 +13,11 @@ import {
   requireAuth,
 } from "../lib/platform-auth.ts";
 import { ensureQuizTables } from "./quizzes.ts";
+import {
+  ensureDefaultTopicForCharacter,
+  ensureCharacterTopicTables,
+  syncInheritedTopicKnowledge,
+} from "../lib/character-topics.ts";
 
 const router = express.Router();
 type SequenceVideoEntry = { key: "idle" | "thinking" | "talking"; url: string };
@@ -1068,6 +1073,7 @@ router.post("/", requireAuth, async (req, res) => {
     const user = getAuthUser(req);
     await ensureFeatureAvailable(user!.id, "bot_publish", 1);
     const openingMessage = await generateOpeningMessage(bot);
+    await ensureCharacterTopicTables();
 
     const query = `
       INSERT INTO bots (
@@ -1102,7 +1108,19 @@ router.post("/", requireAuth, async (req, res) => {
       user?.email || null,
     ];
 
-    const result = await pool.query(query, values);
+    const client = await pool.connect();
+    let result;
+    try {
+      await client.query("BEGIN");
+      result = await client.query(query, values);
+      await ensureDefaultTopicForCharacter(bot.id, bot.knowledge_base || "", client);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
     await recordFeatureUsage(user!.id, "bot_publish", 1, { botId: bot.id });
     res.json(toClient(result.rows[0]));
   } catch (err) {
@@ -1120,6 +1138,7 @@ router.put("/:id", requireAuth, async (req, res) => {
     const bot = toDb(req.body);
     const user = getAuthUser(req);
     const openingMessage = await generateOpeningMessage(bot);
+    await ensureCharacterTopicTables();
 
     const query = `
       UPDATE bots SET
@@ -1153,9 +1172,23 @@ router.put("/:id", requireAuth, async (req, res) => {
       user?.id,
     ];
 
-    const result = await pool.query(query, values);
-    if (!result.rows.length)
-      return res.status(404).json({ error: "Bot not found" });
+    const client = await pool.connect();
+    let result;
+    try {
+      await client.query("BEGIN");
+      result = await client.query(query, values);
+      if (!result.rows.length) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Bot not found" });
+      }
+      await syncInheritedTopicKnowledge(String(id), bot.knowledge_base || "", client);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
 
     res.json(toClient(result.rows[0]));
   } catch (err) {

@@ -5,6 +5,7 @@ export type ConversationRow = {
   id: string;
   user_id: string;
   bot_id: string | null;
+  topic_id: string | null;
   title: string;
   type: string;
   status: string;
@@ -28,6 +29,7 @@ export type ConversationMessageRow = {
 type CreateConversationInput = {
   userId: string;
   botId?: string | null;
+  topicId?: string | null;
   title?: string;
   type?: string;
 };
@@ -49,6 +51,7 @@ export function mapConversationRow(row: ConversationRow) {
     id: row.id,
     userId: row.user_id,
     botId: row.bot_id,
+    topicId: row.topic_id,
     title: row.title,
     type: row.type,
     status: row.status,
@@ -80,6 +83,7 @@ export async function ensureConversationTables() {
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           bot_id TEXT NULL REFERENCES bots(id) ON DELETE SET NULL,
+          topic_id TEXT NULL,
           title TEXT NOT NULL DEFAULT '新的對話',
           type TEXT NOT NULL DEFAULT 'bot_learning',
           status TEXT NOT NULL DEFAULT 'active',
@@ -88,6 +92,8 @@ export async function ensureConversationTables() {
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
       `);
+
+      await pool.query(`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS topic_id TEXT NULL`);
 
       await pool.query(`
         CREATE TABLE IF NOT EXISTS conversation_messages (
@@ -163,19 +169,38 @@ export async function createConversation(input: CreateConversationInput) {
   const id = crypto.randomUUID();
   const result = await pool.query(
     `
-    INSERT INTO conversations (id, user_id, bot_id, title, type, status)
-    VALUES ($1, $2, $3, $4, $5, 'active')
+    INSERT INTO conversations (id, user_id, bot_id, topic_id, title, type, status)
+    VALUES ($1, $2, $3, $4, $5, $6, 'active')
     RETURNING *
     `,
     [
       id,
       input.userId,
       input.botId || null,
+      input.topicId || null,
       String(input.title || "新的對話").trim() || "新的對話",
       String(input.type || "bot_learning").trim() || "bot_learning",
     ]
   );
   return result.rows[0] as ConversationRow;
+}
+
+export async function updateConversationTopic(
+  conversationId: string,
+  userId: string,
+  topicId: string
+) {
+  await ensureConversationTables();
+  const result = await pool.query(
+    `
+    UPDATE conversations
+    SET topic_id=$3, updated_at=NOW()
+    WHERE id=$1 AND user_id=$2 AND status <> 'deleted'
+    RETURNING *
+    `,
+    [conversationId, userId, topicId]
+  );
+  return (result.rows[0] as ConversationRow) || null;
 }
 
 export async function getConversationForUser(conversationId: string, userId: string) {

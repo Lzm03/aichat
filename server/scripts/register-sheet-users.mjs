@@ -84,6 +84,11 @@ function normalizeRows(rows) {
 }
 
 async function main() {
+  const initialPassword = String(process.env.SHEET_USER_DEFAULT_PASSWORD || "");
+  if (initialPassword.length < 12) {
+    throw new Error("SHEET_USER_DEFAULT_PASSWORD must be set to at least 12 characters.");
+  }
+
   await ensurePlatformTables();
   const response = await fetch(SHEET_CSV_URL);
   if (!response.ok) {
@@ -95,7 +100,6 @@ async function main() {
 
   for (const row of rows) {
     const fullName = displayNameFor(row);
-    const password = process.env.SHEET_USER_DEFAULT_PASSWORD || "12345678";
     const id = crypto.randomUUID();
     await pool.query(
       `INSERT INTO users (
@@ -108,7 +112,6 @@ async function main() {
        DO UPDATE SET
          full_name = EXCLUDED.full_name,
          role = 'teacher',
-         password_hash = EXCLUDED.password_hash,
          status = 'active',
          updated_at = NOW()`,
       [
@@ -123,10 +126,10 @@ async function main() {
           companions: row.companions,
           attendanceCount: row.attendanceCount,
         }),
-        hashPassword(password),
+        hashPassword(initialPassword),
       ]
     );
-    results.push({ email: row.email, fullName, password, school: row.school });
+    results.push({ email: row.email, fullName, school: row.school });
   }
 
   console.log(JSON.stringify({ count: results.length, users: results }, null, 2));

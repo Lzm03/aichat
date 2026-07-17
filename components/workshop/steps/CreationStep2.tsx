@@ -35,9 +35,10 @@ interface CreationStep2Props {
     speakingStyle?: string;
     answerMode?: string;
   };
+  afterKnowledgePointEditor?: React.ReactNode;
 }
 
-export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData }) => {
+export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, afterKnowledgePointEditor }) => {
   const [uploadMethod, setUploadMethod] = useState<UploadMethod>("file");
   const [modelProvider, setModelProvider] = useState<"deepseek" | "gemini">("deepseek");
   const [showModelMenu, setShowModelMenu] = useState(false);
@@ -730,52 +731,69 @@ JSON 必須符合以下結構：
       ];
 
       return (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-          <div className="rounded-2xl border bg-white p-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xl font-bold text-slate-800">提取成功</h4>
-              <button onClick={resetState}>
-                <Icons.delete className="w-5 h-5 text-slate-500" />
-              </button>
-            </div>
-            <p className="mt-2 text-sm text-slate-600">{sourceLabel || "未知來源"}</p>
-            <div className="mt-3 h-2.5 w-full rounded-full bg-slate-100 overflow-hidden">
-              <div className="h-full w-full bg-emerald-500" />
-            </div>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="bg-emerald-50 p-4 rounded-xl border">
-              <h4 className="font-bold text-emerald-800 mb-2">人物背景設定</h4>
-              <textarea
-                readOnly
-                rows={8}
-                value={characterBackground}
-                className="w-full bg-white/70 p-3 rounded-lg border border-emerald-100"
-              />
-            </div>
-            <div className="bg-blue-50 p-4 rounded-xl border">
-              <h4 className="font-bold text-blue-800 mb-2">知識庫摘要</h4>
-              <textarea
-                readOnly
-                rows={8}
-                value={knowledgeSummary}
-                className="w-full bg-white/70 p-3 rounded-lg border border-blue-100"
-              />
-            </div>
-          </div>
-
-          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Knowledge Map</p>
-                <h4 className="mt-1 text-[34px] leading-none font-black tracking-tight text-slate-900 md:text-[28px]">知識庫架構</h4>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-0">
+          <section id="knowledge-content" className="scroll-mt-36 border-t border-slate-200 pt-10">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-4">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">02</span>
+                <div>
+                  <h2 className="text-xl font-black tracking-tight text-slate-950">知識內容</h2>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">確認角色背景與摘要，再從關聯圖檢查知識結構。</p>
+                </div>
               </div>
-              <div className="flex items-center rounded-2xl border border-slate-200 bg-slate-50 p-1.5 text-sm font-semibold shadow-inner">
+              <div className="flex items-center gap-2 sm:justify-end">
+                <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  已完成提取
+                </span>
+                <button
+                  type="button"
+                  onClick={resetState}
+                  className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                  aria-label="清除並重新提取知識"
+                  title="重新提取"
+                >
+                  <Icons.delete className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <p className="mt-5 border-l-2 border-emerald-400 pl-3 text-xs font-semibold text-slate-500">
+              來源：{sourceLabel || "未知來源"}
+            </p>
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <h3 className="mb-3 text-sm font-black text-slate-800">人物背景設定</h3>
+              <textarea
+                readOnly
+                rows={6}
+                value={characterBackground}
+                className="w-full resize-none rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700 outline-none"
+              />
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <h3 className="mb-3 text-sm font-black text-slate-800">知識庫摘要</h3>
+              <textarea
+                readOnly
+                rows={6}
+                value={knowledgeSummary}
+                className="w-full resize-none rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700 outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="mt-8 border-t border-slate-200 pt-8">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-black tracking-tight text-slate-950">知識庫架構</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">切換視圖檢查知識點分類；列表視圖可調整層級或刪除項目。</p>
+              </div>
+              <div className="flex items-center rounded-xl bg-slate-100 p-1 text-sm font-semibold">
                 <button
                   type="button"
                   onClick={() => setViewMode("graph")}
-                  className={`flex items-center gap-2 rounded-xl px-4 py-2 ${viewMode === "graph" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500"}`}
+                  className={`flex items-center gap-2 rounded-lg px-3 py-2 transition ${viewMode === "graph" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
                 >
                   <Icons.task className="h-4 w-4" />
                   關聯圖
@@ -783,14 +801,14 @@ JSON 必須符合以下結構：
                 <button
                   type="button"
                   onClick={() => setViewMode("list")}
-                  className={`flex items-center gap-2 rounded-xl px-4 py-2 ${viewMode === "list" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500"}`}
+                  className={`flex items-center gap-2 rounded-lg px-3 py-2 transition ${viewMode === "list" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
                 >
                   <Icons.clipboardList className="h-4 w-4" />
                   列表視圖
                 </button>
               </div>
             </div>
-            <div className="rounded-[24px] border border-slate-200 bg-gradient-to-b from-[#fbfcff] via-white to-[#f8fbff] p-4 md:p-6">
+            <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-slate-50/70 p-3 md:p-4">
               {viewMode === "graph" ? (
               <>
               <div className="hidden md:block overflow-hidden">
@@ -1023,20 +1041,29 @@ JSON 必須符合以下結構：
               )}
             </div>
           </div>
+          </section>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <h4 className="font-bold text-slate-800">手動新增知識點</h4>
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <input
-                value={newPointTitle}
-                onChange={(e) => setNewPointTitle(e.target.value)}
-                placeholder="知識主題，例如：人物背景"
-                className="md:col-span-2 rounded-xl border border-slate-200 bg-white p-3 text-sm"
-              />
-              <div className="md:col-span-2">
-                <textarea value={newPointContent} onChange={(e) => setNewPointContent(e.target.value)} rows={3} placeholder="補充說明，輸入完整知識點內容" className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm" />
+          <section id="add-knowledge-point" className="scroll-mt-36 border-t border-slate-200 pt-10">
+            <div className="flex items-start gap-4">
+              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">03</span>
+              <div>
+                <h2 className="text-xl font-black tracking-tight text-slate-950">新增知識點</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-500">直接補充單一知識；新增後會立即出現在上方知識架構。</p>
               </div>
-              <div className="flex flex-wrap gap-2">
+            </div>
+            <div className="mt-6 grid gap-5 rounded-2xl bg-slate-50/80 p-4 sm:p-5 md:grid-cols-12">
+              <label className="block md:col-span-8">
+                <span className="text-xs font-bold text-slate-700">知識主題</span>
+                <input
+                  value={newPointTitle}
+                  onChange={(e) => setNewPointTitle(e.target.value)}
+                  placeholder="例如：人物背景"
+                  className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+                />
+              </label>
+              <fieldset className="md:col-span-4">
+                <legend className="text-xs font-bold text-slate-700">知識層級</legend>
+                <div className="mt-2 flex min-h-11 gap-2">
                 {([
                   { value: "basic_fact", label: "基礎事實" },
                   { value: "deep_understanding", label: "深度理解" },
@@ -1045,17 +1072,30 @@ JSON 必須符合以下結構：
                     key={option.value}
                     type="button"
                     onClick={() => setNewPointTier(option.value)}
-                    className={`rounded-xl px-4 py-2 text-sm font-semibold ${newPointTier === option.value ? "bg-slate-900 text-white" : "bg-white text-slate-700 border border-slate-200"}`}
+                    className={`flex-1 rounded-xl px-3 py-2 text-xs font-semibold transition ${newPointTier === option.value ? "bg-slate-900 text-white" : "border border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
                   >
                     {option.label}
                   </button>
                 ))}
-              </div>
-              <button type="button" onClick={handleAddKnowledgePoint} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">
+                </div>
+              </fieldset>
+              <label className="block md:col-span-12">
+                <span className="text-xs font-bold text-slate-700">知識內容</span>
+                <textarea
+                  value={newPointContent}
+                  onChange={(e) => setNewPointContent(e.target.value)}
+                  rows={4}
+                  placeholder="輸入完整說明，讓角色能準確理解並回答。"
+                  className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-white p-3.5 text-sm leading-6 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+                />
+              </label>
+              <button type="button" onClick={handleAddKnowledgePoint} className="min-h-11 rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white transition hover:bg-indigo-700 md:col-start-10 md:col-span-3">
                 新增知識點
               </button>
             </div>
-          </div>
+          </section>
+
+          {afterKnowledgePointEditor}
 
         </motion.div>
       );
@@ -1068,12 +1108,17 @@ JSON 必須符合以下結構：
   // 🔧 Final Render
   // --------------------------
   return (
-    <div className="space-y-6 animate-fade-in">
-      <h3 className="text-xl font-bold">4. 知識餵養</h3>
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-        <h4 className="text-sm font-bold text-slate-800">性格特質</h4>
-        <div className="mt-3">
-          <p className="mb-2 text-xs font-semibold text-slate-700">角色性格（可多選）</p>
+    <div className="space-y-10 animate-fade-in">
+      <section id="character-foundation" className="scroll-mt-36">
+        <div className="flex items-start gap-4">
+          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">01</span>
+          <div>
+            <h2 className="text-xl font-black tracking-tight text-slate-950">角色基礎</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-500">這些設定會套用到所有主題，維持角色個性與回答方式一致。</p>
+          </div>
+        </div>
+        <div className="mt-6 border-t border-slate-200 pt-6">
+          <p className="mb-3 text-xs font-bold text-slate-700">角色性格（可多選）</p>
           <div className="flex flex-wrap gap-2">
             {["耐心", "嚴謹", "幽默", "溫柔", "直接", "理性", "熱情", "活潑"].map((trait) => (
               <button
@@ -1084,30 +1129,29 @@ JSON 必須符合以下結構：
                     prev.includes(trait) ? prev.filter((t) => t !== trait) : [...prev, trait]
                   )
                 }
-                className={`rounded-full border px-3 py-1.5 text-xs ${
+                className={`rounded-full border px-3.5 py-2 text-xs font-semibold transition ${
                   personalityTraits.includes(trait)
-                    ? "border-indigo-300 bg-indigo-100 text-indigo-700"
-                    : "border-slate-200 bg-white text-slate-600"
+                    ? "border-indigo-600 bg-indigo-600 text-white shadow-sm"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
                 }`}
               >
                 {trait}
               </button>
             ))}
           </div>
-        </div>
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
           <div>
-            <p className="mb-1.5 text-xs font-semibold text-slate-700">說話風格</p>
-            <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2">
+            <p className="mb-3 text-xs font-bold text-slate-700">說話風格</p>
+            <div className="flex flex-wrap gap-2">
               {["文言文", "西洋", "口語", "引導式", "正式", "親切對話", "簡潔"].map((style) => (
                 <button
                   key={style}
                   type="button"
                   onClick={() => setSpeakingStyle(style)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                  className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
                     speakingStyle === style
-                      ? "bg-indigo-600 text-white shadow-sm"
-                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                      ? "border-indigo-600 bg-indigo-600 text-white shadow-sm"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
                   }`}
                 >
                   {style}
@@ -1116,17 +1160,17 @@ JSON 必須符合以下結構：
             </div>
           </div>
           <div>
-            <p className="mb-1.5 text-xs font-semibold text-slate-700">回答模式</p>
-            <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2">
+            <p className="mb-3 text-xs font-bold text-slate-700">回答模式</p>
+            <div className="flex flex-wrap gap-2">
               {["直接給答案", "引導後再回答", "不直接給答案"].map((mode) => (
                 <button
                   key={mode}
                   type="button"
                   onClick={() => setAnswerMode(mode)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                  className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
                     answerMode === mode
-                      ? "bg-indigo-600 text-white shadow-sm"
-                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                      ? "border-indigo-600 bg-indigo-600 text-white shadow-sm"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
                   }`}
                 >
                   {mode}
@@ -1135,7 +1179,8 @@ JSON 必須符合以下結構：
             </div>
           </div>
         </div>
-      </div>
+        </div>
+      </section>
 
       {status === "idle" && (
         <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4">

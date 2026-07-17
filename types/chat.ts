@@ -10,6 +10,7 @@ export type ConversationSummary = {
   id: string;
   userId: string;
   botId: string | null;
+  topicId: string | null;
   title: string;
   type: string;
   status: string;
@@ -44,6 +45,7 @@ export type SendConversationMessageRequest = {
   usageType?: string;
   sharedBotId?: string;
   conversationId?: string;
+  topicId?: string;
   images?: File[];
   signal?: AbortSignal;
 };

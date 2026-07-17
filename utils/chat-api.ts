@@ -26,6 +26,7 @@ export async function listConversations(botId?: string, search?: string) {
 
 export async function createConversation(payload: {
   botId?: string;
+  topicId?: string;
   title?: string;
   type?: string;
 }) {
@@ -33,6 +34,16 @@ export async function createConversation(payload: {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+  });
+  const data = await parseJson<{ conversation: ConversationDetail }>(response);
+  return data.conversation;
+}
+
+export async function updateConversationTopic(conversationId: string, topicId: string) {
+  const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/topic`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ topicId }),
   });
   const data = await parseJson<{ conversation: ConversationDetail }>(response);
   return data.conversation;

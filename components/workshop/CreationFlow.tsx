@@ -13,6 +13,7 @@ import type { FeatureEntitlement } from '../../hooks/useFeatureEntitlements';
 import { usePlatformDialog } from '../../hooks/usePlatformDialog';
 import { PlatformDialog } from '../system/PlatformDialog';
 import { buildChatSystemPrompt, buildStoredKnowledgeBase } from '../../utils/chat-prompt';
+import { TopicManager } from './topics/TopicManager';
 
 type KnowledgeTier = "basic_fact" | "deep_understanding";
 type KnowledgePoint = {
@@ -485,19 +486,30 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
 
       case 4:
         return (
-          <CreationStep2
-            initialData={parsedKnowledgeData}
-            onGenerated={(data) => {
-              const combined = buildStoredKnowledgeBase({
-                characterBackground: data.characterBackground,
-                knowledgeSummary: data.knowledgeSummary,
-                knowledgePoints: data.knowledgePoints,
-                personaProfile: data.personaProfile,
-              });
+          <>
+            <header className="mb-8 border-b border-slate-200 pb-7">
+              <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">知識與教學設定</h1>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+                先設定所有對話共用的角色基礎，再整理知識內容與各主題的專屬教學資料。
+              </p>
+            </header>
+            <CreationStep2
+              initialData={parsedKnowledgeData}
+              afterKnowledgePointEditor={
+                <TopicManager characterId={String(botConfig.id || botId || "").trim() || null} />
+              }
+              onGenerated={(data) => {
+                const combined = buildStoredKnowledgeBase({
+                  characterBackground: data.characterBackground,
+                  knowledgeSummary: data.knowledgeSummary,
+                  knowledgePoints: data.knowledgePoints,
+                  personaProfile: data.personaProfile,
+                });
 
-              updateConfig("knowledgeBase", combined);
-            }}
-          />
+                updateConfig("knowledgeBase", combined);
+              }}
+            />
+          </>
         );
 
       case 5:
@@ -568,7 +580,11 @@ const handleDeleteBot = async () => {
 
         {/* 左侧内容 */}
         <div className={currentStep === 4 ? "lg:col-span-1" : "lg:col-span-3"}>
-          <div className="bg-white p-6 md:p-8 rounded-3xl shadow min-h-[600px]">
+          <div className={`min-h-[600px] bg-white ${
+            currentStep === 4
+              ? "rounded-[28px] border border-slate-200/80 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.06)] md:p-8 lg:p-10"
+              : "rounded-3xl p-6 shadow md:p-8"
+          }`}>
             {renderStep()}
           </div>
         </div>
@@ -655,11 +671,11 @@ const handleDeleteBot = async () => {
       />
 
       {/* 底部按钮 */}
-      <div className={`mt-8 flex items-center ${currentStep > 1 ? 'justify-between' : 'justify-end'}`}>
+      <div className={`mt-5 flex items-center rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.04)] ${currentStep > 1 ? 'justify-between' : 'justify-end'}`}>
         {currentStep > 1 && (
           <button
             onClick={handlePrev}
-            className="px-6 py-3 rounded-xl text-sm font-semibold bg-white border border-slate-300"
+            className="rounded-xl px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
           >
             上一步
           </button>
@@ -670,7 +686,7 @@ const handleDeleteBot = async () => {
             <button
               onClick={handleNext}
               disabled={!canProceed}
-              className="px-6 py-3 rounded-xl text-sm font-semibold bg-indigo-600 text-white disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed"
+              className="rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
             >
               下一步
             </button>

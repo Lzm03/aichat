@@ -18,6 +18,7 @@ import ttsRoute from "./api/tts.ts";
 import askRoute from "./api/ask.ts";
 import authRoute from "./api/auth.ts";
 import conversationsRoute from "./api/conversations.ts";
+import characterTopicsRoute from "./api/character-topics.ts";
 import quizzesRoute from "./api/quizzes.ts";
 import removeBgRoute from "./api/removeBgvideo.ts";
 import uploadImageRoute from "./api/upload-image.ts";
@@ -28,6 +29,7 @@ import webmSequenceRoute from "./api/webm-sequence.ts";
 import { pool } from "./db.ts";
 import { uploadsDir } from "./lib/uploads-dir.ts";
 import { ensurePlatformTables, maybeAssignLegacyDataByEmail } from "./lib/platform-auth.ts";
+import { ensureCharacterTopicTables } from "./lib/character-topics.ts";
 
 const app = express();
 const allowedOrigins = new Set(
@@ -121,6 +123,7 @@ app.get("/api/media-proxy", async (req, res) => {
     res.status(502).json({ error: "Failed to proxy media" });
   }
 });
+app.use("/api/bots/:characterId/topics", characterTopicsRoute);
 app.use("/api/bots", botsRoute);
 // Routes
 app.use("/api/generate-image", generateImageRoute);
@@ -186,6 +189,7 @@ let server: ReturnType<typeof app.listen> | null = null;
 
 async function start() {
   await ensurePlatformTables();
+  await ensureCharacterTopicTables();
   try {
     await maybeAssignLegacyDataByEmail("lzm200303@gmail.com");
   } catch (error) {
