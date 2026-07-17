@@ -311,20 +311,28 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
   const selectedReplyLanguage =
     REPLY_LANGUAGE_OPTIONS.find((option) => option.value === replyLanguage) || REPLY_LANGUAGE_OPTIONS[0];
-  const buildDefaultOpeningMessage = React.useCallback(() => {
-    if (replyLanguage === "english") return `Hi! I'm ${botName}. Let's start learning together.`;
-    if (replyLanguage === "mandarin") return `您好，我是${botName}。讓我們一起開始今天的學習吧。`;
-    return `你好！我係${botName}，我哋一齊開始今日嘅學習啦。`;
-  }, [botName, replyLanguage]);
   const shareableLink =
     botConfig?.id && typeof window !== "undefined"
       ? `${window.location.origin}/bot/${botConfig.id}`
       : "";
-  const chatSystemPrompt = `${buildChatSystemPrompt({
+  const compiledPersonaPrompt = buildChatSystemPrompt({
     roleName: botName,
     knowledgeBase: botConfig.knowledgeBase,
     securityPrompt: botConfig.securityPrompt,
-  })}\n\n# Required Reply Language\n${selectedReplyLanguage.prompt}\nThis language selection overrides any default response-language rule above.`;
+  });
+  const usesClassicalChineseStyle = /【說話風格】\s*文言文|淺近文言文/.test(compiledPersonaPrompt);
+  const classicalChineseFinalRule = !usesClassicalChineseStyle
+    ? ""
+    : replyLanguage === "english"
+      ? "\n\n# Highest-priority Final Style Rule\nReply entirely in English. Render the selected Classical Chinese style as concise, dignified, aphoristic English, while remaining easy for students to understand. Never output Chinese."
+      : "\n\n# Highest-priority Final Style Rule\nEvery word of the final reply must be easy-to-understand Classical Chinese in Traditional Chinese. This register rule overrides the Cantonese or Mandarin wording preference. Never output modern Cantonese words such as 係、嘅、喺、咗、佢、哋、唔、冇、咁、啲、畀、諗、睇、嚟、咪.";
+  const chatSystemPrompt = `${compiledPersonaPrompt}\n\n# Required Reply Language\n${selectedReplyLanguage.prompt}${classicalChineseFinalRule}`;
+  const buildDefaultOpeningMessage = React.useCallback(() => {
+    if (replyLanguage === "english") return `Hi! I'm ${botName}. Let's start learning together.`;
+    if (usesClassicalChineseStyle) return `吾乃${botName}。今日且與汝共學，徐徐探其理。`;
+    if (replyLanguage === "mandarin") return `您好，我是${botName}。讓我們一起開始今天的學習吧。`;
+    return `你好！我係${botName}，我哋一齊開始今日嘅學習啦。`;
+  }, [botName, replyLanguage, usesClassicalChineseStyle]);
   const authSession = readAuthSession();
   const canUseHistory = Boolean(authSession?.user?.id);
 
@@ -332,15 +340,20 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     const customOpeningMessage = String(configuredOpeningMessage || "").trim();
     if (customOpeningMessage) {
       if (replyLanguage === "cantonese") return customOpeningMessage;
+      if (usesClassicalChineseStyle && replyLanguage === "mandarin") return customOpeningMessage;
       if (translatedOpeningMessage) return translatedOpeningMessage;
     }
     return buildDefaultOpeningMessage();
-  }, [buildDefaultOpeningMessage, configuredOpeningMessage, replyLanguage, translatedOpeningMessage]);
+  }, [buildDefaultOpeningMessage, configuredOpeningMessage, replyLanguage, translatedOpeningMessage, usesClassicalChineseStyle]);
 
   useEffect(() => {
     const sourceText = String(configuredOpeningMessage || "").trim();
     setTranslatedOpeningMessage("");
-    if (!sourceText || replyLanguage === "cantonese") return;
+    if (
+      !sourceText ||
+      replyLanguage === "cantonese" ||
+      (usesClassicalChineseStyle && replyLanguage === "mandarin")
+    ) return;
     const controller = new AbortController();
     void fetch(`${API_BASE}/api/ask`, {
       method: "POST",
@@ -349,6 +362,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       body: JSON.stringify({
         mode: "translate_text",
         text: sourceText,
+        systemPrompt: chatSystemPrompt,
         replyLanguage,
         modelProvider,
         botId: botConfig.id,
@@ -367,7 +381,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
         }
       });
     return () => controller.abort();
-  }, [botConfig.id, configuredOpeningMessage, isSharedView, modelProvider, replyLanguage]);
+  }, [botConfig.id, chatSystemPrompt, configuredOpeningMessage, isSharedView, modelProvider, replyLanguage, usesClassicalChineseStyle]);
 
   const handleReplyLanguageChange = React.useCallback((nextLanguage: ReplyLanguage) => {
     if (nextLanguage === replyLanguage) return;
@@ -2125,7 +2139,10 @@ const sendMessage = async (
       botId: botConfig.id,
       source,
       replyLanguage,
-      stream: !guidedMode && modelProvider !== "gemini" && replyLanguage !== "mandarin",
+      stream:
+        !guidedMode &&
+        modelProvider !== "gemini" &&
+        replyLanguage === "cantonese",
       teachingHint: guidedMode ? "continue" : "auto",
       usageType: "chat_message",
       sharedBotId: isSharedView ? botConfig.id : undefined,

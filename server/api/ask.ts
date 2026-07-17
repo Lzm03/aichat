@@ -887,8 +887,13 @@ async function buildDialogueEnhancement(
   const questionType = inferDialogueQuestionType(lastQuestion);
   const choiceOptions = extractChoiceOptions(lastQuestion);
   const point = pickDialogueKnowledgePointForQuestion(systemPrompt, lastQuestion, reply);
+  const usesClassicalChinese = /Enforced Speaking Style[\s\S]*淺近文言文/.test(systemPrompt);
   const guideLanguageRule =
-    options.replyLanguage === "english"
+    usesClassicalChinese && options.replyLanguage === "english"
+      ? "OUTPUT LANGUAGE: Write followUpQuestion, every label, text, and sendText entirely in concise, dignified, aphoristic English that evokes a Classical Chinese voice while remaining easy to understand. Never output Chinese. Labels must be: Key fact, Think deeper, Apply the idea."
+      : usesClassicalChinese
+      ? "輸出語言：followUpQuestion、label、text、sendText 必須全部使用繁體中文的淺近文言文。可用『吾、汝、何以、然、可謂』等文言詞句，須讓學生易懂；不得改成現代普通話或粵語口語。"
+      : options.replyLanguage === "english"
       ? "OUTPUT LANGUAGE: Write followUpQuestion, every label, text, and sendText entirely in natural English. Labels must be: Key fact, Think deeper, Apply the idea."
       : options.replyLanguage === "mandarin"
         ? "輸出語言：followUpQuestion、label、text、sendText 必須全部使用繁體中文的標準普通話，禁止使用粵語詞與語氣詞（如係、嘅、喺、咗、佢、哋）。"
@@ -1222,6 +1227,35 @@ async function askModelOnce(
     return askGeminiOnce(systemPrompt, userPrompt, images);
   }
   return askDeepSeekOnce(systemPrompt, userPrompt);
+}
+
+const CJK_CHARACTER_PATTERN = /[\u3400-\u9fff]/;
+
+async function renderReplyInEnglish(
+  provider: ChatModelProvider,
+  input: string,
+  classicalChineseStyle = false
+) {
+  const styleRule = classicalChineseStyle
+    ? "Use concise, dignified, aphoristic English that evokes a Classical Chinese voice while remaining easy to understand."
+    : "Use natural, student-friendly English.";
+  const render = (text: string, strict = false) => askModelOnce(
+    provider,
+    [
+      "Render the entire input in English.",
+      styleRule,
+      "Preserve its meaning, character identity, paragraph structure, and at most one question.",
+      strict ? "STRICT FINAL CHECK: The output must contain English only and zero Chinese characters." : "",
+      "Output only the English rendering, with no notes or explanation.",
+    ].filter(Boolean).join("\n"),
+    text
+  );
+
+  let rendered = await render(String(input || ""));
+  if (CJK_CHARACTER_PATTERN.test(rendered)) {
+    rendered = await render(rendered, true);
+  }
+  return rendered;
 }
 
 async function askModelStream(
@@ -1696,7 +1730,10 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     const selectedModelProvider = normalizeChatModelProvider(modelProvider);
     const normalizedReplyLanguage =
       replyLanguage === "english" || replyLanguage === "mandarin" ? replyLanguage : "cantonese";
-    const wantsStream = normalizeStreamFlag(stream);
+    const usesClassicalChineseStyle = /Enforced Speaking Style[\s\S]*淺近文言文/.test(String(systemPrompt));
+    // English and Mandarin are buffered so their final language conversion is
+    // always applied; only Cantonese may be streamed directly.
+    const wantsStream = normalizedReplyLanguage === "cantonese" && normalizeStreamFlag(stream);
     const chatImages = selectedModelProvider === "gemini" ? extractChatImages(req) : [];
     const normalizedPrompt = selectedModelProvider === "gemini" && chatImages.length > 0 && !normalized
       ? "請描述這張圖片。"
@@ -1770,16 +1807,28 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     };
 
     const respondTeaching = async (payload: Record<string, any>) => {
-      if (normalizedReplyLanguage !== "cantonese" && String(payload?.reply || "").trim()) {
+      if (
+        normalizedReplyLanguage !== "cantonese" &&
+        !(usesClassicalChineseStyle && normalizedReplyLanguage === "mandarin") &&
+        String(payload?.reply || "").trim()
+      ) {
         const targetLanguage =
           normalizedReplyLanguage === "english"
-            ? "natural, student-friendly English"
+            ? usesClassicalChineseStyle
+              ? "concise, dignified, aphoristic English that evokes a Classical Chinese voice while remaining student-friendly"
+              : "natural, student-friendly English"
             : "standard Mandarin written in Traditional Chinese; never use Cantonese words or particles";
-        payload.reply = await askModelOnce(
-          selectedModelProvider,
-          `Translate educational chat content into ${targetLanguage}. Preserve Step numbers, line breaks, examples, choices, and meaning. Output only the translated text.`,
-          String(payload.reply)
-        ).catch(() => payload.reply);
+        payload.reply = normalizedReplyLanguage === "english"
+          ? await renderReplyInEnglish(
+              selectedModelProvider,
+              String(payload.reply),
+              usesClassicalChineseStyle
+            ).catch(() => payload.reply)
+          : await askModelOnce(
+              selectedModelProvider,
+              `Translate educational chat content into ${targetLanguage}. Preserve Step numbers, line breaks, examples, choices, and meaning. Output only the translated text.`,
+              String(payload.reply)
+            ).catch(() => payload.reply);
       }
       if (usageType === "chat_message" && normalizedPrompt) {
         await persistUserMessage();
@@ -1812,11 +1861,18 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     if (mode === "translate_text") {
       const sourceText = String(req.body?.text || "").trim();
       if (!sourceText) return res.status(400).json({ error: "Missing text" });
+      if (usesClassicalChineseStyle && normalizedReplyLanguage === "mandarin") {
+        return res.json({ reply: sourceText });
+      }
       const translationPrompt =
         normalizedReplyLanguage === "english"
-          ? "Translate into natural English while preserving the character voice and meaning. Output only the translation."
+          ? usesClassicalChineseStyle
+            ? "Translate entirely into concise, dignified, aphoristic English that evokes the original Classical Chinese voice while remaining easy to understand. Never output Chinese. Preserve the character and meaning. Output only the translation."
+            : "Translate into natural English while preserving the character voice and meaning. Output only the translation."
           : "改寫成自然、標準的繁體中文普通話，保留角色語氣與原意，徹底移除粵語詞彙、句法和語氣詞。只輸出改寫結果。";
-      const translated = await askModelOnce(selectedModelProvider, translationPrompt, sourceText);
+      const translated = normalizedReplyLanguage === "english"
+        ? await renderReplyInEnglish(selectedModelProvider, sourceText, usesClassicalChineseStyle)
+        : await askModelOnce(selectedModelProvider, translationPrompt, sourceText);
       return res.json({ reply: translated });
     }
 
@@ -1982,18 +2038,14 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
         reply =
           (await maybeMockModelReply(normalizedPrompt)) ??
           (await askModelOnce(selectedModelProvider, systemPrompt, contextualPrompt, chatImages));
-        if (normalizedReplyLanguage === "mandarin") {
+        if (normalizedReplyLanguage === "mandarin" && !usesClassicalChineseStyle) {
           reply = await askModelOnce(
             selectedModelProvider,
             "你是專業粵語轉繁體普通話編輯。把輸入完整改寫成自然、標準的普通話，使用繁體中文。保留原意、角色身份、段落與最多一個問題。徹底移除所有粵語詞彙、句法和語氣詞。不要解釋，只輸出改寫結果。",
             reply
           );
         } else if (normalizedReplyLanguage === "english") {
-          reply = await askModelOnce(
-            selectedModelProvider,
-            "Translate the input into natural English. Preserve its meaning, character voice, paragraph structure, and at most one question. Output only the translation.",
-            reply
-          );
+          reply = await renderReplyInEnglish(selectedModelProvider, reply, usesClassicalChineseStyle);
         }
         if (isDebugLogEnabled) console.log("[ask] model reply received length=%s", reply.length);
       } catch (error) {

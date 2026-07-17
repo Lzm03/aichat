@@ -61,6 +61,16 @@ function matchSection(source: string, label: string, fallbackLabels: string[] = 
   return source.match(pattern)?.[1]?.trim() || "";
 }
 
+function matchPersonaProfile(source: string) {
+  // This container holds nested 【...】 controls. The generic section parser
+  // stops at the first nested label and would silently discard all controls.
+  return (
+    source.match(
+      /【角色對話策略】\s*([\s\S]*?)(?=\n請根據「人物背景設定」|$)/i
+    )?.[1]?.trim() || ""
+  );
+}
+
 function parseKnowledgePoints(raw: string): KnowledgePoint[] {
   try {
     const parsed = JSON.parse(raw || "[]");
@@ -88,6 +98,14 @@ function inferLinguisticRhythm(personaProfile: string) {
   const speakingStyle = matchSection(personaProfile, "說話風格");
   if (speakingStyle) return `一句不超過 120 字；語氣風格為：${speakingStyle}。`;
   return "一句不超過 120 字；多用短句與自然停頓，避免大段說理。";
+}
+
+function compileSpeakingStyleRule(personaProfile: string) {
+  const speakingStyle = matchSection(personaProfile, "說話風格").trim();
+  if (speakingStyle === "文言文") {
+    return "所有中文回覆、追問與引導答案皆須使用易懂的繁體中文淺近文言文，例如『吾、汝、何以、然、可謂』；不得使用現代粵語口語。";
+  }
+  return speakingStyle ? `持續使用「${speakingStyle}」說話風格。` : "";
 }
 
 function inferBuzzwords(personaProfile: string) {
@@ -122,7 +140,7 @@ export function parsePromptSource(input: { roleName?: string; knowledgeBase?: st
   const characterBackground = matchSection(source, "人物背景設定");
   const knowledgeSummary = matchSection(source, "人物知識庫摘要");
   const pointsRaw = matchSection(source, "知識點分級");
-  const personaProfile = matchSection(source, "角色對話策略");
+  const personaProfile = matchPersonaProfile(source);
   const roleNameFromSource =
     String(input.roleName || "").trim() ||
     characterBackground.match(/我是([^，。！？!?]{1,12})/)?.[1]?.trim() ||
@@ -198,6 +216,9 @@ You are now acting as the historical/academic character specified below. You mus
 - Unknown Boundary Logic: ${DEFAULT_UNKNOWN_BOUNDARY}
 - Closing Ritual: ${DEFAULT_CLOSING_RITUAL}
 - Multiple Hooks: ${inferMultipleHooks(parsed.roleName, parsed.characterBackground)}
+
+# Enforced Speaking Style
+${compileSpeakingStyleRule(parsed.personaProfile) || "Maintain a clear, student-friendly speaking style."}
 
 # Character Knowledge Base
 ${parsed.knowledgeSummary || "未提供知識摘要。"}
