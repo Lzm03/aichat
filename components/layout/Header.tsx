@@ -15,6 +15,9 @@ interface HeaderProps {
   onNotificationClick?: () => void;
   forceMobileMenu?: boolean;
   currentUser?: StoredAuthUser | null;
+  searchValue?: string;
+  searchPlaceholder?: string;
+  onSearchChange?: (value: string) => void;
 }
 
 function getTimeGreeting(date = new Date()) {
@@ -26,7 +29,16 @@ function getTimeGreeting(date = new Date()) {
   return "夜深了";
 }
 
-export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, onNotificationClick, forceMobileMenu = false, currentUser = null }) => {
+export const Header: React.FC<HeaderProps> = ({
+  pageTitle,
+  onMenuClick,
+  onNotificationClick,
+  forceMobileMenu = false,
+  currentUser = null,
+  searchValue = "",
+  searchPlaceholder = "全域搜尋...",
+  onSearchChange,
+}) => {
   const { features } = useFeatureEntitlements();
   const primaryFeatures = features.filter((feature) => feature.key === "bot_publish" || feature.key === "chat_messages");
   const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
@@ -39,6 +51,7 @@ export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, onNotifi
   const tokenTriggerRef = useRef<HTMLDivElement>(null);
   const featureMenuTriggerRef = useRef<HTMLDivElement>(null);
   const userMenuTriggerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -57,6 +70,18 @@ export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, onNotifi
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+  useEffect(() => {
+    if (!onSearchChange) return;
+    const handleSearchShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleSearchShortcut);
+    return () => window.removeEventListener("keydown", handleSearchShortcut);
+  }, [onSearchChange]);
 
   useEffect(() => {
     let cancelled = false;
@@ -156,13 +181,38 @@ export const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, onNotifi
         <div className="relative hidden md:block">
           <Icons.search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
           <input
+            ref={searchInputRef}
             type="text"
-            placeholder="全域搜尋..."
-            className="bg-slate-100 border border-transparent focus:bg-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 transition-all duration-300 rounded-xl pl-10 pr-4 py-2.5 text-sm w-64"
+            value={searchValue}
+            onChange={(event) => onSearchChange?.(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && searchValue) {
+                event.preventDefault();
+                onSearchChange?.("");
+              }
+            }}
+            placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder}
+            disabled={!onSearchChange}
+            className="w-64 rounded-xl border border-transparent bg-slate-100 py-2.5 pl-10 pr-12 text-sm transition-all duration-300 placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:opacity-60"
           />
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500 bg-white border border-slate-200 rounded-md px-1.5 py-0.5 font-sans">
-            ⌘K
-          </div>
+          {searchValue && onSearchChange ? (
+            <button
+              type="button"
+              onClick={() => {
+                onSearchChange("");
+                searchInputRef.current?.focus();
+              }}
+              aria-label="清除搜尋"
+              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
+            >
+              <Icons.close className="h-4 w-4" />
+            </button>
+          ) : (
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 font-sans text-xs text-slate-500">
+              ⌘K
+            </div>
+          )}
         </div>
         
         {canViewProviderUsage ? (

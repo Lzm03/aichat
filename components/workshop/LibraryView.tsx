@@ -36,7 +36,7 @@
 //   );
 // };
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { BotCard } from "./BotCard";
 import { Icons } from "../icons";
 import type { AiBot } from "../../types";
@@ -53,6 +53,7 @@ interface LibraryViewProps {
   onDeleteBot: (botId: string) => void;
   createBotFeature?: FeatureEntitlement;
   featureLoading?: boolean;
+  searchQuery?: string;
 }
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
@@ -61,6 +62,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onDeleteBot,
   createBotFeature,
   featureLoading = false,
+  searchQuery = "",
 }) => {
   const [bots, setBots] = useState<AiBot[]>([]);
   const [botsLoading, setBotsLoading] = useState(true);
@@ -191,6 +193,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   };
   
   const creationLockedByLoading = featureLoading || botsLoading;
+  const normalizedSearchQuery = searchQuery.normalize("NFKC").trim().toLocaleLowerCase();
+  const filteredBots = useMemo(
+    () =>
+      normalizedSearchQuery
+        ? bots.filter((bot) =>
+            String(bot.name || "").normalize("NFKC").toLocaleLowerCase().includes(normalizedSearchQuery)
+          )
+        : bots,
+    [bots, normalizedSearchQuery]
+  );
+  const hasSearchQuery = normalizedSearchQuery.length > 0;
 
   return (
     <div>
@@ -264,13 +277,24 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         {/* --------------------------- */}
         {/* ⭐ 显示所有机器人卡片 */}
         {/* --------------------------- */}
-        {bots.map((bot) => (
+        {filteredBots.map((bot) => (
           <BotCard
             key={bot.id}
             bot={bot}
             onEdit={() => onEditBot(bot.id)}
           />
         ))}
+        {!botsLoading && hasSearchQuery && filteredBots.length === 0 ? (
+          <div className="flex min-h-[260px] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white/70 px-6 text-center md:col-span-1 lg:col-span-2 xl:col-span-3">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+              <Icons.search className="h-6 w-6" />
+            </div>
+            <p className="mt-4 text-base font-semibold text-slate-700">找不到符合的 AI 機器人</p>
+            <p className="mt-1 max-w-sm text-sm leading-6 text-slate-500">
+              沒有名稱包含「{searchQuery.trim()}」的機器人，請嘗試其他關鍵字。
+            </p>
+          </div>
+        ) : null}
       </div>
       <PlatformDialog
         open={dialog.open}

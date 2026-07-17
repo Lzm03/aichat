@@ -30,12 +30,12 @@ import { useFeatureEntitlements } from './hooks/useFeatureEntitlements';
 export type Page = 'dashboard' | 'assessment' | 'workshop' | 'sharing' | 'tasks' | 'messages';
 
 const pageConfig = {
-  dashboard: { title: '教學指揮艙', component: <Dashboard /> },
-  assessment: { title: '智能評測', component: <AssessmentPage /> },
-  workshop: { title: 'AI 機器人工作坊', component: <AiBotWorkshopPage /> },
-  sharing: { title: '學生與 Bot 分享', component: <TeacherSharingPage /> },
-  tasks: { title: '任務中心', component: <TaskCenter /> },
-  messages: { title: '消息中心', component: <MessagesPage /> },
+  dashboard: { title: '教學指揮艙' },
+  assessment: { title: '智能評測' },
+  workshop: { title: 'AI 機器人工作坊' },
+  sharing: { title: '學生與 Bot 分享' },
+  tasks: { title: '任務中心' },
+  messages: { title: '消息中心' },
 };
 
 const App: React.FC = () => {
@@ -48,12 +48,28 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<StoredAuthUser | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isPortraitLayout, setIsPortraitLayout] = useState(false);
+  const [botSearchQuery, setBotSearchQuery] = useState('');
   const { features } = useFeatureEntitlements();
 
   // 在本地永远视为已准备好，不检查 window.aistudio
   const hasApiKey = true;
 
-  const CurrentPage = () => pageConfig[activePage].component;
+  const renderCurrentPage = () => {
+    switch (activePage) {
+      case 'assessment':
+        return <AssessmentPage />;
+      case 'workshop':
+        return <AiBotWorkshopPage searchQuery={botSearchQuery} />;
+      case 'sharing':
+        return <TeacherSharingPage />;
+      case 'tasks':
+        return <TaskCenter />;
+      case 'messages':
+        return <MessagesPage />;
+      default:
+        return <Dashboard />;
+    }
+  };
 
   useEffect(() => {
     installAuthTransportBridge();
@@ -85,6 +101,12 @@ const App: React.FC = () => {
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
   }, []);
+
+  useEffect(() => {
+    if (activePage !== 'workshop' && botSearchQuery) {
+      setBotSearchQuery('');
+    }
+  }, [activePage, botSearchQuery]);
 
   useEffect(() => {
     let cancelled = false;
@@ -198,9 +220,12 @@ const App: React.FC = () => {
               onNotificationClick={() => setActivePage('messages')}
               forceMobileMenu={isPortraitLayout}
               currentUser={currentUser}
+              searchValue={activePage === 'workshop' ? botSearchQuery : ''}
+              searchPlaceholder={activePage === 'workshop' ? '搜尋 AI 機器人名稱…' : '全域搜尋...'}
+              onSearchChange={activePage === 'workshop' ? setBotSearchQuery : undefined}
             />
             <main className="flex-1 p-6 lg:p-8 overflow-y-auto">
-              <CurrentPage />
+              {renderCurrentPage()}
             </main>
           </div>
         </>

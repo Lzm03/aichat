@@ -10,7 +10,11 @@ import {
   TRIAL_ENDED_POPUP_TITLE,
 } from '../utils/trial-popup';
 
-export const AiBotWorkshopPage: React.FC = () => {
+type AiBotWorkshopPageProps = {
+  searchQuery?: string;
+};
+
+export const AiBotWorkshopPage: React.FC<AiBotWorkshopPageProps> = ({ searchQuery = '' }) => {
   const { features, loading, initialized, refresh, consume } = useFeatureEntitlements();
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
   const [view, setView] = useState<'library' | 'creation'>('library');
@@ -88,6 +92,7 @@ export const AiBotWorkshopPage: React.FC = () => {
           onDeleteBot={() => {}}
           createBotFeature={botPublishFeature}
           featureLoading={!initialized || loading || !botPublishFeature}
+          searchQuery={searchQuery}
         />
       )}
       {view === 'creation' && (
