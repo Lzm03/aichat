@@ -26,6 +26,7 @@ import uploadVideoRoute from "./api/upload-video.ts";
 import debugStorageRoute from "./api/debug-storage.ts";
 import tokenUsageRoute from "./api/token-usage.ts";
 import webmSequenceRoute from "./api/webm-sequence.ts";
+import modoIntegrationRoute from "./api/modo-integration.ts";
 import { pool } from "./db.ts";
 import { uploadsDir } from "./lib/uploads-dir.ts";
 import { ensurePlatformTables, maybeAssignLegacyDataByEmail } from "./lib/platform-auth.ts";
@@ -125,6 +126,7 @@ app.get("/api/media-proxy", async (req, res) => {
 });
 app.use("/api/bots/:characterId/topics", characterTopicsRoute);
 app.use("/api/bots", botsRoute);
+app.use("/api/integrations/modo", modoIntegrationRoute);
 // Routes
 app.use("/api/generate-image", generateImageRoute);
 app.use("/api", ttsRoute);
