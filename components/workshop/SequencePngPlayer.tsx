@@ -12,13 +12,34 @@ function pad4(n: number) {
   return String(n).padStart(4, "0");
 }
 
-const LOOP_RESTART_FRAME = 5;
-const LOOP_TAIL_TRIM_FRAMES = 3;
+type PlaybackDirection = 1 | -1;
 
-function getNextLoopFrame(frame: number, safeCount: number) {
-  if (safeCount <= 1) return 1;
-  if (frame >= safeCount) return Math.min(LOOP_RESTART_FRAME, safeCount);
-  return frame + 1;
+function advancePingPongFrame(
+  frame: number,
+  direction: PlaybackDirection,
+  frameCount: number,
+  steps: number
+) {
+  if (frameCount <= 1) {
+    return { frame: 1, direction: 1 as PlaybackDirection };
+  }
+
+  let nextFrame = frame;
+  let nextDirection = direction;
+
+  for (let i = 0; i < steps; i += 1) {
+    if (nextDirection === 1 && nextFrame >= frameCount) {
+      nextDirection = -1;
+      nextFrame = frameCount - 1;
+    } else if (nextDirection === -1 && nextFrame <= 1) {
+      nextDirection = 1;
+      nextFrame = 2;
+    } else {
+      nextFrame += nextDirection;
+    }
+  }
+
+  return { frame: nextFrame, direction: nextDirection };
 }
 
 export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
@@ -34,10 +55,6 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
   const [ready, setReady] = useState(false);
   const loadedRef = useRef<Set<number>>(new Set());
   const totalFrameCount = Math.max(1, frameCount);
-  const safeCount =
-    totalFrameCount > LOOP_TAIL_TRIM_FRAMES + LOOP_RESTART_FRAME
-      ? totalFrameCount - LOOP_TAIL_TRIM_FRAMES
-      : totalFrameCount;
   const frameDuration = 1000 / Math.max(1, fps);
 
   const frameUrls = useMemo(
@@ -54,18 +71,12 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
     loadedRef.current = new Set();
     setReady(false);
     setFrame(1);
-    const warmupTarget = Math.min(8, safeCount);
     const concurrency = 6;
-    let loadedCount = 0;
     let cursor = 0;
 
     const markLoaded = (idx: number) => {
       if (loadedRef.current.has(idx)) return;
       loadedRef.current.add(idx);
-      loadedCount += 1;
-      if (!cancelled && loadedCount >= warmupTarget) {
-        setReady(true);
-      }
     };
 
     const loadOne = (idx: number) =>
@@ -102,7 +113,7 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [frameUrls, safeCount, totalFrameCount]);
+  }, [frameUrls, totalFrameCount]);
 
   useEffect(() => {
     if (!active || !ready) return;
@@ -110,30 +121,22 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
     let rafId = 0;
     let last = performance.now();
     let current = 1;
+    let direction: PlaybackDirection = 1;
 
     const tick = (now: number) => {
       if (now - last >= frameDuration) {
         const steps = Math.floor((now - last) / frameDuration);
-        let desired = current;
-        for (let i = 0; i < steps; i += 1) {
-          desired = getNextLoopFrame(desired, safeCount);
+        const next = advancePingPongFrame(
+          current,
+          direction,
+          totalFrameCount,
+          steps
+        );
+        if (loadedRef.current.has(next.frame)) {
+          current = next.frame;
+          direction = next.direction;
+          setFrame(current);
         }
-        let nextFrame = desired;
-        if (!loadedRef.current.has(desired)) {
-          // Find nearest loaded frame to avoid network-stall pauses.
-          for (let i = 1; i <= safeCount; i += 1) {
-            let candidate = desired;
-            for (let j = 0; j < i; j += 1) {
-              candidate = getNextLoopFrame(candidate, safeCount);
-            }
-            if (loadedRef.current.has(candidate)) {
-              nextFrame = candidate;
-              break;
-            }
-          }
-        }
-        current = nextFrame;
-        setFrame(current);
         last += steps * frameDuration;
       }
       rafId = window.requestAnimationFrame(tick);
@@ -141,7 +144,7 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
 
     rafId = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(rafId);
-  }, [active, ready, frameDuration, safeCount]);
+  }, [active, ready, frameDuration, totalFrameCount]);
 
   const src = useMemo(() => {
     return frameUrls[Math.max(0, frame - 1)] || frameUrls[0] || "";

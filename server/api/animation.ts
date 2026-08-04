@@ -94,15 +94,11 @@ function buildVideoPayload({
 }
 
 function buildLoopFramePayload(params: CreateVideoParams): Record<string, any> {
-  const payload = buildVideoPayload({
+  return buildVideoPayload({
     ...params,
     prompt:
       `${params.prompt}\n\nLoop frame constraint: treat the source image as both the first-frame anchor and the intended final-frame target. The clip must animate away from this pose and return to the same still pose by the final frame.`,
   });
-  if (params.imageUrl) {
-    payload.reference_images = [{ url: params.imageUrl }, { url: params.imageUrl }];
-  }
-  return payload;
 }
 
 async function postVideoPayload(payload: Record<string, any>, label: string): Promise<GenerateResponse> {

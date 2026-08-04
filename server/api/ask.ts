@@ -57,6 +57,15 @@ const upload = multer({ storage: multer.memoryStorage() });
 const MOCK_UPSTREAM = /^(1|true|yes|on)$/i.test(String(process.env.MOCK_UPSTREAM || "").trim());
 const ENABLE_DIALOGUE_SUGGESTION_LLM = !/^(0|false|no|off)$/i.test(String(process.env.ENABLE_DIALOGUE_SUGGESTION_LLM || "true").trim());
 
+function isModoIntegrationRequest(req: Request) {
+  const expected = String(process.env.MODO_INTEGRATION_TOKEN || "").trim();
+  const provided = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
+  if (!expected || !provided) return false;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(provided);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -1438,12 +1447,45 @@ function extractTextFromHtml(html: string): string {
 }
 
 async function resolveChatActor(req: Request, sharedBotId?: string, botId?: string) {
+  if (isModoIntegrationRequest(req)) {
+    const normalizedBotId = String(sharedBotId || botId || "").trim();
+    const ownerId = String(process.env.MODO_SOURCE_OWNER_ID || "").trim();
+    const ownerEmail = String(process.env.MODO_SOURCE_OWNER_EMAIL || "").trim().toLowerCase();
+    if (!ownerId && !ownerEmail) {
+      const error = new Error("integration source owner is not configured");
+      (error as any).status = 503;
+      throw error;
+    }
+    const result = await pool.query(
+      `SELECT owner_id, owner_email FROM bots
+       WHERE id=$1
+         AND is_visible=TRUE
+         AND ($2='' OR owner_id=$2)
+         AND ($3='' OR LOWER(owner_email)=LOWER($3))
+       LIMIT 1`,
+      [normalizedBotId, ownerId, ownerEmail]
+    );
+    const resolvedOwnerId = String(result.rows[0]?.owner_id || "").trim();
+    if (!resolvedOwnerId) {
+      const error = new Error("integration bot not found");
+      (error as any).status = 404;
+      throw error;
+    }
+    const user = await findUserById(resolvedOwnerId);
+    if (!user) {
+      const error = new Error("integration bot owner not found");
+      (error as any).status = 404;
+      throw error;
+    }
+    return { user, shared: true as const, integration: true as const };
+  }
+
   const token = getBearerToken(req);
   const payload = token ? verifyToken(token) : null;
   if (payload?.sub) {
     const user = await findUserById(payload.sub);
     if (user) {
-      return { user, shared: false as const };
+      return { user, shared: false as const, integration: false as const };
     }
   }
 
@@ -1478,7 +1520,7 @@ async function resolveChatActor(req: Request, sharedBotId?: string, botId?: stri
     throw error;
   }
 
-  return { user, shared: true as const };
+  return { user, shared: true as const, integration: false as const };
 }
 
 async function getBotOwnerId(botId: string) {
@@ -1735,6 +1777,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
       replyLanguage = "cantonese",
     } = req.body || {};
     const actor = await resolveChatActor(req, String(sharedBotId || ""), String(botId || ""));
+    const externalMode = actor.integration === true;
     const authUser = actor.user;
     await assertUserCanSpend(authUser.id, 1);
     if (usageType === "chat_message") await ensureFeatureAvailable(authUser.id, "chat_messages", 1);
@@ -1750,7 +1793,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     const normalizedBotId = String(botId || "default");
     const normalizedConversationId = String(conversationId || "").trim();
     let activeConversation =
-      usageType === "chat_message"
+      usageType === "chat_message" && !externalMode
         ? normalizedConversationId
           ? await getConversationForUser(normalizedConversationId, authUser.id)
           : null
@@ -1808,20 +1851,24 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
       console.log("[ask] provider=%s stream=%s shared=%s vertex=%s", selectedModelProvider, wantsStream, Boolean(sharedBotId), isVertexAIEnabled());
     }
     const storedConversationMessages =
-      usageType === "chat_message" && activeConversation
+      usageType === "chat_message" && activeConversation && !externalMode
         ? await listConversationMessages(activeConversation.id, authUser.id)
         : null;
-    const recentChatMessages: RecentChatMessage[] = (storedConversationMessages || [])
-      .filter((message) => message.role === "user" || message.role === "assistant")
+    const externalRecentMessages = externalMode
+      ? normalizeRecentMessages(req.body?.recentMessages)
+      : [];
+    const recentChatMessages: RecentChatMessage[] = (externalMode ? externalRecentMessages : storedConversationMessages || [])
+      .filter((message) => message.role === "user" || message.role === "assistant" || message.role === "bot")
       .slice(-6)
       .map((message) => ({
-        role: message.role === "assistant" ? "bot" : "user",
+        role: message.role === "assistant" || message.role === "bot" ? "bot" : "user",
         content: sanitizeChatHistoryContent(String(message.content || "")),
       }));
     const contextualPrompt = buildContextualUserPrompt(normalizedPrompt, recentChatMessages);
     const active = actor.shared ? null : await getActiveTeachingSession(authUser.id, normalizedBotId);
 
     const ensureActiveConversation = async () => {
+      if (externalMode) return null;
       if (activeConversation || usageType !== "chat_message" || !normalizedPrompt) {
         return activeConversation;
       }
@@ -1836,6 +1883,7 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
     };
 
     const persistUserMessage = async () => {
+      if (externalMode) return;
       const conversation = await ensureActiveConversation();
       if (!conversation) return;
       await saveConversationMessage({
@@ -1853,6 +1901,7 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
     };
 
     const persistAssistantMessage = async (replyText: string) => {
+      if (externalMode) return;
       if (!activeConversation || usageType !== "chat_message") return;
       const safeReply = String(replyText || "").trim();
       if (!safeReply) return;
@@ -1896,7 +1945,7 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
       if (usageType === "chat_message" && normalizedPrompt) {
         await persistUserMessage();
       }
-      if (usageType === "chat_message") {
+      if (usageType === "chat_message" && !externalMode) {
         const replyText = String(payload?.reply || "").trim();
         const normalizedSource = String(source || (actor.shared ? "shared_bot" : "direct")).slice(0, 32);
         await recordBotChatMessages({
@@ -2115,7 +2164,7 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
         throw remapModelProviderError(error);
       }
       if (usageType === "chat_message") await recordFeatureUsage(authUser.id, "chat_messages", 1, { usageType, source: actor.shared ? "shared_bot" : "direct" });
-      if (usageType === "chat_message") {
+      if (usageType === "chat_message" && !externalMode) {
         await recordBotChatMessages({
           botId: normalizedBotId,
           userId: authUser.id,
@@ -2165,7 +2214,7 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
       throw remapModelProviderError(error);
     }
     if (usageType === "chat_message") await recordFeatureUsage(authUser.id, "chat_messages", 1, { usageType, source: actor.shared ? "shared_bot" : "direct" });
-    if (usageType === "chat_message") {
+    if (usageType === "chat_message" && !externalMode) {
       await recordBotChatMessages({
         botId: normalizedBotId,
         userId: authUser.id,

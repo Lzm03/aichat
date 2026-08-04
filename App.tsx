@@ -14,6 +14,7 @@ import { AccountPage } from './pages/AccountPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { StudentHome } from './pages/StudentHome';
 import { TeacherSharingPage } from './pages/TeacherSharingPage';
+import { CharacterStagePage } from './pages/CharacterStagePage';
 import { MobileSidebarDrawer } from './components/layout/MobileSidebarDrawer';
 import { Icons } from './components/icons';
 import { API_BASE } from './utils/api';
@@ -42,6 +43,7 @@ const App: React.FC = () => {
   const [activePage, setActivePage] = useState<Page>('dashboard');
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [sharedBotId, setSharedBotId] = useState<string | null>(null);
+  const [stageBotId, setStageBotId] = useState<string | null>(null);
   const [isAuthRoute, setIsAuthRoute] = useState(false);
   const [isAccountRoute, setIsAccountRoute] = useState(false);
   const [isSettingsRoute, setIsSettingsRoute] = useState(false);
@@ -84,10 +86,12 @@ const App: React.FC = () => {
   useEffect(() => {
     const syncRoute = () => {
       const m = window.location.pathname.match(/^\/bot\/([^/]+)$/);
+      const stageMatch = window.location.pathname.match(/^\/embed\/bots\/([^/]+)\/stage$/);
       setIsAuthRoute(window.location.pathname === "/auth");
       setIsAccountRoute(window.location.pathname === "/account");
       setIsSettingsRoute(window.location.pathname === "/settings");
       setSharedBotId(m ? decodeURIComponent(m[1]) : null);
+      setStageBotId(stageMatch ? decodeURIComponent(stageMatch[1]) : null);
     };
     syncRoute();
     window.addEventListener("popstate", syncRoute);
@@ -176,12 +180,12 @@ const App: React.FC = () => {
     };
   }, [sharedBotId]);
 
-  const shouldShowAuth = !sharedBotId && (!currentUser || isAuthRoute);
+  const shouldShowAuth = !sharedBotId && !stageBotId && (!currentUser || isAuthRoute);
   const userPreferences = normalizeUserPreferences(currentUser?.preferences || DEFAULT_USER_PREFERENCES);
   const shellThemeClasses = getAppShellThemeClasses(userPreferences);
 
   return (
-    <div className={`min-h-screen ${shellThemeClasses} ${sharedBotId || shouldShowAuth ? "block" : "flex"}`}>
+    <div className={`min-h-screen ${shellThemeClasses} ${sharedBotId || stageBotId || shouldShowAuth ? "block" : "flex"}`}>
       {isUpdating ? (
         <div className="fixed inset-0 z-[9999] bg-white/95 backdrop-blur-sm flex items-center justify-center">
           <div className="text-center">
@@ -191,7 +195,9 @@ const App: React.FC = () => {
           </div>
         </div>
       ) : null}
-      {sharedBotId ? (
+      {stageBotId ? (
+        <CharacterStagePage botId={stageBotId} />
+      ) : sharedBotId ? (
         <div className="w-screen min-h-screen">
           <SharedBotChatPage botId={sharedBotId} />
         </div>
