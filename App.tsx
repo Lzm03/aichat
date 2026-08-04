@@ -39,15 +39,27 @@ const pageConfig = {
   messages: { title: '消息中心' },
 };
 
+const LandingPage: React.FC = () => {
+  return (
+    <iframe
+      src="/homepage/index.html"
+      title="ChopReality 首頁"
+      className="block h-screen w-full border-0 bg-white"
+    />
+  );
+};
+
 const App: React.FC = () => {
   const [activePage, setActivePage] = useState<Page>('dashboard');
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [sharedBotId, setSharedBotId] = useState<string | null>(null);
   const [stageBotId, setStageBotId] = useState<string | null>(null);
   const [isAuthRoute, setIsAuthRoute] = useState(false);
+  const [isLandingRoute, setIsLandingRoute] = useState(false);
   const [isAccountRoute, setIsAccountRoute] = useState(false);
   const [isSettingsRoute, setIsSettingsRoute] = useState(false);
   const [currentUser, setCurrentUser] = useState<StoredAuthUser | null>(null);
+  const [isSessionReady, setIsSessionReady] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isPortraitLayout, setIsPortraitLayout] = useState(false);
   const [botSearchQuery, setBotSearchQuery] = useState('');
@@ -77,6 +89,7 @@ const App: React.FC = () => {
     installAuthTransportBridge();
     const syncSession = () => {
       setCurrentUser(readAuthSession()?.user || null);
+      setIsSessionReady(true);
     };
     syncSession();
     window.addEventListener(AUTH_CHANGED_EVENT, syncSession);
@@ -88,6 +101,7 @@ const App: React.FC = () => {
       const m = window.location.pathname.match(/^\/bot\/([^/]+)$/);
       const stageMatch = window.location.pathname.match(/^\/embed\/bots\/([^/]+)\/stage$/);
       setIsAuthRoute(window.location.pathname === "/auth");
+      setIsLandingRoute(window.location.pathname === "/");
       setIsAccountRoute(window.location.pathname === "/account");
       setIsSettingsRoute(window.location.pathname === "/settings");
       setSharedBotId(m ? decodeURIComponent(m[1]) : null);
@@ -180,13 +194,14 @@ const App: React.FC = () => {
     };
   }, [sharedBotId]);
 
-  const shouldShowAuth = !sharedBotId && !stageBotId && (!currentUser || isAuthRoute);
+  const shouldShowLanding = isSessionReady && !sharedBotId && !stageBotId && !currentUser && isLandingRoute;
+  const shouldShowAuth = isSessionReady && !sharedBotId && !stageBotId && (isAuthRoute || (!currentUser && !isLandingRoute));
   const userPreferences = normalizeUserPreferences(currentUser?.preferences || DEFAULT_USER_PREFERENCES);
   const shellThemeClasses = getAppShellThemeClasses(userPreferences);
 
   return (
-    <div className={`min-h-screen ${shellThemeClasses} ${sharedBotId || stageBotId || shouldShowAuth ? "block" : "flex"}`}>
-      {isUpdating ? (
+    <div className={`min-h-screen ${shellThemeClasses} ${sharedBotId || stageBotId || shouldShowAuth || shouldShowLanding || !isSessionReady ? "block" : "flex"}`}>
+      {isUpdating && !shouldShowLanding ? (
         <div className="fixed inset-0 z-[9999] bg-white/95 backdrop-blur-sm flex items-center justify-center">
           <div className="text-center">
             <div className="mx-auto h-12 w-12 rounded-full border-4 border-slate-200 border-t-indigo-600 animate-spin" />
@@ -195,12 +210,18 @@ const App: React.FC = () => {
           </div>
         </div>
       ) : null}
-      {stageBotId ? (
+      {!isSessionReady ? (
+        <div className="flex min-h-screen items-center justify-center bg-white text-sm font-semibold text-slate-500">
+          正在載入…
+        </div>
+      ) : stageBotId ? (
         <CharacterStagePage botId={stageBotId} />
       ) : sharedBotId ? (
         <div className="w-screen min-h-screen">
           <SharedBotChatPage botId={sharedBotId} />
         </div>
+      ) : shouldShowLanding ? (
+        <LandingPage />
       ) : shouldShowAuth ? (
         <AuthPage />
       ) : currentUser?.role === "student" ? (

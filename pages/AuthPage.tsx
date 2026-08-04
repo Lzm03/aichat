@@ -24,8 +24,13 @@ type AuthResponse = {
   };
 };
 
+function getInitialLoginRole(): "teacher" | "student" {
+  if (typeof window === "undefined") return "teacher";
+  return new URLSearchParams(window.location.search).get("role") === "student" ? "student" : "teacher";
+}
+
 export const AuthPage: React.FC = () => {
-  const [loginRole, setLoginRole] = useState<"teacher" | "student">("teacher");
+  const [loginRole, setLoginRole] = useState<"teacher" | "student">(getInitialLoginRole);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
