@@ -33,6 +33,7 @@ function publicBot(row: any) {
     videoIdle: bot.videoIdle,
     videoThinking: bot.videoThinking,
     videoTalking: bot.videoTalking,
+    voiceId: bot.voiceId,
     openingMessage: bot.openingMessage,
     isVisible: Boolean(bot.isVisible),
     updatedAt: row.updated_at || null,
