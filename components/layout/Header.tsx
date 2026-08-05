@@ -12,7 +12,6 @@ import { DEFAULT_ACCOUNT_AVATAR } from '../../utils/default-avatar';
 interface HeaderProps {
   pageTitle: string;
   onMenuClick: () => void;
-  onNotificationClick?: () => void;
   forceMobileMenu?: boolean;
   currentUser?: StoredAuthUser | null;
   searchValue?: string;
@@ -32,7 +31,6 @@ function getTimeGreeting(date = new Date()) {
 export const Header: React.FC<HeaderProps> = ({
   pageTitle,
   onMenuClick,
-  onNotificationClick,
   forceMobileMenu = false,
   currentUser = null,
   searchValue = "",
@@ -237,11 +235,6 @@ export const Header: React.FC<HeaderProps> = ({
             <Icons.down className="w-4 h-4 text-slate-400" />
           </button>
         </div>
-
-        <button onClick={onNotificationClick} className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center rounded-xl hover:bg-slate-100 transition-colors relative">
-          <Icons.bell className="w-5 h-5 sm:w-6 sm:h-6 text-slate-500" />
-          <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-rose-500 rounded-full border border-white"></span>
-        </button>
 
         <div className="relative" ref={userMenuTriggerRef}>
           <motion.button

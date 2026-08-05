@@ -2246,7 +2246,23 @@ router.get("/teachers/me/grading-summary", requireAuth, async (req, res) => {
         COUNT(*) FILTER (WHERE u.id IS NOT NULL)::int AS total_students,
         COUNT(*) FILTER (WHERE u.id IS NOT NULL AND a.teacher_status='pending_grading')::int AS pending_grading,
         COUNT(*) FILTER (WHERE u.id IS NOT NULL AND a.teacher_status='pending_confirm')::int AS pending_confirm,
-        COUNT(*) FILTER (WHERE u.id IS NOT NULL AND a.teacher_status='completed')::int AS completed
+        COUNT(*) FILTER (WHERE u.id IS NOT NULL AND a.teacher_status='completed')::int AS completed,
+        COUNT(*) FILTER (WHERE u.id IS NOT NULL AND a.status='completed')::int AS submitted,
+        COALESCE(
+          ROUND(
+            AVG(
+              CASE
+                WHEN u.id IS NOT NULL AND a.status='completed' AND a.total_points > 0
+                THEN (
+                  CASE WHEN a.published_at IS NOT NULL THEN a.teacher_score ELSE a.score END
+                )::numeric / a.total_points * 100
+                ELSE NULL
+              END
+            ),
+            1
+          ),
+          0
+        ) AS average_score
        FROM quizzes q
        LEFT JOIN quiz_attempts a ON a.quiz_id=q.id
        LEFT JOIN users u ON u.id=a.student_id AND COALESCE(u.role, 'student') NOT IN ('teacher', 'admin')
@@ -2266,6 +2282,8 @@ router.get("/teachers/me/grading-summary", requireAuth, async (req, res) => {
         pendingGrading: Number(row.pending_grading || 0),
         pendingConfirm: Number(row.pending_confirm || 0),
         completed: Number(row.completed || 0),
+        submitted: Number(row.submitted || 0),
+        averageScore: Number(row.average_score || 0),
       })),
     });
   } catch (error) {

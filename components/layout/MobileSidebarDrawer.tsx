@@ -18,7 +18,6 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen
     { id: 'assessment', label: '智能評測', icon: Icons.assessment },
     { id: 'workshop', label: 'AI工作坊', icon: Icons.bot },
     { id: 'sharing', label: '學生與分享', icon: Icons.classes },
-    { id: 'tasks', label: '任務中心', icon: Icons.tasks, disabled: true },
   ];
 
   return (

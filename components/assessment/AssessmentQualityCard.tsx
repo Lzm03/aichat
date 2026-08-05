@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowUpDown, BarChart2, ChevronDown, ChevronRight, ChevronUp, Download, Flag } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
+import { downloadAssessmentResultsCsv } from '../../utils/assessment-csv';
 import { Icons } from '../icons';
 
 export const AssessmentQualityCard = () => {
@@ -11,12 +12,25 @@ export const AssessmentQualityCard = () => {
   const [isTableExpanded, setIsTableExpanded] = useState(true);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  useEffect(() => {
+  const loadSummaries = useCallback(() => {
     fetch(`${API_BASE}/api/teachers/me/grading-summary`)
       .then((res) => res.json())
       .then((data) => setSummaries(Array.isArray(data?.quizzes) ? data.quizzes : []))
       .catch(() => setSummaries([]));
   }, []);
+
+  useEffect(() => {
+    loadSummaries();
+    const refresh = () => {
+      if (document.visibilityState === 'visible') loadSummaries();
+    };
+    const interval = window.setInterval(refresh, 15000);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [loadSummaries]);
 
   useEffect(() => {
     if (!selectedAssessment?.id) return;
@@ -54,8 +68,7 @@ export const AssessmentQualityCard = () => {
 
         <div className="space-y-3 flex-1">
           {summaries.slice(0, 4).map((summary) => {
-            const total = Math.max(1, Number(summary.completed || 0) + Number(summary.pendingConfirm || 0) + Number(summary.pendingGrading || 0));
-            const avg = total ? ((Number(summary.completed || 0) / total) * 100).toFixed(1) : '0.0';
+            const avg = Number(summary.averageScore || 0).toFixed(1);
             return (
               <div
                 key={summary.id}
@@ -70,7 +83,7 @@ export const AssessmentQualityCard = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold px-2 py-1 rounded-md bg-emerald-50 text-emerald-600">已完成 {summary.completed}</span>
+                  <span className="text-xs font-bold px-2 py-1 rounded-md bg-emerald-50 text-emerald-600">已完成 {summary.submitted ?? summary.completed}</span>
                   <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-500" />
                 </div>
               </div>
@@ -123,7 +136,11 @@ export const AssessmentQualityCard = () => {
                       <span>📝 題目得分明細</span>
                       {isTableExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </button>
-                    <button className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-sm font-bold text-slate-600 transition-colors">
+                    <button
+                      onClick={() => downloadAssessmentResultsCsv(details)}
+                      disabled={!details?.students?.length}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-sm font-bold text-slate-600 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                    >
                       <Download className="w-4 h-4" />
                       匯出 CSV
                     </button>

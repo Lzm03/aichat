@@ -6,8 +6,6 @@ import { Header } from './components/layout/Header';
 import { Dashboard } from './pages/Dashboard';
 import { AssessmentPage } from './pages/AssessmentPage';
 import { AiBotWorkshopPage } from './pages/AiBotWorkshopPage';
-import { TaskCenter } from './pages/TaskCenter';
-import { MessagesPage } from './pages/MessagesPage';
 import { SharedBotChatPage } from './pages/SharedBotChatPage';
 import { AuthPage } from './pages/AuthPage';
 import { AccountPage } from './pages/AccountPage';
@@ -28,15 +26,13 @@ import {
 import { DEFAULT_USER_PREFERENCES, getAppShellThemeClasses, normalizeUserPreferences } from './utils/userPreferences';
 import { useFeatureEntitlements } from './hooks/useFeatureEntitlements';
 
-export type Page = 'dashboard' | 'assessment' | 'workshop' | 'sharing' | 'tasks' | 'messages';
+export type Page = 'dashboard' | 'assessment' | 'workshop' | 'sharing';
 
 const pageConfig = {
   dashboard: { title: '教學指揮艙' },
   assessment: { title: '智能評測' },
   workshop: { title: 'AI 機器人工作坊' },
   sharing: { title: '學生與 Bot 分享' },
-  tasks: { title: '任務中心' },
-  messages: { title: '消息中心' },
 };
 
 const LandingPage: React.FC = () => {
@@ -76,10 +72,6 @@ const App: React.FC = () => {
         return <AiBotWorkshopPage searchQuery={botSearchQuery} />;
       case 'sharing':
         return <TeacherSharingPage />;
-      case 'tasks':
-        return <TaskCenter />;
-      case 'messages':
-        return <MessagesPage />;
       default:
         return <Dashboard />;
     }
@@ -244,7 +236,6 @@ const App: React.FC = () => {
             <Header 
               pageTitle={pageConfig[activePage].title} 
               onMenuClick={() => setIsMobileDrawerOpen(true)}
-              onNotificationClick={() => setActivePage('messages')}
               forceMobileMenu={isPortraitLayout}
               currentUser={currentUser}
               searchValue={activePage === 'workshop' ? botSearchQuery : ''}

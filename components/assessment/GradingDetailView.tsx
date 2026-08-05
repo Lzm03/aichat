@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Flag, HeartPulse, AlertTriangle, MessageSquareWarning, ShieldAlert, HelpCircle } from 'lucide-react';
+import { Flag, HeartPulse, AlertTriangle, MessageSquareWarning, ShieldAlert, HelpCircle, Download } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
+import { downloadAssessmentResultsCsv } from '../../utils/assessment-csv';
 import { Icons } from '../icons';
 
 interface GradingDetailViewProps {
@@ -166,6 +167,14 @@ export const GradingDetailView: React.FC<GradingDetailViewProps> = ({ quizId, on
         <div className="border-t border-slate-100 bg-white p-5 flex items-center justify-between">
           <div className="text-sm font-semibold text-slate-500">本次平均分 {data?.metrics?.averageScore || 0} · 異常標記 {data?.metrics?.anomalyCount || 0}</div>
           <div className="flex gap-3">
+            <button
+              onClick={() => downloadAssessmentResultsCsv(data)}
+              disabled={!students.length}
+              className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-7 py-3 text-sm font-black text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Download className="h-4 w-4" />
+              匯出 CSV
+            </button>
             <button className="rounded-full border border-slate-200 bg-white px-7 py-3 text-sm font-black text-slate-600">儲存草稿</button>
             <button onClick={() => void publishGrades()} disabled={publishing} className="rounded-full bg-indigo-600 px-7 py-3 text-sm font-black text-white disabled:opacity-60">
               {publishing ? '發佈中...' : '批量發佈成績'}

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { AlertCircle, ArrowRight, BarChart2, Trash2 } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
@@ -26,26 +26,31 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
   const [loading, setLoading] = useState(true);
   const [deletingQuizId, setDeletingQuizId] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
+  const loadQuizzes = useCallback(() => {
     setLoading(true);
     fetch(`${API_BASE}/api/teachers/me/grading-summary`)
       .then((res) => res.json())
       .then((data) => {
-        if (!active) return;
         setQuizzes(Array.isArray(data?.quizzes) ? data.quizzes : []);
       })
       .catch(() => {
-        if (!active) return;
         setQuizzes([]);
       })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    loadQuizzes();
+    const refresh = () => {
+      if (document.visibilityState === 'visible') loadQuizzes();
     };
-  }, [selectedQuizId]);
+    const interval = window.setInterval(refresh, 15000);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [loadQuizzes, selectedQuizId]);
 
   const sortedQuizzes = useMemo(
     () =>
