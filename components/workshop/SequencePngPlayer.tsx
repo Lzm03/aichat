@@ -6,6 +6,7 @@ interface SequencePngPlayerProps extends React.ImgHTMLAttributes<HTMLImageElemen
   frameCount: number;
   fps: number;
   active?: boolean;
+  startWhenBuffered?: boolean;
 }
 
 function pad4(n: number) {
@@ -48,6 +49,7 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
   frameCount,
   fps,
   active = true,
+  startWhenBuffered = false,
   className,
   ...imgProps
 }) => {
@@ -77,6 +79,13 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
     const markLoaded = (idx: number) => {
       if (loadedRef.current.has(idx)) return;
       loadedRef.current.add(idx);
+      if (
+        startWhenBuffered &&
+        !cancelled &&
+        loadedRef.current.size >= Math.min(8, totalFrameCount)
+      ) {
+        setReady(true);
+      }
     };
 
     const loadOne = (idx: number) =>
@@ -113,7 +122,7 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [frameUrls, totalFrameCount]);
+  }, [frameUrls, startWhenBuffered, totalFrameCount]);
 
   useEffect(() => {
     if (!active || !ready) return;

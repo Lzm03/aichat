@@ -13,6 +13,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { StudentHome } from './pages/StudentHome';
 import { TeacherSharingPage } from './pages/TeacherSharingPage';
 import { CharacterStagePage } from './pages/CharacterStagePage';
+import { ProPlanPage } from './pages/ProPlanPage';
 import { MobileSidebarDrawer } from './components/layout/MobileSidebarDrawer';
 import { Icons } from './components/icons';
 import { API_BASE } from './utils/api';
@@ -54,6 +55,7 @@ const App: React.FC = () => {
   const [isLandingRoute, setIsLandingRoute] = useState(false);
   const [isAccountRoute, setIsAccountRoute] = useState(false);
   const [isSettingsRoute, setIsSettingsRoute] = useState(false);
+  const [isProRoute, setIsProRoute] = useState(false);
   const [currentUser, setCurrentUser] = useState<StoredAuthUser | null>(null);
   const [isSessionReady, setIsSessionReady] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -67,7 +69,7 @@ const App: React.FC = () => {
   const renderCurrentPage = () => {
     switch (activePage) {
       case 'assessment':
-        return <AssessmentPage />;
+        return <AssessmentPage onNavigateToWorkshop={() => setActivePage('workshop')} />;
       case 'workshop':
         return <AiBotWorkshopPage searchQuery={botSearchQuery} />;
       case 'sharing':
@@ -96,6 +98,7 @@ const App: React.FC = () => {
       setIsLandingRoute(window.location.pathname === "/");
       setIsAccountRoute(window.location.pathname === "/account");
       setIsSettingsRoute(window.location.pathname === "/settings");
+      setIsProRoute(window.location.pathname === "/pro");
       setSharedBotId(m ? decodeURIComponent(m[1]) : null);
       setStageBotId(stageMatch ? decodeURIComponent(stageMatch[1]) : null);
     };
@@ -192,7 +195,7 @@ const App: React.FC = () => {
   const shellThemeClasses = getAppShellThemeClasses(userPreferences);
 
   return (
-    <div className={`min-h-screen ${shellThemeClasses} ${sharedBotId || stageBotId || shouldShowAuth || shouldShowLanding || !isSessionReady ? "block" : "flex"}`}>
+    <div className={`min-h-screen ${shellThemeClasses} ${sharedBotId || stageBotId || shouldShowAuth || shouldShowLanding || isAccountRoute || isSettingsRoute || isProRoute || !isSessionReady ? "block" : "flex"}`}>
       {isUpdating && !shouldShowLanding ? (
         <div className="fixed inset-0 z-[9999] bg-white/95 backdrop-blur-sm flex items-center justify-center">
           <div className="text-center">
@@ -222,6 +225,8 @@ const App: React.FC = () => {
         <AccountPage currentUser={currentUser} onProfileUpdated={setCurrentUser} />
       ) : isSettingsRoute && currentUser ? (
         <SettingsPage currentUser={currentUser} onProfileUpdated={setCurrentUser} />
+      ) : isProRoute && currentUser ? (
+        <ProPlanPage />
       ) : (
         <>
           <Sidebar activePage={activePage} setActivePage={setActivePage} forceHidden={isPortraitLayout} />

@@ -8,6 +8,9 @@ export interface AiBot {
   accuracy: number;
   isVisible: boolean;
   openingMessage?: string;
+  videoIdle?: string;
+  videoThinking?: string;
+  videoTalking?: string;
   hasPublishedQuiz?: boolean;
   hasPendingQuiz?: boolean;
   activeQuizId?: string;

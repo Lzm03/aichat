@@ -14,6 +14,7 @@ import { usePlatformDialog } from '../../hooks/usePlatformDialog';
 import { PlatformDialog } from '../system/PlatformDialog';
 import { buildChatSystemPrompt, buildStoredKnowledgeBase } from '../../utils/chat-prompt';
 import { TopicManager } from './topics/TopicManager';
+import { API_BASE } from '../../utils/api';
 
 type KnowledgeTier = "basic_fact" | "deep_understanding";
 type KnowledgePoint = {
@@ -55,7 +56,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   refreshFeatureEntitlements,
   consumeFeature,
 }) => {
-  const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:4000";
+  const baseUrl = API_BASE;
 
   // -------------------------------
   // 1. 载入或初始化机器人配置
@@ -99,38 +100,52 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   };
 
   useEffect(() => {
-  const fetchBot = async () => {
     if (!botId) return;
-
-    const res = await fetch(`${baseUrl}/api/bots/${botId}`);
-    const data = await res.json();
-
-    setBotConfig({
-      id: data.id,
-      name: data.name,
-      avatarUrl: data.avatarUrl,
-      background: data.background,
-      animation: data.animation,
-
-      knowledgeBase: data.knowledgeBase,
-      securityPrompt: data.securityPrompt,
-
-      videoIdle: data.videoIdle,
-      videoThinking: data.videoThinking,
-      videoTalking: data.videoTalking,
-      voiceId: data.voiceId,
-      openingMessage: data.openingMessage || "",
-    });
-  };
-
-  fetchBot();
-}, [botId]);
+    let cancelled = false;
+    const fetchBot = async () => {
+      setIsBotLoading(true);
+      setBotLoadError("");
+      try {
+        const res = await fetch(`${baseUrl}/api/bots/${encodeURIComponent(botId)}`);
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.id) {
+          throw new Error(data?.error || "無法載入角色資料");
+        }
+        if (cancelled) return;
+        setBotConfig({
+          id: data.id,
+          name: data.name || "",
+          avatarUrl: data.avatarUrl || "",
+          background: data.background || "",
+          animation: data.animation || "",
+          knowledgeBase: data.knowledgeBase || "",
+          securityPrompt: data.securityPrompt || "",
+          videoIdle: data.videoIdle || "",
+          videoThinking: data.videoThinking || "",
+          videoTalking: data.videoTalking || "",
+          voiceId: data.voiceId || "",
+          openingMessage: data.openingMessage || "",
+        });
+      } catch (error) {
+        if (!cancelled) {
+          setBotLoadError(error instanceof Error ? error.message : "無法載入角色資料");
+        }
+      } finally {
+        if (!cancelled) setIsBotLoading(false);
+      }
+    };
+    void fetchBot();
+    return () => {
+      cancelled = true;
+    };
+  }, [baseUrl, botId]);
 
   const [botConfig, setBotConfig] = useState(loadBotConfig());
+  const [isBotLoading, setIsBotLoading] = useState(Boolean(botId));
+  const [botLoadError, setBotLoadError] = useState("");
   const [currentStep, setCurrentStep] = useState(1);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [isPublishSuccessModalOpen, setIsPublishSuccessModalOpen] = useState(false);
-  const [isInitialPreviewOpen, setIsInitialPreviewOpen] = useState(!!botId);
   const [isPublishing, setIsPublishing] = useState(false);
   const [actionError, setActionError] = useState("");
   const [videoStudioTask, setVideoStudioTask] = useState<VideoStudioTask | null>(null);
@@ -423,11 +438,6 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
     onBack();
   };
 
-  const handleCloseInitialPreview = () => {
-    setIsInitialPreviewOpen(false);
-    onBack();
-  };
-
   const handleNext = () => {
     if (!canProceed) return;
     setActionError("");
@@ -544,10 +554,32 @@ const handleDeleteBot = async () => {
     method: "DELETE",
   });
 
-  setIsInitialPreviewOpen(false);
   setIsPublishSuccessModalOpen(false);
   onBack();  // ⭐ 回到 Library
 };
+
+  if (botId && isBotLoading) {
+    return (
+      <div className="mx-auto flex min-h-[520px] max-w-7xl items-center justify-center">
+        <div className="text-center">
+          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600" />
+          <p className="mt-4 text-sm font-semibold text-slate-600">正在載入角色資料…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (botId && botLoadError) {
+    return (
+      <div className="mx-auto flex min-h-[520px] max-w-7xl items-center justify-center px-6">
+        <div className="max-w-md rounded-[24px] border border-rose-200 bg-white p-7 text-center shadow-sm">
+          <h2 className="text-lg font-extrabold text-slate-900">無法開啟角色編輯頁</h2>
+          <p className="mt-2 text-sm leading-6 text-rose-600">{botLoadError}</p>
+          <button type="button" onClick={onBack} className="mt-5 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white">返回機器人庫</button>
+        </div>
+      </div>
+    );
+  }
 
   // -------------------------------
   // 5. 组件 JSX
@@ -651,15 +683,6 @@ const handleDeleteBot = async () => {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* 初始编辑预览 */}
-      <PublishSuccessModal
-        isOpen={isInitialPreviewOpen}
-        onClose={handleCloseInitialPreview}
-        botConfig={botConfig}
-        onEdit={() => setIsInitialPreviewOpen(false)}
-        onDelete={handleDeleteBot}
-      />
 
       {/* 发布成功 */}
       <PublishSuccessModal

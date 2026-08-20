@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { AlertCircle, ArrowRight, BarChart2, Trash2 } from 'lucide-react';
+import { AlertCircle, ArrowRight, BarChart2, HelpCircle, Trash2 } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
 import { Icons } from '../icons';
 import { GradingDetailView } from './GradingDetailView';
+import { InfoTipModal } from '../system/InfoTipModal';
 
 interface GradingWorkspaceHomeProps {
   onBack: () => void;
+  onGoToWorkshop?: () => void;
 }
 
 type QuizSummary = {
@@ -20,11 +22,12 @@ type QuizSummary = {
   completed: number;
 };
 
-export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBack }) => {
+export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBack, onGoToWorkshop }) => {
   const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
   const [quizzes, setQuizzes] = useState<QuizSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingQuizId, setDeletingQuizId] = useState<string | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
 
   const loadQuizzes = useCallback(() => {
     setLoading(true);
@@ -96,14 +99,15 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
           </button>
           <h1 className="text-2xl font-bold text-slate-800">智能批改工作台</h1>
         </div>
+        <button type="button" aria-label="AI 批改說明" onClick={() => setShowHelp(true)} className="text-indigo-500"><HelpCircle className="h-5 w-5" /></button>
       </div>
 
-      <div className="bg-rose-50 border border-rose-100 text-rose-800 p-4 rounded-2xl flex items-center gap-3 shadow-sm">
+      {sortedQuizzes.length > 0 ? <div className="bg-rose-50 border border-rose-100 text-rose-800 p-4 rounded-2xl flex items-center gap-3 shadow-sm">
         <div className="w-8 h-8 bg-rose-100 rounded-full flex items-center justify-center shrink-0">
           <AlertCircle className="w-4 h-4 text-rose-600" />
         </div>
         <span className="font-bold">{activeQuizzesCount} 份測驗待處理 · 共 {totalPendingStudents} 份學生作答</span>
-      </div>
+      </div> : null}
 
       <div className="grid grid-cols-1 gap-4">
         {loading ? (
@@ -111,7 +115,15 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
         ) : null}
 
         {!loading && !sortedQuizzes.length ? (
-          <div className="rounded-[24px] border border-dashed border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">目前還沒有已發佈的測驗。</div>
+          <div className="mx-auto mt-8 w-full max-w-[720px] rounded-[28px] border border-slate-100 bg-white p-8 shadow-[0_10px_30px_rgba(15,23,42,0.05)] sm:p-10">
+            <h2 className="text-xl font-extrabold text-slate-950">還沒有測驗，兩步驟就能開始批改</h2>
+            <p className="mt-1.5 text-[13px] text-slate-400">完成後，學生作答會自動出現在這裡讓你確認分數</p>
+            <div className="mt-6 space-y-[18px]">
+              <div className="flex items-start gap-3.5"><span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-indigo-50 text-[13px] font-extrabold text-indigo-600">1</span><div><div className="text-sm font-bold text-slate-800">到「機器人角色」幫角色加上題目</div><div className="mt-1 text-[13px] leading-6 text-slate-400">上傳課文或題目，AI 會自動整理成測驗，不用自己一題一題輸入。</div></div></div>
+              <div className="flex items-start gap-3.5"><span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-indigo-50 text-[13px] font-extrabold text-indigo-600">2</span><div><div className="text-sm font-bold text-slate-800">發布給班級，等學生作答</div><div className="mt-1 text-[13px] leading-6 text-slate-400">學生答完後會自動送到這裡，AI 先批改一次，你只需要確認或調整分數即可。</div></div></div>
+            </div>
+            <button type="button" onClick={onGoToWorkshop} className="mt-7 rounded-[14px] bg-indigo-600 px-[22px] py-3 text-sm font-bold text-white transition hover:bg-indigo-700">前往機器人角色設定題目</button>
+          </div>
         ) : null}
 
         {!loading &&
@@ -176,6 +188,7 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
             );
           })}
       </div>
+      <InfoTipModal open={showHelp} title="AI 批改怎麼運作" body="學生作答後，AI 會先自動評分並給出建議分數，例如選擇題直接判對錯、簡答題會給參考理由。你可以直接採用，也能手動調整後再確認送出。" onClose={() => setShowHelp(false)} />
     </div>
   );
 };

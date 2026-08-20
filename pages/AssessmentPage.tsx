@@ -16,7 +16,7 @@ type QuestionBankSummary = {
   updatedAt?: string;
 };
 
-export const AssessmentPage: React.FC = () => {
+export const AssessmentPage: React.FC<{ onNavigateToWorkshop?: () => void }> = ({ onNavigateToWorkshop }) => {
   const [view, setView] = useState<'dashboard' | 'wizard' | 'library' | 'grading' | 'alerts'>('dashboard');
   const [drafts, setDrafts] = useState<Array<{ id: string; title: string; date: string; questionCount: number }>>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
@@ -91,7 +91,7 @@ export const AssessmentPage: React.FC = () => {
   }
 
   if (view === 'grading') {
-    return <GradingWorkspaceHome onBack={() => setView('dashboard')} />;
+    return <GradingWorkspaceHome onBack={() => setView('dashboard')} onGoToWorkshop={onNavigateToWorkshop} />;
   }
 
   if (view === 'alerts') {

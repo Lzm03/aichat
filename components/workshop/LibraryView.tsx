@@ -1,42 +1,5 @@
-// import React from 'react';
-// import { BotCard } from './BotCard';
-// import { Icons } from '../icons';
-// import type { AiBot } from '../../types';
-
-// const mockBots: AiBot[] = [
-//   { id: '1', name: '5A 班英文口語教練', subject: '英文', subjectColor: 'emerald', avatarUrl: 'https://i.pravatar.cc/150?u=bot1', interactions: 124, accuracy: 0, isVisible: true },
-//   { id: '2', name: '中三數學解難', subject: '數學', subjectColor: 'indigo', avatarUrl: 'https://i.pravatar.cc/150?u=bot2', interactions: 88, accuracy: 0, isVisible: true },
-//   { id: '3', name: '常識科探索號', subject: '常識', subjectColor: 'amber', avatarUrl: 'https://i.pravatar.cc/150?u=bot3', interactions: 45, accuracy: 0, isVisible: false },
-// ];
-
-// interface LibraryViewProps {
-//   onStartCreation: () => void;
-//   onEditBot: (botId: string) => void;
-// }
-
-// export const LibraryView: React.FC<LibraryViewProps> = ({ onStartCreation, onEditBot }) => {
-//   return (
-//     <div>
-//       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-//         <button
-//           onClick={onStartCreation}
-//           className="group flex flex-col items-center justify-center p-6 bg-white border-2 border-dashed border-slate-300 hover:border-indigo-500 hover:bg-indigo-50 transition-all duration-300 rounded-3xl min-h-[260px]"
-//         >
-//           <div className="w-20 h-20 rounded-full bg-slate-100 group-hover:bg-indigo-100 flex items-center justify-center transition-colors duration-300">
-//             <Icons.add className="w-10 h-10 text-slate-400 group-hover:text-indigo-500 transition-colors duration-300" />
-//           </div>
-//           <p className="mt-4 text-lg font-semibold text-[#1E293B] group-hover:text-indigo-600 transition-colors duration-300">創建新機器人</p>
-//           <p className="text-sm text-slate-500">開始打造您的 AI 夥伴</p>
-//         </button>
-//         {mockBots.map(bot => (
-//           <BotCard key={bot.id} bot={bot} onEdit={() => onEditBot(bot.id)} />
-//         ))}
-//       </div>
-//     </div>
-//   );
-// };
-
 import React, { useEffect, useMemo, useState } from "react";
+import { HelpCircle } from "lucide-react";
 import { BotCard } from "./BotCard";
 import { Icons } from "../icons";
 import type { AiBot } from "../../types";
@@ -44,6 +7,7 @@ import { API_BASE } from "../../utils/api";
 import type { FeatureEntitlement } from "../../hooks/useFeatureEntitlements";
 import { usePlatformDialog } from "../../hooks/usePlatformDialog";
 import { PlatformDialog } from "../system/PlatformDialog";
+import { InfoTipModal } from "../system/InfoTipModal";
 import { TRIAL_ENDED_POPUP_MESSAGE } from "../../utils/trial-popup";
 import { readAuthSession } from "../../utils/auth";
 
@@ -52,260 +16,159 @@ interface LibraryViewProps {
   onEditBot: (botId: string) => void;
   onDeleteBot: (botId: string) => void;
   createBotFeature?: FeatureEntitlement;
+  chatMessagesFeature?: FeatureEntitlement;
   featureLoading?: boolean;
   searchQuery?: string;
 }
 
+type TipKey = "limit" | "subject" | null;
+const tipCopy = {
+  limit: { title: "免費版的機器人數量上限", body: "免費方案可建立的機器人角色數量有限。升級付費方案可取得更多角色席位及更高的對話用量。" },
+  subject: { title: "科目標籤顏色", body: "顏色代表機器人所屬的科目，方便你在多個角色中快速分類。點擊卡片即可重新設定科目與顏色。" },
+};
+
+function normalizeBots(data: any[]): AiBot[] {
+  return data.map((raw: any) => ({
+    id: raw.id, name: raw.name, subject: raw.subject, subjectColor: raw.subjectColor,
+    avatarUrl: raw.avatarUrl, openingMessage: raw.openingMessage || "",
+    videoIdle: raw.videoIdle || "", videoThinking: raw.videoThinking || "", videoTalking: raw.videoTalking || "",
+    interactions: raw.interactions, accuracy: raw.accuracy, isVisible: raw.isVisible,
+    hasPublishedQuiz: Boolean(raw.hasPublishedQuiz), hasPendingQuiz: Boolean(raw.hasPendingQuiz),
+    activeQuizId: raw.activeQuizId || "", activeQuizTitle: raw.activeQuizTitle || "",
+  }));
+}
+
 export const LibraryView: React.FC<LibraryViewProps> = ({
-  onStartCreation,
-  onEditBot,
-  onDeleteBot,
-  createBotFeature,
-  featureLoading = false,
-  searchQuery = "",
+  onStartCreation, onEditBot, onDeleteBot, createBotFeature, chatMessagesFeature,
+  featureLoading = false, searchQuery = "",
 }) => {
   const [bots, setBots] = useState<AiBot[]>([]);
   const [botsLoading, setBotsLoading] = useState(true);
+  const [tip, setTip] = useState<TipKey>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
 
-  const normalizeBots = (data: any[]) =>
-    data.map((raw: any) => ({
-      id: raw.id,
-      name: raw.name,
-      subject: raw.subject,
-      subjectColor: raw.subjectColor,
-      avatarUrl: raw.avatarUrl,
-      background: raw.background,
-      animation: raw.animation,
-      knowledgeBase: raw.knowledgeBase,
-      securityPrompt: raw.securityPrompt,
-      videoIdle: raw.videoIdle,
-      videoThinking: raw.videoThinking,
-      videoTalking: raw.videoTalking,
-      voiceId: raw.voiceId,
-      openingMessage: raw.openingMessage || "",
-      interactions: raw.interactions,
-      accuracy: raw.accuracy,
-      isVisible: raw.isVisible,
-      hasPublishedQuiz: Boolean(raw.hasPublishedQuiz),
-      hasPendingQuiz: Boolean(raw.hasPendingQuiz),
-      activeQuizId: raw.activeQuizId || "",
-      activeQuizTitle: raw.activeQuizTitle || "",
-    }));
-
   useEffect(() => {
-    const baseUrl = API_BASE;
     const session = readAuthSession();
     const cacheKey = session ? `chopreality_bot_cache:${session.user.id}` : "";
     setBotsLoading(true);
-
-    if (typeof window !== "undefined" && cacheKey) {
-      const cached = window.sessionStorage.getItem(cacheKey);
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached) as AiBot[];
-          if (Array.isArray(parsed)) {
-            setBots(parsed);
-            setBotsLoading(false);
-          }
-        } catch {
-          // ignore bad cache
+    if (cacheKey) {
+      try {
+        const cached = window.sessionStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) { setBots(parsed); setBotsLoading(false); }
         }
-      }
+      } catch { /* ignore invalid cache */ }
     }
-
-    fetch(`${baseUrl}/api/bots`)
-      .then(res => res.json())
-      .then(data => {
+    fetch(`${API_BASE}/api/bots`)
+      .then((res) => res.json())
+      .then((data) => {
         const normalized = normalizeBots(Array.isArray(data) ? data : []);
         const ids = normalized.map((item) => item.id).filter(Boolean);
-        if (!ids.length) {
-          setBots(normalized);
-          if (typeof window !== "undefined" && cacheKey) {
-            window.sessionStorage.setItem(cacheKey, JSON.stringify(normalized));
-          }
-          return;
-        }
-        fetch(`${baseUrl}/api/bots/interactions/today?ids=${encodeURIComponent(ids.join(","))}`)
+        if (!ids.length) return normalized;
+        return fetch(`${API_BASE}/api/bots/interactions/today?ids=${encodeURIComponent(ids.join(","))}`)
           .then((res) => res.json())
-          .then((payload) => {
-            const counts = payload?.counts || {};
-            const withTodayCounts = normalized.map((item) => ({
-              ...item,
-              interactions: Number(counts[item.id] || 0),
-            }));
-            setBots(withTodayCounts);
-            if (typeof window !== "undefined" && cacheKey) {
-              window.sessionStorage.setItem(cacheKey, JSON.stringify(withTodayCounts));
-            }
-          })
-          .catch(() => {
-            setBots(normalized);
-            if (typeof window !== "undefined" && cacheKey) {
-              window.sessionStorage.setItem(cacheKey, JSON.stringify(normalized));
-            }
-          });
+          .then((payload) => normalized.map((item) => ({ ...item, interactions: Number(payload?.counts?.[item.id] || 0) })))
+          .catch(() => normalized);
       })
-      .catch(() => {
-        setBots([]);
+      .then((next) => {
+        setBots(next);
+        if (cacheKey) window.sessionStorage.setItem(cacheKey, JSON.stringify(next));
       })
-      .finally(() => {
-        setBotsLoading(false);
-      });
+      .catch(() => setBots([]))
+      .finally(() => setBotsLoading(false));
   }, []);
 
   useEffect(() => {
-    const handleQuizPendingChanged = (event: Event) => {
+    const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ botId?: string; hasPendingQuiz?: boolean }>).detail;
-      const botId = String(detail?.botId || "").trim();
-      if (!botId) return;
-      setBots((current) =>
-        current.map((bot) =>
-          bot.id === botId ? { ...bot, hasPendingQuiz: Boolean(detail?.hasPendingQuiz) } : bot
-        )
-      );
+      if (!detail?.botId) return;
+      setBots((current) => current.map((bot) => bot.id === detail.botId ? { ...bot, hasPendingQuiz: Boolean(detail.hasPendingQuiz) } : bot));
     };
-
-    window.addEventListener("quiz-pending-changed", handleQuizPendingChanged as EventListener);
-    return () => {
-      window.removeEventListener("quiz-pending-changed", handleQuizPendingChanged as EventListener);
-    };
+    window.addEventListener("quiz-pending-changed", handler as EventListener);
+    return () => window.removeEventListener("quiz-pending-changed", handler as EventListener);
   }, []);
 
-  const deleteBot = async (botId: string) => {
-    const baseUrl = API_BASE;
-    const session = readAuthSession();
-    const cacheKey = session ? `chopreality_bot_cache:${session.user.id}` : "";
-
-    await fetch(`${baseUrl}/api/bots/${botId}`, {
-      method: "DELETE",
-    });
-
-    setBots(prev => {
-      const next = prev.filter(b => b.id !== botId);
-      if (typeof window !== "undefined" && cacheKey) {
-        window.sessionStorage.setItem(cacheKey, JSON.stringify(next));
-      }
-      return next;
-    });
-
-    onDeleteBot?.(botId);
-  };
-  
-  const creationLockedByLoading = featureLoading || botsLoading;
   const normalizedSearchQuery = searchQuery.normalize("NFKC").trim().toLocaleLowerCase();
-  const filteredBots = useMemo(
-    () =>
-      normalizedSearchQuery
-        ? bots.filter((bot) =>
-            String(bot.name || "").normalize("NFKC").toLocaleLowerCase().includes(normalizedSearchQuery)
-          )
-        : bots,
-    [bots, normalizedSearchQuery]
-  );
-  const hasSearchQuery = normalizedSearchQuery.length > 0;
+  const filteredBots = useMemo(() => normalizedSearchQuery
+    ? bots.filter((bot) => String(bot.name || "").normalize("NFKC").toLocaleLowerCase().includes(normalizedSearchQuery))
+    : bots, [bots, normalizedSearchQuery]);
+  const creationLocked = featureLoading || botsLoading || Boolean(createBotFeature?.locked);
+  const isPro = Boolean(createBotFeature?.unlimited || chatMessagesFeature?.unlimited || readAuthSession()?.user.plan?.toLowerCase().includes("pro"));
+  const percent = (feature?: FeatureEntitlement) => feature?.unlimited ? 100 : Math.min(100, ((feature?.used || 0) / Math.max(feature?.limit || 1, 1)) * 100);
+  const usageLabel = (feature?: FeatureEntitlement) => feature?.unlimited ? "無限制" : feature ? `${feature.used}/${feature.limit}` : "載入中";
+  const startCreation = () => {
+    if (featureLoading || botsLoading) return;
+    if (createBotFeature?.locked) {
+      showAlert({ title: "創建角色已用完", message: TRIAL_ENDED_POPUP_MESSAGE });
+      return;
+    }
+    onStartCreation();
+  };
 
   return (
-    <div>
-      <section className="mb-5 overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
-        <div className="grid gap-0 lg:grid-cols-[1.05fr_0.95fr] lg:min-h-[270px]">
-          <div className="relative min-h-[200px] overflow-hidden bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 text-white sm:min-h-[220px]">
-            <img
-              src="/Tomato_Logo.png"
-              alt="AI 夥伴視覺"
-              className="absolute inset-0 h-full w-full object-cover object-center"
-            />
-            <div className="absolute inset-0 bg-gradient-to-br from-indigo-700/25 via-fuchsia-700/10 to-white/0" />
+    <div className="mx-auto max-w-[1080px] pb-14">
+      <section className="mb-6 overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+        <div className="grid min-h-[220px] md:grid-cols-2">
+          <div className="min-h-[200px] overflow-hidden bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600">
+            <img src={isPro ? "/ui-update/pro-hero.png" : "/ui-update/library-hero.png"} alt="Tomato Robot AI 夥伴" className="h-full w-full object-cover" />
           </div>
-
-          <div className="flex flex-col justify-center gap-3 bg-white p-5 sm:p-6 lg:p-8">
-            <div className="space-y-2.5">
-              <h2 className="text-[30px] font-black leading-tight tracking-tight text-slate-900 sm:text-[32px] lg:text-[34px]">
-                建立屬於您的 AI 夥伴
-              </h2>
-              <p className="max-w-xl text-sm leading-6 text-slate-600 sm:text-[15px] sm:leading-7">
-                從角色外觀、知識庫、對話風格到教學情境，一次打造可立即投入課堂的 AI 機器人，讓每個學生都能得到更貼近需求的陪伴與引導。
-              </p>
-            </div>
+          <div className="flex flex-col justify-center gap-3 p-7 sm:p-8">
+            {isPro ? <span className="w-fit rounded-full bg-amber-100 px-3 py-1 text-[11px] font-extrabold tracking-wide text-amber-800">PRO 方案</span> : null}
+            <h2 className="text-[30px] font-black leading-tight tracking-tight text-slate-950">建立屬於您的 AI 夥伴</h2>
+            <p className="text-[15px] leading-7 text-slate-600">從角色外觀、知識庫、對話風格到教學情境，一次打造可立即投入課堂的 AI 機器人。</p>
           </div>
         </div>
       </section>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-
-        {/* --------------------------- */}
-        {/* ⭐ 创建新机器人按钮 */}
-        {/* --------------------------- */}
-        <button
-          onClick={() => {
-            if (creationLockedByLoading) {
-              return;
-            }
-            if (createBotFeature?.locked) {
-              showAlert({
-                title: "創建角色已用完",
-                message: TRIAL_ENDED_POPUP_MESSAGE,
-              });
-              return;
-            }
-            onStartCreation();
-          }}
-          className={`group flex h-full min-h-[260px] flex-col items-center justify-center p-6 border-2 border-dashed transition rounded-3xl ${
-            creationLockedByLoading || createBotFeature?.locked
-              ? "bg-slate-50 border-slate-200 opacity-70"
-              : "bg-white border-slate-300 hover:border-indigo-500 hover:bg-indigo-50"
-          }`}
-        >
-          <div className="w-20 h-20 rounded-full bg-slate-100 group-hover:bg-indigo-100 flex items-center justify-center">
-            <Icons.add className="w-10 h-10 text-slate-400 group-hover:text-indigo-500" />
+      <section className="mb-7 rounded-[24px] border border-slate-200 bg-white px-5 py-5 sm:px-6">
+        <div className="flex items-center gap-2">
+          <h3 className="text-base font-extrabold text-slate-950">{isPro ? "你的方案用量" : "免費版功能次數"}</h3>
+          <button type="button" aria-label="查看方案說明" onClick={() => setTip("limit")} className="text-indigo-500"><HelpCircle className="h-5 w-5" /></button>
+        </div>
+        <div className="mt-3.5 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
+            <div className="flex items-baseline justify-between gap-3 text-[13px] font-bold text-slate-700"><span>{isPro ? "機器人角色席位" : "建立機器人角色"}</span><span className="text-xs font-extrabold text-indigo-600">{usageLabel(createBotFeature)}</span></div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-indigo-500" style={{ width: `${percent(createBotFeature)}%` }} /></div>
           </div>
-          <p className="mt-4 text-lg font-semibold text-[#1E293B] group-hover:text-indigo-600">
-            創建新機器人
-          </p>
-          <p className="text-sm text-slate-500">
-            {creationLockedByLoading ? "正在載入帳戶資料..." : "開始打造您的 AI 夥伴"}
-          </p>
-          {createBotFeature && (
-            <p className={`mt-2 text-xs font-semibold ${createBotFeature.locked ? "text-rose-600" : "text-indigo-600"}`}>
-              {createBotFeature.unlimited
-                ? "無限制"
-                : `${createBotFeature.used}/${createBotFeature.limit} ${createBotFeature.countUnit}`}
-            </p>
-          )}
-        </button>
-
-        {/* --------------------------- */}
-        {/* ⭐ 显示所有机器人卡片 */}
-        {/* --------------------------- */}
-        {filteredBots.map((bot) => (
-          <BotCard
-            key={bot.id}
-            bot={bot}
-            onEdit={() => onEditBot(bot.id)}
-          />
-        ))}
-        {!botsLoading && hasSearchQuery && filteredBots.length === 0 ? (
-          <div className="flex min-h-[260px] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white/70 px-6 text-center md:col-span-1 lg:col-span-2 xl:col-span-3">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-              <Icons.search className="h-6 w-6" />
-            </div>
-            <p className="mt-4 text-base font-semibold text-slate-700">找不到符合的 AI 機器人</p>
-            <p className="mt-1 max-w-sm text-sm leading-6 text-slate-500">
-              沒有名稱包含「{searchQuery.trim()}」的機器人，請嘗試其他關鍵字。
-            </p>
+          <div className={`rounded-2xl border p-3.5 ${chatMessagesFeature?.unlimited ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-slate-50"}`}>
+            <div className="flex items-baseline justify-between gap-3 text-[13px] font-bold text-slate-700"><span>對話訊息</span><span className={chatMessagesFeature?.unlimited ? "text-xs font-extrabold text-emerald-600" : "text-xs font-extrabold text-indigo-600"}>{chatMessagesFeature?.unlimited ? "✓ 無限制" : usageLabel(chatMessagesFeature)}</span></div>
+            {chatMessagesFeature?.unlimited ? <div className="mt-2 text-xs text-lime-600">PRO 方案不限對話次數</div> : <div className="mt-2 h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-indigo-500" style={{ width: `${percent(chatMessagesFeature)}%` }} /></div>}
+          </div>
+        </div>
+        {isPro && createBotFeature?.locked && !bannerDismissed ? (
+          <div className="mt-3.5 flex flex-col gap-3 rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-[13px] leading-6 text-indigo-900 sm:flex-row sm:items-center sm:justify-between">
+            <span>機器人角色席位已用完（{usageLabel(createBotFeature)}）。PRO 用戶可洽客服快速加開席位。</span>
+            <div className="flex shrink-0 items-center gap-2"><a href="mailto:Mandy@chopreality.com" className="rounded-[10px] bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white">聯絡客服</a><button type="button" onClick={() => setBannerDismissed(true)} className="px-1 text-indigo-400">×</button></div>
           </div>
         ) : null}
+      </section>
+
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+        <button type="button" onClick={startCreation} disabled={featureLoading || botsLoading} className={`group flex min-h-[340px] flex-col items-center justify-center rounded-[28px] border-2 border-dashed p-8 text-center transition ${creationLocked ? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-85" : "border-slate-300 bg-white hover:-translate-y-1 hover:border-indigo-400 hover:bg-indigo-50/40"}`}>
+          <div className="flex h-[88px] w-[88px] items-center justify-center rounded-full bg-indigo-50 text-[40px] font-light text-indigo-400">+</div>
+          <p className="mt-[18px] text-lg font-extrabold text-slate-800">{createBotFeature?.locked ? "已達機器人上限" : "創建新機器人"}</p>
+          <p className="mt-1 text-[13px] text-slate-400">{createBotFeature?.locked ? "洽客服可加開更多席位" : "開始打造您的下一位 AI 夥伴"}</p>
+          <p className="mt-3.5 text-xs font-extrabold text-indigo-500">{usageLabel(createBotFeature)}</p>
+        </button>
+
+        {!botsLoading && !normalizedSearchQuery && bots.length === 0 ? (
+          <div className="flex min-h-[340px] flex-col justify-center rounded-[28px] border border-slate-100 bg-white p-8 md:col-span-1 xl:col-span-2">
+            <h3 className="text-[17px] font-extrabold text-slate-950">還沒有機器人？三步驟就能上線</h3>
+            <p className="mt-1 text-[13px] text-slate-400">完成後即可分享給學生開始互動</p>
+            <div className="mt-[18px] space-y-3">{["設定角色外觀與聲音", "上傳知識庫內容與安全提示詞", "發布並分享連結給學生"].map((label, index) => <div key={label} className="flex items-center gap-3 text-[13px] text-slate-700"><span className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-extrabold text-indigo-600">{index + 1}</span>{label}</div>)}</div>
+          </div>
+        ) : null}
+
+        {filteredBots.map((bot) => <BotCard key={bot.id} bot={bot} onEdit={() => onEditBot(bot.id)} onShowSubjectHelp={() => setTip("subject")} />)}
+        {!botsLoading && normalizedSearchQuery && filteredBots.length === 0 ? (
+          <div className="flex min-h-[340px] flex-col items-center justify-center rounded-[28px] border border-dashed border-slate-300 bg-white px-6 text-center md:col-span-1 xl:col-span-2"><Icons.search className="h-7 w-7 text-slate-300" /><p className="mt-4 font-bold text-slate-700">找不到符合的 AI 機器人</p><p className="mt-1 text-sm text-slate-500">沒有名稱包含「{searchQuery.trim()}」的機器人</p></div>
+        ) : null}
       </div>
-      <PlatformDialog
-        open={dialog.open}
-        title={dialog.title}
-        message={dialog.message}
-        confirmText={dialog.confirmText}
-        cancelText={dialog.cancelText}
-        tone={dialog.tone}
-        onClose={closeDialog}
-        onConfirm={dialog.onConfirm || undefined}
-      />
+
+      <InfoTipModal open={Boolean(tip)} title={tip ? tipCopy[tip].title : ""} body={tip ? (tip === "limit" && isPro ? "PRO 方案的對話訊息不限量，機器人角色則按席位使用。如需更多席位，可直接聯絡客服協助加開。" : tipCopy[tip].body) : ""} onClose={() => setTip(null)} />
+      <PlatformDialog open={dialog.open} title={dialog.title} message={dialog.message} confirmText={dialog.confirmText} cancelText={dialog.cancelText} tone={dialog.tone} onClose={closeDialog} onConfirm={dialog.onConfirm || undefined} />
     </div>
   );
 };

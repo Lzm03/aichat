@@ -134,6 +134,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
             <Icons.back className="h-4 w-4" />
             返回工作台
           </a>
+          <a href="/pro" className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">PRO 方案說明</a>
         </div>
 
         <form className="mt-8 grid gap-8 lg:grid-cols-[320px_minmax(0,1fr)]" onSubmit={handleSave}>

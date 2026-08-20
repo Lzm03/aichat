@@ -91,6 +91,7 @@ export const AiBotWorkshopPage: React.FC<AiBotWorkshopPageProps> = ({ searchQuer
           onEditBot={handleEditBot}
           onDeleteBot={() => {}}
           createBotFeature={botPublishFeature}
+          chatMessagesFeature={chatMessagesFeature}
           featureLoading={!initialized || loading || !botPublishFeature}
           searchQuery={searchQuery}
         />
