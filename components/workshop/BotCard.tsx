@@ -4,6 +4,7 @@ import { SequencePngPlayer } from "./SequencePngPlayer";
 
 interface BotCardProps {
   bot: AiBot;
+  onOpen: () => void;
   onEdit: () => void;
   onShowSubjectHelp?: () => void;
 }
@@ -23,7 +24,7 @@ type IdleSequenceManifest = {
   fps: number;
 };
 
-export const BotCard: React.FC<BotCardProps> = ({ bot, onEdit, onShowSubjectHelp }) => {
+export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onShowSubjectHelp }) => {
   const [isPreviewingIdle, setIsPreviewingIdle] = useState(false);
   const [idleVideoFailed, setIdleVideoFailed] = useState(false);
   const [idleSequence, setIdleSequence] = useState<IdleSequenceManifest | null>(null);
@@ -95,12 +96,12 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onEdit, onShowSubjectHelp
     <div
       role="button"
       tabIndex={0}
-      aria-label={`編輯 ${bot.name}`}
+      aria-label={`開啟 ${bot.name}`}
       data-idle-preview={idleVideoUrl ? "available" : "unavailable"}
       data-thinking-preview={bot.videoThinking?.trim() ? "available" : "unavailable"}
       data-talking-preview={bot.videoTalking?.trim() ? "available" : "unavailable"}
       className="group flex min-h-[340px] cursor-pointer flex-col rounded-[28px] border border-slate-100 bg-white p-7 shadow-[0_10px_30px_rgba(15,23,42,0.05)] transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-      onClick={onEdit}
+      onClick={onOpen}
       onMouseEnter={() => setIsPreviewingIdle(true)}
       onMouseLeave={() => setIsPreviewingIdle(false)}
       onFocus={() => setIsPreviewingIdle(true)}
@@ -110,9 +111,10 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onEdit, onShowSubjectHelp
         }
       }}
       onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          onEdit();
+          onOpen();
         }
       }}
     >

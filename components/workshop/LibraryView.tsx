@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { HelpCircle } from "lucide-react";
 import { BotCard } from "./BotCard";
+import { PublishSuccessModal } from "./PublishSuccessModal";
 import { Icons } from "../icons";
 import type { AiBot } from "../../types";
 import { API_BASE } from "../../utils/api";
@@ -44,6 +45,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 }) => {
   const [bots, setBots] = useState<AiBot[]>([]);
   const [botsLoading, setBotsLoading] = useState(true);
+  const [selectedBot, setSelectedBot] = useState<AiBot | null>(null);
   const [tip, setTip] = useState<TipKey>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
@@ -107,6 +109,31 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     onStartCreation();
   };
 
+  const editSelectedBot = () => {
+    if (!selectedBot?.id) return;
+    const botId = selectedBot.id;
+    setSelectedBot(null);
+    onEditBot(botId);
+  };
+
+  const deleteBot = async (botId: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/bots/${botId}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("刪除機器人失敗");
+      const session = readAuthSession();
+      const cacheKey = session ? `chopreality_bot_cache:${session.user.id}` : "";
+      setBots((current) => {
+        const next = current.filter((bot) => bot.id !== botId);
+        if (cacheKey) window.sessionStorage.setItem(cacheKey, JSON.stringify(next));
+        return next;
+      });
+      setSelectedBot(null);
+      onDeleteBot(botId);
+    } catch {
+      showAlert({ title: "刪除失敗", message: "暫時無法刪除這個機器人，請稍後再試。" });
+    }
+  };
+
   return (
     <div className="mx-auto max-w-[1080px] pb-14">
       <section className="mb-6 overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
@@ -161,12 +188,27 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
         ) : null}
 
-        {filteredBots.map((bot) => <BotCard key={bot.id} bot={bot} onEdit={() => onEditBot(bot.id)} onShowSubjectHelp={() => setTip("subject")} />)}
+        {filteredBots.map((bot) => (
+          <BotCard
+            key={bot.id}
+            bot={bot}
+            onOpen={() => setSelectedBot(bot)}
+            onEdit={() => onEditBot(bot.id)}
+            onShowSubjectHelp={() => setTip("subject")}
+          />
+        ))}
         {!botsLoading && normalizedSearchQuery && filteredBots.length === 0 ? (
           <div className="flex min-h-[340px] flex-col items-center justify-center rounded-[28px] border border-dashed border-slate-300 bg-white px-6 text-center md:col-span-1 xl:col-span-2"><Icons.search className="h-7 w-7 text-slate-300" /><p className="mt-4 font-bold text-slate-700">找不到符合的 AI 機器人</p><p className="mt-1 text-sm text-slate-500">沒有名稱包含「{searchQuery.trim()}」的機器人</p></div>
         ) : null}
       </div>
 
+      <PublishSuccessModal
+        isOpen={Boolean(selectedBot)}
+        onClose={() => setSelectedBot(null)}
+        botConfig={selectedBot}
+        onEdit={editSelectedBot}
+        onDelete={deleteBot}
+      />
       <InfoTipModal open={Boolean(tip)} title={tip ? tipCopy[tip].title : ""} body={tip ? (tip === "limit" && isPro ? "PRO 方案的對話訊息不限量，機器人角色則按席位使用。如需更多席位，可直接聯絡客服協助加開。" : tipCopy[tip].body) : ""} onClose={() => setTip(null)} />
       <PlatformDialog open={dialog.open} title={dialog.title} message={dialog.message} confirmText={dialog.confirmText} cancelText={dialog.cancelText} tone={dialog.tone} onClose={closeDialog} onConfirm={dialog.onConfirm || undefined} />
     </div>
