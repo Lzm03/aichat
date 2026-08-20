@@ -120,8 +120,8 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onShowSub
     >
       {/* 顶部：头像 + 测试题角标 */}
       <div className="flex items-start justify-between">
-        <div className="bot-avatar-pulse relative h-[140px] w-[140px] overflow-hidden rounded-full border-4 border-white bg-white shadow-md">
-          <img src={bot.avatarUrl || undefined} alt={bot.name} className={`bot-avatar-breathe h-full w-full rounded-full object-cover transition-opacity duration-200 ${canShowIdlePreview ? "opacity-0" : "opacity-100"}`} />
+        <div className="relative h-[140px] w-[140px] overflow-hidden rounded-full bg-white">
+          <img src={bot.avatarUrl || undefined} alt={bot.name} className={`h-full w-full rounded-full object-cover transition-opacity duration-200 ${canShowIdlePreview ? "opacity-0" : "opacity-100"}`} />
           {isPreviewingIdle && isIdleSequence && idleSequence && !idleSequenceFailed ? (
             <SequencePngPlayer
               folderUrl={idleSequence.folderUrl}
