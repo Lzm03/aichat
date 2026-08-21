@@ -15,6 +15,15 @@ type SharedBot = {
   name: string;
   subject?: string;
   avatarUrl?: string;
+  background?: string;
+  animation?: string;
+  knowledgeBase?: string;
+  securityPrompt?: string;
+  openingMessage?: string;
+  videoIdle?: string;
+  videoThinking?: string;
+  videoTalking?: string;
+  voiceId?: string;
   interactions?: number;
   teacherName?: string;
   hasPendingQuiz?: boolean;
@@ -139,14 +148,16 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
         ))}
       </nav>
 
-      <PublishSuccessModal
-        isOpen={Boolean(selectedBot)}
-        onClose={() => setSelectedBot(null)}
-        botConfig={selectedBot}
-        isSharedView={true}
-        onEdit={() => {}}
-        onDelete={() => {}}
-      />
+      {selectedBot ? (
+        <PublishSuccessModal
+          isOpen
+          onClose={() => setSelectedBot(null)}
+          botConfig={selectedBot}
+          isSharedView={true}
+          onEdit={() => {}}
+          onDelete={() => {}}
+        />
+      ) : null}
       <InfoTipModal
         open={Boolean(activeTip)}
         title={activeTip === "tokens" ? "Token 額度是什麼" : "如何選擇學習夥伴"}

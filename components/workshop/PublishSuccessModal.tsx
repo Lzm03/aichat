@@ -1803,6 +1803,7 @@ const requestTTSAudio = async (text: string, sessionId: number) => {
 
   const baseUrl = API_BASE;
   const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 6000);
   ttsRequestControllers.current.add(controller);
 
   try {
@@ -1858,6 +1859,7 @@ const requestTTSAudio = async (text: string, sessionId: number) => {
       });
     }
   } finally {
+    window.clearTimeout(timeoutId);
     ttsRequestControllers.current.delete(controller);
   }
 };
@@ -3487,9 +3489,7 @@ const unlockAudioAndMic = async () => {
           {/* 主体 */}
           <div className="relative h-[92svh] w-full max-w-[720px] overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_22px_80px_rgba(15,23,42,0.16)] md:h-[92vh] md:max-w-7xl md:rounded-3xl md:border-0 md:shadow-2xl">
             <div
-              className={`relative h-full w-full overflow-hidden rounded-[1.5rem] bg-[#f8fafc] transition-all duration-300 md:flex md:rounded-3xl ${
-                shouldShowBooting ? "opacity-0" : "opacity-100"
-              }`}
+              className="relative h-full w-full overflow-hidden rounded-[1.5rem] bg-[#f8fafc] transition-all duration-300 md:flex md:rounded-3xl"
             >
             {/* 左侧背景 + 动画 */}
             <div
@@ -4705,9 +4705,11 @@ const unlockAudioAndMic = async () => {
             </div>
 
             {shouldShowBooting && (
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-white">
-                <div className="w-10 h-10 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
-                <div className="text-sm text-slate-600">正在載入聊天與語音...</div>
+              <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-slate-950/10 backdrop-blur-[1px]">
+                <div className="flex items-center gap-3 rounded-2xl bg-white/92 px-5 py-3.5 shadow-xl ring-1 ring-slate-200/80 backdrop-blur">
+                  <div className="h-6 w-6 rounded-full border-2 border-slate-200 border-t-indigo-600 animate-spin" />
+                  <div className="text-sm font-semibold text-slate-700">正在載入聊天與語音...</div>
+                </div>
               </div>
             )}
             {!shouldShowBooting && shouldRequirePermission && !permissionReady && (

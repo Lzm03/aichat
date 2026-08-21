@@ -31,7 +31,9 @@ const tipCopy = {
 function normalizeBots(data: any[]): AiBot[] {
   return data.map((raw: any) => ({
     id: raw.id, name: raw.name, subject: raw.subject, subjectColor: raw.subjectColor,
-    avatarUrl: raw.avatarUrl, openingMessage: raw.openingMessage || "",
+    avatarUrl: raw.avatarUrl, background: raw.background || "", animation: raw.animation || "",
+    knowledgeBase: raw.knowledgeBase || "", securityPrompt: raw.securityPrompt || "",
+    voiceId: raw.voiceId || "", openingMessage: raw.openingMessage || "",
     videoIdle: raw.videoIdle || "", videoThinking: raw.videoThinking || "", videoTalking: raw.videoTalking || "",
     interactions: raw.interactions, accuracy: raw.accuracy, isVisible: raw.isVisible,
     hasPublishedQuiz: Boolean(raw.hasPublishedQuiz), hasPendingQuiz: Boolean(raw.hasPendingQuiz),
@@ -202,13 +204,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         ) : null}
       </div>
 
-      <PublishSuccessModal
-        isOpen={Boolean(selectedBot)}
-        onClose={() => setSelectedBot(null)}
-        botConfig={selectedBot}
-        onEdit={editSelectedBot}
-        onDelete={deleteBot}
-      />
+      {selectedBot ? (
+        <PublishSuccessModal
+          isOpen
+          onClose={() => setSelectedBot(null)}
+          botConfig={selectedBot}
+          onEdit={editSelectedBot}
+          onDelete={deleteBot}
+        />
+      ) : null}
       <InfoTipModal open={Boolean(tip)} title={tip ? tipCopy[tip].title : ""} body={tip ? (tip === "limit" && isPro ? "PRO 方案的對話訊息不限量，機器人角色則按席位使用。如需更多席位，可直接聯絡客服協助加開。" : tipCopy[tip].body) : ""} onClose={() => setTip(null)} />
       <PlatformDialog open={dialog.open} title={dialog.title} message={dialog.message} confirmText={dialog.confirmText} cancelText={dialog.cancelText} tone={dialog.tone} onClose={closeDialog} onConfirm={dialog.onConfirm || undefined} />
     </div>
