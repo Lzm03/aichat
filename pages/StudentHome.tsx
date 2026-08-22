@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Bell, BookOpen, Bot, ClipboardList, Flame, HelpCircle, LogOut, Medal, Palette, Sparkles } from "lucide-react";
+import { Bell, BookOpen, Bot, ClipboardList, Flame, HelpCircle, LogOut, Medal, Sparkles } from "lucide-react";
 import { clearAuthSession, type StoredAuthUser } from "../utils/auth";
 import { API_BASE } from "../utils/api";
 import { PublishSuccessModal } from "../components/workshop/PublishSuccessModal";
@@ -32,8 +32,7 @@ type SharedBot = {
 const navItems = [
   { label: "星際地圖", icon: BookOpen, active: true },
   { label: "今日任務", icon: ClipboardList },
-  { label: "創意實驗室", icon: Palette },
-  { label: "成就", icon: Medal },
+  { label: "我的成就", icon: Medal },
 ];
 
 export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
