@@ -177,7 +177,7 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
           </div>
           {/* 語言切換：繁中 / English */}
           <div className="flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-100/80 p-0.5">
-            <button type="button" onClick={() => switchLang("zh-HK")} className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${lang === "zh-HK" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>繁中</button>
+            <button type="button" onClick={() => switchLang("zh-HK")} className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${lang === "zh-HK" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>中</button>
             <button type="button" onClick={() => switchLang("en")} className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${lang === "en" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>EN</button>
           </div>
           <button aria-label={t("bell")} className="hidden rounded-full p-2 text-amber-400 transition hover:bg-amber-50 sm:block"><Bell className="h-5 w-5 fill-amber-300" /></button>
