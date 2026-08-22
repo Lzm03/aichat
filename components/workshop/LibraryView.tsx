@@ -141,7 +141,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       <section className="mb-6 overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
         <div className="grid min-h-[220px] md:grid-cols-2">
           <div className="min-h-[200px] overflow-hidden bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600">
-            <img src={isPro ? "/ui-update/pro-hero.png" : "/ui-update/library-hero.png"} alt="Tomato Robot AI 夥伴" className="h-full w-full object-cover" />
+            <img src={isPro ? "/ui-update/pro-hero.webp" : "/ui-update/library-hero.webp"} alt="Tomato Robot AI 夥伴" className="h-full w-full object-cover" loading="lazy" />
           </div>
           <div className="flex flex-col justify-center gap-3 p-7 sm:p-8">
             {isPro ? <span className="w-fit rounded-full bg-amber-100 px-3 py-1 text-[11px] font-extrabold tracking-wide text-amber-800">PRO 方案</span> : null}

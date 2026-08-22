@@ -18,7 +18,7 @@ function getTimeGreeting(date = new Date()) {
 const HeroBanner: React.FC<{ teacherName: string }> = ({ teacherName }) => (
     <div className="relative mb-5 h-[210px] w-full overflow-hidden rounded-[24px] shadow-md group sm:mb-6 sm:h-auto sm:aspect-[4/1] sm:rounded-[32px]">
       <img 
-      src="/Tomato_Robot.png" 
+      src="/Tomato_Robot.webp" 
         alt="AI Dashboard Hero" 
         className="absolute inset-0 h-full w-full object-cover object-center transition-transform duration-700 group-hover:scale-105"
     />
