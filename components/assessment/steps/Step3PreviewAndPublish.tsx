@@ -136,7 +136,7 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
     },
     {
       id: 'h2',
-      title: '期中考 - 閲讀理解',
+      title: '期中考 - 閱讀理解',
       questions: [
         { id: 201, content: '比較桃花源與現實社會的差異。', cognitiveLevel: '分析', levelColor: 'bg-orange-100 text-orange-700', type: '論述題' }
       ]

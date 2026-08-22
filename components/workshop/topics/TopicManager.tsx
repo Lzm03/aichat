@@ -391,7 +391,7 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
                     value={form.name}
                     onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                     maxLength={80}
-                    placeholder="例如：閲讀理解"
+                    placeholder="例如：閱讀理解"
                     className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-200/70 disabled:text-slate-500"
                   />
                 </label>
