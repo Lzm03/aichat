@@ -96,10 +96,10 @@ const T: Record<"zh-HK" | "en", StudentHomeStrings> = {
 // 只取字典中純字串的 key（排除 greeting/todayInteractions 這類函數型）
 type StudentHomeStringKey = { [K in keyof StudentHomeStrings]: StudentHomeStrings[K] extends string ? K : never }[keyof StudentHomeStrings];
 
-const navItems: { labelKey: StudentHomeStringKey; icon: React.ComponentType<{ className?: string }>; active?: boolean }[] = [
-  { labelKey: "starMap", icon: BookOpen, active: true },
+const navItems: { labelKey: StudentHomeStringKey; icon: React.ComponentType<{ className?: string }>; active?: boolean; href?: string }[] = [
+  { labelKey: "starMap", icon: BookOpen, active: true, href: "/" },
   { labelKey: "todayTasks", icon: ClipboardList },
-  { labelKey: "achievements", icon: Medal },
+  { labelKey: "achievements", icon: Medal, href: "/achievements" },
 ];
 
 export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
@@ -237,17 +237,26 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
       </main>
 
       <nav className="fixed bottom-3 left-1/2 z-20 flex w-[calc(100%-24px)] max-w-[370px] -translate-x-1/2 items-center justify-between gap-0.5 rounded-[26px] border border-[var(--border)] bg-[var(--bg-headbar)] p-1.5 shadow-[var(--shadow-nav)] backdrop-blur sm:bottom-6 sm:w-auto sm:max-w-none sm:gap-1 sm:rounded-[30px] sm:p-2">
-        {navItems.map(({ labelKey, icon: Icon, active }) => (
-          <button
-            key={labelKey}
-            className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-[20px] px-2 py-2 text-[9px] font-bold transition sm:min-w-[72px] sm:flex-none sm:rounded-[22px] sm:px-3 sm:text-[10px] md:min-w-[82px] ${
-              active ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-200" : "text-[var(--text-muted)] hover:bg-[var(--bg-subtle)]"
-            }`}
-          >
-            <Icon className="h-5 w-5" />
-            {t(labelKey)}
-          </button>
-        ))}
+        {navItems.map(({ labelKey, icon: Icon, active, href }) => {
+          const className = `flex min-w-0 flex-1 flex-col items-center gap-1 rounded-[20px] px-2 py-2 text-[9px] font-bold transition sm:min-w-[72px] sm:flex-none sm:rounded-[22px] sm:px-3 sm:text-[10px] md:min-w-[82px] ${
+            active ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-200" : "text-[var(--text-muted)] hover:bg-[var(--bg-subtle)]"
+          }`;
+          const inner = (
+            <>
+              <Icon className="h-5 w-5" />
+              {t(labelKey)}
+            </>
+          );
+          return href ? (
+            <a key={labelKey} href={href} className={className}>
+              {inner}
+            </a>
+          ) : (
+            <button key={labelKey} className={className}>
+              {inner}
+            </button>
+          );
+        })}
       </nav>
 
       {selectedBot ? (
