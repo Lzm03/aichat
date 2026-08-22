@@ -14,6 +14,7 @@ import { StudentHome } from './pages/StudentHome';
 import { TeacherSharingPage } from './pages/TeacherSharingPage';
 import { CharacterStagePage } from './pages/CharacterStagePage';
 import { ProPlanPage } from './pages/ProPlanPage';
+import { HelpCenterPage } from './pages/HelpCenterPage';
 import { MobileSidebarDrawer } from './components/layout/MobileSidebarDrawer';
 import { Icons } from './components/icons';
 import { API_BASE } from './utils/api';
@@ -56,6 +57,7 @@ const App: React.FC = () => {
   const [isAccountRoute, setIsAccountRoute] = useState(false);
   const [isSettingsRoute, setIsSettingsRoute] = useState(false);
   const [isProRoute, setIsProRoute] = useState(false);
+  const [isHelpRoute, setIsHelpRoute] = useState(false);
   const [currentUser, setCurrentUser] = useState<StoredAuthUser | null>(null);
   const [isSessionReady, setIsSessionReady] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -99,6 +101,7 @@ const App: React.FC = () => {
       setIsAccountRoute(window.location.pathname === "/account");
       setIsSettingsRoute(window.location.pathname === "/settings");
       setIsProRoute(window.location.pathname === "/pro");
+      setIsHelpRoute(window.location.pathname === "/help");
       setSharedBotId(m ? decodeURIComponent(m[1]) : null);
       setStageBotId(stageMatch ? decodeURIComponent(stageMatch[1]) : null);
     };
@@ -201,7 +204,7 @@ const App: React.FC = () => {
   }, [themeMode]);
 
   return (
-    <div className={`min-h-screen ${shellThemeClasses} ${sharedBotId || stageBotId || shouldShowAuth || shouldShowLanding || isAccountRoute || isSettingsRoute || isProRoute || !isSessionReady ? "block" : "flex"}`}>
+    <div className={`min-h-screen ${shellThemeClasses} ${sharedBotId || stageBotId || shouldShowAuth || shouldShowLanding || isAccountRoute || isSettingsRoute || isProRoute || isHelpRoute || !isSessionReady ? "block" : "flex"}`}>
       {isUpdating && !shouldShowLanding ? (
         <div className="fixed inset-0 z-[9999] bg-white/95 backdrop-blur-sm flex items-center justify-center">
           <div className="text-center">
@@ -228,6 +231,8 @@ const App: React.FC = () => {
       ) : currentUser?.role === "student" ? (
         isAccountRoute ? (
           <AccountPage currentUser={currentUser} onProfileUpdated={setCurrentUser} />
+        ) : isHelpRoute ? (
+          <HelpCenterPage />
         ) : (
           <StudentHome currentUser={currentUser} />
         )
@@ -237,6 +242,8 @@ const App: React.FC = () => {
         <SettingsPage currentUser={currentUser} onProfileUpdated={setCurrentUser} />
       ) : isProRoute && currentUser ? (
         <ProPlanPage />
+      ) : isHelpRoute && currentUser ? (
+        <HelpCenterPage />
       ) : (
         <>
           <Sidebar activePage={activePage} setActivePage={setActivePage} forceHidden={isPortraitLayout} />
