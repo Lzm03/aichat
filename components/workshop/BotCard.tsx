@@ -171,7 +171,7 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onShowSub
           {bot.name}
         </h3>
 
-        {/* 學科顏色 - 你可以改為用户自定義 */}
+        {/* 學科顏色 - 你可以改為用戶自定義 */}
         <div className="flex items-center gap-1.5">
           <span className={`rounded-full px-3 py-1 text-xs font-bold ${colorMap[bot.subjectColor] || colorMap.indigo}`}>{bot.subject}</span>
           {onShowSubjectHelp ? <button type="button" aria-label="科目標籤説明" onClick={(event) => { event.stopPropagation(); onShowSubjectHelp(); }} className="flex h-[18px] w-[18px] items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-[11px] font-extrabold text-slate-400">?</button> : null}

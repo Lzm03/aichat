@@ -42,7 +42,7 @@ interface Step1TextAndGradeProps {
 
 const mockHistoryTexts = [
   { id: 1, title: '中三古文練習 - 桃花源記', content: '晉太元中，武陵人捕魚為業。緣溪行，忘路之遠近。忽逢桃花林，夾岸數百步，中無雜樹，芳草鮮美，落英繽紛。漁人甚異之，復前行，欲窮其林。\n\n林盡水源，便得一山，山有小口，彷彿若有光。便捨船，從口入。初極狹，才通人。復行數十步，豁然開朗。土地平曠，屋舍儼然，有良田美池桑竹之屬。阡陌交通，雞犬相聞。其中往來種作，男女衣著，悉如外人。黃髮垂髫，並怡然自樂。' },
-  { id: 2, title: '現代文閲讀 - 故鄉', content: '我冒了嚴寒，回到相隔二千餘裏，別了二十餘年的故鄉去。\n\n時候既然是深冬；漸近故鄉時，天氣又陰晦了，冷風吹進船艙中，嗚嗚的響，從篷隙向外一望，蒼黃的天底下，遠近橫著幾個蕭索的荒村，沒有一些活氣。我的心禁不住悲涼起來了。\n\n阿！這不是我二十年來時時記得的故鄉？' }
+  { id: 2, title: '現代文閱讀 - 故鄉', content: '我冒了嚴寒，回到相隔二千餘裏，別了二十餘年的故鄉去。\n\n時候既然是深冬；漸近故鄉時，天氣又陰晦了，冷風吹進船艙中，嗚嗚的響，從篷隙向外一望，蒼黃的天底下，遠近橫著幾個蕭索的荒村，沒有一些活氣。我的心禁不住悲涼起來了。\n\n阿！這不是我二十年來時時記得的故鄉？' }
 ];
 
 const DEFAULT_QUESTION_COUNT_BY_GRADE: Record<string, number> = {
@@ -296,7 +296,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
             >
               <span className="shrink-0 mt-0.5"><Bot className="w-4 h-4 text-violet-500" /></span>
               <span>
-                這裡只顯示目前帳户已分享的 Bot，並可選擇本次測驗要發佈到哪個教學角色。
+                這裡只顯示目前帳戶已分享的 Bot，並可選擇本次測驗要發佈到哪個教學角色。
               </span>
             </motion.div>
           </div>

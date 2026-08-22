@@ -97,13 +97,13 @@ export const TeacherSharingPage: React.FC = () => {
   return (
     <div className="mx-auto max-w-7xl">
       <h1 className="text-3xl font-black tracking-tight text-slate-900">學生與 Bot 分享</h1>
-      <p className="mt-2 text-sm text-slate-500">先加入學生帳户，再選擇要分享給每位學生的 AI Bot。</p>
+      <p className="mt-2 text-sm text-slate-500">先加入學生帳戶，再選擇要分享給每位學生的 AI Bot。</p>
       {(message || error) && <div className={`mt-5 rounded-2xl border px-4 py-3 text-sm ${error ? "border-rose-200 bg-rose-50 text-rose-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{error || message}</div>}
 
       <section className="mt-6 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-center gap-2 text-lg font-bold"><Users className="h-5 w-5 text-indigo-600" />我的學生</div>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-          <input value={studentEmail} onChange={(e) => setStudentEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void addStudent(); }} placeholder="輸入學生帳户電郵" className="min-w-0 flex-1 rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100" />
+          <input value={studentEmail} onChange={(e) => setStudentEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void addStudent(); }} placeholder="輸入學生帳戶電郵" className="min-w-0 flex-1 rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100" />
           <button onClick={() => void addStudent()} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white hover:bg-indigo-700"><Plus className="h-4 w-4" />加入學生</button>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">

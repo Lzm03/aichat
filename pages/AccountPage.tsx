@@ -79,14 +79,14 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
       });
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.user) {
-        throw new Error(data?.error || "帳户資料更新失敗");
+        throw new Error(data?.error || "帳戶資料更新失敗");
       }
 
       saveAuthSession({ token: session.token, user: data.user }, isAuthPersistedInLocalStorage());
       onProfileUpdated(data.user);
-      setMessage("帳户資料已更新");
+      setMessage("帳戶資料已更新");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "帳户資料更新失敗");
+      setError(err instanceof Error ? err.message : "帳戶資料更新失敗");
     } finally {
       setSaving(false);
     }
@@ -127,8 +127,8 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
       <div className="rounded-[32px] border border-slate-200/80 bg-white p-6 shadow-sm md:p-8">
         <div className="flex flex-col gap-3 border-b border-slate-200 pb-6 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-900">帳户中心</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-500">更新你的頭像、名字和帳户基本資料。</p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-900">帳戶中心</h1>
+            <p className="mt-2 text-sm leading-6 text-slate-500">更新你的頭像、名字和帳戶基本資料。</p>
           </div>
           <a href="/" className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
             <Icons.back className="h-4 w-4" />
@@ -248,7 +248,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
                   disabled={saving || uploading}
                   className="rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-400"
                 >
-                  {saving ? "儲存中..." : "儲存帳户資料"}
+                  {saving ? "儲存中..." : "儲存帳戶資料"}
                 </button>
               </div>
             </div>

@@ -45,7 +45,7 @@ export const FeatureLimitPanel: React.FC<{
               />
             </div>
             <div className="mt-2 text-xs font-medium text-slate-600">
-              {feature.unlimited ? "此帳户無限制" : `已用 ${feature.used} / ${feature.limit} ${feature.countUnit}`}
+              {feature.unlimited ? "此帳戶無限制" : `已用 ${feature.used} / ${feature.limit} ${feature.countUnit}`}
             </div>
           </div>
         ))}

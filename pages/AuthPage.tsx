@@ -71,7 +71,7 @@ export const AuthPage: React.FC = () => {
       }
       const isStudent = data.user.role === "student";
       if ((loginRole === "student") !== isStudent) {
-        throw new Error(loginRole === "student" ? "這不是學生帳户，請選擇教師登入。" : "這是學生帳户，請選擇學生登入。");
+        throw new Error(loginRole === "student" ? "這不是學生帳戶，請選擇教師登入。" : "這是學生帳戶，請選擇學生登入。");
       }
 
       saveAuthSession(data, rememberMe);

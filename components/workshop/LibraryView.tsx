@@ -168,7 +168,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         </div>
         {isPro && createBotFeature?.locked && !bannerDismissed ? (
           <div className="mt-3.5 flex flex-col gap-3 rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-[13px] leading-6 text-indigo-900 sm:flex-row sm:items-center sm:justify-between">
-            <span>機器人角色席位已用完（{usageLabel(createBotFeature)}）。PRO 用户可洽客服快速加開席位。</span>
+            <span>機器人角色席位已用完（{usageLabel(createBotFeature)}）。PRO 用戶可洽客服快速加開席位。</span>
             <div className="flex shrink-0 items-center gap-2"><a href="mailto:Mandy@chopreality.com" className="rounded-[10px] bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white">聯絡客服</a><button type="button" onClick={() => setBannerDismissed(true)} className="px-1 text-indigo-400">×</button></div>
           </div>
         ) : null}
