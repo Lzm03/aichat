@@ -220,7 +220,11 @@ const App: React.FC = () => {
       ) : shouldShowAuth ? (
         <AuthPage />
       ) : currentUser?.role === "student" ? (
-        <StudentHome currentUser={currentUser} />
+        isAccountRoute ? (
+          <AccountPage currentUser={currentUser} onProfileUpdated={setCurrentUser} />
+        ) : (
+          <StudentHome currentUser={currentUser} />
+        )
       ) : isAccountRoute && currentUser ? (
         <AccountPage currentUser={currentUser} onProfileUpdated={setCurrentUser} />
       ) : isSettingsRoute && currentUser ? (

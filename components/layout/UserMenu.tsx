@@ -37,9 +37,12 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon: Icon, label, onClick, href, i
 
 interface UserMenuProps {
   currentUser?: StoredAuthUser | null;
+  /** "student" = 學生版選單（帳戶中心/幫助中心/登出）；預設 "teacher" 行為不變 */
+  variant?: "teacher" | "student";
 }
 
-export const UserMenu: React.FC<UserMenuProps> = ({ currentUser = null }) => {
+export const UserMenu: React.FC<UserMenuProps> = ({ currentUser = null, variant = "teacher" }) => {
+  const isStudent = variant === "student";
   const handleLogout = () => {
     clearAuthSession();
     window.location.href = '/auth';
@@ -58,8 +61,8 @@ export const UserMenu: React.FC<UserMenuProps> = ({ currentUser = null }) => {
          <p className="text-xs text-slate-500">{currentUser?.email || '請先登入帳戶'}</p>
       </div>
       <MenuItem icon={Icons.userCog} label={currentUser ? "帳戶中心" : "登入 / 註冊"} href={currentUser ? "/account" : "/auth"} />
-      {currentUser && <MenuItem icon={Icons.settings} label="設定" href="/settings" />}
-      <MenuItem icon={Icons.helpCircle} label="幫助" />
+      {currentUser && !isStudent && <MenuItem icon={Icons.settings} label="設定" href="/settings" />}
+      <MenuItem icon={Icons.helpCircle} label={isStudent ? "幫助中心" : "幫助"} href={isStudent ? "mailto:Mandy@chopreality.com" : undefined} />
       <div className="my-2 h-px bg-slate-200/80" />
       <MenuItem icon={Icons.logOut} label="登出" isDanger onClick={handleLogout} />
     </motion.div>

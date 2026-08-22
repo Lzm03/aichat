@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { Bell, BookOpen, Bot, ClipboardList, Flame, HelpCircle, LogOut, Medal, Sparkles } from "lucide-react";
-import { clearAuthSession, type StoredAuthUser } from "../utils/auth";
+import React, { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Bell, BookOpen, Bot, ClipboardList, Flame, HelpCircle, Medal, Sparkles } from "lucide-react";
+import type { StoredAuthUser } from "../utils/auth";
 import { API_BASE } from "../utils/api";
 import { getAvatarColor } from "../utils/avatarColor";
 import { PublishSuccessModal } from "../components/workshop/PublishSuccessModal";
 import { InfoTipModal } from "../components/system/InfoTipModal";
+import { UserMenu } from "../components/layout/UserMenu";
 
 type StudentHomeProps = {
   currentUser: StoredAuthUser;
@@ -37,7 +38,6 @@ type StudentHomeStrings = {
   view: string;
   tokenHelp: string;
   bell: string;
-  logout: string;
   chooseCompanion: string;
   companionHelp: string;
   quizBadge: string;
@@ -62,7 +62,6 @@ const T: Record<"zh-HK" | "en", StudentHomeStrings> = {
     view: "查看",
     tokenHelp: "Token 額度說明",
     bell: "通知",
-    logout: "登出",
     chooseCompanion: "選擇一位學習夥伴",
     companionHelp: "學習夥伴說明",
     quizBadge: "測試題",
@@ -85,7 +84,6 @@ const T: Record<"zh-HK" | "en", StudentHomeStrings> = {
     view: "View",
     tokenHelp: "Token balance info",
     bell: "Notifications",
-    logout: "Sign out",
     chooseCompanion: "Choose a study buddy",
     companionHelp: "Study buddy info",
     quizBadge: "Quiz",
@@ -144,10 +142,19 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
       .finally(() => setLoadingBots(false));
   }, []);
 
-  const logout = () => {
-    clearAuthSession();
-    window.location.href = "/auth";
-  };
+  // 用戶選單開關（點外關閉，模式與教師 Header 一致）
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   return (
     <div className="min-h-screen w-full bg-[#f7f8fb] text-slate-800">
@@ -181,22 +188,31 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
             <button type="button" onClick={() => switchLang("en")} className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${lang === "en" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>EN</button>
           </div>
           <button aria-label={t("bell")} className="hidden rounded-full p-2 text-amber-400 transition hover:bg-amber-50 sm:block"><Bell className="h-5 w-5 fill-amber-300" /></button>
-          {currentUser.avatarUrl ? (
-            <img
-              src={currentUser.avatarUrl}
-              alt=""
-              className="h-9 w-9 rounded-xl object-cover sm:h-10 sm:w-10"
-            />
-          ) : (
-            <span
-              aria-hidden="true"
-              className="block h-9 w-9 rounded-xl sm:h-10 sm:w-10"
-              style={{ backgroundColor: getAvatarColor(currentUser.id || currentUser.email) }}
-            />
-          )}
-          <button onClick={logout} aria-label={t("logout")} title={t("logout")} className="rounded-full p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 sm:p-2">
-            <LogOut className="h-5 w-5" />
-          </button>
+          <div className="relative" ref={userMenuRef}>
+            <button
+              type="button"
+              onClick={() => setIsUserMenuOpen((prev) => !prev)}
+              aria-label={currentUser.fullName || "Account"}
+              className="overflow-hidden rounded-xl transition hover:ring-2 hover:ring-indigo-200"
+            >
+              {currentUser.avatarUrl ? (
+                <img
+                  src={currentUser.avatarUrl}
+                  alt=""
+                  className="h-9 w-9 rounded-xl object-cover sm:h-10 sm:w-10"
+                />
+              ) : (
+                <span
+                  aria-hidden="true"
+                  className="block h-9 w-9 rounded-xl sm:h-10 sm:w-10"
+                  style={{ backgroundColor: getAvatarColor(currentUser.id || currentUser.email) }}
+                />
+              )}
+            </button>
+            <AnimatePresence>
+              {isUserMenuOpen && <UserMenu currentUser={currentUser} variant="student" />}
+            </AnimatePresence>
+          </div>
         </div>
       </header>
 
