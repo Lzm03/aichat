@@ -103,7 +103,10 @@ const T: Record<"zh-HK" | "en", StudentHomeStrings> = {
   },
 };
 
-const navItems: { labelKey: keyof StudentHomeStrings; icon: React.ComponentType<{ className?: string }>; active?: boolean }[] = [
+// 只取字典中純字串的 key（排除 greeting/todayInteractions 這類函數型）
+type StudentHomeStringKey = { [K in keyof StudentHomeStrings]: StudentHomeStrings[K] extends string ? K : never }[keyof StudentHomeStrings];
+
+const navItems: { labelKey: StudentHomeStringKey; icon: React.ComponentType<{ className?: string }>; active?: boolean }[] = [
   { labelKey: "starMap", icon: BookOpen, active: true },
   { labelKey: "todayTasks", icon: ClipboardList },
   { labelKey: "achievements", icon: Medal },
