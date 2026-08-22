@@ -61,7 +61,7 @@ const mockQuestions = [
     type: '論述題',
     cognitiveLevel: '評價',
     levelColor: 'bg-red-100 text-red-700',
-    content: '你認為桃花源是一個理想的社會嗎？請結合文本說明你的觀點。',
+    content: '你認為桃花源是一個理想的社會嗎？請結合文本説明你的觀點。',
     answer: '(自由作答，需結合文本中「黃髮垂髫，並怡然自樂」等描述進行評價)'
   },
   {
@@ -136,7 +136,7 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
     },
     {
       id: 'h2',
-      title: '期中考 - 閱讀理解',
+      title: '期中考 - 閲讀理解',
       questions: [
         { id: 201, content: '比較桃花源與現實社會的差異。', cognitiveLevel: '分析', levelColor: 'bg-orange-100 text-orange-700', type: '論述題' }
       ]

@@ -63,7 +63,7 @@ const App: React.FC = () => {
   const [botSearchQuery, setBotSearchQuery] = useState('');
   const { features } = useFeatureEntitlements();
 
-  // 在本地永远视为已准备好，不检查 window.aistudio
+  // 在本地永遠視為已準備好，不檢查 window.aistudio
   const hasApiKey = true;
 
   const renderCurrentPage = () => {
@@ -200,8 +200,8 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[9999] bg-white/95 backdrop-blur-sm flex items-center justify-center">
           <div className="text-center">
             <div className="mx-auto h-12 w-12 rounded-full border-4 border-slate-200 border-t-indigo-600 animate-spin" />
-            <p className="mt-4 text-lg font-semibold text-slate-800">系统更新中</p>
-            <p className="mt-1 text-sm text-slate-500">新版本部署完成后将自动恢复</p>
+            <p className="mt-4 text-lg font-semibold text-slate-800">系統更新中</p>
+            <p className="mt-1 text-sm text-slate-500">新版本部署完成後將自動恢復</p>
           </div>
         </div>
       ) : null}
