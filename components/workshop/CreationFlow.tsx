@@ -67,7 +67,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       return {
         id: null,
         name: "我的 AI 機器人",
-        avatarUrl: "https://api.dicebear.com/8.x/bottts/svg?seed=new_bot",
+        avatarUrl: "/avatars/bot-default.svg",
         background: "",
         animation: "點頭回應",
 

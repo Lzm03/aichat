@@ -148,7 +148,7 @@ export const TeacherSharingPage: React.FC = () => {
                       }`}
                     >
                       <img
-                        src={bot.avatarUrl || "https://api.dicebear.com/9.x/bottts/svg?seed=Chopreality"}
+                        src={bot.avatarUrl || "/avatars/bot-default.svg"}
                         alt=""
                         className="h-11 w-11 rounded-2xl bg-indigo-50 object-cover ring-1 ring-slate-100"
                       />
@@ -172,7 +172,7 @@ export const TeacherSharingPage: React.FC = () => {
                   <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-3">
                       <img
-                        src={selectedBot.avatarUrl || "https://api.dicebear.com/9.x/bottts/svg?seed=Chopreality"}
+                        src={selectedBot.avatarUrl || "/avatars/bot-default.svg"}
                         alt=""
                         className="h-12 w-12 rounded-2xl bg-indigo-50 object-cover ring-1 ring-slate-100"
                       />

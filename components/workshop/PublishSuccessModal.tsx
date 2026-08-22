@@ -3926,7 +3926,7 @@ const unlockAudioAndMic = async () => {
                         const safeAvatar =
                           avatarUrl && avatarUrl.trim() !== ""
                             ? avatarUrl
-                            : "https://via.placeholder.com/400";
+                            : "/avatars/placeholder.svg";
                         return (
                           <img
                             data-stage-character="true"
@@ -4033,7 +4033,7 @@ const unlockAudioAndMic = async () => {
                       const safeAvatar =
                         avatarUrl && avatarUrl.trim() !== ""
                           ? avatarUrl
-                          : "https://via.placeholder.com/400";
+                          : "/avatars/placeholder.svg";
                       return (
                         <img
                           data-stage-character="true"

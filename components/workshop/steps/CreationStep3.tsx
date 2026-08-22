@@ -14,10 +14,10 @@ interface CreationStep3Props {
 }
 
 const presetAvatars = [
-  "https://api.dicebear.com/8.x/bottts/svg?seed=avatar1",
-  "https://api.dicebear.com/8.x/bottts/svg?seed=avatar2",
-  "https://api.dicebear.com/8.x/bottts/svg?seed=avatar3",
-  "https://api.dicebear.com/8.x/bottts/svg?seed=avatar4",
+  "/avatars/avatar-1.svg",
+  "/avatars/avatar-2.svg",
+  "/avatars/avatar-3.svg",
+  "/avatars/avatar-4.svg",
 ];
 
 const mockStyles = {

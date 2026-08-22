@@ -9,11 +9,11 @@ import { DEFAULT_ACCOUNT_AVATAR } from "../utils/default-avatar";
 
 const defaultAvatars = [
   DEFAULT_ACCOUNT_AVATAR,
-  "https://api.dicebear.com/9.x/adventurer/svg?seed=Kai",
-  "https://api.dicebear.com/9.x/adventurer/svg?seed=Nova",
-  "https://api.dicebear.com/9.x/adventurer/svg?seed=Milo",
-  "https://api.dicebear.com/9.x/adventurer/svg?seed=Jade",
-  "https://api.dicebear.com/9.x/adventurer/svg?seed=Iris",
+  "/avatars/avatar-1.svg",
+  "/avatars/avatar-2.svg",
+  "/avatars/avatar-3.svg",
+  "/avatars/avatar-4.svg",
+  "/avatars/avatar-5.svg",
 ];
 
 interface AccountPageProps {
