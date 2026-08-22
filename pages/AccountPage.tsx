@@ -124,13 +124,13 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-8 lg:px-8">
-      <div className="rounded-[32px] border border-slate-200/80 bg-white p-6 shadow-sm md:p-8">
-        <div className="flex flex-col gap-3 border-b border-slate-200 pb-6 md:flex-row md:items-end md:justify-between">
+      <div className="rounded-[32px] border border-[var(--border-soft)] bg-[var(--bg-card)] p-6 shadow-sm md:p-8">
+        <div className="flex flex-col gap-3 border-b border-[var(--border)] pb-6 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-900">帳戶中心</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-500">更新你的頭像、名字和帳戶基本資料。</p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-[var(--text-main)]">帳戶中心</h1>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-muted)]">更新你的頭像、名字和帳戶基本資料。</p>
           </div>
-          <a href="/" className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+          <a href="/" className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] px-4 py-2 text-sm font-semibold text-[var(--text-body)] hover:bg-[var(--bg-subtle)]">
             <Icons.back className="h-4 w-4" />
             返回工作台
           </a>
@@ -138,8 +138,8 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
         </div>
 
         <form className="mt-8 grid gap-8 lg:grid-cols-[320px_minmax(0,1fr)]" onSubmit={handleSave}>
-          <section className="rounded-[28px] border border-slate-200 bg-slate-50/70 p-5">
-            <div className="text-sm font-bold text-slate-700">頭像</div>
+          <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-subtle)] p-5">
+            <div className="text-sm font-bold text-[var(--text-body)]">頭像</div>
             <div className="mt-5 flex flex-col items-center gap-4">
               <img
                 src={avatarUrl || defaultAvatars[0]}
@@ -150,7 +150,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white hover:bg-indigo-700"
+                  className="rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-bold text-white hover:bg-[var(--accent)]"
                 >
                   {uploading ? "上傳中..." : "上傳照片"}
                 </button>
@@ -167,7 +167,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
                 />
               </div>
               <div className="w-full">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">默認頭像</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-faint)]">默認頭像</div>
                 <div className="mt-3 grid grid-cols-3 gap-3">
                   {defaultAvatars.map((preset) => (
                     <button
@@ -175,7 +175,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
                       type="button"
                       onClick={() => setAvatarUrl(preset)}
                       className={`rounded-2xl border p-1 transition ${
-                        avatarUrl === preset ? "border-indigo-500 bg-indigo-50" : "border-slate-200 bg-white"
+                        avatarUrl === preset ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--border)] bg-[var(--bg-card)]"
                       }`}
                     >
                       <img src={preset} alt="Preset Avatar" className="h-16 w-16 rounded-xl object-cover" />
@@ -189,33 +189,33 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
           <section className="space-y-5">
             <div className="grid gap-5 md:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-slate-700">名字</span>
+                <span className="mb-2 block text-sm font-semibold text-[var(--text-body)]">名字</span>
                 <input
                   type="text"
                   value={fullName}
                   onChange={(event) => setFullName(event.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-[var(--text-main)] outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-100"
                 />
               </label>
               <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-slate-700">電郵</span>
+                <span className="mb-2 block text-sm font-semibold text-[var(--text-body)]">電郵</span>
                 <input
                   type="email"
                   value={currentUser.email}
                   disabled
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-500 outline-none"
+                  className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-subtle-2)] px-4 py-3 text-sm text-[var(--text-muted)] outline-none"
                 />
               </label>
             </div>
 
             <div className="grid gap-5 md:grid-cols-2">
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">角色</div>
-                <div className="mt-2 text-lg font-bold text-slate-900">{currentUser.role}</div>
+              <div className="rounded-3xl border border-[var(--border)] bg-[var(--bg-subtle)] p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-faint)]">角色</div>
+                <div className="mt-2 text-lg font-bold text-[var(--text-main)]">{currentUser.role}</div>
               </div>
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">套餐</div>
-                <div className="mt-2 text-lg font-bold text-slate-900">{currentUser.plan || "starter"}</div>
+              <div className="rounded-3xl border border-[var(--border)] bg-[var(--bg-subtle)] p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-faint)]">套餐</div>
+                <div className="mt-2 text-lg font-bold text-[var(--text-main)]">{currentUser.plan || "starter"}</div>
               </div>
             </div>
 
@@ -246,7 +246,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
                 <button
                   type="submit"
                   disabled={saving || uploading}
-                  className="rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-400"
+                  className="rounded-2xl bg-[var(--accent)] px-6 py-3 text-sm font-bold text-white hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:bg-indigo-400"
                 >
                   {saving ? "儲存中..." : "儲存帳戶資料"}
                 </button>
@@ -260,15 +260,15 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
         <FeatureLimitPanel features={features} />
       </div>
 
-      <div className="mt-6 rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-900">聯絡我們</h2>
-        <p className="mt-3 text-sm leading-7 text-slate-600">
+      <div className="mt-6 rounded-[28px] border border-[var(--border)] bg-[var(--bg-card)] p-6 shadow-sm">
+        <h2 className="mt-2 text-2xl font-black tracking-tight text-[var(--text-main)]">聯絡我們</h2>
+        <p className="mt-3 text-sm leading-7 text-[var(--text-body)]">
           如果你希望提供產品意見、瞭解付費方案，或購買我們的機器人創建服務，可以直接聯絡我們。
         </p>
         <div className="mt-5">
-          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Email</div>
-            <div className="mt-2 text-base font-bold text-slate-900">Mandy@chopreality.com</div>
+          <div className="rounded-3xl border border-[var(--border)] bg-[var(--bg-subtle)] p-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-faint)]">Email</div>
+            <div className="mt-2 text-base font-bold text-[var(--text-main)]">Mandy@chopreality.com</div>
           </div>
         </div>
       </div>

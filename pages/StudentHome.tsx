@@ -157,13 +157,13 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
   }, []);
 
   return (
-    <div className="min-h-screen w-full bg-[#f7f8fb] text-slate-800">
-      <header className="flex min-h-[76px] w-full items-center justify-between gap-3 border-b border-slate-200/80 bg-white px-4 py-3 sm:min-h-[88px] sm:px-6 lg:px-9">
+    <div className="min-h-screen w-full bg-[var(--bg-app)] text-[var(--text-body)]">
+      <header className="flex min-h-[76px] w-full items-center justify-between gap-3 border-b border-[var(--border-soft)] bg-[var(--bg-headbar)] px-4 py-3 sm:min-h-[88px] sm:px-6 lg:px-9">
         <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
           <div className="hidden text-3xl xs:block sm:block" aria-hidden="true">🚀</div>
           <div>
             <h1 className="truncate text-base font-black tracking-tight sm:text-lg">{t("greeting")(displayName)}</h1>
-            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500 sm:gap-2 sm:text-xs">
+            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] sm:gap-2 sm:text-xs">
               <span>{t("tasksLeft")}</span>
               <button className="rounded-md bg-indigo-600 px-2 py-1 font-bold text-white transition hover:bg-indigo-700">{t("view")}</button>
             </div>
@@ -176,16 +176,16 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
             <sup className="-ml-2 -mt-5 text-xs font-black">12</sup>
           </div>
           <div className="hidden items-center gap-1.5 lg:flex">
-            <div className="rounded-2xl border border-slate-200 bg-slate-100/80 px-4 py-2">
-              <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Tokens</div>
-              <div className="text-sm font-black text-slate-600">{currentUser.quota?.remaining ?? 750} <span className="text-slate-300">/ {currentUser.quota?.monthlyLimit ?? 1000}</span></div>
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-subtle-2)] px-4 py-2">
+              <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-faint)]">Tokens</div>
+              <div className="text-sm font-black text-[var(--text-body)]">{currentUser.quota?.remaining ?? 750} <span className="text-[var(--text-faint)]">/ {currentUser.quota?.monthlyLimit ?? 1000}</span></div>
             </div>
-            <button type="button" aria-label={t("tokenHelp")} onClick={() => setActiveTip("tokens")} className="text-slate-400 transition hover:text-indigo-600"><HelpCircle className="h-[18px] w-[18px]" /></button>
+            <button type="button" aria-label={t("tokenHelp")} onClick={() => setActiveTip("tokens")} className="text-[var(--text-faint)] transition hover:text-[var(--accent-text)]"><HelpCircle className="h-[18px] w-[18px]" /></button>
           </div>
           {/* 語言切換：繁中 / English */}
-          <div className="flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-100/80 p-0.5">
-            <button type="button" onClick={() => switchLang("zh-HK")} className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${lang === "zh-HK" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>中</button>
-            <button type="button" onClick={() => switchLang("en")} className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${lang === "en" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>EN</button>
+          <div className="flex shrink-0 items-center rounded-full border border-[var(--border)] bg-[var(--bg-subtle-2)] p-0.5">
+            <button type="button" onClick={() => switchLang("zh-HK")} className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${lang === "zh-HK" ? "bg-[var(--accent)] text-white shadow-sm" : "text-[var(--text-muted)] hover:text-[var(--text-main)]"}`}>中</button>
+            <button type="button" onClick={() => switchLang("en")} className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${lang === "en" ? "bg-[var(--accent)] text-white shadow-sm" : "text-[var(--text-muted)] hover:text-[var(--text-main)]"}`}>EN</button>
           </div>
           <button aria-label={t("bell")} className="hidden rounded-full p-2 text-amber-400 transition hover:bg-amber-50 sm:block"><Bell className="h-5 w-5 fill-amber-300" /></button>
           <div className="relative" ref={userMenuRef}>
@@ -193,7 +193,7 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
               type="button"
               onClick={() => setIsUserMenuOpen((prev) => !prev)}
               aria-label={currentUser.fullName || "Account"}
-              className="overflow-hidden rounded-xl transition hover:ring-2 hover:ring-indigo-200"
+              className="overflow-hidden rounded-xl transition hover:ring-2 hover:ring-[var(--accent-border)]"
             >
               {currentUser.avatarUrl ? (
                 <img
@@ -218,8 +218,8 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
 
       <main className="mx-auto w-full max-w-[1080px] px-4 pb-32 pt-7 sm:px-6">
         <div className="mb-[18px] flex items-center gap-2">
-          <h2 className="text-[19px] font-extrabold text-slate-950">{t("chooseCompanion")}</h2>
-          <button type="button" aria-label={t("companionHelp")} onClick={() => setActiveTip("companions")} className="text-indigo-500"><HelpCircle className="h-5 w-5" /></button>
+          <h2 className="text-[19px] font-extrabold text-[var(--text-main)]">{t("chooseCompanion")}</h2>
+          <button type="button" aria-label={t("companionHelp")} onClick={() => setActiveTip("companions")} className="text-[var(--accent-text)]"><HelpCircle className="h-5 w-5" /></button>
         </div>
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {companions.map((companion, index) => (
@@ -231,7 +231,7 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.06, duration: 0.35 }}
               whileHover={{ y: -5 }}
-              className="group flex min-h-[320px] flex-col rounded-[28px] border border-slate-100 bg-white p-[26px] text-left shadow-[0_10px_30px_rgba(15,23,42,0.05)] transition hover:border-indigo-200 hover:shadow-[0_18px_45px_rgba(79,70,229,0.12)]"
+              className="group flex min-h-[320px] flex-col rounded-[28px] border border-[var(--border-soft)] bg-[var(--bg-card)] p-[26px] text-left shadow-[var(--shadow-card)] transition hover:border-[var(--accent-border)] hover:shadow-[var(--shadow-card-hover)]"
             >
               <div className="flex items-start justify-between">
                 <div className="bot-avatar-pulse relative flex h-[130px] w-[130px] items-center justify-center rounded-full bg-gradient-to-br from-indigo-400 to-violet-700 text-white">
@@ -241,25 +241,25 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
                   <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-1 text-[9px] font-bold text-amber-600 sm:px-2 sm:text-[10px]">{t("quizBadge")}</span>
                 ) : null}
               </div>
-              <h2 className="mt-4 truncate text-lg font-extrabold text-slate-950">{companion.name}</h2>
-              <span className="mt-2 inline-block rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-500">{companion.subject || t("uncategorized")}</span>
-              <div className="mt-auto border-t border-slate-100 pt-4 text-[13px] text-slate-400">{t("todayInteractions")(companion.interactions || 0)}</div>
+              <h2 className="mt-4 truncate text-lg font-extrabold text-[var(--text-main)]">{companion.name}</h2>
+              <span className="mt-2 inline-block rounded-full bg-[var(--accent-soft)] px-3 py-1 text-xs font-semibold text-[var(--accent-text)]">{companion.subject || t("uncategorized")}</span>
+              <div className="mt-auto border-t border-[var(--border-soft)] pt-4 text-[13px] text-[var(--text-faint)]">{t("todayInteractions")(companion.interactions || 0)}</div>
             </motion.button>
           ))}
         </div>
 
-        <div className="mx-auto mt-6 flex items-center justify-center gap-2 rounded-[20px] border border-dashed border-indigo-200 bg-indigo-50 px-4 py-3.5 text-center text-[13px] text-indigo-500">
+        <div className="mx-auto mt-6 flex items-center justify-center gap-2 rounded-[20px] border border-dashed border-[var(--accent-border)] bg-[var(--accent-soft)] px-4 py-3.5 text-center text-[13px] text-[var(--accent-text)]">
           <Sparkles className="h-4 w-4" />
           {loadingBots ? t("loadingBots") : companions.length ? t("startAdventure") : t("noBots")}
         </div>
       </main>
 
-      <nav className="fixed bottom-3 left-1/2 z-20 flex w-[calc(100%-24px)] max-w-[370px] -translate-x-1/2 items-center justify-between gap-0.5 rounded-[26px] border border-slate-200 bg-white/95 p-1.5 shadow-[0_18px_45px_rgba(15,23,42,0.16)] backdrop-blur sm:bottom-6 sm:w-auto sm:max-w-none sm:gap-1 sm:rounded-[30px] sm:p-2">
+      <nav className="fixed bottom-3 left-1/2 z-20 flex w-[calc(100%-24px)] max-w-[370px] -translate-x-1/2 items-center justify-between gap-0.5 rounded-[26px] border border-[var(--border)] bg-[var(--bg-headbar)] p-1.5 shadow-[var(--shadow-nav)] backdrop-blur sm:bottom-6 sm:w-auto sm:max-w-none sm:gap-1 sm:rounded-[30px] sm:p-2">
         {navItems.map(({ labelKey, icon: Icon, active }) => (
           <button
             key={labelKey}
             className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-[20px] px-2 py-2 text-[9px] font-bold transition sm:min-w-[72px] sm:flex-none sm:rounded-[22px] sm:px-3 sm:text-[10px] md:min-w-[82px] ${
-              active ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-200" : "text-slate-500 hover:bg-slate-50"
+              active ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-200" : "text-[var(--text-muted)] hover:bg-[var(--bg-subtle)]"
             }`}
           >
             <Icon className="h-5 w-5" />

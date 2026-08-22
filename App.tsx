@@ -24,7 +24,7 @@ import {
   readAuthSession,
   type StoredAuthUser,
 } from './utils/auth';
-import { DEFAULT_USER_PREFERENCES, getAppShellThemeClasses, normalizeUserPreferences } from './utils/userPreferences';
+import { DEFAULT_USER_PREFERENCES, getAppShellThemeClasses, normalizeUserPreferences, syncDarkClass } from './utils/userPreferences';
 import { useFeatureEntitlements } from './hooks/useFeatureEntitlements';
 
 export type Page = 'dashboard' | 'assessment' | 'workshop' | 'sharing';
@@ -193,6 +193,12 @@ const App: React.FC = () => {
   const shouldShowAuth = isSessionReady && !sharedBotId && !stageBotId && (isAuthRoute || (!currentUser && !isLandingRoute));
   const userPreferences = normalizeUserPreferences(currentUser?.preferences || DEFAULT_USER_PREFERENCES);
   const shellThemeClasses = getAppShellThemeClasses(userPreferences);
+  const themeMode = userPreferences.appearance.themeMode;
+
+  useEffect(() => {
+    syncDarkClass(userPreferences);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeMode]);
 
   return (
     <div className={`min-h-screen ${shellThemeClasses} ${sharedBotId || stageBotId || shouldShowAuth || shouldShowLanding || isAccountRoute || isSettingsRoute || isProRoute || !isSessionReady ? "block" : "flex"}`}>

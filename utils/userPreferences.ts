@@ -113,3 +113,15 @@ export function getAppShellThemeClasses(preferences: UserPreferences) {
 
   return `${themeMode === "midnight" ? "bg-slate-950" : backgrounds[backgroundStyle]} ${modeClasses[themeMode]}`;
 }
+
+/** 深色主題 = midnight；light/warm 一律視為明亮 */
+export function isDarkMode(preferences: UserPreferences): boolean {
+  return preferences.appearance.themeMode === "midnight";
+}
+
+/** 同步 <html> 的 dark class（驅動 globals.css 的 .dark token 覆寫）；渲染前呼叫亦安全 */
+export function syncDarkClass(preferences: UserPreferences): void {
+  if (typeof document !== "undefined") {
+    document.documentElement.classList.toggle("dark", isDarkMode(preferences));
+  }
+}

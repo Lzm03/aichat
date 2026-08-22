@@ -15,13 +15,13 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon: Icon, label, onClick, href, i
   const className = `w-full flex items-center gap-3 px-3 py-2.5 rounded-[12px] text-sm font-medium transition-colors ${
     isDanger
       ? 'text-rose-500 hover:bg-rose-50'
-      : 'text-slate-600 hover:bg-[#F8FAFC]'
+      : 'text-[var(--text-body)] hover:bg-[var(--bg-subtle)]'
   }`;
 
   if (href) {
     return (
       <a href={href} className={className}>
-        <Icon className={`w-5 h-5 ${isDanger ? 'text-rose-500' : 'text-slate-400'}`} />
+        <Icon className={`w-5 h-5 ${isDanger ? 'text-rose-500' : 'text-[var(--text-faint)]'}`} />
         <span>{label}</span>
       </a>
     );
@@ -29,7 +29,7 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon: Icon, label, onClick, href, i
 
   return (
     <button onClick={onClick} className={className}>
-      <Icon className={`w-5 h-5 ${isDanger ? 'text-rose-500' : 'text-slate-400'}`} />
+      <Icon className={`w-5 h-5 ${isDanger ? 'text-rose-500' : 'text-[var(--text-faint)]'}`} />
       <span>{label}</span>
     </button>
   );
@@ -54,16 +54,16 @@ export const UserMenu: React.FC<UserMenuProps> = ({ currentUser = null, variant 
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.9, y: -10 }}
       transition={{ type: 'spring', damping: 20, stiffness: 300 }}
-      className="absolute top-full right-0 mt-2 w-56 bg-white/80 backdrop-blur-md rounded-[20px] shadow-lg border border-slate-200/80 z-30 p-2 origin-top-right"
+      className="absolute top-full right-0 mt-2 w-56 bg-[var(--bg-card)] backdrop-blur-md rounded-[20px] shadow-lg border border-[var(--border-soft)] z-30 p-2 origin-top-right"
     >
-      <div className="p-2 border-b border-slate-200/80 mb-2">
-         <p className="text-sm font-semibold text-slate-800">{currentUser?.fullName || '未登入'}</p>
-         <p className="text-xs text-slate-500">{currentUser?.email || '請先登入帳戶'}</p>
+      <div className="p-2 border-b border-[var(--border-soft)] mb-2">
+         <p className="text-sm font-semibold text-[var(--text-main)]">{currentUser?.fullName || '未登入'}</p>
+         <p className="text-xs text-[var(--text-muted)]">{currentUser?.email || '請先登入帳戶'}</p>
       </div>
       <MenuItem icon={Icons.userCog} label={currentUser ? "帳戶中心" : "登入 / 註冊"} href={currentUser ? "/account" : "/auth"} />
       {currentUser && !isStudent && <MenuItem icon={Icons.settings} label="設定" href="/settings" />}
       <MenuItem icon={Icons.helpCircle} label={isStudent ? "幫助中心" : "幫助"} href={isStudent ? "mailto:Mandy@chopreality.com" : undefined} />
-      <div className="my-2 h-px bg-slate-200/80" />
+      <div className="my-2 h-px bg-[var(--border-soft)]" />
       <MenuItem icon={Icons.logOut} label="登出" isDanger onClick={handleLogout} />
     </motion.div>
   );
