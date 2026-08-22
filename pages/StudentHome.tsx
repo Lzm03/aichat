@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bell, BookOpen, Bot, ClipboardList, Flame, HelpCircle, Medal, Sparkles } from "lucide-react";
+import { BookOpen, Bot, ClipboardList, HelpCircle, Medal, Sparkles } from "lucide-react";
 import type { StoredAuthUser } from "../utils/auth";
 import { API_BASE } from "../utils/api";
 import { getAvatarColor } from "../utils/avatarColor";
@@ -34,10 +34,7 @@ type SharedBot = {
 // 學生首頁 i18n 字典：繁體中文（預設）與英文
 type StudentHomeStrings = {
   greeting: (name: string) => string;
-  tasksLeft: string;
-  view: string;
   tokenHelp: string;
-  bell: string;
   chooseCompanion: string;
   companionHelp: string;
   quizBadge: string;
@@ -58,10 +55,7 @@ type StudentHomeStrings = {
 const T: Record<"zh-HK" | "en", StudentHomeStrings> = {
   "zh-HK": {
     greeting: (name) => `嗨，${name}！`,
-    tasksLeft: "今日還有 2 個任務",
-    view: "查看",
     tokenHelp: "Token 額度說明",
-    bell: "通知",
     chooseCompanion: "選擇一位學習夥伴",
     companionHelp: "學習夥伴說明",
     quizBadge: "測試題",
@@ -80,10 +74,7 @@ const T: Record<"zh-HK" | "en", StudentHomeStrings> = {
   },
   en: {
     greeting: (name) => `Hi, ${name}!`,
-    tasksLeft: "2 tasks left today",
-    view: "View",
     tokenHelp: "Token balance info",
-    bell: "Notifications",
     chooseCompanion: "Choose a study buddy",
     companionHelp: "Study buddy info",
     quizBadge: "Quiz",
@@ -163,18 +154,10 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
           <div className="hidden text-3xl xs:block sm:block" aria-hidden="true">🚀</div>
           <div>
             <h1 className="truncate text-base font-black tracking-tight sm:text-lg">{t("greeting")(displayName)}</h1>
-            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] sm:gap-2 sm:text-xs">
-              <span>{t("tasksLeft")}</span>
-              <button className="rounded-md bg-indigo-600 px-2 py-1 font-bold text-white transition hover:bg-indigo-700">{t("view")}</button>
-            </div>
           </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-1 sm:gap-3 lg:gap-5">
-          <div className="hidden items-center gap-1 text-orange-500 md:flex">
-            <Flame className="h-6 w-6 fill-orange-400" />
-            <sup className="-ml-2 -mt-5 text-xs font-black">12</sup>
-          </div>
           <div className="hidden items-center gap-1.5 lg:flex">
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-subtle-2)] px-4 py-2">
               <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-faint)]">Tokens</div>
@@ -187,7 +170,6 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
             <button type="button" onClick={() => switchLang("zh-HK")} className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${lang === "zh-HK" ? "bg-[var(--accent)] text-white shadow-sm" : "text-[var(--text-muted)] hover:text-[var(--text-main)]"}`}>中</button>
             <button type="button" onClick={() => switchLang("en")} className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${lang === "en" ? "bg-[var(--accent)] text-white shadow-sm" : "text-[var(--text-muted)] hover:text-[var(--text-main)]"}`}>EN</button>
           </div>
-          <button aria-label={t("bell")} className="hidden rounded-full p-2 text-amber-400 transition hover:bg-amber-50 sm:block"><Bell className="h-5 w-5 fill-amber-300" /></button>
           <div className="relative" ref={userMenuRef}>
             <button
               type="button"
