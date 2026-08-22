@@ -86,7 +86,7 @@ const REPLY_LANGUAGE_OPTIONS: Array<{
     speechRecognitionLanguage: "zh-CN",
     ttsLanguage: "Chinese",
     guideLabels: ["基礎事實", "深入思考", "價值遷移"],
-    prompt: "MANDATORY FINAL-OUTPUT RULE: Reply only in natural Standard Mandarin written with Traditional Chinese characters. Before sending, rewrite the entire response into standard Mandarin grammar and vocabulary. Never imitate the character's Cantonese speech style. Do not output Cantonese words or particles, including 係、嘅、喺、咗、佢、哋、唔、冇、咁、啲、喎、噃、吓、畀、諗、睇、噉. Use 是、的、在、了、他們、不、沒有、這樣、一些、給、想、看 instead. This rule applies to every sentence, question, teaching hint, and suggested reply and overrides all persona style instructions.",
+    prompt: "MANDATORY FINAL-OUTPUT RULE: Reply only in natural Standard Mandarin written with Traditional Chinese characters. Before sending, rewrite the entire response into standard Mandarin grammar and vocabulary. Never imitate the character's Cantonese speech style. Do not output Cantonese words or particles, including 係、嘅、喺、咗、佢、哋、唔、冇、咁、啲、喎、噃、嚇、畀、諗、睇、噉. Use 是、的、在、了、他們、不、沒有、這樣、一些、給、想、看 instead. This rule applies to every sentence, question, teaching hint, and suggested reply and overrides all persona style instructions.",
   },
   {
     value: "english",
@@ -149,7 +149,7 @@ const normalizeMandarinTraditional = (text: string) =>
     .replace(/喺/g, "在")
     .replace(/畀/g, "給")
     .replace(/嚟/g, "來")
-    .replace(/講/g, "說")
+    .replace(/講/g, "説")
     .replace(/諗/g, "想")
     .replace(/睇/g, "看")
     .replace(/咁/g, "這樣")
@@ -159,7 +159,7 @@ const normalizeMandarinTraditional = (text: string) =>
     .replace(/係/g, "是")
     .replace(/啱/g, "對")
     .replace(/噉/g, "這樣")
-    .replace(/[喎噃吓呀㗎啦囉]/g, "");
+    .replace(/[喎噃嚇呀㗎啦囉]/g, "");
 
 export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   isOpen,
@@ -341,7 +341,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     knowledgeBase: botConfig.knowledgeBase,
     securityPrompt: botConfig.securityPrompt,
   });
-  const usesClassicalChineseStyle = /【說話風格】\s*文言文|淺近文言文/.test(compiledPersonaPrompt);
+  const usesClassicalChineseStyle = /【説話風格】\s*文言文|淺近文言文/.test(compiledPersonaPrompt);
   const classicalChineseFinalRule = !usesClassicalChineseStyle
     ? ""
     : replyLanguage === "english"
@@ -2693,7 +2693,7 @@ const appendChatImages = (files: FileList | File[]) => {
   if (chatImages.length + nextFiles.length > 4) {
     showAlert({
       title: "圖片數量已達上限",
-      message: "最多只能上傳四張圖片。",
+      message: "最多隻能上傳四張圖片。",
     });
   }
   const allowed = nextFiles.slice(0, Math.max(0, 4 - chatImages.length));
@@ -2971,7 +2971,7 @@ const startSpeechInput = async () => {
     } else if (event?.error === "no-speech") {
       showAlert({
         title: "未偵測到語音",
-        message: "請再說一次。",
+        message: "請再説一次。",
       });
     } else if (event?.error === "audio-capture") {
       showAlert({
@@ -3486,12 +3486,12 @@ const unlockAudioAndMic = async () => {
             onClick={handleCloseWithInterrupt}
           />
 
-          {/* 主体 */}
+          {/* 主體 */}
           <div className="relative h-[92svh] w-full max-w-[720px] overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_22px_80px_rgba(15,23,42,0.16)] md:h-[92vh] md:max-w-7xl md:rounded-3xl md:border-0 md:shadow-2xl">
             <div
               className="relative h-full w-full overflow-hidden rounded-[1.5rem] bg-[#f8fafc] transition-all duration-300 md:flex md:rounded-3xl"
             >
-            {/* 左侧背景 + 动画 */}
+            {/* 左側背景 + 動畫 */}
             <div
               ref={stageCaptureRef}
               className={`relative h-full w-full bg-slate-200 transition-all duration-300 ${
@@ -4133,7 +4133,7 @@ const unlockAudioAndMic = async () => {
               ) : null}
             </div>
 
-            {/* 右侧聊天 */}
+            {/* 右側聊天 */}
             <div
               className={`absolute inset-x-3 bottom-3 top-[54%] z-30 overflow-hidden rounded-[2rem] border border-white/18 bg-[#f7f1e6]/95 shadow-[0_24px_70px_rgba(0,0,0,0.34)] backdrop-blur-xl transition-all duration-300 md:relative md:inset-auto md:h-full md:rounded-none md:border-l md:border-r-0 md:border-t-0 md:border-b-0 md:border-slate-200 md:bg-slate-50 md:shadow-none md:backdrop-blur-0 ${
                 chatPanelOpen
@@ -4214,7 +4214,7 @@ const unlockAudioAndMic = async () => {
                                           {topic.isDefault ? <span className="shrink-0 text-[9px] font-black text-amber-700">預設</span> : null}
                                         </span>
                                         <span className="mt-0.5 line-clamp-2 block text-[10px] leading-4 text-[#7e6d58]">
-                                          {topic.description || "此主題尚未加入說明"}
+                                          {topic.description || "此主題尚未加入説明"}
                                         </span>
                                       </span>
                                     </button>
@@ -4661,7 +4661,7 @@ const unlockAudioAndMic = async () => {
                       }
                     }}
                     disabled={shouldDisableRegularChat}
-                    placeholder="輸入訊息，或按麥克風說話..."
+                    placeholder="輸入訊息，或按麥克風説話..."
                     rows={1}
                     style={{ height: "40px" }}
                     onDragOver={(event) => {

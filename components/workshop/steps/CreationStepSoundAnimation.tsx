@@ -74,32 +74,32 @@ const StepMediaPreview = ({ src }: { src: string }) => {
   );
 };
 
-// ============ 声线工具 ============
+// ============ 聲線工具 ============
 const getPinyin = (str: string) =>
   str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
 const voiceNameMap: Record<string, string> = {
-  "专业男主持": "專業男主持",
+  "專業男主持": "專業男主持",
   "俊朗男友": "陽光男聲",
-  "可爱男童": "可愛男童",
-  "抒情男声": "溫和男聲",
-  "播报男声": "播報男聲",
-  "活泼男声": "活潑男聲",
-  "温润男声": "溫潤男聲",
-  "电台男主播": "電台男主播",
-  "聪明男童": "聰明男童",
-  "专业女主持": "專業女主持",
-  "可爱女孩": "可愛女孩",
-  "善良女声": "溫柔女聲",
+  "可愛男童": "可愛男童",
+  "抒情男聲": "温和男聲",
+  "播報男聲": "播報男聲",
+  "活潑男聲": "活潑男聲",
+  "温潤男聲": "温潤男聲",
+  "電台男主播": "電台男主播",
+  "聰明男童": "聰明男童",
+  "專業女主持": "專業女主持",
+  "可愛女孩": "可愛女孩",
+  "善良女聲": "温柔女聲",
   "少女音色": "少女音色",
   "少女音色-beta": "少女音色（測試）",
   "成熟女性音色": "成熟女性音色",
   "成熟女性音色-beta": "成熟女性音色（測試）",
-  "新闻女声": "新聞女聲",
+  "新聞女聲": "新聞女聲",
   "清脆少女": "清脆少女",
-  "温暖少女": "溫暖少女",
-  "温柔女声": "溫柔女聲",
-  "甜美女声": "甜美女聲",
+  "温暖少女": "温暖少女",
+  "温柔女聲": "温柔女聲",
+  "甜美女聲": "甜美女聲",
 };
 
 const localizeVoiceName = (name: string) => {
@@ -114,7 +114,7 @@ const localizeVoiceName = (name: string) => {
   n = n.replace(/girl/gi, "女孩");
   n = n.replace(/news/gi, "新聞");
   n = n.replace(/host/gi, "主持");
-  n = n.replace(/warm/gi, "溫暖");
+  n = n.replace(/warm/gi, "温暖");
   n = n.replace(/soft/gi, "柔和");
   n = n.replace(/sweet/gi, "甜美");
   n = n.replace(/cartoon|anime/gi, "卡通");
@@ -124,7 +124,7 @@ const localizeVoiceName = (name: string) => {
   return n || "標準聲線";
 };
 
-// ============ 声线选择组件 ============
+// ============ 聲線選擇組件 ============
 const VoiceSelect = ({ voices, selected, onSelect }: any) => {
   const [keyword, setKeyword] = useState("");
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
@@ -146,7 +146,7 @@ const VoiceSelect = ({ voices, selected, onSelect }: any) => {
 
   const tagOf = (name: string) => {
     if (name.includes("主持") || name.includes("播報") || name.includes("新聞")) return "formal";
-    if (name.includes("溫") || name.includes("柔")) return "warm";
+    if (name.includes("温") || name.includes("柔")) return "warm";
     if (name.includes("可愛") || name.includes("童") || name.includes("少女")) return "youth";
     if (name.includes("活潑") || name.includes("清脆")) return "bright";
     if (name.includes("成熟")) return "mature";
@@ -438,7 +438,7 @@ const VoiceSelect = ({ voices, selected, onSelect }: any) => {
   );
 };
 
-// ============ 主组件 ============
+// ============ 主組件 ============
 export const CreationStepSoundAnimation = ({
   updateConfig,
   avatarUrl,
@@ -466,14 +466,14 @@ export const CreationStepSoundAnimation = ({
   const auditionText = "你好，我係你嘅 AI 助手，好高興認識你。";
   const [isAuditioning, setIsAuditioning] = useState(false);
 
-  // ============ 上传动画 loading 状态 ============
+  // ============ 上傳動畫 loading 狀態 ============
   const [uploadState, setUploadState] = useState({
     idle: { loading: false, progress: 0 },
     thinking: { loading: false, progress: 0 },
     talking: { loading: false, progress: 0 },
   });
 
-  // ============ 加载声线 ============
+  // ============ 加載聲線 ============
   useEffect(() => {
     (async () => {
       const res = await fetch(`${baseUrl}/api/voices`);
@@ -509,7 +509,7 @@ export const CreationStepSoundAnimation = ({
     setShowStudio(false);
   };
 
-  // ============ 上传并 remove-bg 流程 ============
+  // ============ 上傳並 remove-bg 流程 ============
   async function uploadRemoveBgVideo(file: File, type: AnimationUploadKey) {
     setUploadState((s) => ({ ...s, [type]: { loading: true, progress: 1 } }));
 
@@ -549,14 +549,14 @@ export const CreationStepSoundAnimation = ({
     }
   }
 
-  // ============ 本地上传事件 ============
+  // ============ 本地上傳事件 ============
   function handleUpload(e: any, type: AnimationUploadKey) {
     const file = e.target.files?.[0];
     if (!file) return;
     uploadRemoveBgVideo(file, type);
   }
 
-  // ============ 试听 TTS ============
+  // ============ 試聽 TTS ============
   async function handleAudition() {
     if (voicePreviewFeature?.locked) {
       showAlert({
@@ -600,7 +600,7 @@ export const CreationStepSoundAnimation = ({
   return (
     <div className="space-y-6 animate-fade-in">
 
-      {/* ================== 声音 ================== */}
+      {/* ================== 聲音 ================== */}
       <Section title="聲音製作">
         <VoiceSelect
           voices={voiceList}
@@ -623,7 +623,7 @@ export const CreationStepSoundAnimation = ({
         </button>
       </Section>
 
-      {/* ================== 动画 ================== */}
+      {/* ================== 動畫 ================== */}
       <Section title="動畫設定">
         <button
           onClick={() => {
@@ -666,7 +666,7 @@ export const CreationStepSoundAnimation = ({
           {([
             { key: "idle", label: "待機動畫", value: videoIdle },
             { key: "thinking", label: "思考動畫", value: videoThinking },
-            { key: "talking", label: "說話動畫", value: videoTalking },
+            { key: "talking", label: "説話動畫", value: videoTalking },
           ] satisfies Array<{ key: AnimationUploadKey; label: string; value: string }>).map((item) => (
             <div
               key={item.key}
@@ -724,7 +724,7 @@ export const CreationStepSoundAnimation = ({
         </div>
       </Section>
 
-      {/* ================== AI 自动生成 ================== */}
+      {/* ================== AI 自動生成 ================== */}
       {showStudio && (
         <VideoStudioModal
           avatarUrl={avatarUrl}

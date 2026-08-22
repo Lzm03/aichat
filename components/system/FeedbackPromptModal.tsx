@@ -34,7 +34,7 @@ export const FeedbackPromptModal: React.FC<FeedbackPromptModalProps> = ({
                 感謝您試用我們的機器人平台！
               </h2>
               <p className="mt-4 text-sm leading-7 text-slate-600">
-                我們的開發團隊十分想聽到您的意見。如果你想提供意見，或了解和購買我們的機器人創建服務，歡迎直接聯絡我們。
+                我們的開發團隊十分想聽到您的意見。如果你想提供意見，或瞭解和購買我們的機器人創建服務，歡迎直接聯絡我們。
               </p>
             </div>
 

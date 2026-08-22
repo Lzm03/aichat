@@ -183,7 +183,7 @@ ${customWords
         <div className="space-y-3">
           <PermissionCard
             icon={Icons.classes}
-            title="特定群組"
+            title="特定羣組"
             description="僅限指定名單成員存取"
             isSelected={sharingMode === 'group'}
             onClick={() => setSharingMode('group')}

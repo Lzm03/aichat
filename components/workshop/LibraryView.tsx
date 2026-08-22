@@ -154,7 +154,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       <section className="mb-7 rounded-[24px] border border-slate-200 bg-white px-5 py-5 sm:px-6">
         <div className="flex items-center gap-2">
           <h3 className="text-base font-extrabold text-slate-950">{isPro ? "你的方案用量" : "免費版功能次數"}</h3>
-          <button type="button" aria-label="查看方案說明" onClick={() => setTip("limit")} className="text-indigo-500"><HelpCircle className="h-5 w-5" /></button>
+          <button type="button" aria-label="查看方案説明" onClick={() => setTip("limit")} className="text-indigo-500"><HelpCircle className="h-5 w-5" /></button>
         </div>
         <div className="mt-3.5 grid gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
@@ -168,7 +168,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         </div>
         {isPro && createBotFeature?.locked && !bannerDismissed ? (
           <div className="mt-3.5 flex flex-col gap-3 rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-[13px] leading-6 text-indigo-900 sm:flex-row sm:items-center sm:justify-between">
-            <span>機器人角色席位已用完（{usageLabel(createBotFeature)}）。PRO 用戶可洽客服快速加開席位。</span>
+            <span>機器人角色席位已用完（{usageLabel(createBotFeature)}）。PRO 用户可洽客服快速加開席位。</span>
             <div className="flex shrink-0 items-center gap-2"><a href="mailto:Mandy@chopreality.com" className="rounded-[10px] bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white">聯絡客服</a><button type="button" onClick={() => setBannerDismissed(true)} className="px-1 text-indigo-400">×</button></div>
           </div>
         ) : null}

@@ -59,7 +59,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   const baseUrl = API_BASE;
 
   // -------------------------------
-  // 1. 载入或初始化机器人配置
+  // 1. 載入或初始化機器人配置
   // -------------------------------
   const loadBotConfig = () => {
     // ⭐ 沒有 botId = 新增模式 → 初始值
@@ -165,7 +165,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       const titleMatch = cleaned.match(/^([^：:，,。.!！?？]{2,14})[：:，,。.!！?？]/)?.[1]?.trim();
       if (titleMatch) return titleMatch;
       if (/本名|出生|現居|退休|排字|工人/.test(cleaned)) return "人物背景";
-      if (/性格|親切|懷舊|語速|粵語|口語|停頓詞/.test(cleaned)) return "說話風格";
+      if (/性格|親切|懷舊|語速|粵語|口語|停頓詞/.test(cleaned)) return "説話風格";
       if (/興趣|飲茶|散步|觀察|遊樂場/.test(cleaned)) return "生活興趣";
       if (/對話|邀請|茶|食個包/.test(cleaned)) return "對話示例";
       return cleaned.split(/[，,。.!！?？]/)[0]?.slice(0, 14) || "知識主題";
@@ -259,7 +259,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       .split("、")
       .map((s) => s.trim())
       .filter(Boolean);
-    const speakingStyle = (personaText.match(/【說話風格】([^\n]+)/)?.[1] || "文言文").trim();
+    const speakingStyle = (personaText.match(/【説話風格】([^\n]+)/)?.[1] || "文言文").trim();
     const answerMode = (personaText.match(/【答題策略】([^\n]+)/)?.[1] || "引導後再回答").trim();
     return {
       characterBackground: bgMatch?.[1]?.trim() || "",
@@ -453,7 +453,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   };
 
   // -------------------------------
-  // 3. 渲染 Step 组件
+  // 3. 渲染 Step 組件
   // -------------------------------
   const renderStep = () => {
     switch (currentStep) {
@@ -537,7 +537,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   };
 
   // -------------------------------
-  // 4. 给 ChatPreview 的完整 prompt
+  // 4. 給 ChatPreview 的完整 prompt
   // -------------------------------
 const fullSystemPrompt = `
     ${buildChatSystemPrompt({
@@ -582,7 +582,7 @@ const handleDeleteBot = async () => {
   }
 
   // -------------------------------
-  // 5. 组件 JSX
+  // 5. 組件 JSX
   // -------------------------------
   return (
     <div className="max-w-7xl mx-auto">
@@ -610,7 +610,7 @@ const handleDeleteBot = async () => {
         }`}
       >
 
-        {/* 左侧内容 */}
+        {/* 左側內容 */}
         <div className={currentStep === 4 ? "lg:col-span-1" : "lg:col-span-3"}>
           <div className={`min-h-[600px] bg-white ${
             currentStep === 4
@@ -621,7 +621,7 @@ const handleDeleteBot = async () => {
           </div>
         </div>
 
-        {/* 右侧 ChatPreview */}
+        {/* 右側 ChatPreview */}
         <div
           className={`hidden lg:block lg:col-span-2 lg:sticky top-28 ${
             currentStep === 4 ? "lg:hidden" : ""
@@ -638,7 +638,7 @@ const handleDeleteBot = async () => {
         </div>
       </div>
 
-      {/* mobile 预览按钮 */}
+      {/* mobile 預覽按鈕 */}
       <div className="hidden lg:hidden fixed bottom-6 right-6 z-40">
         <motion.button
           whileTap={{ scale: 0.95 }}
@@ -684,7 +684,7 @@ const handleDeleteBot = async () => {
         )}
       </AnimatePresence>
 
-      {/* 发布成功 */}
+      {/* 發佈成功 */}
       <PublishSuccessModal
         isOpen={isPublishSuccessModalOpen}
         onClose={handleClosePublishModal}
@@ -693,7 +693,7 @@ const handleDeleteBot = async () => {
         onDelete={handleDeleteBot}
       />
 
-      {/* 底部按钮 */}
+      {/* 底部按鈕 */}
       <div className={`mt-5 flex items-center rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.04)] ${currentStep > 1 ? 'justify-between' : 'justify-end'}`}>
         {currentStep > 1 && (
           <button

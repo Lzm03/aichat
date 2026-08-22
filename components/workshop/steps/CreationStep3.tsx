@@ -102,7 +102,7 @@ const AvatarUploader: React.FC<{ onImageUploaded: (url: string) => void }> = ({
   };
 
 /* -------------------------------------------
-   ⭐ 主组件：CreationStep3（完整保留所有功能）
+   ⭐ 主組件：CreationStep3（完整保留所有功能）
 ------------------------------------------- */
 export const CreationStep3: React.FC<CreationStep3Props> = ({
   updateConfig,

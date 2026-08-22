@@ -81,7 +81,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   // ⭐ 系統提示詞（深度分析 PDF）
   // --------------------------
   const systemPrompt = `
-你是一個專業的教育內容結構化專家。你要閱讀用戶提供的文本、網址或文件內容，為一個可對話的教學角色抽取知識，並按認知層級分級。
+你是一個專業的教育內容結構化專家。你要閲讀用户提供的文本、網址或文件內容，為一個可對話的教學角色抽取知識，並按認知層級分級。
 
 【任務要求】
 1. 先生成「人物背景設定」：
@@ -145,7 +145,7 @@ JSON 必須符合以下結構：
     if (colonTitle) return colonTitle;
     const nameFact = cleaned.match(/^([^，,。]{2,8})(?:本名|出生|現居|退休|性格|興趣|口頭禪|語速)/)?.[1];
     if (/本名|出生|現居|退休|排字|工人/.test(cleaned)) return nameFact ? `${nameFact}背景` : "人物背景";
-    if (/性格|親切|懷舊|語速|粵語|口語|停頓詞/.test(cleaned)) return "說話風格";
+    if (/性格|親切|懷舊|語速|粵語|口語|停頓詞/.test(cleaned)) return "説話風格";
     if (/興趣|飲茶|散步|觀察|遊樂場/.test(cleaned)) return "生活興趣";
     if (/對話|邀請|茶|食個包/.test(cleaned)) return "對話示例";
     return cleaned.split(/[，,。.!！?？]/)[0]?.slice(0, 14) || "知識主題";
@@ -224,7 +224,7 @@ JSON 必須符合以下結構：
     if (!characterBackground.trim() && !knowledgeSummary.trim()) return;
     const personaProfile = [
       `【性格特質】${personalityTraits.join("、") || "未設定"}`,
-      `【說話風格】${speakingStyle}`,
+      `【説話風格】${speakingStyle}`,
       `【答題策略】${answerMode}`,
     ].join("\n");
     onGenerated({ characterBackground, knowledgeSummary, personaProfile, knowledgePoints });
@@ -420,7 +420,7 @@ JSON 必須符合以下結構：
       setKnowledgePoints(points);
       const personaProfile = [
         `【性格特質】${personalityTraits.join("、") || "未設定"}`,
-        `【說話風格】${speakingStyle}`,
+        `【説話風格】${speakingStyle}`,
         `【答題策略】${answerMode}`,
       ].join("\n");
       onGenerated({ characterBackground: bg, knowledgeSummary: ks, personaProfile, knowledgePoints: points });
@@ -718,7 +718,7 @@ JSON 必須符合以下結構：
         summaryLines[0] || "已完成知識點抽取";
       const scenarioLine =
         summaryLines.find((l) => /適用|場景|應用|教學|客服|銷售/.test(l)) ||
-        "聊天互動、教學解說、問答輔助";
+        "聊天互動、教學解説、問答輔助";
       const basicFacts = knowledgePoints.filter((point) => point.tier === "basic_fact");
       const deepPoints = knowledgePoints.filter((point) => point.tier === "deep_understanding");
 
@@ -991,7 +991,7 @@ JSON 必須符合以下結構：
                               <div>
                                 <div>
                                   <p className="text-[15px] font-black tracking-tight text-slate-900">{point.title}</p>
-                                  <p className="mt-0.5 text-[13px] text-slate-500">{point.content || point.assessmentCriteria || point.keywords.join("、") || "尚未補充說明"}</p>
+                                  <p className="mt-0.5 text-[13px] text-slate-500">{point.content || point.assessmentCriteria || point.keywords.join("、") || "尚未補充説明"}</p>
                                 </div>
                               </div>
                               <div className="mt-3 flex flex-wrap gap-2">
@@ -1024,7 +1024,7 @@ JSON 必須符合以下結構：
                                     <p className="text-[15px] font-black tracking-tight text-slate-900">{point.title}</p>
                                     <Icons.helpCircle className="h-3.5 w-3.5 text-violet-400" />
                                   </div>
-                                  <p className="mt-0.5 text-[13px] text-slate-500">{point.content || point.assessmentCriteria || point.keywords.join("、") || "尚未補充說明"}</p>
+                                  <p className="mt-0.5 text-[13px] text-slate-500">{point.content || point.assessmentCriteria || point.keywords.join("、") || "尚未補充説明"}</p>
                                 </div>
                               </div>
                               <div className="mt-3 flex flex-wrap gap-2">
@@ -1085,7 +1085,7 @@ JSON 必須符合以下結構：
                   value={newPointContent}
                   onChange={(e) => setNewPointContent(e.target.value)}
                   rows={4}
-                  placeholder="輸入完整說明，讓角色能準確理解並回答。"
+                  placeholder="輸入完整説明，讓角色能準確理解並回答。"
                   className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-white p-3.5 text-sm leading-6 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
                 />
               </label>
@@ -1120,7 +1120,7 @@ JSON 必須符合以下結構：
         <div className="mt-6 border-t border-slate-200 pt-6">
           <p className="mb-3 text-xs font-bold text-slate-700">角色性格（可多選）</p>
           <div className="flex flex-wrap gap-2">
-            {["耐心", "嚴謹", "幽默", "溫柔", "直接", "理性", "熱情", "活潑"].map((trait) => (
+            {["耐心", "嚴謹", "幽默", "温柔", "直接", "理性", "熱情", "活潑"].map((trait) => (
               <button
                 key={trait}
                 type="button"
@@ -1141,7 +1141,7 @@ JSON 必須符合以下結構：
           </div>
         <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
           <div>
-            <p className="mb-3 text-xs font-bold text-slate-700">說話風格</p>
+            <p className="mb-3 text-xs font-bold text-slate-700">説話風格</p>
             <div className="flex flex-wrap gap-2">
               {["文言文", "西洋", "口語", "引導式", "正式", "親切對話", "簡潔"].map((style) => (
                 <button

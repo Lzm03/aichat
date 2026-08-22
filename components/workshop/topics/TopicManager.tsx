@@ -251,7 +251,7 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
           <div>
             <h2 className="text-xl font-black tracking-tight text-slate-950">主題版本</h2>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
-              身份與說話風格保持一致；每個主題擁有獨立提示與背景知識。
+              身份與説話風格保持一致；每個主題擁有獨立提示與背景知識。
             </p>
           </div>
         </div>
@@ -314,7 +314,7 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
                         ) : null}
                       </div>
                       <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
-                        {topic.description || "尚未加入主題說明"}
+                        {topic.description || "尚未加入主題説明"}
                       </p>
                     </div>
                   </div>
@@ -391,18 +391,18 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
                     value={form.name}
                     onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                     maxLength={80}
-                    placeholder="例如：閱讀理解"
+                    placeholder="例如：閲讀理解"
                     className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-200/70 disabled:text-slate-500"
                   />
                 </label>
                 <label className="block">
-                  <span className="text-xs font-black text-slate-700">主題說明</span>
+                  <span className="text-xs font-black text-slate-700">主題説明</span>
                   <textarea
                     value={form.description}
                     onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                     maxLength={500}
                     rows={2}
-                    placeholder="簡短說明這個主題能協助學生什麼。"
+                    placeholder="簡短説明這個主題能協助學生什麼。"
                     className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:resize-none disabled:border-slate-200 disabled:bg-slate-200/70 disabled:text-slate-500"
                   />
                 </label>

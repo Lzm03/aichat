@@ -118,7 +118,7 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onShowSub
         }
       }}
     >
-      {/* 顶部：头像 + 测试题角标 */}
+      {/* 頂部：頭像 + 測試題角標 */}
       <div className="flex items-start justify-between">
         <div className="relative h-[140px] w-[140px] overflow-hidden rounded-full bg-white">
           <img src={bot.avatarUrl || undefined} alt={bot.name} className={`h-full w-full rounded-full object-cover transition-opacity duration-200 ${canShowIdlePreview ? "opacity-0" : "opacity-100"}`} />
@@ -165,20 +165,20 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onShowSub
         </div>
       </div>
 
-      {/* 标题 + 科目标签 */}
+      {/* 標題 + 科目標籤 */}
       <div className="mt-[18px] space-y-2">
         <h3 className="text-[19px] font-extrabold text-slate-950 transition-colors group-hover:text-indigo-600">
           {bot.name}
         </h3>
 
-        {/* 学科颜色 - 你可以改为用户自定义 */}
+        {/* 學科顏色 - 你可以改為用户自定義 */}
         <div className="flex items-center gap-1.5">
           <span className={`rounded-full px-3 py-1 text-xs font-bold ${colorMap[bot.subjectColor] || colorMap.indigo}`}>{bot.subject}</span>
-          {onShowSubjectHelp ? <button type="button" aria-label="科目標籤說明" onClick={(event) => { event.stopPropagation(); onShowSubjectHelp(); }} className="flex h-[18px] w-[18px] items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-[11px] font-extrabold text-slate-400">?</button> : null}
+          {onShowSubjectHelp ? <button type="button" aria-label="科目標籤説明" onClick={(event) => { event.stopPropagation(); onShowSubjectHelp(); }} className="flex h-[18px] w-[18px] items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-[11px] font-extrabold text-slate-400">?</button> : null}
         </div>
       </div>
 
-      {/* 底部：互动次数 */}
+      {/* 底部：互動次數 */}
       <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-[18px]">
         <p className="text-[13px] text-slate-400">今日互動 {bot.interactions || 0} 次</p>
         <button
