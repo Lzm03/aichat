@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Bell, BookOpen, Bot, ClipboardList, Flame, HelpCircle, LogOut, Medal, Sparkles } from "lucide-react";
 import { clearAuthSession, type StoredAuthUser } from "../utils/auth";
 import { API_BASE } from "../utils/api";
+import { getAvatarColor } from "../utils/avatarColor";
 import { PublishSuccessModal } from "../components/workshop/PublishSuccessModal";
 import { InfoTipModal } from "../components/system/InfoTipModal";
 
@@ -114,7 +115,6 @@ const navItems: { labelKey: StudentHomeStringKey; icon: React.ComponentType<{ cl
 
 export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
   const displayName = currentUser.fullName || "同學";
-  const initial = displayName.trim().slice(0, 2).toUpperCase();
   const [companions, setCompanions] = useState<SharedBot[]>([]);
   const [selectedBot, setSelectedBot] = useState<SharedBot | null>(null);
   const [loadingBots, setLoadingBots] = useState(true);
@@ -181,9 +181,19 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
             <button type="button" onClick={() => switchLang("en")} className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${lang === "en" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>EN</button>
           </div>
           <button aria-label={t("bell")} className="hidden rounded-full p-2 text-amber-400 transition hover:bg-amber-50 sm:block"><Bell className="h-5 w-5 fill-amber-300" /></button>
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-[11px] font-black text-white shadow-lg shadow-indigo-200 sm:h-10 sm:w-10 sm:text-xs">
-            {initial}
-          </div>
+          {currentUser.avatarUrl ? (
+            <img
+              src={currentUser.avatarUrl}
+              alt=""
+              className="h-9 w-9 rounded-xl object-cover sm:h-10 sm:w-10"
+            />
+          ) : (
+            <span
+              aria-hidden="true"
+              className="block h-9 w-9 rounded-xl sm:h-10 sm:w-10"
+              style={{ backgroundColor: getAvatarColor(currentUser.id || currentUser.email) }}
+            />
+          )}
           <button onClick={logout} aria-label={t("logout")} title={t("logout")} className="rounded-full p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 sm:p-2">
             <LogOut className="h-5 w-5" />
           </button>
