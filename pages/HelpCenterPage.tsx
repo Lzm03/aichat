@@ -112,6 +112,23 @@ export const HelpCenterPage: React.FC<{ variant?: "student" | "teacher" }> = ({ 
           })}
         </section>
 
+        {/* ---- 方案説明入口（教師版） ---- */}
+        {variant === "teacher" && (
+          <section className="mt-8 flex flex-col items-center justify-between gap-4 rounded-[24px] border border-[var(--accent-border)] bg-[var(--accent-soft)] p-6 sm:flex-row">
+            <div>
+              <p className="text-sm font-bold text-[var(--text-main)]">PRO 方案説明</p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">了解方案內容與權益</p>
+            </div>
+            <a
+              href="/pro"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition hover:brightness-110 active:scale-95"
+            >
+              查看方案説明
+              <Icons.right className="h-4 w-4" />
+            </a>
+          </section>
+        )}
+
         {/* ---- 聯絡方式 ---- */}
         <section className="mt-8 grid gap-4 sm:grid-cols-2">
           {contacts.map((group) => (
