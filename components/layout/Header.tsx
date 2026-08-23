@@ -132,42 +132,44 @@ export const Header: React.FC<HeaderProps> = ({
             </AnimatePresence>
           </div>
         ) : null}
-        <div className="relative hidden md:block">
-          <Icons.search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={searchValue}
-            onChange={(event) => onSearchChange?.(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape" && searchValue) {
-                event.preventDefault();
-                onSearchChange?.("");
-              }
-            }}
-            placeholder={searchPlaceholder}
-            aria-label={searchPlaceholder}
-            disabled={!onSearchChange}
-            className="h-10 w-64 rounded-full border border-transparent bg-slate-100 pl-10 pr-12 text-sm transition-all duration-300 placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:opacity-60"
-          />
-          {searchValue && onSearchChange ? (
-            <button
-              type="button"
-              onClick={() => {
-                onSearchChange("");
-                searchInputRef.current?.focus();
+        {/* 全域搜尋：僅 AI 工作坊頁渲染（App.tsx 只對 workshop 傳 onSearchChange） */}
+        {onSearchChange ? (
+          <div className="relative hidden md:block">
+            <Icons.search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchValue}
+              onChange={(event) => onSearchChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && searchValue) {
+                  event.preventDefault();
+                  onSearchChange("");
+                }
               }}
-              aria-label="清除搜尋"
-              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
-            >
-              <Icons.close className="h-4 w-4" />
-            </button>
-          ) : (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 font-sans text-xs text-slate-500">
-              ⌘K
-            </div>
-          )}
-        </div>
+              placeholder={searchPlaceholder}
+              aria-label={searchPlaceholder}
+              className="h-10 w-64 rounded-full border border-transparent bg-slate-100 pl-10 pr-12 text-sm transition-all duration-300 placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-200"
+            />
+            {searchValue ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onSearchChange("");
+                  searchInputRef.current?.focus();
+                }}
+                aria-label="清除搜尋"
+                className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
+              >
+                <Icons.close className="h-4 w-4" />
+              </button>
+            ) : (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 font-sans text-xs text-slate-500">
+                ⌘K
+              </div>
+            )}
+          </div>
+        ) : null}
 
         {/* 語言切換：中 / EN（普通話與粵語同屬中文，選項只設「中」） */}
         <div className="relative hidden sm:block" ref={langMenuTriggerRef}>
