@@ -1142,7 +1142,8 @@ JSON 必須符合以下結構：
                 >
                   <span
                     className={`h-2.5 w-2.5 rounded-full ${active ? "bg-white" : ""}`}
-                    style={active ? undefined : { backgroundColor: option.color }}
+                    // 用 background（而非 backgroundColor）以支援漸變色
+                    style={active ? undefined : { background: option.color }}
                   />
                   {option.label}
                 </button>

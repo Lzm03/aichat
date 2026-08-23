@@ -13,7 +13,7 @@ export const SUBJECT_OPTIONS: SubjectOption[] = [
   { value: "science", label: "科學", color: "#10B981" },
   { value: "tech", label: "科技/編程", color: "#F59E0B" },
   { value: "humanities", label: "常識/人文", color: "#14B8A6" },
-  { value: "other", label: "藝術/其他", color: "#94A3B8" },
+  { value: "other", label: "藝術/其他", color: "linear-gradient(135deg, #F472B6, #A855F7)" },
 ];
 
 export function subjectColorOf(subject: string): string {
