@@ -4,6 +4,7 @@ import { Icons } from "../../icons";
 import { motion } from "framer-motion";
 import { usePlatformDialog } from "../../../hooks/usePlatformDialog";
 import { PlatformDialog } from "../../system/PlatformDialog";
+import { SUBJECT_OPTIONS } from "../../../utils/subjects";
 
 type UploadMethod = "file" | "url" | "text";
 type KnowledgeTier = "basic_fact" | "deep_understanding";
@@ -36,9 +37,12 @@ interface CreationStep2Props {
     answerMode?: string;
   };
   afterKnowledgePointEditor?: React.ReactNode;
+  /** 學科分類（角色基礎必選）；CreationFlow 的 botConfig.subject 驅動 */
+  subject?: string;
+  onSubjectChange?: (subject: string) => void;
 }
 
-export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, afterKnowledgePointEditor }) => {
+export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, afterKnowledgePointEditor, subject = "", onSubjectChange }) => {
   const [uploadMethod, setUploadMethod] = useState<UploadMethod>("file");
   const [modelProvider, setModelProvider] = useState<"deepseek" | "gemini">("deepseek");
   const [showModelMenu, setShowModelMenu] = useState(false);
@@ -1118,7 +1122,38 @@ JSON 必須符合以下結構：
           </div>
         </div>
         <div className="mt-6 border-t border-slate-200 pt-6">
-          <p className="mb-3 text-xs font-bold text-slate-700">角色性格（可多選）</p>
+          {/* 學科分類（必選 enum）：對接文件「學科分類建議」層 1 */}
+          <p className="mb-3 text-xs font-bold text-slate-700">
+            學科分類 <span className="ml-1 rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-600">必選</span>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {SUBJECT_OPTIONS.map((option) => {
+              const active = subject === option.label || subject === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => onSubjectChange?.(option.label)}
+                  className={`flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold transition ${
+                    active
+                      ? "border-indigo-600 bg-indigo-600 text-white shadow-sm"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                  }`}
+                >
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${active ? "bg-white" : ""}`}
+                    style={active ? undefined : { backgroundColor: option.color }}
+                  />
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+          {!subject && (
+            <p className="mt-2 text-xs font-semibold text-amber-600">請選擇學科分類，未選擇將無法完成設定</p>
+          )}
+
+          <p className="mb-3 mt-6 text-xs font-bold text-slate-700">角色性格（可多選）</p>
           <div className="flex flex-wrap gap-2">
             {["耐心", "嚴謹", "幽默", "温柔", "直接", "理性", "熱情", "活潑"].map((trait) => (
               <button

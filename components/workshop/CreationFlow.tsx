@@ -16,6 +16,7 @@ import { buildChatSystemPrompt, buildStoredKnowledgeBase } from '../../utils/cha
 import { TopicManager } from './topics/TopicManager';
 import { API_BASE } from '../../utils/api';
 import { useTeacherLang, type TeacherLang } from '../../utils/teacherI18n';
+import { subjectColorOf } from '../../utils/subjects';
 
 type KnowledgeTier = "basic_fact" | "deep_understanding";
 type KnowledgePoint = {
@@ -78,6 +79,7 @@ const CF_T: Record<TeacherLang, Record<string, string | ((arg: string) => string
     reasonVideoInProgress: "動畫正在背景生成中，你可以先繼續下一步。",
     reasonVideo: "請先完成音色與三段動畫影片。",
     reasonKnowledge: "請先完成知識餵養內容整理。",
+    reasonSubject: "請先選擇學科分類。",
     reasonSecurity: "請先完成安全與權限設定。",
     videoDoneTitle: "影片生成完成",
     videoDoneBody: "三段動畫已全部完成，現在可以發布了。",
@@ -108,6 +110,7 @@ const CF_T: Record<TeacherLang, Record<string, string | ((arg: string) => string
     reasonVideoInProgress: "Animations are being generated in the background — you can continue to the next step.",
     reasonVideo: "Please complete the voice and 3 animation clips first.",
     reasonKnowledge: "Please finish organizing the knowledge base content first.",
+    reasonSubject: "Please select a subject category first.",
     reasonSecurity: "Please complete the safety & permissions settings first.",
     videoDoneTitle: "Video generation complete",
     videoDoneBody: "All 3 animations are ready — you can publish now.",
@@ -145,6 +148,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         avatarUrl: "/avatars/bot-default.svg",
         background: "",
         animation: t("defaultAnimation"),
+        subject: "",
 
         knowledgeBase: "",
         securityPrompt: "",
@@ -164,6 +168,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       avatarUrl: "",
       background: "",
       animation: "",
+      subject: "",
       knowledgeBase: "",
       securityPrompt: "",
       videoIdle: "",
@@ -193,6 +198,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
           avatarUrl: data.avatarUrl || "",
           background: data.background || "",
           animation: data.animation || "",
+          subject: data.subject || "",
           knowledgeBase: data.knowledgeBase || "",
           securityPrompt: data.securityPrompt || "",
           videoIdle: data.videoIdle || "",
@@ -432,8 +438,8 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         : t("reasonVideo"),
     },
     {
-      isValid: botConfig.knowledgeBase.trim().length > 0,
-      reason: t("reasonKnowledge"),
+      isValid: botConfig.knowledgeBase.trim().length > 0 && botConfig.subject.trim().length > 0,
+      reason: botConfig.knowledgeBase.trim().length > 0 ? t("reasonSubject") : t("reasonKnowledge"),
     },
     {
       isValid: botConfig.securityPrompt.trim().length > 0,
@@ -457,8 +463,8 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       const newBot = {
         id: botId || Date.now().toString(),
         name: botConfig.name,
-        subject: t("uncategorized"),
-        subjectColor: "indigo",
+        subject: botConfig.subject || t("uncategorized"),
+        subjectColor: subjectColorOf(botConfig.subject),
         avatarUrl: botConfig.avatarUrl,
         interactions: 0,
         accuracy: 0,
@@ -580,6 +586,8 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
             </header>
             <CreationStep2
               initialData={parsedKnowledgeData}
+              subject={botConfig.subject}
+              onSubjectChange={(value) => updateConfig("subject", value)}
               afterKnowledgePointEditor={
                 <TopicManager characterId={String(botConfig.id || botId || "").trim() || null} />
               }
