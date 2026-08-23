@@ -98,7 +98,7 @@ type StudentHomeStringKey = { [K in keyof StudentHomeStrings]: StudentHomeString
 
 const navItems: { labelKey: StudentHomeStringKey; icon: React.ComponentType<{ className?: string }>; active?: boolean; href?: string }[] = [
   { labelKey: "starMap", icon: BookOpen, active: true, href: "/" },
-  { labelKey: "todayTasks", icon: ClipboardList },
+  { labelKey: "todayTasks", icon: ClipboardList, href: "/tasks" },
   { labelKey: "achievements", icon: Medal, href: "/achievements" },
 ];
 
@@ -132,6 +132,21 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
       .catch(() => setCompanions([]))
       .finally(() => setLoadingBots(false));
   }, []);
+
+  // 深鏈接：/?bot=<id>（今日任務頁「查看/去做測試」）→ 自動開該 bot 的對話彈窗
+  useEffect(() => {
+    if (companions.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const botId = params.get("bot");
+    if (!botId) return;
+    const target = companions.find((c) => c.id === botId);
+    if (target) {
+      setSelectedBot(target);
+      params.delete("bot");
+      const qs = params.toString();
+      window.history.replaceState({}, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+    }
+  }, [companions]);
 
   // 用戶選單開關（點外關閉，模式與教師 Header 一致）
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
