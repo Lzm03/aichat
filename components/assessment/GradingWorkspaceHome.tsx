@@ -28,6 +28,7 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
   const [loading, setLoading] = useState(true);
   const [deletingQuizId, setDeletingQuizId] = useState<string | null>(null);
   const [pendingDeleteQuiz, setPendingDeleteQuiz] = useState<QuizSummary | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
 
   const loadQuizzes = useCallback(() => {
@@ -81,6 +82,7 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
       setQuizzes((prev) => prev.filter((quiz) => quiz.id !== quizId));
     } catch (error) {
       console.error(error);
+      setDeleteError("刪除測驗失敗，請稍後再試。");
     } finally {
       setDeletingQuizId(null);
     }
@@ -190,6 +192,7 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
           })}
       </div>
       <InfoTipModal open={showHelp} title="AI 批改怎麼運作" body="學生作答後，AI 會先自動評分並給出建議分數，例如選擇題直接判對錯、簡答題會給參考理由。你可以直接採用，也能手動調整後再確認送出。" onClose={() => setShowHelp(false)} />
+      <InfoTipModal open={Boolean(deleteError)} title="刪除失敗" body={deleteError || ""} onClose={() => setDeleteError(null)} />
 
       {/* 刪除測驗二次確認 */}
       <AnimatePresence>
