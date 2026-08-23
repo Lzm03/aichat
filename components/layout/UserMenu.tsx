@@ -62,7 +62,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({ currentUser = null, variant 
       </div>
       <MenuItem icon={Icons.userCog} label={currentUser ? "帳戶中心" : "登入 / 註冊"} href={currentUser ? "/account" : "/auth"} />
       {currentUser && !isStudent && <MenuItem icon={Icons.settings} label="設定" href="/settings" />}
-      <MenuItem icon={Icons.helpCircle} label={isStudent ? "幫助中心" : "幫助"} href={isStudent ? "/help" : undefined} />
+      <MenuItem icon={Icons.helpCircle} label={isStudent ? "幫助中心" : "幫助"} href="/help" />
       <div className="my-2 h-px bg-[var(--border-soft)]" />
       <MenuItem icon={Icons.logOut} label="登出" isDanger onClick={handleLogout} />
     </motion.div>

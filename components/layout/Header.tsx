@@ -1,8 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from '../icons';
-import { TokenUsageMonitor } from '../system/TokenUsageMonitor';
-import { TokenDetailModal, ProviderUsage } from '../system/TokenDetailModal';
 import { FeatureLimitPanel } from '../system/FeatureLimitPanel';
 import { UserMenu } from './UserMenu';
 import type { StoredAuthUser } from '../../utils/auth';
@@ -39,23 +37,15 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { features } = useFeatureEntitlements();
   const primaryFeatures = features.filter((feature) => feature.key === "bot_publish" || feature.key === "chat_messages");
-  const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
   const [isFeatureMenuOpen, setIsFeatureMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [providers, setProviders] = useState<ProviderUsage[]>([]);
-  const [tokenLoading, setTokenLoading] = useState(false);
-  const [tokenError, setTokenError] = useState<string | null>(null);
-  
-  const tokenTriggerRef = useRef<HTMLDivElement>(null);
+
   const featureMenuTriggerRef = useRef<HTMLDivElement>(null);
   const userMenuTriggerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (tokenTriggerRef.current && !tokenTriggerRef.current.contains(event.target as Node)) {
-        setIsTokenModalOpen(false);
-      }
       if (featureMenuTriggerRef.current && !featureMenuTriggerRef.current.contains(event.target as Node)) {
         setIsFeatureMenuOpen(false);
       }
@@ -81,58 +71,7 @@ export const Header: React.FC<HeaderProps> = ({
     return () => window.removeEventListener("keydown", handleSearchShortcut);
   }, [onSearchChange]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const envBase = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
-    const candidateBases = Array.from(new Set([envBase, ""].filter(Boolean)));
-
-    const fetchUsage = async () => {
-      setTokenLoading(true);
-      setTokenError(null);
-      try {
-        let lastErr = "No available endpoint";
-        for (const base of candidateBases) {
-          try {
-            const res = await fetch(`${base}/api/token-usage`);
-            if (!res.ok) {
-              lastErr = `HTTP ${res.status} @ ${base || "same-origin"}`;
-              continue;
-            }
-            const data = await res.json();
-            if (cancelled) return;
-            setProviders(Array.isArray(data?.providers) ? data.providers : []);
-            setTokenError(null);
-            return;
-          } catch (err) {
-            lastErr =
-              err instanceof Error ? err.message : `Fetch failed @ ${base || "same-origin"}`;
-          }
-        }
-        throw new Error(lastErr);
-      } catch (err) {
-        if (cancelled) return;
-        setProviders([]);
-        setTokenError(err instanceof Error ? err.message : "Fetch failed");
-      } finally {
-        if (!cancelled) setTokenLoading(false);
-      }
-    };
-
-    void fetchUsage();
-    const timer = window.setInterval(() => {
-      void fetchUsage();
-    }, 30000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, []);
-
-  const okCount = providers.filter((p) => p.status === "ok").length;
-  const totalCount = providers.length || 1;
   const lockedCount = primaryFeatures.filter((feature) => feature.locked).length;
-  const canViewProviderUsage = currentUser?.email?.trim().toLowerCase() === "lzm200303@gmail.com";
 
   return (
     <header className="sticky top-0 z-20 flex flex-col gap-2 border-b border-slate-200/80 bg-white/80 px-3 py-3 backdrop-blur-sm sm:px-5 lg:flex-row lg:items-center lg:justify-between lg:gap-2 lg:px-8 lg:py-4">
@@ -147,12 +86,12 @@ export const Header: React.FC<HeaderProps> = ({
           <h2 className="truncate text-xs leading-snug text-slate-500 sm:text-sm">{getTimeGreeting()}, {currentUser?.fullName || '老師'}</h2>
           <p className="truncate text-2xl font-bold leading-tight text-[#1E293B]">{pageTitle}</p>
         </div>
-        <div className="flex shrink-0 items-center gap-1 sm:gap-2 lg:ml-auto">
+        <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
         {primaryFeatures.length ? (
           <div className="relative" ref={featureMenuTriggerRef}>
             <button
               onClick={() => setIsFeatureMenuOpen((prev) => !prev)}
-              className="flex h-10 items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-2.5 text-xs font-semibold text-indigo-700 sm:h-11 sm:gap-2 sm:rounded-2xl sm:px-3"
+              className="flex h-10 items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3.5 text-xs font-semibold text-indigo-700"
             >
               <Icons.cpu className="h-4 w-4 xl:hidden" />
               <span className="hidden xl:inline">使用次數</span>
@@ -192,7 +131,7 @@ export const Header: React.FC<HeaderProps> = ({
             placeholder={searchPlaceholder}
             aria-label={searchPlaceholder}
             disabled={!onSearchChange}
-            className="w-64 rounded-xl border border-transparent bg-slate-100 py-2.5 pl-10 pr-12 text-sm transition-all duration-300 placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:opacity-60"
+            className="h-10 w-64 rounded-full border border-transparent bg-slate-100 pl-10 pr-12 text-sm transition-all duration-300 placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:opacity-60"
           />
           {searchValue && onSearchChange ? (
             <button
@@ -212,35 +151,12 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
         </div>
-        
-        {canViewProviderUsage ? (
-          <div className="relative" ref={tokenTriggerRef}>
-              <motion.div 
-                  whileTap={{ scale: 0.95 }}
-                  className="cursor-pointer"
-                  onClick={() => setIsTokenModalOpen(prev => !prev)}
-              >
-                  <TokenUsageMonitor used={okCount} total={totalCount} resetDate="即時更新" />
-              </motion.div>
-              <AnimatePresence>
-                  {isTokenModalOpen && <TokenDetailModal providers={providers} loading={tokenLoading} error={tokenError} />}
-              </AnimatePresence>
-          </div>
-        ) : null}
-
-        <div className="relative hidden sm:block">
-           <button className="h-11 px-3 flex items-center space-x-2 rounded-xl hover:bg-slate-100 transition-colors">
-            <Icons.language className="w-5 h-5 text-slate-500" />
-            <span className="text-sm font-medium text-slate-600">中</span>
-            <Icons.down className="w-4 h-4 text-slate-400" />
-          </button>
-        </div>
 
         <div className="relative" ref={userMenuTriggerRef}>
           <motion.button
             onClick={() => setIsUserMenuOpen(prev => !prev)}
             whileTap={{ scale: 0.9 }}
-            className="w-10 h-10 sm:w-11 sm:h-11 rounded-full border-2 border-transparent hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-2 transition-all"
+            className="h-10 w-10 rounded-full border-2 border-transparent hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-2 transition-all"
           >
             <img
               src={currentUser?.avatarUrl || DEFAULT_ACCOUNT_AVATAR}
