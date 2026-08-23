@@ -239,7 +239,7 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
                 ) : null}
               </div>
               <h2 className="mt-4 truncate text-lg font-extrabold text-[var(--text-main)]">{companion.name}</h2>
-              <span className="mt-2 inline-block rounded-full bg-[var(--accent-soft)] px-3 py-1 text-xs font-semibold text-[var(--accent-text)]">{companion.subject || t("uncategorized")}</span>
+              <span className="mt-2 inline-block self-start rounded-full bg-[var(--accent-soft)] px-3 py-1 text-xs font-semibold text-[var(--accent-text)]">{companion.subject || t("uncategorized")}</span>
               <div className="mt-auto border-t border-[var(--border-soft)] pt-4 text-[13px] text-[var(--text-faint)]">{t("todayInteractions")(companion.interactions || 0)}</div>
             </motion.button>
           ))}
