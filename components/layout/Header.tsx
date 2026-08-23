@@ -7,6 +7,7 @@ import { UserMenu } from './UserMenu';
 import type { StoredAuthUser } from '../../utils/auth';
 import { useFeatureEntitlements } from '../../hooks/useFeatureEntitlements';
 import { DEFAULT_ACCOUNT_AVATAR } from '../../utils/default-avatar';
+import { setTeacherLang, useTeacherLang, type TeacherLang } from '../../utils/teacherI18n';
 
 interface HeaderProps {
   pageTitle: string;
@@ -18,14 +19,26 @@ interface HeaderProps {
   onSearchChange?: (value: string) => void;
 }
 
-function getTimeGreeting(date = new Date()) {
+const GREETINGS: Record<TeacherLang, string[]> = {
+  "zh-HK": ["早安", "午安", "下午好", "晚上好", "夜深了"],
+  en: ["Good morning", "Good afternoon", "Good afternoon", "Good evening", "Good evening"],
+};
+
+function getTimeGreeting(date = new Date(), lang: TeacherLang = "zh-HK") {
   const hour = date.getHours();
-  if (hour >= 5 && hour < 11) return "早安";
-  if (hour >= 11 && hour < 14) return "午安";
-  if (hour >= 14 && hour < 18) return "下午好";
-  if (hour >= 18 && hour < 24) return "晚上好";
-  return "夜深了";
+  const index =
+    hour >= 5 && hour < 11 ? 0
+    : hour >= 11 && hour < 14 ? 1
+    : hour >= 14 && hour < 18 ? 2
+    : hour >= 18 && hour < 24 ? 3
+    : 4;
+  return GREETINGS[lang][index];
 }
+
+const HEADER_T = {
+  "zh-HK": { planUsage: "方案用量", switchLanguage: "切換語言", clearSearch: "清除搜尋" },
+  en: { planUsage: "Plan Usage", switchLanguage: "Switch language", clearSearch: "Clear search" },
+} as const;
 
 export const Header: React.FC<HeaderProps> = ({
   pageTitle,
@@ -41,22 +54,16 @@ export const Header: React.FC<HeaderProps> = ({
   const [isFeatureMenuOpen, setIsFeatureMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
-  // 語言：與學生端共用 localStorage key（chopreality_ui_lang）；教師頁面文案翻譯為後續批次
-  const [lang, setLang] = useState<"zh-HK" | "en">(() => {
-    const saved = localStorage.getItem("chopreality_ui_lang");
-    return saved === "en" ? "en" : "zh-HK";
-  });
+  // 語言：與學生端共用 localStorage key（chopreality_ui_lang）
+  const lang = useTeacherLang();
+  const th = HEADER_T[lang];
 
   const featureMenuTriggerRef = useRef<HTMLDivElement>(null);
   const userMenuTriggerRef = useRef<HTMLDivElement>(null);
   const langMenuTriggerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const switchLang = (next: "zh-HK" | "en") => {
-    setLang(next);
-    localStorage.setItem("chopreality_ui_lang", next);
-    document.documentElement.lang = next === "en" ? "en" : "zh-Hant";
-  };
+  const switchLang = (next: TeacherLang) => setTeacherLang(next);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -100,7 +107,7 @@ export const Header: React.FC<HeaderProps> = ({
           <Icons.menu className="w-6 h-6" />
         </button>
         <div className="hidden min-w-0 lg:block">
-          <h2 className="truncate text-xs leading-snug text-slate-500 sm:text-sm">{getTimeGreeting()}, {currentUser?.fullName || '老師'}</h2>
+          <h2 className="truncate text-xs leading-snug text-slate-500 sm:text-sm">{getTimeGreeting(new Date(), lang)}, {currentUser?.fullName || '老師'}</h2>
           <p className="truncate text-2xl font-bold leading-tight text-[#1E293B]">{pageTitle}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
@@ -111,10 +118,10 @@ export const Header: React.FC<HeaderProps> = ({
               className="flex h-10 items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3.5 text-xs font-semibold text-indigo-700"
             >
               <Icons.cpu className="h-4 w-4 xl:hidden" />
-              <span className="hidden xl:inline">方案用量</span>
+              <span className="hidden xl:inline">{th.planUsage}</span>
               {lockedCount > 0 && (
                 <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-rose-700 sm:px-2">
-                  {lockedCount} 已用完
+                  {lang === "en" ? "Limit reached" : `${lockedCount} 已用完`}
                 </span>
               )}
               <Icons.down className={`h-4 w-4 transition-transform ${isFeatureMenuOpen ? "rotate-180" : ""}`} />
@@ -160,7 +167,7 @@ export const Header: React.FC<HeaderProps> = ({
                   onSearchChange("");
                   searchInputRef.current?.focus();
                 }}
-                aria-label="清除搜尋"
+                aria-label={th.clearSearch}
                 className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
               >
                 <Icons.close className="h-4 w-4" />
@@ -178,7 +185,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={() => setIsLangMenuOpen((prev) => !prev)}
-            aria-label="切換語言"
+            aria-label={th.switchLanguage}
             className="flex h-10 items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3.5 text-xs font-bold text-slate-600 transition hover:border-indigo-300 hover:text-indigo-600"
           >
             <Icons.language className="h-4 w-4 text-slate-400" />
@@ -237,7 +244,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
       </div>
       <div className="min-w-0 pl-10 lg:hidden">
-        <h2 className="truncate whitespace-nowrap text-xs leading-snug text-slate-500 sm:text-sm">{getTimeGreeting()}, {currentUser?.fullName || '老師'}</h2>
+        <h2 className="truncate whitespace-nowrap text-xs leading-snug text-slate-500 sm:text-sm">{getTimeGreeting(new Date(), lang)}, {currentUser?.fullName || '老師'}</h2>
         <p className="truncate whitespace-nowrap text-2xl font-black leading-tight text-[#1E293B] sm:text-3xl">{pageTitle}</p>
       </div>
     </header>

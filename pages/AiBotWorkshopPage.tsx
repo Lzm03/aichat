@@ -6,9 +6,14 @@ import { usePlatformDialog } from '../hooks/usePlatformDialog';
 import { PlatformDialog } from '../components/system/PlatformDialog';
 import {
   consumeTrialEndedPopupPending,
-  TRIAL_ENDED_POPUP_MESSAGE,
-  TRIAL_ENDED_POPUP_TITLE,
+  getTrialEndedPopupCopy,
 } from '../utils/trial-popup';
+import { useTeacherLang, type TeacherLang } from '../utils/teacherI18n';
+
+const WORKSHOP_T: Record<TeacherLang, Record<string, string>> = {
+  "zh-HK": { gotIt: "我知道了", charactersUsedUp: "創建角色已用完" },
+  en: { gotIt: "Got it", charactersUsedUp: "Persona quota used up" },
+};
 
 type AiBotWorkshopPageProps = {
   searchQuery?: string;
@@ -17,6 +22,7 @@ type AiBotWorkshopPageProps = {
 export const AiBotWorkshopPage: React.FC<AiBotWorkshopPageProps> = ({ searchQuery = '' }) => {
   const { features, loading, initialized, refresh, consume } = useFeatureEntitlements();
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
+  const wt = WORKSHOP_T[useTeacherLang()];
   const [view, setView] = useState<'library' | 'creation'>('library');
   const [editingBotId, setEditingBotId] = useState<string | null>(null);
   const botPublishFeature = features.find((item) => item.key === 'bot_publish');
@@ -33,22 +39,20 @@ export const AiBotWorkshopPage: React.FC<AiBotWorkshopPageProps> = ({ searchQuer
 
     trialEndedDialogShownRef.current = true;
     showAlert({
-      title: TRIAL_ENDED_POPUP_TITLE,
-      message: TRIAL_ENDED_POPUP_MESSAGE,
-      confirmText: '我知道了',
+      ...getTrialEndedPopupCopy(),
+      confirmText: wt.gotIt,
     });
-  }, [botPublishFeature?.locked, chatMessagesFeature?.locked, showAlert]);
+  }, [botPublishFeature?.locked, chatMessagesFeature?.locked, showAlert, wt]);
 
   useEffect(() => {
     if (!consumeTrialEndedPopupPending()) return;
     if (trialEndedDialogShownRef.current) return;
     trialEndedDialogShownRef.current = true;
     showAlert({
-      title: TRIAL_ENDED_POPUP_TITLE,
-      message: TRIAL_ENDED_POPUP_MESSAGE,
-      confirmText: '我知道了',
+      ...getTrialEndedPopupCopy(),
+      confirmText: wt.gotIt,
     });
-  }, [showAlert]);
+  }, [showAlert, wt]);
 
   const handleStartCreation = () => {
     if (!initialized || loading || !botPublishFeature) {
@@ -56,8 +60,8 @@ export const AiBotWorkshopPage: React.FC<AiBotWorkshopPageProps> = ({ searchQuer
     }
     if (botPublishFeature?.locked) {
       showAlert({
-        title: '創建角色已用完',
-        message: TRIAL_ENDED_POPUP_MESSAGE,
+        title: wt.charactersUsedUp,
+        message: getTrialEndedPopupCopy().message,
       });
       return;
     }

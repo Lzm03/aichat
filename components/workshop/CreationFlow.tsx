@@ -15,6 +15,7 @@ import { PlatformDialog } from '../system/PlatformDialog';
 import { buildChatSystemPrompt, buildStoredKnowledgeBase } from '../../utils/chat-prompt';
 import { TopicManager } from './topics/TopicManager';
 import { API_BASE } from '../../utils/api';
+import { useTeacherLang, type TeacherLang } from '../../utils/teacherI18n';
 
 type KnowledgeTier = "basic_fact" | "deep_understanding";
 type KnowledgePoint = {
@@ -47,7 +48,74 @@ interface CreationFlowProps {
   consumeFeature: (key: string, amount?: number, meta?: Record<string, unknown>) => Promise<any>;
 }
 
-const steps = ["基礎設定", "形象與人格", "聲音與動畫", "知識餵養", "安全與權限"];
+const STEPS: Record<TeacherLang, string[]> = {
+  "zh-HK": ["基礎設定", "形象與人格", "聲音與動畫", "知識餵養", "安全與權限"],
+  en: ["Basic Settings", "Appearance & Personality", "Voice & Animation", "Knowledge Base", "Safety & Permissions"],
+};
+
+// 建立流程 i18n 字典（文案對照表見 repo 外 教師端i18n文案-對照表.md）
+const CF_T: Record<TeacherLang, Record<string, string | ((arg: string) => string)>> = {
+  "zh-HK": {
+    defaultName: "我的 AI 機器人",
+    defaultAnimation: "點頭回應",
+    uncategorized: "未分類",
+    loadError: "無法載入角色資料",
+    loading: "正在載入角色資料…",
+    editErrorTitle: "無法開啟角色編輯頁",
+    backToLibrary: "返回機器人庫",
+    backToMyLibrary: "返回我的機器人庫",
+    knowledgeHeader: "知識與教學設定",
+    knowledgeHeaderBody: "先設定所有對話共用的角色基礎，再整理知識內容與各主題的專屬教學資料。",
+    prev: "上一步",
+    next: "下一步",
+    publish: "完成並發布",
+    update: "更新機器人",
+    publishing: "發布中...",
+    publishFailed: "發布失敗，請稍後再試。",
+    charactersCount: (arg: string) => `創建角色 ${arg}`,
+    reasonName: "請先輸入機器人名稱。",
+    reasonAvatar: "請先完成頭像與背景設定。",
+    reasonVideoInProgress: "動畫正在背景生成中，你可以先繼續下一步。",
+    reasonVideo: "請先完成音色與三段動畫影片。",
+    reasonKnowledge: "請先完成知識餵養內容整理。",
+    reasonSecurity: "請先完成安全與權限設定。",
+    videoDoneTitle: "影片生成完成",
+    videoDoneBody: "三段動畫已全部完成，現在可以發布了。",
+    videoPendingFooter: "三段動畫仍在背景生成中，完成後才可發布。",
+    incompleteFooter: (arg: string) => `尚有未完成步驟，請先完成第 ${arg} 步。`,
+    charactersUsedUp: "創建角色已用完",
+  },
+  en: {
+    defaultName: "My AI Bot",
+    defaultAnimation: "Nodding response",
+    uncategorized: "Uncategorized",
+    loadError: "Unable to load persona data",
+    loading: "Loading persona data…",
+    editErrorTitle: "Unable to open the persona editor",
+    backToLibrary: "Back to bot library",
+    backToMyLibrary: "Back to my bot library",
+    knowledgeHeader: "Knowledge & Teaching Settings",
+    knowledgeHeaderBody: "Set up the shared persona basics for all conversations first, then organize the knowledge content and subject-specific teaching materials.",
+    prev: "Previous",
+    next: "Next",
+    publish: "Finish & Publish",
+    update: "Update Bot",
+    publishing: "Publishing…",
+    publishFailed: "Publishing failed. Please try again later.",
+    charactersCount: (arg: string) => `Personas ${arg}`,
+    reasonName: "Please enter a bot name first.",
+    reasonAvatar: "Please complete the avatar and background settings first.",
+    reasonVideoInProgress: "Animations are being generated in the background — you can continue to the next step.",
+    reasonVideo: "Please complete the voice and 3 animation clips first.",
+    reasonKnowledge: "Please finish organizing the knowledge base content first.",
+    reasonSecurity: "Please complete the safety & permissions settings first.",
+    videoDoneTitle: "Video generation complete",
+    videoDoneBody: "All 3 animations are ready — you can publish now.",
+    videoPendingFooter: "The 3 animation clips are still being generated — you can publish once they're done.",
+    incompleteFooter: (arg: string) => `Some steps are incomplete — please finish Step ${arg} first.`,
+    charactersUsedUp: "Persona quota used up",
+  },
+};
 
 export const CreationFlow: React.FC<CreationFlowProps> = ({
   onBack,
@@ -57,6 +125,13 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   consumeFeature,
 }) => {
   const baseUrl = API_BASE;
+  const lang = useTeacherLang();
+  const steps = STEPS[lang];
+  const t = (key: string): string => {
+    const value = CF_T[lang][key];
+    return typeof value === "function" ? String(value) : String(value ?? CF_T["zh-HK"][key] ?? "");
+  };
+  const tf = (key: string) => CF_T[lang][key] as (arg: string) => string;
 
   // -------------------------------
   // 1. 載入或初始化機器人配置
@@ -66,10 +141,10 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
     if (!botId) {
       return {
         id: null,
-        name: "我的 AI 機器人",
+        name: t("defaultName"),
         avatarUrl: "/avatars/bot-default.svg",
         background: "",
-        animation: "點頭回應",
+        animation: t("defaultAnimation"),
 
         knowledgeBase: "",
         securityPrompt: "",
@@ -109,7 +184,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         const res = await fetch(`${baseUrl}/api/bots/${encodeURIComponent(botId)}`);
         const data = await res.json().catch(() => null);
         if (!res.ok || !data?.id) {
-          throw new Error(data?.error || "無法載入角色資料");
+          throw new Error(data?.error || t("loadError"));
         }
         if (cancelled) return;
         setBotConfig({
@@ -128,7 +203,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         });
       } catch (error) {
         if (!cancelled) {
-          setBotLoadError(error instanceof Error ? error.message : "無法載入角色資料");
+          setBotLoadError(error instanceof Error ? error.message : t("loadError"));
         }
       } finally {
         if (!cancelled) setIsBotLoading(false);
@@ -323,8 +398,8 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
     const currentStatus = videoStudioTask?.status || null;
     if (currentStatus === "ready" && previousStatus && previousStatus !== "ready") {
       showAlert({
-        title: "影片生成完成",
-        message: "三段動畫已全部完成，現在可以發布了。",
+        title: t("videoDoneTitle"),
+        message: t("videoDoneBody"),
       });
     }
     previousVideoTaskStatusRef.current = currentStatus;
@@ -342,27 +417,27 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   const stepValidationRules = [
     {
       isValid: botConfig.name.trim().length > 0,
-      reason: "請先輸入機器人名稱。",
+      reason: t("reasonName"),
     },
     {
       isValid: botConfig.avatarUrl.trim().length > 0 && botConfig.background.trim().length > 0,
-      reason: "請先完成頭像與背景設定。",
+      reason: t("reasonAvatar"),
     },
     {
       isValid:
         botConfig.voiceId.trim().length > 0 &&
         (videosReady || videoTaskInProgress),
       reason: videoTaskInProgress
-        ? "動畫正在背景生成中，你可以先繼續下一步。"
-        : "請先完成音色與三段動畫影片。",
+        ? t("reasonVideoInProgress")
+        : t("reasonVideo"),
     },
     {
       isValid: botConfig.knowledgeBase.trim().length > 0,
-      reason: "請先完成知識餵養內容整理。",
+      reason: t("reasonKnowledge"),
     },
     {
       isValid: botConfig.securityPrompt.trim().length > 0,
-      reason: "請先完成安全與權限設定。",
+      reason: t("reasonSecurity"),
     },
   ];
 
@@ -382,7 +457,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       const newBot = {
         id: botId || Date.now().toString(),
         name: botConfig.name,
-        subject: "未分類",
+        subject: t("uncategorized"),
         subjectColor: "indigo",
         avatarUrl: botConfig.avatarUrl,
         interactions: 0,
@@ -412,7 +487,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error || "發布失敗，請稍後再試。");
+        throw new Error(payload?.error || t("publishFailed"));
       }
 
       const savedBot = await response.json();
@@ -425,7 +500,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
 
       setIsPublishSuccessModalOpen(true);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "發布失敗，請稍後再試。";
+      const message = error instanceof Error ? error.message : t("publishFailed");
       setActionError(message);
     } finally {
       setIsPublishing(false);
@@ -498,9 +573,9 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         return (
           <>
             <header className="mb-8 border-b border-slate-200 pb-7">
-              <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">知識與教學設定</h1>
+              <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">{t("knowledgeHeader")}</h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                先設定所有對話共用的角色基礎，再整理知識內容與各主題的專屬教學資料。
+                {t("knowledgeHeaderBody")}
               </p>
             </header>
             <CreationStep2
@@ -563,7 +638,7 @@ const handleDeleteBot = async () => {
       <div className="mx-auto flex min-h-[520px] max-w-7xl items-center justify-center">
         <div className="text-center">
           <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600" />
-          <p className="mt-4 text-sm font-semibold text-slate-600">正在載入角色資料…</p>
+          <p className="mt-4 text-sm font-semibold text-slate-600">{t("loading")}</p>
         </div>
       </div>
     );
@@ -573,9 +648,9 @@ const handleDeleteBot = async () => {
     return (
       <div className="mx-auto flex min-h-[520px] max-w-7xl items-center justify-center px-6">
         <div className="max-w-md rounded-[24px] border border-rose-200 bg-white p-7 text-center shadow-sm">
-          <h2 className="text-lg font-extrabold text-slate-900">無法開啟角色編輯頁</h2>
+          <h2 className="text-lg font-extrabold text-slate-900">{t("editErrorTitle")}</h2>
           <p className="mt-2 text-sm leading-6 text-rose-600">{botLoadError}</p>
-          <button type="button" onClick={onBack} className="mt-5 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white">返回機器人庫</button>
+          <button type="button" onClick={onBack} className="mt-5 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white">{t("backToLibrary")}</button>
         </div>
       </div>
     );
@@ -593,7 +668,7 @@ const handleDeleteBot = async () => {
         className="flex items-center text-sm font-medium text-slate-600 hover:text-indigo-600 mb-6"
       >
         <Icons.back className="w-4 h-4 mr-2" />
-        返回我的機器人庫
+        {t("backToMyLibrary")}
       </button>
 
       {/* Stepper */}
@@ -700,7 +775,7 @@ const handleDeleteBot = async () => {
             onClick={handlePrev}
             className="rounded-xl px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
           >
-            上一步
+            {t("prev")}
           </button>
         )}
 
@@ -711,7 +786,7 @@ const handleDeleteBot = async () => {
               disabled={!canProceed}
               className="rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
             >
-              下一步
+              {t("next")}
             </button>
             {!canProceed && (
               <p className="text-xs text-amber-600">{currentStepRule?.reason}</p>
@@ -723,7 +798,7 @@ const handleDeleteBot = async () => {
               onClick={() => {
                 if (!botId && featureMap.get("bot_publish")?.locked) {
                   showAlert({
-                    title: "創建角色已用完",
+                    title: t("charactersUsedUp"),
                     message: featureMap.get("bot_publish")!.upgradeMessage,
                   });
                   return;
@@ -737,18 +812,18 @@ const handleDeleteBot = async () => {
                   : "bg-emerald-600 text-white"
               }`}
             >
-              {isPublishing ? "發布中..." : botId ? '更新機器人' : '完成並發布'}
+              {isPublishing ? t("publishing") : botId ? t("update") : t("publish")}
             </button>
             {!botId && featureMap.get("bot_publish") && (
               <p className={`text-xs ${featureMap.get("bot_publish")?.locked ? "text-rose-600" : "text-slate-500"}`}>
-                創建角色 {featureMap.get("bot_publish")?.used}/{featureMap.get("bot_publish")?.limit}
+                {tf("charactersCount")(`${featureMap.get("bot_publish")?.used}/${featureMap.get("bot_publish")?.limit}`)}
               </p>
             )}
             {!canPublish && (
               <p className="text-xs text-amber-600">
                 {videoTaskInProgress
-                  ? "三段動畫仍在背景生成中，完成後才可發布。"
-                  : `尚有未完成步驟，請先完成第 ${firstInvalidStep} 步。`}
+                  ? t("videoPendingFooter")
+                  : tf("incompleteFooter")(String(firstInvalidStep))}
               </p>
             )}
           </div>

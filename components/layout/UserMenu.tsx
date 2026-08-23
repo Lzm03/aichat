@@ -2,6 +2,30 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Icons } from '../icons';
 import { clearAuthSession, type StoredAuthUser } from '../../utils/auth';
+import { useTeacherLang, type TeacherLang } from '../../utils/teacherI18n';
+
+const UM_T: Record<TeacherLang, Record<string, string>> = {
+  "zh-HK": {
+    account: "帳戶中心",
+    login: "登入 / 註冊",
+    settings: "設定",
+    help: "幫助",
+    helpCenter: "幫助中心",
+    logout: "登出",
+    notLoggedIn: "未登入",
+    pleaseSignIn: "請先登入帳戶",
+  },
+  en: {
+    account: "Account Center",
+    login: "Sign in / Register",
+    settings: "Settings",
+    help: "Help",
+    helpCenter: "Help Center",
+    logout: "Log out",
+    notLoggedIn: "Not signed in",
+    pleaseSignIn: "Please sign in first",
+  },
+};
 
 interface MenuItemProps {
   icon: React.ElementType;
@@ -43,6 +67,7 @@ interface UserMenuProps {
 
 export const UserMenu: React.FC<UserMenuProps> = ({ currentUser = null, variant = "teacher" }) => {
   const isStudent = variant === "student";
+  const um = UM_T[useTeacherLang()];
   const handleLogout = () => {
     clearAuthSession();
     window.location.href = '/auth';
@@ -57,14 +82,14 @@ export const UserMenu: React.FC<UserMenuProps> = ({ currentUser = null, variant 
       className="absolute top-full right-0 mt-2 w-56 bg-[var(--bg-card)] backdrop-blur-md rounded-[20px] shadow-lg border border-[var(--border-soft)] z-30 p-2 origin-top-right"
     >
       <div className="p-2 border-b border-[var(--border-soft)] mb-2">
-         <p className="text-sm font-semibold text-[var(--text-main)]">{currentUser?.fullName || '未登入'}</p>
-         <p className="text-xs text-[var(--text-muted)]">{currentUser?.email || '請先登入帳戶'}</p>
+         <p className="text-sm font-semibold text-[var(--text-main)]">{currentUser?.fullName || um.notLoggedIn}</p>
+         <p className="text-xs text-[var(--text-muted)]">{currentUser?.email || um.pleaseSignIn}</p>
       </div>
-      <MenuItem icon={Icons.userCog} label={currentUser ? "帳戶中心" : "登入 / 註冊"} href={currentUser ? "/account" : "/auth"} />
-      {currentUser && !isStudent && <MenuItem icon={Icons.settings} label="設定" href="/settings" />}
-      <MenuItem icon={Icons.helpCircle} label={isStudent ? "幫助中心" : "幫助"} href="/help" />
+      <MenuItem icon={Icons.userCog} label={currentUser ? um.account : um.login} href={currentUser ? "/account" : "/auth"} />
+      {currentUser && !isStudent && <MenuItem icon={Icons.settings} label={um.settings} href="/settings" />}
+      <MenuItem icon={Icons.helpCircle} label={isStudent ? um.helpCenter : um.help} href="/help" />
       <div className="my-2 h-px bg-[var(--border-soft)]" />
-      <MenuItem icon={Icons.logOut} label="登出" isDanger onClick={handleLogout} />
+      <MenuItem icon={Icons.logOut} label={um.logout} isDanger onClick={handleLogout} />
     </motion.div>
   );
 };

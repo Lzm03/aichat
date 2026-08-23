@@ -8,6 +8,7 @@ import { PublishSuccessModal } from "../components/workshop/PublishSuccessModal"
 import { InfoTipModal } from "../components/system/InfoTipModal";
 import { UserMenu } from "../components/layout/UserMenu";
 import { TokenHistoryModal } from "../components/student/TokenHistoryModal";
+import { TEACHER_LANG_CHANGED_EVENT } from "../utils/teacherI18n";
 
 type StudentHomeProps = {
   currentUser: StoredAuthUser;
@@ -122,6 +123,8 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
     setLang(next);
     localStorage.setItem("chopreality_ui_lang", next);
     document.documentElement.lang = next === "en" ? "en" : "zh-Hant";
+    // 同頁通知教師端元件（Header/工作坊等）即時更新語言
+    window.dispatchEvent(new CustomEvent(TEACHER_LANG_CHANGED_EVENT));
   };
 
   useEffect(() => {

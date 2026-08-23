@@ -29,14 +29,15 @@ import {
 } from './utils/auth';
 import { DEFAULT_USER_PREFERENCES, getAppShellThemeClasses, normalizeUserPreferences, syncDarkClass } from './utils/userPreferences';
 import { useFeatureEntitlements } from './hooks/useFeatureEntitlements';
+import { useTeacherLang, type TeacherLang } from './utils/teacherI18n';
 
 export type Page = 'dashboard' | 'assessment' | 'workshop' | 'sharing';
 
-const pageConfig = {
-  dashboard: { title: '教學指揮艙' },
-  assessment: { title: '智能評測' },
-  workshop: { title: 'AI 機器人工作坊' },
-  sharing: { title: '學生與 Bot 分享' },
+const PAGE_TITLES: Record<Page, Record<TeacherLang, string>> = {
+  dashboard: { "zh-HK": '教學指揮艙', en: 'Command Center' },
+  assessment: { "zh-HK": '智能評測', en: 'Smart Assessment' },
+  workshop: { "zh-HK": 'AI 機器人工作坊', en: 'AI Bot Workshop' },
+  sharing: { "zh-HK": '學生與 Bot 分享', en: 'Share with Students' },
 };
 
 const LandingPage: React.FC = () => {
@@ -68,6 +69,7 @@ const App: React.FC = () => {
   const [isPortraitLayout, setIsPortraitLayout] = useState(false);
   const [botSearchQuery, setBotSearchQuery] = useState('');
   const { features } = useFeatureEntitlements();
+  const teacherLang = useTeacherLang();
 
   // 在本地永遠視為已準備好，不檢查 window.aistudio
   const hasApiKey = true;
@@ -265,13 +267,13 @@ const App: React.FC = () => {
             forceVisible={isPortraitLayout}
           />
           <div className="flex-1 flex flex-col">
-            <Header 
-              pageTitle={pageConfig[activePage].title} 
+            <Header
+              pageTitle={PAGE_TITLES[activePage][teacherLang]}
               onMenuClick={() => setIsMobileDrawerOpen(true)}
               forceMobileMenu={isPortraitLayout}
               currentUser={currentUser}
               searchValue={activePage === 'workshop' ? botSearchQuery : ''}
-              searchPlaceholder={activePage === 'workshop' ? '搜尋 AI 機器人名稱…' : '全域搜尋...'}
+              searchPlaceholder={activePage === 'workshop' ? (teacherLang === "en" ? 'Search AI bot name…' : '搜尋 AI 機器人名稱…') : (teacherLang === "en" ? 'Search…' : '全域搜尋...')}
               onSearchChange={activePage === 'workshop' ? setBotSearchQuery : undefined}
             />
             <main className="flex-1 p-6 lg:p-8 overflow-y-auto">

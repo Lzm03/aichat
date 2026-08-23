@@ -2,9 +2,15 @@
 
 import React from 'react';
 import { readAuthSession } from '../utils/auth';
+import { useTeacherLang } from '../utils/teacherI18n';
 
 import { AssessmentQualityCard } from '../components/assessment/AssessmentQualityCard';
 import { StudentLearningReportCard } from '../components/dashboard/StudentLearningReportCard';
+
+const WELCOME_T = {
+  "zh-HK": "歡迎回到教學指揮艙，和學生們一起開啟今天的學習之旅！",
+  en: "Welcome back to the Command Center. Let's start today's learning journey with your students!",
+} as const;
 
 function getTimeGreeting(date = new Date()) {
   const hour = date.getHours();
@@ -26,7 +32,7 @@ const HeroBanner: React.FC<{ teacherName: string }> = ({ teacherName }) => (
       <div className="max-w-2xl space-y-3 text-white sm:space-y-4">
         <h2 className="text-xl font-black leading-tight tracking-tight text-white sm:text-2xl md:text-4xl">{getTimeGreeting()}，{teacherName}</h2>
         <div className="inline-block max-w-full rounded-2xl border border-white/18 bg-white/10 p-3 text-white shadow-sm backdrop-blur-[3px] sm:rounded-xl">
-          <p className="text-sm font-semibold leading-snug text-white/90">歡迎回到教學指揮艙，和學生們一起開啟今天的學習之旅！</p>
+          <p className="text-sm font-semibold leading-snug text-white/90">{WELCOME_T[useTeacherLang()]}</p>
         </div>
       </div>
     </div>
