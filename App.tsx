@@ -66,6 +66,8 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<StoredAuthUser | null>(null);
   const [isSessionReady, setIsSessionReady] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  // 網路不穩（連續失敗達閾值）→ 非阻擋細條提示；維護模式才用全屏遮罩
+  const [isOffline, setIsOffline] = useState(false);
   const [isPortraitLayout, setIsPortraitLayout] = useState(false);
   const [botSearchQuery, setBotSearchQuery] = useState('');
   const { features } = useFeatureEntitlements();
@@ -144,16 +146,24 @@ const App: React.FC = () => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json().catch(() => ({}));
         if (data?.maintenance === true) {
+          // 後端明確回報維護中 → 全屏遮罩（真實維護，保留）
           failedCount = 0;
-          if (!cancelled) setIsUpdating(true);
+          if (!cancelled) {
+            setIsOffline(false);
+            setIsUpdating(true);
+          }
           return;
         }
         failedCount = 0;
-        if (!cancelled) setIsUpdating(false);
+        if (!cancelled) {
+          setIsOffline(false);
+          setIsUpdating(false);
+        }
       } catch {
+        // 網路失敗：連續 4 次（約 20 秒）才提示，且只顯示非阻擋細條
         failedCount += 1;
-        if (!cancelled && failedCount >= 2) {
-          setIsUpdating(true);
+        if (!cancelled && failedCount >= 4) {
+          setIsOffline(true);
         }
       }
     };
@@ -220,6 +230,14 @@ const App: React.FC = () => {
             <p className="mt-4 text-lg font-semibold text-slate-800">系統更新中</p>
             <p className="mt-1 text-sm text-slate-500">新版本部署完成後將自動恢復</p>
           </div>
+        </div>
+      ) : null}
+      {isOffline && !isUpdating ? (
+        <div className="fixed right-4 top-4 z-[90] flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50/95 px-4 py-2 shadow-lg backdrop-blur">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+          <p className="text-xs font-bold text-amber-700">
+            {teacherLang === "en" ? "Network unstable, reconnecting…" : "網路連線不穩，正在重新連線…"}
+          </p>
         </div>
       ) : null}
       {!isSessionReady ? (
