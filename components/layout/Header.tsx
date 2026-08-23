@@ -112,9 +112,11 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Icons.cpu className="h-4 w-4 xl:hidden" />
               <span className="hidden xl:inline">方案用量</span>
-              <span className={`rounded-full px-1.5 py-0.5 sm:px-2 ${lockedCount > 0 ? "bg-rose-100 text-rose-700" : "bg-white text-indigo-700"}`}>
-                {lockedCount > 0 ? `${lockedCount} 已用完` : "查看"}
-              </span>
+              {lockedCount > 0 && (
+                <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-rose-700 sm:px-2">
+                  {lockedCount} 已用完
+                </span>
+              )}
               <Icons.down className={`h-4 w-4 transition-transform ${isFeatureMenuOpen ? "rotate-180" : ""}`} />
             </button>
             <AnimatePresence>
