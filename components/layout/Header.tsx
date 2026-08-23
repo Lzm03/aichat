@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Check } from 'lucide-react';
 import { Icons } from '../icons';
 import { FeatureLimitPanel } from '../system/FeatureLimitPanel';
 import { UserMenu } from './UserMenu';
@@ -39,10 +40,23 @@ export const Header: React.FC<HeaderProps> = ({
   const primaryFeatures = features.filter((feature) => feature.key === "bot_publish" || feature.key === "chat_messages");
   const [isFeatureMenuOpen, setIsFeatureMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+  // 語言：與學生端共用 localStorage key（chopreality_ui_lang）；教師頁面文案翻譯為後續批次
+  const [lang, setLang] = useState<"zh-HK" | "en">(() => {
+    const saved = localStorage.getItem("chopreality_ui_lang");
+    return saved === "en" ? "en" : "zh-HK";
+  });
 
   const featureMenuTriggerRef = useRef<HTMLDivElement>(null);
   const userMenuTriggerRef = useRef<HTMLDivElement>(null);
+  const langMenuTriggerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const switchLang = (next: "zh-HK" | "en") => {
+    setLang(next);
+    localStorage.setItem("chopreality_ui_lang", next);
+    document.documentElement.lang = next === "en" ? "en" : "zh-Hant";
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -51,6 +65,9 @@ export const Header: React.FC<HeaderProps> = ({
       }
       if (userMenuTriggerRef.current && !userMenuTriggerRef.current.contains(event.target as Node)) {
         setIsUserMenuOpen(false);
+      }
+      if (langMenuTriggerRef.current && !langMenuTriggerRef.current.contains(event.target as Node)) {
+        setIsLangMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -150,6 +167,51 @@ export const Header: React.FC<HeaderProps> = ({
               ⌘K
             </div>
           )}
+        </div>
+
+        {/* 語言切換：中 / EN（普通話與粵語同屬中文，選項只設「中」） */}
+        <div className="relative hidden sm:block" ref={langMenuTriggerRef}>
+          <button
+            type="button"
+            onClick={() => setIsLangMenuOpen((prev) => !prev)}
+            aria-label="切換語言"
+            className="flex h-10 items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3.5 text-xs font-bold text-slate-600 transition hover:border-indigo-300 hover:text-indigo-600"
+          >
+            <Icons.language className="h-4 w-4 text-slate-400" />
+            {lang === "en" ? "EN" : "中"}
+            <Icons.down className={`h-3.5 w-3.5 text-slate-400 transition-transform ${isLangMenuOpen ? "rotate-180" : ""}`} />
+          </button>
+          <AnimatePresence>
+            {isLangMenuOpen && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96, y: -6 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: -6 }}
+                transition={{ type: "spring", damping: 20, stiffness: 280 }}
+                className="absolute right-0 top-full z-30 mt-2 w-36 rounded-[14px] border border-slate-200 bg-white p-1.5 shadow-lg"
+              >
+                {([["zh-HK", "中"], ["en", "EN"]] as const).map(([value, label]) => {
+                  const active = lang === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        switchLang(value);
+                        setIsLangMenuOpen(false);
+                      }}
+                      className={`flex w-full items-center justify-between rounded-[10px] px-3 py-2 text-sm font-semibold transition ${
+                        active ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      {label}
+                      {active && <Check className="h-4 w-4" />}
+                    </button>
+                  );
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         <div className="relative" ref={userMenuTriggerRef}>
