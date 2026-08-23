@@ -1,15 +1,16 @@
 import React, { useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { Icons } from "../components/icons";
 
 // ---- mock 資料（接後端後由接口取代）----
+// desc 為常駐顯示在維度名稱下的小字說明（由原長句精簡，避免標籤區過擠）
 const skillsData = [
-  { label: "記憶 (Remember)", value: 70, desc: "提取事實與基本概念的能力。" },
-  { label: "理解 (Understand)", value: 80, desc: "解釋想法與說明概念的邏輯。" },
-  { label: "應用 (Apply)", value: 85, desc: "將所學知識運用於新情境中。" },
-  { label: "分析 (Analyze)", value: 95, desc: "拆解資訊並找出各部分關聯。" },
-  { label: "評價 (Evaluate)", value: 85, desc: "針對觀點與決策提出批判與辯護。" },
-  { label: "創造 (Create)", value: 95, desc: "整合資訊以產出全新的原創作品。" },
+  { label: "記憶 (Remember)", value: 70, desc: "提取事實與概念" },
+  { label: "理解 (Understand)", value: 80, desc: "解釋想法與邏輯" },
+  { label: "應用 (Apply)", value: 85, desc: "運用於新情境" },
+  { label: "分析 (Analyze)", value: 95, desc: "拆解資訊的關聯" },
+  { label: "評價 (Evaluate)", value: 85, desc: "批判與辯護" },
+  { label: "創造 (Create)", value: 95, desc: "產出原創作品" },
 ];
 
 // ---- 六軸雷達圖（自繪 SVG，移植自 3001 成就博物館；色彩走主題 token）----
@@ -140,25 +141,23 @@ const RadarChart: React.FC<{ data: SkillDimension[] }> = ({ data }) => {
               >
                 {item.label}
               </motion.text>
+              {/* 常駐小字說明：位於維度名稱正下方 */}
+              <motion.text
+                x={labelPoint.x}
+                y={labelPoint.y + 18}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.5, delay: 0.95 + index * 0.1 }}
+                textAnchor={textAnchor}
+                dominantBaseline="middle"
+                style={{ fill: "var(--text-faint)", fontSize: "10px", fontWeight: 400 }}
+              >
+                {item.desc}
+              </motion.text>
             </g>
           );
         })}
       </svg>
-
-      {/* Tooltip */}
-      <AnimatePresence>
-        {hoveredIndex !== null && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            className="absolute right-4 top-4 z-20 max-w-[200px] rounded-xl border border-[var(--border-soft)] bg-[var(--bg-card)] px-4 py-3 text-sm shadow-[var(--shadow-card)] backdrop-blur-sm"
-          >
-            <div className="mb-1 font-bold" style={{ color: "var(--accent-text)" }}>{data[hoveredIndex].label}</div>
-            <div className="leading-snug" style={{ color: "var(--text-muted)" }}>{data[hoveredIndex].desc}</div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };
