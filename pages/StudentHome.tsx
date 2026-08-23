@@ -172,36 +172,49 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1 sm:gap-3 lg:gap-5">
-          <div className="hidden items-center gap-1.5 lg:flex">
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-subtle-2)] px-4 py-2">
-              <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-faint)]">Tokens</div>
-              <div className="text-sm font-black text-[var(--text-body)]">{currentUser.quota?.remaining ?? 750} <span className="text-[var(--text-faint)]">/ {currentUser.quota?.monthlyLimit ?? 1000}</span></div>
-            </div>
-            <button type="button" aria-label={t("tokenHelp")} onClick={() => setActiveTip("tokens")} className="text-[var(--text-faint)] transition hover:text-[var(--accent-text)]"><HelpCircle className="h-[18px] w-[18px]" /></button>
-          </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Token：手機精簡 🪙 750，lg+ 完整 750 / 1000；點按開說明 */}
+          <button
+            type="button"
+            aria-label={t("tokenHelp")}
+            onClick={() => setActiveTip("tokens")}
+            className="flex h-10 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-subtle-2)] px-3.5 text-sm transition-all hover:border-[var(--accent-border)] hover:shadow-sm"
+          >
+            <span aria-hidden="true">🪙</span>
+            <span className="font-black text-[var(--text-body)]">{currentUser.quota?.remaining ?? 750}</span>
+            <span className="hidden font-semibold text-[var(--text-faint)] lg:inline">/ {currentUser.quota?.monthlyLimit ?? 1000}</span>
+          </button>
+          {/* ？說明（lg+）：圓形 ghost 鈕，與其他控制項等高 */}
+          <button
+            type="button"
+            aria-label={t("tokenHelp")}
+            onClick={() => setActiveTip("tokens")}
+            className="hidden h-10 w-10 items-center justify-center rounded-full border border-[var(--border)] text-[var(--text-faint)] transition hover:border-[var(--accent-border)] hover:text-[var(--accent-text)] lg:flex"
+          >
+            <HelpCircle className="h-4 w-4" />
+          </button>
           {/* 語言切換：繁中 / English */}
-          <div className="flex shrink-0 items-center rounded-full border border-[var(--border)] bg-[var(--bg-subtle-2)] p-0.5">
-            <button type="button" onClick={() => switchLang("zh-HK")} className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${lang === "zh-HK" ? "bg-[var(--accent)] text-white shadow-sm" : "text-[var(--text-muted)] hover:text-[var(--text-main)]"}`}>中</button>
-            <button type="button" onClick={() => switchLang("en")} className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${lang === "en" ? "bg-[var(--accent)] text-white shadow-sm" : "text-[var(--text-muted)] hover:text-[var(--text-main)]"}`}>EN</button>
+          <div className="flex shrink-0 items-center rounded-full border border-[var(--border)] bg-[var(--bg-subtle-2)] p-1">
+            <button type="button" onClick={() => switchLang("zh-HK")} className={`h-8 rounded-full px-3 text-xs font-bold transition ${lang === "zh-HK" ? "bg-[var(--accent)] text-white shadow-sm" : "text-[var(--text-muted)] hover:text-[var(--text-main)]"}`}>中</button>
+            <button type="button" onClick={() => switchLang("en")} className={`h-8 rounded-full px-3 text-xs font-bold transition ${lang === "en" ? "bg-[var(--accent)] text-white shadow-sm" : "text-[var(--text-muted)] hover:text-[var(--text-main)]"}`}>EN</button>
           </div>
           <div className="relative" ref={userMenuRef}>
             <button
               type="button"
               onClick={() => setIsUserMenuOpen((prev) => !prev)}
               aria-label={currentUser.fullName || "Account"}
-              className="overflow-hidden rounded-xl transition hover:ring-2 hover:ring-[var(--accent-border)]"
+              className="block h-10 w-10 shrink-0 overflow-hidden rounded-full transition hover:ring-2 hover:ring-[var(--accent-border)]"
             >
               {currentUser.avatarUrl ? (
                 <img
                   src={currentUser.avatarUrl}
                   alt=""
-                  className="h-9 w-9 rounded-xl object-cover sm:h-10 sm:w-10"
+                  className="h-10 w-10 rounded-full object-cover"
                 />
               ) : (
                 <span
                   aria-hidden="true"
-                  className="block h-9 w-9 rounded-xl sm:h-10 sm:w-10"
+                  className="block h-10 w-10 rounded-full"
                   style={{ backgroundColor: getAvatarColor(currentUser.id || currentUser.email) }}
                 />
               )}
