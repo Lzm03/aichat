@@ -1115,7 +1115,7 @@ JSON 必須符合以下結構：
     <div className="space-y-10 animate-fade-in">
       <section id="character-foundation" className="scroll-mt-36">
         <div className="flex items-start gap-4">
-          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-xs font-black text-white shadow-sm">01</span>
+          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">01</span>
           <div>
             <h2 className="text-xl font-black tracking-tight text-slate-950">角色基礎</h2>
             <p className="mt-1 text-sm leading-6 text-slate-500">這些設定會套用到所有主題，維持角色個性與回答方式一致。</p>
