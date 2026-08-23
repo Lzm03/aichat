@@ -173,23 +173,24 @@ type StudentBadge = {
   emoji: string;
   description: string;      // 解鎖後背面：勳章意義
   unlockCondition: string;  // 未解鎖背面：解鎖條件
+  gradient?: string;        // 解鎖正面漸變（色盤沿用 3001 勳章牆）
   unlocked: boolean;
   unlockedAt?: string;
 };
 
 const mockBadges: StudentBadge[] = [
-  { id: "first-voyage", name: "初次啟航", emoji: "🚀", description: "與 AI 夥伴完成第一次對話，學習之旅正式啟程", unlockCondition: "首次與 AI 夥伴對話", unlocked: true, unlockedAt: "2026-08-20" },
-  { id: "streak-rookie", name: "連勝新手", emoji: "🔥", description: "連續 5 天與夥伴對話，好習慣正在養成", unlockCondition: "連續 5 天與夥伴對話", unlocked: true, unlockedAt: "2026-08-21" },
-  { id: "early-bird", name: "早起之鳥", emoji: "🌅", description: "早上 6–10 點就開始學習，比太陽還勤奮", unlockCondition: "早上 6:00–10:00 學習", unlocked: true, unlockedAt: "2026-08-22" },
-  { id: "streak-master", name: "連勝高手", emoji: "🏆", description: "連續 10 天不間斷，堅持就是你的超能力", unlockCondition: "連續 10 天與夥伴對話", unlocked: false },
-  { id: "stem-master", name: "STEM 大師", emoji: "🔢", description: "STEM 測驗拿下 85 分以上，數理科技小天才", unlockCondition: "STEM 測驗得分 ≥85", unlocked: false },
-  { id: "word-wizard", name: "文字魔法師", emoji: "✍️", description: "與寫作夥伴對話 10 次以上，筆下生花", unlockCondition: "與寫作/語文夥伴對話 ≥10 次", unlocked: false },
-  { id: "curious-baby", name: "好奇寶寶", emoji: "🤔", description: "累計發出 100 則訊息，十萬個為什麼", unlockCondition: "累計對話訊息 ≥100 則", unlocked: false },
-  { id: "grammar-master", name: "語法大師", emoji: "📝", description: "英文文法測驗連續 5 次滿分", unlockCondition: "英文文法測驗連續 5 次滿分", unlocked: false },
-  { id: "explorer", name: "知識探險家", emoji: "🔍", description: "跨越學科邊界，探索知識大陸", unlockCondition: "與 ≥4 個不同學科的夥伴對話", unlocked: false },
-  { id: "flash", name: "閃電俠", emoji: "⚡", description: "10 分鐘內連續完成 5 次對話，快如閃電", unlockCondition: "10 分鐘內完成 5 次對話", unlocked: false },
-  { id: "perfectionist", name: "完美主義者", emoji: "💎", description: "連續 3 次測驗全對，分毫不差", unlockCondition: "連續 3 次測驗全對", unlocked: false },
-  { id: "all-rounder", name: "全能學者", emoji: "🎓", description: "各學科知識點覆蓋率達 80% 以上", unlockCondition: "各學科知識點覆蓋 ≥80%", unlocked: false },
+  { id: "first-voyage", name: "初次啟航", emoji: "🚀", description: "與 AI 夥伴完成第一次對話，學習之旅正式啟程", unlockCondition: "首次與 AI 夥伴對話", gradient: "linear-gradient(135deg, #3B82F6, #4F46E5)", unlocked: true, unlockedAt: "2026-08-20" },
+  { id: "streak-rookie", name: "連勝新手", emoji: "🔥", description: "連續 5 天與夥伴對話，好習慣正在養成", unlockCondition: "連續 5 天與夥伴對話", gradient: "linear-gradient(135deg, #F59E0B, #F43F5E)", unlocked: true, unlockedAt: "2026-08-21" },
+  { id: "early-bird", name: "早起之鳥", emoji: "🌅", description: "早上 6–10 點就開始學習，比太陽還勤奮", unlockCondition: "早上 6:00–10:00 學習", gradient: "linear-gradient(135deg, #F59E0B, #FBBF24)", unlocked: true, unlockedAt: "2026-08-22" },
+  { id: "streak-master", name: "連勝高手", emoji: "🏆", description: "連續 10 天不間斷，堅持就是你的超能力", unlockCondition: "連續 10 天與夥伴對話", gradient: "linear-gradient(135deg, #F43F5E, #DB2777)", unlocked: false },
+  { id: "stem-master", name: "STEM 大師", emoji: "🔢", description: "STEM 測驗拿下 85 分以上，數理科技小天才", unlockCondition: "STEM 測驗得分 ≥85", gradient: "linear-gradient(135deg, #8B5CF6, #7C3AED)", unlocked: false },
+  { id: "word-wizard", name: "文字魔法師", emoji: "✍️", description: "與寫作夥伴對話 10 次以上，筆下生花", unlockCondition: "與寫作/語文夥伴對話 ≥10 次", gradient: "linear-gradient(135deg, #06B6D4, #0891B2)", unlocked: false },
+  { id: "curious-baby", name: "好奇寶寶", emoji: "🤔", description: "累計發出 100 則訊息，十萬個為什麼", unlockCondition: "累計對話訊息 ≥100 則", gradient: "linear-gradient(135deg, #14B8A6, #0D9488)", unlocked: false },
+  { id: "grammar-master", name: "語法大師", emoji: "📝", description: "英文文法測驗連續 5 次滿分", unlockCondition: "英文文法測驗連續 5 次滿分", gradient: "linear-gradient(135deg, #6366F1, #4F46E5)", unlocked: false },
+  { id: "explorer", name: "知識探險家", emoji: "🔍", description: "跨越學科邊界，探索知識大陸", unlockCondition: "與 ≥4 個不同學科的夥伴對話", gradient: "linear-gradient(135deg, #10B981, #059669)", unlocked: false },
+  { id: "flash", name: "閃電俠", emoji: "⚡", description: "10 分鐘內連續完成 5 次對話，快如閃電", unlockCondition: "10 分鐘內完成 5 次對話", gradient: "linear-gradient(135deg, #FBBF24, #F59E0B)", unlocked: false },
+  { id: "perfectionist", name: "完美主義者", emoji: "💎", description: "連續 3 次測驗全對，分毫不差", unlockCondition: "連續 3 次測驗全對", gradient: "linear-gradient(135deg, #A78BFA, #8B5CF6)", unlocked: false },
+  { id: "all-rounder", name: "全能學者", emoji: "🎓", description: "各學科知識點覆蓋率達 80% 以上", unlockCondition: "各學科知識點覆蓋 ≥80%", gradient: "linear-gradient(135deg, #F59E0B, #D97706)", unlocked: false },
 ];
 
 const formatUnlockDate = (iso?: string): string | null => {
@@ -215,13 +216,14 @@ const BadgeCard: React.FC<{ badge: StudentBadge; index: number }> = ({ badge, in
       onClick={() => setIsFlipped((v) => !v)}
     >
       <div className={`relative h-full w-full transition-transform duration-500 [transform-style:preserve-3d] ${rotateClass}`}>
-        {/* 正面：解鎖＝漸變＋emoji；未解鎖＝神秘剪影 */}
+        {/* 正面：解鎖＝專屬漸變＋emoji；未解鎖＝神秘剪影 */}
         <div
           className={`absolute inset-0 flex flex-col items-center justify-center rounded-[24px] p-4 [backface-visibility:hidden] ${
             badge.unlocked
-              ? "bg-gradient-to-br from-indigo-500 to-violet-600 shadow-[0_10px_30px_rgba(0,0,0,0.15)]"
+              ? "shadow-[0_10px_30px_rgba(0,0,0,0.15)]"
               : "border-2 border-dashed border-[var(--border)] bg-[var(--bg-subtle-2)]"
           }`}
+          style={badge.unlocked ? { background: badge.gradient ?? "linear-gradient(135deg, #6366F1, #8B5CF6)" } : undefined}
         >
           {badge.unlocked ? (
             <>
