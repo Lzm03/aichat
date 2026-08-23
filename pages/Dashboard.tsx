@@ -26,13 +26,7 @@ const HeroBanner: React.FC<{ teacherName: string }> = ({ teacherName }) => (
       <div className="max-w-2xl space-y-3 text-white sm:space-y-4">
         <h2 className="text-xl font-black leading-tight tracking-tight text-white sm:text-2xl md:text-4xl">{getTimeGreeting()}，{teacherName}</h2>
         <div className="inline-block max-w-full rounded-2xl border border-white/18 bg-white/10 p-3 text-white shadow-sm backdrop-blur-[3px] sm:rounded-xl">
-          <div className="flex flex-col gap-2 text-sm font-semibold leading-snug text-white/90 sm:block">
-            <span>本週 <span className="mx-0.5 rounded-md bg-white/18 px-1.5 py-0.5 font-black text-white shadow-sm">2</span> 份測驗已批改完成</span>
-            <span className="hidden sm:inline"> · </span>
-            <span><span className="mx-0.5 rounded-md bg-white/18 px-1.5 py-0.5 font-black text-white shadow-sm">3</span> 名學生在「分析」層級持續落後</span>
-            <span className="hidden sm:inline"> · </span>
-            <span><span className="mx-0.5 rounded-md bg-white/18 px-1.5 py-0.5 font-black text-white shadow-sm">1</span> 份 AI 評分偏差較高</span>
-          </div>
+          <p className="text-sm font-semibold leading-snug text-white/90">歡迎回到教學指揮艙，和學生們一起開啟今天的學習之旅！</p>
         </div>
       </div>
     </div>
