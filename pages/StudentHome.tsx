@@ -7,6 +7,7 @@ import { getAvatarColor } from "../utils/avatarColor";
 import { PublishSuccessModal } from "../components/workshop/PublishSuccessModal";
 import { InfoTipModal } from "../components/system/InfoTipModal";
 import { UserMenu } from "../components/layout/UserMenu";
+import { TokenHistoryModal } from "../components/student/TokenHistoryModal";
 
 type StudentHomeProps = {
   currentUser: StoredAuthUser;
@@ -108,6 +109,7 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
   const [selectedBot, setSelectedBot] = useState<SharedBot | null>(null);
   const [loadingBots, setLoadingBots] = useState(true);
   const [activeTip, setActiveTip] = useState<"companions" | "tokens" | null>(null);
+  const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
 
   // 語言狀態：優先 localStorage 記住的上次選擇，其次用戶偏好，預設繁中
   const [lang, setLang] = useState<"zh-HK" | "en">(() => {
@@ -173,11 +175,11 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          {/* Token：手機精簡 🪙 750，lg+ 完整 750 / 1000；點按開說明 */}
+          {/* Token：手機精簡 🪙 750，lg+ 完整 750 / 1000；點按開消耗記錄 */}
           <button
             type="button"
             aria-label={t("tokenHelp")}
-            onClick={() => setActiveTip("tokens")}
+            onClick={() => setIsTokenModalOpen(true)}
             className="flex h-10 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-subtle-2)] px-3.5 text-sm transition-all hover:border-[var(--accent-border)] hover:shadow-sm"
           >
             <span aria-hidden="true">🪙</span>
@@ -302,6 +304,11 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
         title={activeTip === "tokens" ? t("tokenTipTitle") : t("companionTipTitle")}
         body={activeTip === "tokens" ? t("tokenTipBody") : t("companionTipBody")}
         onClose={() => setActiveTip(null)}
+      />
+      <TokenHistoryModal
+        isOpen={isTokenModalOpen}
+        onClose={() => setIsTokenModalOpen(false)}
+        quota={currentUser.quota}
       />
     </div>
   );
