@@ -6,6 +6,7 @@ import { useTeacherLang } from '../utils/teacherI18n';
 
 import { AssessmentQualityCard } from '../components/assessment/AssessmentQualityCard';
 import { StudentLearningReportCard } from '../components/dashboard/StudentLearningReportCard';
+import { DemoNotice } from '../components/system/DemoNotice';
 
 const WELCOME_T = {
   "zh-HK": "歡迎回到教學指揮艙，和學生們一起開啟今天的學習之旅！",
@@ -44,6 +45,7 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="h-full flex flex-col pb-32 md:pb-0">
+      <DemoNotice />
       <HeroBanner teacherName={teacherName} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
         <div className="md:col-span-1">
