@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle, ArrowRight, BarChart2, HelpCircle, Trash2 } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
 import { Icons } from '../icons';
@@ -27,6 +27,7 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
   const [quizzes, setQuizzes] = useState<QuizSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingQuizId, setDeletingQuizId] = useState<string | null>(null);
+  const [pendingDeleteQuiz, setPendingDeleteQuiz] = useState<QuizSummary | null>(null);
   const [showHelp, setShowHelp] = useState(false);
 
   const loadQuizzes = useCallback(() => {
@@ -163,7 +164,7 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
 
                 <div className="shrink-0 w-full md:w-auto flex items-center justify-end gap-3">
                   <button
-                    onClick={() => void handleDeleteQuiz(quiz.id)}
+                    onClick={() => setPendingDeleteQuiz(quiz)}
                     disabled={deletingQuizId === quiz.id}
                     className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition-colors hover:text-rose-600 disabled:opacity-50"
                   >
@@ -189,6 +190,59 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
           })}
       </div>
       <InfoTipModal open={showHelp} title="AI 批改怎麼運作" body="學生作答後，AI 會先自動評分並給出建議分數，例如選擇題直接判對錯、簡答題會給參考理由。你可以直接採用，也能手動調整後再確認送出。" onClose={() => setShowHelp(false)} />
+
+      {/* 刪除測驗二次確認 */}
+      <AnimatePresence>
+        {pendingDeleteQuiz && (
+          <motion.div
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/45 p-5 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setPendingDeleteQuiz(null)}
+          >
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-quiz-title"
+              className="relative w-full max-w-[380px] rounded-[24px] bg-white p-6 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)]"
+              initial={{ opacity: 0, y: 14, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              transition={{ duration: 0.18 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50">
+                <Trash2 className="h-5 w-5 text-rose-600" />
+              </div>
+              <h3 id="delete-quiz-title" className="mt-4 text-[17px] font-extrabold text-slate-950">刪除測驗？</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                確定要刪除測驗「{pendingDeleteQuiz.title}」嗎？此操作無法復原。
+              </p>
+              <div className="mt-5 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPendingDeleteQuiz(null)}
+                  className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const quizId = pendingDeleteQuiz.id;
+                    setPendingDeleteQuiz(null);
+                    void handleDeleteQuiz(quizId);
+                  }}
+                  className="flex-1 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700"
+                >
+                  刪除
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
