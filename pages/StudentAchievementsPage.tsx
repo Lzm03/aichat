@@ -256,8 +256,59 @@ const BadgeCard: React.FC<{ badge: StudentBadge; index: number }> = ({ badge, in
   );
 };
 
+// ---- 統計卡 ----
+// 4 個可直接由後端聚合的指標（見對接文件）：mock 先行
+type StudentStats = {
+  botsTalked: number;       // conversations DISTINCT bot_id
+  topicsTalked: number;     // conversations DISTINCT topic_id
+  todayInteractions: number; // bot_interaction_events
+  totalMessages: number;    // conversation_messages role='user' 數
+};
+
+const mockStats: StudentStats = { botsTalked: 4, topicsTalked: 18, todayInteractions: 7, totalMessages: 126 };
+
+const statCards: { key: keyof StudentStats; icon: string; label: string; color: string }[] = [
+  { key: "botsTalked", icon: "🤖", label: "已對話機器人", color: "#6366F1" },
+  { key: "topicsTalked", icon: "💡", label: "已聊知識點", color: "#8B5CF6" },
+  { key: "todayInteractions", icon: "⚡", label: "今日互動", color: "#F59E0B" },
+  { key: "totalMessages", icon: "💬", label: "累計訊息", color: "#3B82F6" },
+];
+
+// 白玻璃卡 + 主題色描邊；hover 上浮 + 彩影（沿用 3001 StatsCards）
+const StatCard: React.FC<{ icon: string; value: number; label: string; color: string; index: number }> = ({
+  icon,
+  value,
+  label,
+  color,
+  index,
+}) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay: index * 0.1, duration: 0.5 }}
+  >
+    <div
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-4px)";
+        e.currentTarget.style.boxShadow = `0 20px 40px ${color}30`;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "translateY(0)";
+        e.currentTarget.style.boxShadow = "";
+      }}
+      className="rounded-[24px] bg-[var(--bg-card)] p-6 text-center shadow-[var(--shadow-card)] transition-all duration-300"
+      style={{ border: `2px solid ${color}20` }}
+    >
+      <div className="text-[40px] leading-none" aria-hidden="true">{icon}</div>
+      <p className="mt-3 text-3xl font-black text-[var(--text-main)]">{value}</p>
+      <p className="mt-1 text-xs font-semibold text-[var(--text-muted)]">{label}</p>
+    </div>
+  </motion.div>
+);
+
 export const StudentAchievementsPage: React.FC = () => {
   const [badges, setBadges] = useState<StudentBadge[]>(mockBadges);
+  const [stats, setStats] = useState<StudentStats>(mockStats);
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
@@ -266,6 +317,9 @@ export const StudentAchievementsPage: React.FC = () => {
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || "載入失敗");
         setBadges(Array.isArray(data?.badges) ? data.badges : mockBadges);
+        if (data?.stats && typeof data.stats.botsTalked === "number") {
+          setStats(data.stats);
+        }
       })
       .catch(() => {
         // 後端未就緒 → 保留 mock
@@ -298,6 +352,13 @@ export const StudentAchievementsPage: React.FC = () => {
           <div className="relative mx-auto mt-6 aspect-square max-w-[400px]">
             <RadarChart data={skillsData} />
           </div>
+        </section>
+
+        {/* ---- 統計卡 ---- */}
+        <section className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {statCards.map((card, index) => (
+            <StatCard key={card.key} icon={card.icon} value={stats[card.key]} label={card.label} color={card.color} index={index} />
+          ))}
         </section>
 
         {/* ---- 勳章牆 ---- */}
@@ -349,8 +410,6 @@ export const StudentAchievementsPage: React.FC = () => {
             </>
           )}
         </section>
-
-        {/* ---- 統計卡：待 Doris 確認後實作（已對話機器人/已聊知識點/今日互動/累計訊息）---- */}
       </div>
     </div>
   );
