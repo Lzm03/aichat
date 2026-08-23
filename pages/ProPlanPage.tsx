@@ -12,7 +12,7 @@ export const ProPlanPage: React.FC = () => (
   <div className="min-h-screen bg-[#f7f8fb] pb-20 text-slate-800">
     <section className="bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 px-6 pb-[60px] pt-8 text-center text-white">
       <div className="mx-auto flex max-w-[880px] justify-start">
-        <a href="/account" className="inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 text-sm font-bold text-white backdrop-blur transition hover:bg-white/25"><ArrowLeft className="h-4 w-4" />返回帳户中心</a>
+        <a href="/account" className="inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 text-sm font-bold text-white backdrop-blur transition hover:bg-white/25"><ArrowLeft className="h-4 w-4" />返回帳戶中心</a>
       </div>
       <span className="mt-5 inline-block rounded-full bg-white/20 px-3.5 py-1.5 text-[11px] font-extrabold tracking-wider">PRO 方案</span>
       <h1 className="mt-4 text-[28px] font-black">您的 PRO 方案已啟用</h1>
@@ -41,7 +41,7 @@ export const ProPlanPage: React.FC = () => (
         <h2 className="text-[17px] font-extrabold text-slate-950">教師培訓與支援</h2>
         <p className="mt-1 text-[13px] text-slate-400">一次 1 小時的教學工作坊，之後也可隨時查詢</p>
         <div className="mt-[18px] divide-y divide-slate-100 border-y border-slate-100">
-          <div className="flex gap-3.5 py-3.5"><span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[10px] bg-indigo-50 text-indigo-600"><Users className="h-[18px] w-[18px]" /></span><div><h3 className="text-[13px] font-bold">教學工作坊（1 小時）</h3><p className="mt-1 text-xs leading-6 text-slate-400">對象：相關科任老師／IT 及課程負責老師<br />內容：帳户及專案基本操作示範、數字人內容更新流程</p></div></div>
+          <div className="flex gap-3.5 py-3.5"><span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[10px] bg-indigo-50 text-indigo-600"><Users className="h-[18px] w-[18px]" /></span><div><h3 className="text-[13px] font-bold">教學工作坊（1 小時）</h3><p className="mt-1 text-xs leading-6 text-slate-400">對象：相關科任老師／IT 及課程負責老師<br />內容：帳戶及專案基本操作示範、數字人內容更新流程</p></div></div>
           <div className="flex gap-3.5 py-3.5"><span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[10px] bg-indigo-50 text-indigo-600"><MessageCircle className="h-[18px] w-[18px]" /></span><div><h3 className="text-[13px] font-bold">日常技術諮詢</h3><p className="mt-1 text-xs leading-6 text-slate-400">實際使用中如有操作或設定上的問題，可透過電郵／訊息查詢，我們會在辦公時間內回覆並提供指導。</p></div></div>
         </div>
       </section>
