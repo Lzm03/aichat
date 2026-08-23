@@ -3,6 +3,12 @@ import type { FeatureEntitlement } from "../../hooks/useFeatureEntitlements";
 
 const PRIMARY_FEATURE_KEYS = new Set(["bot_publish", "chat_messages"]);
 
+// 兩個主要用量項的顯示名稱（方案用量面板用；後端 label 不同時以此為準）
+const PRIMARY_FEATURE_DISPLAY: Record<string, { label: string; description: string }> = {
+  bot_publish: { label: "創建角色", description: "目前已建立的 AI 角色數量" },
+  chat_messages: { label: "對話次數", description: "學生與 AI 角色的對話訊息數" },
+};
+
 export const FeatureLimitPanel: React.FC<{
   features: FeatureEntitlement[];
   compact?: boolean;
@@ -16,7 +22,7 @@ export const FeatureLimitPanel: React.FC<{
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className={`${compact ? "mt-1 text-base" : "mt-2 text-lg"} font-bold text-slate-900`}>
-            免費版功能次數
+            方案用量
           </h3>
         </div>
       </div>
@@ -31,8 +37,8 @@ export const FeatureLimitPanel: React.FC<{
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-sm font-bold text-slate-800">{feature.label}</div>
-                <div className="mt-1 text-xs leading-5 text-slate-500">{feature.description}</div>
+                <div className="text-sm font-bold text-slate-800">{PRIMARY_FEATURE_DISPLAY[feature.key]?.label ?? feature.label}</div>
+                <div className="mt-1 text-xs leading-5 text-slate-500">{PRIMARY_FEATURE_DISPLAY[feature.key]?.description ?? feature.description}</div>
               </div>
               <div className={`rounded-full px-2 py-1 text-xs font-bold ${feature.locked ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700"}`}>
                 {feature.unlimited ? "無限制" : `${feature.used}/${feature.limit}`}

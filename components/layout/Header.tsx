@@ -111,7 +111,7 @@ export const Header: React.FC<HeaderProps> = ({
               className="flex h-10 items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3.5 text-xs font-semibold text-indigo-700"
             >
               <Icons.cpu className="h-4 w-4 xl:hidden" />
-              <span className="hidden xl:inline">使用次數</span>
+              <span className="hidden xl:inline">方案用量</span>
               <span className={`rounded-full px-1.5 py-0.5 sm:px-2 ${lockedCount > 0 ? "bg-rose-100 text-rose-700" : "bg-white text-indigo-700"}`}>
                 {lockedCount > 0 ? `${lockedCount} 已用完` : "查看"}
               </span>
