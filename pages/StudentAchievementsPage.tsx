@@ -263,9 +263,10 @@ type StudentStats = {
   topicsTalked: number;     // conversations DISTINCT topic_id
   todayInteractions: number; // bot_interaction_events
   totalMessages: number;    // conversation_messages role='user' 數
+  currentStreak: number;    // 當前連勝天數（HKT 日界）
 };
 
-const mockStats: StudentStats = { botsTalked: 4, topicsTalked: 18, todayInteractions: 7, totalMessages: 126 };
+const mockStats: StudentStats = { botsTalked: 4, topicsTalked: 18, todayInteractions: 7, totalMessages: 126, currentStreak: 8 };
 
 const statCards: { key: keyof StudentStats; icon: string; label: string; color: string }[] = [
   { key: "botsTalked", icon: "🤖", label: "已對話機器人", color: "#6366F1" },
@@ -305,6 +306,61 @@ const StatCard: React.FC<{ icon: string; value: number; label: string; color: st
     </div>
   </motion.div>
 );
+
+// ---- 連勝之路 ----
+// 里程碑節點為前端配置（可調）；10 天終點對應「連勝高手」勳章
+const streakMilestones = [3, 5, 7, 10];
+
+const StreakRoad: React.FC<{ userStreak: number }> = ({ userStreak }) => {
+  const nextMilestone = streakMilestones.find((m) => m > userStreak);
+
+  return (
+    <section
+      className="mt-8 rounded-[24px] p-8 shadow-[0_20px_40px_rgba(0,0,0,0.15)]"
+      style={{ background: "linear-gradient(135deg, #F59E0B, #F43F5E, #8B5CF6)" }}
+    >
+      <h2 className="text-center text-2xl font-black text-white">🔥 連勝之路</h2>
+
+      <div className="mx-auto mt-8 flex max-w-[800px] flex-wrap items-center justify-between gap-5">
+        {streakMilestones.map((milestone, index) => {
+          const reached = userStreak >= milestone;
+          const passed = userStreak > milestone;
+          return (
+            <React.Fragment key={milestone}>
+              <div className="flex flex-col items-center gap-2">
+                <motion.div
+                  animate={reached ? { scale: [1, 1.08, 1] } : { scale: 1 }}
+                  transition={reached ? { duration: 2, repeat: Infinity, ease: "easeInOut" } : undefined}
+                  className="flex h-14 w-14 items-center justify-center rounded-full text-[32px]"
+                  style={{
+                    background: reached ? "white" : "rgba(255, 255, 255, 0.2)",
+                    boxShadow: reached ? "0 8px 24px rgba(255, 255, 255, 0.5)" : "none",
+                  }}
+                >
+                  {reached ? "🏆" : "🔒"}
+                </motion.div>
+                <p className="text-xs font-bold text-white">{milestone}天</p>
+              </div>
+
+              {index < streakMilestones.length - 1 && (
+                <div
+                  className="h-1 min-w-[40px] flex-1 rounded-full transition-all duration-500"
+                  style={{ background: passed ? "white" : "rgba(255, 255, 255, 0.2)" }}
+                />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+
+      <p className="mt-6 text-center text-sm font-semibold text-white/90">
+        {nextMilestone
+          ? `已連續學習 ${userStreak} 天，再堅持 ${nextMilestone - userStreak} 天解鎖下一個里程碑！`
+          : "🎉 恭喜！你已達成 10 天最高里程碑！"}
+      </p>
+    </section>
+  );
+};
 
 export const StudentAchievementsPage: React.FC = () => {
   const [badges, setBadges] = useState<StudentBadge[]>(mockBadges);
@@ -360,6 +416,9 @@ export const StudentAchievementsPage: React.FC = () => {
             <StatCard key={card.key} icon={card.icon} value={stats[card.key]} label={card.label} color={card.color} index={index} />
           ))}
         </section>
+
+        {/* ---- 連勝之路 ---- */}
+        <StreakRoad userStreak={stats.currentStreak ?? 0} />
 
         {/* ---- 勳章牆 ---- */}
         <section className="mt-8 rounded-[24px] border border-[var(--border-soft)] bg-[var(--bg-card)] p-8 shadow-[var(--shadow-card)]">
