@@ -238,7 +238,7 @@ const App: React.FC = () => {
         isAccountRoute ? (
           <AccountPage currentUser={currentUser} onProfileUpdated={setCurrentUser} />
         ) : isHelpRoute ? (
-          <HelpCenterPage />
+          <HelpCenterPage variant="student" />
         ) : isTasksRoute ? (
           <StudentTasksPage />
         ) : isAchievementsRoute ? (
@@ -253,7 +253,7 @@ const App: React.FC = () => {
       ) : isProRoute && currentUser ? (
         <ProPlanPage />
       ) : isHelpRoute && currentUser ? (
-        <HelpCenterPage />
+        <HelpCenterPage variant="teacher" />
       ) : (
         <>
           <Sidebar activePage={activePage} setActivePage={setActivePage} forceHidden={isPortraitLayout} />

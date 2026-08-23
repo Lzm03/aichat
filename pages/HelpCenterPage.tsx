@@ -3,18 +3,42 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { Icons } from "../components/icons";
 
-const faqs = [
+// FAQ 分兩套：學生版與教師版（/help 共用頁面，App.tsx 依角色傳 variant）
+const studentFaqs = [
   {
     q: "不夠 Token 怎麼辦？",
-    a: "Token 是你與 AI 夥伴對話的額度，用完後暫時無法繼續對話。你可以請老師為你調整方案或補充額度——老師可以在後台查看你的使用情況。",
+    a: "Token 是你與 AI 夥伴對話的額度，用完後暫時無法繼續對話。你可以聯絡客服專員為你調整方案或補充額度",
   },
   {
     q: "為何我的機器人沒有顯示測試題？",
-    a: "測試題由你的老師在分享機器人時設定。如果夥伴卡片上沒有「測試題」標籤，代表老師尚未為這隻機器人配置測驗，可以聯繫老師查詢。",
+    a: "如果夥伴卡片上沒有「測試題」標籤，代表老師尚未為這隻機器人配置測驗，可以手動刷新網頁或聯繫客服專員查詢。",
   },
   {
     q: "怎麼查看我的 Token 用量？",
     a: "學生首頁右上角的 Tokens 數字就是你的剩餘額度（剩餘 / 每月總額）。點擊旁邊的「？」圖示可以查看詳細說明。",
+  },
+  {
+    q: "如何更換頭像或修改個人資料？",
+    a: "點擊右上角頭像 → 帳戶中心，即可編輯頭像、用戶名，並在「安全設定」中修改密碼或電郵。",
+  },
+  {
+    q: "如何更改密碼？",
+    a: "帳戶中心 → 安全設定 → 修改密碼，輸入目前密碼與新密碼（至少 8 個字元）即可完成更新。",
+  },
+];
+
+const teacherFaqs = [
+  {
+    q: "不夠 Token 怎麼辦？",
+    a: "Token 是你與 AI 夥伴對話的額度，用完後暫時無法繼續對話。你可以聯絡客服專員為你調整方案或補充額度",
+  },
+  {
+    q: "為何我的機器人沒有顯示測試題？",
+    a: "如果夥伴卡片上沒有「測試題」標籤，代表你尚未為這隻機器人配置測驗，可以手動刷新網頁或聯繫客服專員查詢。",
+  },
+  {
+    q: "怎麼查看我的 Token 用量？",
+    a: "教師首頁右上角的 Tokens 數字就是你的剩餘額度（剩餘 / 每月總額）",
   },
   {
     q: "如何更換頭像或修改個人資料？",
@@ -37,8 +61,9 @@ const contacts = [
   ]},
 ];
 
-export const HelpCenterPage: React.FC = () => {
+export const HelpCenterPage: React.FC<{ variant?: "student" | "teacher" }> = ({ variant = "student" }) => {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
+  const faqs = variant === "teacher" ? teacherFaqs : studentFaqs;
 
   return (
     <div className="min-h-screen w-full bg-[var(--bg-app)] text-[var(--text-body)]">
