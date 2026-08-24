@@ -17,7 +17,7 @@ export const ProPlanPage: React.FC = () => (
       <span className="mt-5 inline-block rounded-full bg-white/20 px-3.5 py-1.5 text-[11px] font-extrabold tracking-wider">PRO 方案</span>
       <h1 className="mt-4 text-[28px] font-black">您的 PRO 方案已啟用</h1>
       <p className="mx-auto mt-2.5 max-w-[520px] text-sm leading-7 text-white/85">以下是這次服務的內容、可使用的範圍，以及遇到問題時可以怎麼找我們協助。</p>
-      <img src="/ui-update/pro-logo.png" alt="ChopReality" className="mx-auto mt-6 w-[220px] max-w-[80%] rounded-2xl" />
+      <img src="/ui-update/pro-logo.webp" alt="ChopReality" className="mx-auto mt-6 w-[220px] max-w-[80%] rounded-2xl" />
     </section>
 
     <main className="mx-auto max-w-[880px] px-6">

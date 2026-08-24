@@ -1,13 +1,33 @@
 import React from "react";
 import type { FeatureEntitlement } from "../../hooks/useFeatureEntitlements";
+import { useTeacherLang, type TeacherLang } from "../../utils/teacherI18n";
 
 const PRIMARY_FEATURE_KEYS = new Set(["bot_publish", "chat_messages"]);
+
+// 兩個主要用量項的顯示名稱（方案用量面板用；後端 label 不同時以此為準）
+const PRIMARY_FEATURE_DISPLAY: Record<string, { label: Record<TeacherLang, string>; description: Record<TeacherLang, string> }> = {
+  bot_publish: {
+    label: { "zh-HK": "創建角色", en: "Personas Created" },
+    description: { "zh-HK": "目前已建立的 AI 角色數量", en: "Number of AI personas you have created" },
+  },
+  chat_messages: {
+    label: { "zh-HK": "對話次數", en: "Chat Messages" },
+    description: { "zh-HK": "學生與 AI 角色的對話訊息數", en: "Chat messages between students and AI personas" },
+  },
+};
+
+const PANEL_T = {
+  "zh-HK": { title: "方案用量", unlimited: "無限制", accountUnlimited: "此帳戶無限制", used: "已用" },
+  en: { title: "Plan Usage", unlimited: "Unlimited", accountUnlimited: "Unlimited for this account", used: "Used" },
+} as const;
 
 export const FeatureLimitPanel: React.FC<{
   features: FeatureEntitlement[];
   compact?: boolean;
   dropdown?: boolean;
 }> = ({ features, compact = false, dropdown = false }) => {
+  const lang = useTeacherLang();
+  const pt = PANEL_T[lang];
   const visibleFeatures = features.filter((feature) => PRIMARY_FEATURE_KEYS.has(feature.key));
   if (!visibleFeatures.length) return null;
 
@@ -16,7 +36,7 @@ export const FeatureLimitPanel: React.FC<{
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className={`${compact ? "mt-1 text-base" : "mt-2 text-lg"} font-bold text-slate-900`}>
-            免費版功能次數
+            {pt.title}
           </h3>
         </div>
       </div>
@@ -31,11 +51,11 @@ export const FeatureLimitPanel: React.FC<{
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-sm font-bold text-slate-800">{feature.label}</div>
-                <div className="mt-1 text-xs leading-5 text-slate-500">{feature.description}</div>
+                <div className="text-sm font-bold text-slate-800">{PRIMARY_FEATURE_DISPLAY[feature.key]?.label[lang] ?? feature.label}</div>
+                <div className="mt-1 text-xs leading-5 text-slate-500">{PRIMARY_FEATURE_DISPLAY[feature.key]?.description[lang] ?? feature.description}</div>
               </div>
               <div className={`rounded-full px-2 py-1 text-xs font-bold ${feature.locked ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700"}`}>
-                {feature.unlimited ? "無限制" : `${feature.used}/${feature.limit}`}
+                {feature.unlimited ? pt.unlimited : `${feature.used}/${feature.limit}`}
               </div>
             </div>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
@@ -45,7 +65,7 @@ export const FeatureLimitPanel: React.FC<{
               />
             </div>
             <div className="mt-2 text-xs font-medium text-slate-600">
-              {feature.unlimited ? "此帳戶無限制" : `已用 ${feature.used} / ${feature.limit} ${feature.countUnit}`}
+              {feature.unlimited ? pt.accountUnlimited : `${pt.used} ${feature.used} / ${feature.limit} ${feature.countUnit}`}
             </div>
           </div>
         ))}

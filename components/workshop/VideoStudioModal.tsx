@@ -128,14 +128,14 @@ export default function VideoStudioModal({
     "Use the small-movement style. Keep the animation extremely restrained and natural. Allow only tiny micro-movements in the face, mouth, and head, with minimal pose variation. Avoid expressive gestures, large motion arcs, exaggerated acting, or noticeable body movement.";
   const phaseMilestones = [18, 33, 48, 63, 78, 93];
 
-  // ===== 左侧面板 UI =====
+  // ===== 左側面板 UI =====
   const [sourceAspectRatio, setSourceAspectRatio] = useState<string>("16:9");
   const [videoSourceImage, setVideoSourceImage] = useState<string>("");
   const [videoSourceRemoteUrl, setVideoSourceRemoteUrl] = useState<string>("");
   const [studioTaskId, setStudioTaskId] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<any>(task || null);
 
-  // ===== Loading 状态 =====
+  // ===== Loading 狀態 =====
   const [progress, setProgress] = useState(0);
   const [loadingText, setLoadingText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -149,7 +149,7 @@ export default function VideoStudioModal({
   const genEstimateMsRef = useRef(22000);
   const rmEstimateMsRef = useRef(7000);
 
-  // ===== 最终透明版视频 =====
+  // ===== 最終透明版視頻 =====
   const [idleWebm, setIdleWebm] = useState<string | null>(null);
   const [speakingWebm, setSpeakingWebm] = useState<string | null>(null);
   const [thinkingWebm, setThinkingWebm] = useState<string | null>(null);
@@ -209,7 +209,7 @@ export default function VideoStudioModal({
     const [w, h] = parts;
     const value = w / h;
 
-    // 接近正方形时优先 1:1，其余按方向映射
+    // 接近正方形時優先 1:1，其餘按方向映射
     if (Math.abs(value - 1) <= 0.15) return "1:1";
     return value > 1 ? "16:9" : "9:16";
   }
@@ -542,7 +542,7 @@ export default function VideoStudioModal({
     });
   }
 
-  // 动作对应的 prompts
+  // 動作對應的 prompts
   const prompts = {
     idle:
       "Silent idle only. Character stands in place with both feet planted at exactly the same position. No walking, no stepping, no body translation, and no turn-and-shift. Mouth must stay naturally closed for the entire clip: no speech, no lip-sync, no mouth opening, no visible teeth, no tongue, and no jaw rhythm. Keep the body almost perfectly still. Do not move the head, neck, shoulders, torso, arms, hands, or posture. Do not sway, nod, tilt, lean, gesture, or shift weight. The only allowed motion is tiny eye movement and occasional natural blinking. Breathing must be imperceptible or nearly imperceptible. Keep all motion extremely small and smooth, with no expressive acting. Camera must be fully locked: no zoom, no pan, no dolly, and no shake. Do not move the framing. Background must remain pure bright chroma key green, close to RGB 0,255,0, as a single uniform solid color with no gradient, no texture, no noise, no shadow, no reflection, no glare, no depth-of-field blur, and no background objects. The subject must have no green spill, no green reflection, and no green edge halo. Edges must stay crisp and clean for keying, including hair strands, fingers, and clothing contours.",
@@ -552,7 +552,7 @@ export default function VideoStudioModal({
       "Thinking mode, silent. Character stands in place with both feet planted at exactly the same position. No walking, no stepping, no body translation, and no turn-and-shift. Keep the body almost perfectly still. Do not move the shoulders, torso, arms, hands, or posture. Avoid dramatic pondering, large head turns, obvious nods, expressive gestures, or visible body motion. Allowed actions are only extremely subtle thinking cues: tiny eye movement, a very slight brow change, and a brief soft upward glance. Head movement should be absent or nearly absent, with no visible tilt unless absolutely minimal. Camera must be completely locked: no forward movement, no horizontal movement, no zoom, and no shake. No camera animation is allowed. Background must remain pure bright chroma key green, close to RGB 0,255,0, as a single uniform solid color with no gradient, no texture, no noise, no shadow, no reflection, no glare, no depth-of-field blur, and no background objects. The subject must have no green spill, no green reflection, and no green edge halo. Edges must stay crisp and clean for keying, including hair strands, fingers, and clothing contours.",
   };
 
-  /* ========= Step 1: 生成原始动画 ========= */
+  /* ========= Step 1: 生成原始動畫 ========= */
   async function requestOneVideo(type: "idle" | "speaking" | "thinking", taskId: string) {
     setLoadingText(`正在生成：${type} 原始視頻...`);
 
@@ -562,7 +562,7 @@ export default function VideoStudioModal({
       videoSourceImage.includes("localhost") ||
       videoSourceImage.includes("127.0.0.1");
 
-    // 云端模型无法访问本机 localhost，改用 base64 直传
+    // 雲端模型無法訪問本機 localhost，改用 base64 直傳
     if (isLocalAsset) {
       img = await blobUrlToBase64(videoSourceImage);
     }
@@ -701,7 +701,7 @@ export default function VideoStudioModal({
     }
   }
 
-  /* ========= Step 2: 轮询生成状态 ========= */
+  /* ========= Step 2: 輪詢生成狀態 ========= */
   async function pollVideoStatus(requestId: string, type: string) {
     let attempts = 0;
     const maxAttempts = 240;
@@ -720,17 +720,17 @@ export default function VideoStudioModal({
           const data = res.data;
 
           if (data.progress) {
-            // 前端改为阶段线性进度，此处不再直接覆盖 UI 进度
+            // 前端改為階段線性進度，此處不再直接覆蓋 UI 進度
           }
 
           if (data.status === "completed") {
             clearInterval(timer);
-            resolve(data.url); // 原始视频地址
+            resolve(data.url); // 原始視頻地址
           }
 
           if (data.status === "failed") {
             clearInterval(timer);
-            reject(new Error(`${type} 生成失败`));
+            reject(new Error(`${type} 生成失敗`));
           }
 
           if (attempts > maxAttempts) {
@@ -761,7 +761,7 @@ export default function VideoStudioModal({
     return res.data.sequenceManifestUrl; // manifest.json only
   }
 
-  /* ========= Step 4: 完整流程 一键生成所有动画 ========= */
+  /* ========= Step 4: 完整流程 一鍵生成所有動畫 ========= */
   async function generateAll(testMode = false) {
     if (!testMode && !isUnlimitedFeature && (feature?.locked || featureConsumed)) {
       showAlert({
@@ -824,7 +824,7 @@ export default function VideoStudioModal({
       }
       setLoading(false);
     } catch (error) {
-      console.error("生成失败", error);
+      console.error("生成失敗", error);
       setLoading(false);
       showAlert({
         title: "生成失敗",
@@ -869,7 +869,7 @@ export default function VideoStudioModal({
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-0">
       <div className="flex h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.16)] sm:h-[90vh] sm:w-[90vw] lg:flex-row">
 
-        {/* ================= 左侧设置 ================= */}
+        {/* ================= 左側設置 ================= */}
         <aside className="flex max-h-[58vh] w-full shrink-0 flex-col overflow-hidden border-b border-slate-200 bg-[#FAFCFF] lg:h-full lg:max-h-none lg:w-[380px] lg:border-b-0 lg:border-r">
           <div className="min-h-0 flex-1 overflow-y-auto p-5 pb-4 sm:p-7 sm:pb-5">
             <div className="flex items-start justify-between gap-3">
@@ -924,7 +924,7 @@ export default function VideoStudioModal({
             </div>
           </div>
 
-          {/* 按钮 */}
+          {/* 按鈕 */}
           <div className="shrink-0 border-t border-[#E2E8F0] bg-white/92 p-4 shadow-[0_-12px_24px_rgba(15,23,42,0.06)] backdrop-blur sm:p-5 lg:bg-[#FAFCFF]">
             <button
               onClick={() => generateAll(false)}
@@ -966,7 +966,7 @@ export default function VideoStudioModal({
           </div>
         </aside>
 
-        {/* ================= 右侧预览区 ================= */}
+        {/* ================= 右側預覽區 ================= */}
         <main className="min-h-0 flex-1 overflow-y-auto bg-[#F8FAFC] p-4 sm:p-6">
           {hasPreviewStage && (
             <div className="space-y-5">

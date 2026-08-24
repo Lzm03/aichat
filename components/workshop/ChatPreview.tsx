@@ -142,7 +142,7 @@ function appendChatImages(files: FileList | File[]) {
   const nextFiles = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
   if (!nextFiles.length) return;
   if (chatImages.length + nextFiles.length > 4) {
-    window.alert("最多只能上傳四張圖片");
+    window.alert("最多隻能上傳四張圖片");
   }
   const allowed = nextFiles.slice(0, Math.max(0, 4 - chatImages.length));
   if (!allowed.length) return;

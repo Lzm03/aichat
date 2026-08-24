@@ -1,11 +1,17 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { readAuthSession } from '../utils/auth';
-import { API_BASE } from '../utils/api';
+import { useTeacherLang } from '../utils/teacherI18n';
 
 import { AssessmentQualityCard } from '../components/assessment/AssessmentQualityCard';
 import { StudentLearningReportCard } from '../components/dashboard/StudentLearningReportCard';
+import { DemoNotice } from '../components/system/DemoNotice';
+
+const WELCOME_T = {
+  "zh-HK": "歡迎回到教學指揮艙，和學生們一起開啟今天的學習之旅！",
+  en: "Welcome back to the Command Center. Let's start today's learning journey with your students!",
+} as const;
 
 function getTimeGreeting(date = new Date()) {
   const hour = date.getHours();
@@ -16,20 +22,14 @@ function getTimeGreeting(date = new Date()) {
   return "夜深了";
 }
 
-type DashboardSummary = {
-  pendingGrading: number;
-  pendingConfirm: number;
-  completed: number;
-};
-
 const HeroBanner: React.FC<{
   teacherName: string;
-  summary: DashboardSummary | null;
-  loading: boolean;
-}> = ({ teacherName, summary, loading }) => (
+}> = ({ teacherName }) => {
+  const lang = useTeacherLang();
+  return (
     <div className="relative mb-5 h-[210px] w-full overflow-hidden rounded-[24px] shadow-md group sm:mb-6 sm:h-auto sm:aspect-[4/1] sm:rounded-[32px]">
       <img 
-      src="/Tomato_Robot.png" 
+      src="/Tomato_Robot.webp"
         alt="AI Dashboard Hero" 
         className="absolute inset-0 h-full w-full object-cover object-center transition-transform duration-700 group-hover:scale-105"
     />
@@ -37,60 +37,20 @@ const HeroBanner: React.FC<{
       <div className="max-w-2xl space-y-3 text-white sm:space-y-4">
         <h2 className="text-xl font-black leading-tight tracking-tight text-white sm:text-2xl md:text-4xl">{getTimeGreeting()}，{teacherName}</h2>
         <div className="inline-block max-w-full rounded-2xl border border-white/18 bg-white/10 p-3 text-white shadow-sm backdrop-blur-[3px] sm:rounded-xl">
-          {loading ? (
-            <p className="text-sm font-semibold text-white/90">正在整理最新教學進度…</p>
-          ) : summary ? (
-            <div className="flex flex-col gap-2 text-sm font-semibold leading-snug text-white/90 sm:block">
-              <span><span className="mx-0.5 rounded-md bg-white/18 px-1.5 py-0.5 font-black text-white shadow-sm">{summary.pendingGrading}</span> 份作答待批改</span>
-              <span className="hidden sm:inline"> · </span>
-              <span><span className="mx-0.5 rounded-md bg-white/18 px-1.5 py-0.5 font-black text-white shadow-sm">{summary.pendingConfirm}</span> 份待老師確認</span>
-              <span className="hidden sm:inline"> · </span>
-              <span><span className="mx-0.5 rounded-md bg-white/18 px-1.5 py-0.5 font-black text-white shadow-sm">{summary.completed}</span> 份作答已完成</span>
-            </div>
-          ) : (
-            <p className="text-sm font-semibold leading-relaxed text-white/90">目前尚未有評測資料，發布測驗後會在此顯示最新進度。</p>
-          )}
+          <p className="text-sm font-semibold leading-snug text-white/90">{WELCOME_T[lang]}</p>
         </div>
       </div>
     </div>
   </div>
-);
+  );
+};
 
 export const Dashboard: React.FC = () => {
   const teacherName = readAuthSession()?.user?.fullName?.trim() || '老師';
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [summaryLoading, setSummaryLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`${API_BASE}/api/teachers/me/grading-summary`)
-      .then(async (response) => {
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data?.error || '無法載入評測進度');
-        return Array.isArray(data?.quizzes) ? data.quizzes : [];
-      })
-      .then((quizzes) => {
-        if (cancelled || !quizzes.length) return;
-        setSummary(quizzes.reduce((total: DashboardSummary, quiz: any) => ({
-          pendingGrading: total.pendingGrading + Number(quiz.pendingGrading || 0),
-          pendingConfirm: total.pendingConfirm + Number(quiz.pendingConfirm || 0),
-          completed: total.completed + Number(quiz.completed || 0),
-        }), { pendingGrading: 0, pendingConfirm: 0, completed: 0 }));
-      })
-      .catch(() => {
-        if (!cancelled) setSummary(null);
-      })
-      .finally(() => {
-        if (!cancelled) setSummaryLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   return (
     <div className="h-full flex flex-col pb-32 md:pb-0">
-      <HeroBanner teacherName={teacherName} summary={summary} loading={summaryLoading} />
+      <DemoNotice />
+      <HeroBanner teacherName={teacherName} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
         <div className="md:col-span-1">
           <StudentLearningReportCard />

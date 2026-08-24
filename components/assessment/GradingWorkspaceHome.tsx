@@ -118,7 +118,7 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
           </button>
           <h1 className="text-2xl font-bold text-slate-800">智能批改工作台</h1>
         </div>
-        <button type="button" aria-label="AI 批改說明" onClick={() => setShowHelp(true)} className="text-indigo-500"><HelpCircle className="h-5 w-5" /></button>
+        <button type="button" aria-label="AI 批改説明" onClick={() => setShowHelp(true)} className="text-indigo-500"><HelpCircle className="h-5 w-5" /></button>
       </div>
 
       {sortedQuizzes.length > 0 ? <div className="bg-rose-50 border border-rose-100 text-rose-800 p-4 rounded-2xl flex items-center gap-3 shadow-sm">

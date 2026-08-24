@@ -255,7 +255,7 @@ export const StudentLearningReportCard = () => {
   const assistedRate = interactionSummary.assistedRate || 0;
   const aiModeInsight = (() => {
     if (inputRate === 0 && assistedRate === 0) {
-      return '本堂課目前尚未開始互動，班級還沒有累積足夠的輸入記錄，等學生開始回應後，這裡會依實際占比自動更新。';
+      return '本堂課目前尚未開始互動，班級還沒有累積足夠的輸入記錄，等學生開始回應後，這裡會依實際佔比自動更新。';
     }
     if (inputRate > assistedRate) {
       return '本堂課整體互動偏向主動輸入。學生以直接回應為主，表示當前知識點能促使學生自行輸出，可適度提高挑戰度。';
@@ -913,7 +913,7 @@ export const StudentLearningReportCard = () => {
                       <div>
                         <div className="flex items-center gap-2 text-xs font-black text-slate-800 sm:text-sm">
                           <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
-                          輸出品質評級說明
+                          輸出品質評級説明
                         </div>
                         <p className="mt-1.5 text-[11px] text-slate-500 sm:text-xs">依學生與 Bot 的聊天內容和角色知識庫匹配結果評估。</p>
                         <div className="mt-3 flex flex-wrap gap-2">
@@ -925,7 +925,7 @@ export const StudentLearningReportCard = () => {
                       <div className="border-t border-slate-200 pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
                         <div className="flex items-center gap-2 text-xs font-black text-slate-800 sm:text-sm">
                           <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
-                          互動深度說明
+                          互動深度説明
                         </div>
                         <p className="mt-1.5 text-[11px] text-slate-500 sm:text-xs">反映學生在本次學習中主動探索與持續參與的程度。</p>
                         <div className="mt-3 flex flex-wrap gap-2">

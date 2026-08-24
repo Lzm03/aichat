@@ -43,3 +43,48 @@
 @media (prefers-reduced-motion: reduce) {
   .bot-avatar-pulse, .bot-avatar-breathe { animation: none; }
 }
+
+/* ===== 學生工作台明暗主題 token（:root 亮色預設，.dark 深色覆寫）===== */
+:root {
+  --bg-app: #F7F8FB;
+  --bg-headbar: #FFFFFF;
+  --bg-card: #FFFFFF;
+  --bg-subtle: #F8FAFC;
+  --bg-subtle-2: #F1F5F9;
+  --border: #E2E8F0;
+  --border-soft: rgba(226, 232, 240, 0.8);
+  --text-main: #0F172A;
+  --text-body: #1E293B;
+  --text-muted: #64748B;
+  --text-faint: #94A3B8;
+  --accent: #4F46E5;
+  --accent-soft: #EEF2FF;
+  --accent-border: #C7D2FE;
+  --accent-text: #4F46E5;
+  --shadow-card: 0 10px 30px rgba(15, 23, 42, 0.05);
+  --shadow-card-hover: 0 18px 45px rgba(79, 70, 229, 0.12);
+  --shadow-nav: 0 18px 45px rgba(15, 23, 42, 0.16);
+}
+
+.dark {
+  --bg-app: #020617;
+  --bg-headbar: #0F172A;
+  --bg-card: #0F172A;
+  --bg-subtle: #1E293B;
+  --bg-subtle-2: #1E293B;
+  --border: #1E293B;
+  --border-soft: rgba(30, 41, 59, 0.8);
+  --text-main: #F1F5F9;
+  --text-body: #E2E8F0;
+  --text-muted: #94A3B8;
+  --text-faint: #64748B;
+  --accent: #818CF8;
+  --accent-soft: rgba(99, 102, 241, 0.16);
+  --accent-border: rgba(129, 140, 248, 0.35);
+  --accent-text: #A5B4FC;
+  --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --shadow-card-hover: 0 18px 45px rgba(0, 0, 0, 0.5);
+  --shadow-nav: 0 18px 45px rgba(0, 0, 0, 0.55);
+}
+
+html.dark body { background-color: #020617; }

@@ -5,6 +5,7 @@ import { BackgroundEditor } from "../editor/BackgroundEditor";
 import type { FeatureEntitlement } from "../../../hooks/useFeatureEntitlements";
 import { usePlatformDialog } from "../../../hooks/usePlatformDialog";
 import { PlatformDialog } from "../../system/PlatformDialog";
+import { API_BASE } from "../../../utils/api";
 
 interface CreationStep3Props {
   updateConfig: (key: "avatarUrl" | "background", value: string) => void;
@@ -14,10 +15,10 @@ interface CreationStep3Props {
 }
 
 const presetAvatars = [
-  "https://api.dicebear.com/8.x/bottts/svg?seed=avatar1",
-  "https://api.dicebear.com/8.x/bottts/svg?seed=avatar2",
-  "https://api.dicebear.com/8.x/bottts/svg?seed=avatar3",
-  "https://api.dicebear.com/8.x/bottts/svg?seed=avatar4",
+  "/avatars/avatar-1.svg",
+  "/avatars/avatar-2.svg",
+  "/avatars/avatar-3.svg",
+  "/avatars/avatar-4.svg",
 ];
 
 const mockStyles = {
@@ -29,19 +30,26 @@ const mockStyles = {
     "https://images.unsplash.com/photo-1606112219348-204d7d8b94ee?w=600&q=80",
 };
 
-  async function saveBackground(blobUrl:any) {
-    const file = await fetch(blobUrl).then(r => r.blob());
-    const formData = new FormData();
-    formData.append("file", file);
+  async function saveBackground(blobUrl: any) {
+    try {
+      const file = await fetch(blobUrl).then(r => r.blob());
+      const formData = new FormData();
+      formData.append("file", file);
 
-    const baseUrl = import.meta.env.VITE_API_URL;
-    const res = await fetch(`${baseUrl}/api/upload-image`, {
-      method: "POST",
-      body: formData
-    });
+      const res = await fetch(`${API_BASE}/api/upload-image`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    const data = await res.json();
-    return data.url;  // 永久 URL
+      const data = await res.json();
+      if (data?.url) return data.url; // 永久 URL
+      throw new Error("upload-image 無回傳 url");
+    } catch (error) {
+      // 上傳失敗（如預覽無後端）→ 回退本地 blob URL，保證流程可繼續
+      console.warn("背景上傳失敗，改用本地預覽圖：", error);
+      return blobUrl;
+    }
   }
 
 
@@ -62,22 +70,24 @@ const AvatarUploader: React.FC<{ onImageUploaded: (url: string) => void }> = ({
     const previewUrl = URL.createObjectURL(file);
     setPreview(previewUrl);
 
-    // 🔥 真正上傳到後端
-    const formData = new FormData();
-    formData.append("file", file);
+    // 🔥 真正上傳到後端（失敗回退本地預覽 URL，不阻斷流程）
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
 
-    const baseUrl = import.meta.env.VITE_API_URL;
-    const res = await fetch(`${baseUrl}/api/upload-image`, {
-      method: "POST",
-      body: formData,
-    });
+      const res = await fetch(`${API_BASE}/api/upload-image`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    const data = await res.json();
-
-    console.log("🎯 Uploaded image URL:", data.url);
-
-    // 🔥 回傳後端可永久使用的 URL
-    onImageUploaded(data.url);
+      const data = await res.json();
+      console.log("🎯 Uploaded image URL:", data.url);
+      onImageUploaded(data.url || previewUrl);
+    } catch (error) {
+      console.warn("頭像上傳失敗，改用本地預覽圖：", error);
+      onImageUploaded(previewUrl);
+    }
   };
 
   return preview ? (
@@ -102,7 +112,7 @@ const AvatarUploader: React.FC<{ onImageUploaded: (url: string) => void }> = ({
   };
 
 /* -------------------------------------------
-   ⭐ 主组件：CreationStep3（完整保留所有功能）
+   ⭐ 主組件：CreationStep3（完整保留所有功能）
 ------------------------------------------- */
 export const CreationStep3: React.FC<CreationStep3Props> = ({
   updateConfig,
