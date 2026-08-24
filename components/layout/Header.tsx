@@ -3,9 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Check } from 'lucide-react';
 import { Icons } from '../icons';
 import { FeatureLimitPanel } from '../system/FeatureLimitPanel';
+import { useFeatureEntitlements } from '../../hooks/useFeatureEntitlements';
 import { UserMenu } from './UserMenu';
 import type { StoredAuthUser } from '../../utils/auth';
-import { useFeatureEntitlements } from '../../hooks/useFeatureEntitlements';
 import { DEFAULT_ACCOUNT_AVATAR } from '../../utils/default-avatar';
 import { setTeacherLang, useTeacherLang, type TeacherLang } from '../../utils/teacherI18n';
 

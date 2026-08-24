@@ -22,10 +22,14 @@ function getTimeGreeting(date = new Date()) {
   return "夜深了";
 }
 
-const HeroBanner: React.FC<{ teacherName: string }> = ({ teacherName }) => (
+const HeroBanner: React.FC<{
+  teacherName: string;
+}> = ({ teacherName }) => {
+  const lang = useTeacherLang();
+  return (
     <div className="relative mb-5 h-[210px] w-full overflow-hidden rounded-[24px] shadow-md group sm:mb-6 sm:h-auto sm:aspect-[4/1] sm:rounded-[32px]">
       <img 
-      src="/Tomato_Robot.webp" 
+      src="/Tomato_Robot.webp"
         alt="AI Dashboard Hero" 
         className="absolute inset-0 h-full w-full object-cover object-center transition-transform duration-700 group-hover:scale-105"
     />
@@ -33,16 +37,16 @@ const HeroBanner: React.FC<{ teacherName: string }> = ({ teacherName }) => (
       <div className="max-w-2xl space-y-3 text-white sm:space-y-4">
         <h2 className="text-xl font-black leading-tight tracking-tight text-white sm:text-2xl md:text-4xl">{getTimeGreeting()}，{teacherName}</h2>
         <div className="inline-block max-w-full rounded-2xl border border-white/18 bg-white/10 p-3 text-white shadow-sm backdrop-blur-[3px] sm:rounded-xl">
-          <p className="text-sm font-semibold leading-snug text-white/90">{WELCOME_T[useTeacherLang()]}</p>
+          <p className="text-sm font-semibold leading-snug text-white/90">{WELCOME_T[lang]}</p>
         </div>
       </div>
     </div>
   </div>
-);
+  );
+};
 
 export const Dashboard: React.FC = () => {
   const teacherName = readAuthSession()?.user?.fullName?.trim() || '老師';
-
   return (
     <div className="h-full flex flex-col pb-32 md:pb-0">
       <DemoNotice />
