@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Bell, BookOpen, Bot, ClipboardList, Flame, HelpCircle, LogOut, Medal, Palette, Sparkles } from "lucide-react";
 import { clearAuthSession, type StoredAuthUser } from "../utils/auth";
 import { API_BASE } from "../utils/api";
 import { PublishSuccessModal } from "../components/workshop/PublishSuccessModal";
 import { InfoTipModal } from "../components/system/InfoTipModal";
+import { SequencePngPlayer } from "../components/workshop/SequencePngPlayer";
 
 type StudentHomeProps = {
   currentUser: StoredAuthUser;
@@ -29,6 +30,155 @@ type SharedBot = {
   hasPendingQuiz?: boolean;
 };
 
+type IdleSequenceManifest = {
+  folderUrl: string;
+  pattern?: string;
+  frameCount: number;
+  fps: number;
+};
+
+const StudentBotCard: React.FC<{
+  companion: SharedBot;
+  index: number;
+  onOpen: () => void;
+}> = ({ companion, index, onOpen }) => {
+  const [isPreviewingIdle, setIsPreviewingIdle] = useState(false);
+  const [idleVideoFailed, setIdleVideoFailed] = useState(false);
+  const [idleSequence, setIdleSequence] = useState<IdleSequenceManifest | null>(null);
+  const [idleSequenceFailed, setIdleSequenceFailed] = useState(false);
+  const idleVideoRef = useRef<HTMLVideoElement | null>(null);
+  const idleVideoUrl = companion.videoIdle?.trim() || "";
+  const isIdleSequence = /\/manifest\.json(?:\?|$)/i.test(idleVideoUrl);
+  const canShowIdlePreview = Boolean(
+    isPreviewingIdle &&
+    idleVideoUrl &&
+    (isIdleSequence ? idleSequence && !idleSequenceFailed : !idleVideoFailed)
+  );
+
+  useEffect(() => {
+    setIdleVideoFailed(false);
+    setIdleSequence(null);
+    setIdleSequenceFailed(false);
+  }, [idleVideoUrl]);
+
+  useEffect(() => {
+    if (!isPreviewingIdle || !isIdleSequence || idleSequence || idleSequenceFailed) return;
+    let cancelled = false;
+    fetch(idleVideoUrl)
+      .then(async (response) => {
+        if (!response.ok) throw new Error("idle sequence manifest unavailable");
+        return response.json();
+      })
+      .then((manifest) => {
+        if (cancelled) return;
+        if (!manifest?.folderUrl || !Number(manifest?.frameCount) || !Number(manifest?.fps)) {
+          throw new Error("invalid idle sequence manifest");
+        }
+        setIdleSequence({
+          folderUrl: String(manifest.folderUrl),
+          pattern: String(manifest.pattern || "frame_%04d.png"),
+          frameCount: Number(manifest.frameCount),
+          fps: Number(manifest.fps),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setIdleSequenceFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [idleSequence, idleSequenceFailed, idleVideoUrl, isIdleSequence, isPreviewingIdle]);
+
+  useEffect(() => {
+    if (!isPreviewingIdle || !idleVideoUrl || isIdleSequence || idleVideoFailed) return;
+    let animationFrame = 0;
+    const keepIdleLooping = () => {
+      const video = idleVideoRef.current;
+      if (
+        video &&
+        Number.isFinite(video.duration) &&
+        video.duration > 0 &&
+        video.currentTime >= video.duration - 0.12
+      ) {
+        video.currentTime = 0;
+        void video.play().catch(() => undefined);
+      }
+      animationFrame = window.requestAnimationFrame(keepIdleLooping);
+    };
+    animationFrame = window.requestAnimationFrame(keepIdleLooping);
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [idleVideoFailed, idleVideoUrl, isIdleSequence, isPreviewingIdle]);
+
+  return (
+    <motion.button
+      type="button"
+      onClick={onOpen}
+      onMouseEnter={() => setIsPreviewingIdle(true)}
+      onMouseLeave={() => setIsPreviewingIdle(false)}
+      onFocus={() => setIsPreviewingIdle(true)}
+      onBlur={() => setIsPreviewingIdle(false)}
+      data-idle-preview={idleVideoUrl ? "available" : "unavailable"}
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.06, duration: 0.35 }}
+      whileHover={{ y: -5 }}
+      className="group flex min-h-[320px] flex-col rounded-[28px] border border-slate-100 bg-white p-[26px] text-left shadow-[0_10px_30px_rgba(15,23,42,0.05)] transition hover:border-indigo-200 hover:shadow-[0_18px_45px_rgba(79,70,229,0.12)]"
+    >
+      <div className="flex items-start justify-between">
+        <div className="relative flex h-[130px] w-[130px] items-center justify-center overflow-hidden rounded-full bg-white text-indigo-500 shadow-md ring-1 ring-slate-100">
+          {companion.avatarUrl ? (
+            <img
+              src={companion.avatarUrl}
+              alt={companion.name}
+              className={`h-full w-full rounded-full object-cover transition-opacity duration-200 ${canShowIdlePreview ? "opacity-0" : "opacity-100"}`}
+            />
+          ) : (
+            <Bot className={`h-12 w-12 transition-opacity duration-200 ${canShowIdlePreview ? "opacity-0" : "opacity-100"}`} />
+          )}
+          {isPreviewingIdle && isIdleSequence && idleSequence && !idleSequenceFailed ? (
+            <SequencePngPlayer
+              folderUrl={idleSequence.folderUrl}
+              pattern={idleSequence.pattern}
+              frameCount={idleSequence.frameCount}
+              fps={idleSequence.fps}
+              active
+              startWhenBuffered
+              aria-label={`${companion.name} 待機動畫`}
+              className="absolute inset-0 h-full w-full rounded-full bg-white object-contain"
+            />
+          ) : null}
+          {isPreviewingIdle && !isIdleSequence && idleVideoUrl && !idleVideoFailed ? (
+            <video
+              ref={idleVideoRef}
+              key={idleVideoUrl}
+              src={idleVideoUrl}
+              autoPlay
+              muted
+              playsInline
+              preload="metadata"
+              poster={companion.avatarUrl || undefined}
+              aria-label={`${companion.name} 待機動畫`}
+              onError={() => setIdleVideoFailed(true)}
+              onEnded={(event) => {
+                if (!isPreviewingIdle) return;
+                event.currentTarget.currentTime = 0;
+                void event.currentTarget.play().catch(() => undefined);
+              }}
+              className="absolute inset-0 h-full w-full rounded-full bg-white object-contain"
+            />
+          ) : null}
+        </div>
+        {companion.hasPendingQuiz ? (
+          <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-1 text-[9px] font-bold text-amber-600 sm:px-2 sm:text-[10px]">測試題</span>
+        ) : null}
+      </div>
+      <h2 className="mt-4 truncate text-lg font-extrabold text-slate-950">{companion.name}</h2>
+      <span className="mt-2 inline-block rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-500">{companion.subject || "未分類"}</span>
+      <div className="mt-auto border-t border-slate-100 pt-4 text-[13px] text-slate-400">今日互動 {companion.interactions || 0} 次</div>
+    </motion.button>
+  );
+};
+
 const navItems = [
   { label: "星際地圖", icon: BookOpen, active: true },
   { label: "今日任務", icon: ClipboardList },
@@ -43,6 +193,9 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
   const [selectedBot, setSelectedBot] = useState<SharedBot | null>(null);
   const [loadingBots, setLoadingBots] = useState(true);
   const [activeTip, setActiveTip] = useState<"companions" | "tokens" | null>(null);
+  const pendingTaskBots = companions.filter((companion) => companion.hasPendingQuiz);
+  const quotaRemaining = currentUser.quota?.remaining;
+  const quotaLimit = currentUser.quota?.monthlyLimit;
 
   useEffect(() => {
     fetch(`${API_BASE}/api/bots/shared/with-me`)
@@ -53,6 +206,20 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
       })
       .catch(() => setCompanions([]))
       .finally(() => setLoadingBots(false));
+  }, []);
+
+  useEffect(() => {
+    const handlePendingQuizChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ botId?: string; hasPendingQuiz?: boolean }>).detail;
+      if (!detail?.botId || typeof detail.hasPendingQuiz !== "boolean") return;
+      setCompanions((current) => current.map((companion) => (
+        companion.id === detail.botId
+          ? { ...companion, hasPendingQuiz: detail.hasPendingQuiz }
+          : companion
+      )));
+    };
+    window.addEventListener("quiz-pending-changed", handlePendingQuizChange);
+    return () => window.removeEventListener("quiz-pending-changed", handlePendingQuizChange);
   }, []);
 
   const logout = () => {
@@ -67,10 +234,12 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
           <div className="hidden text-3xl xs:block sm:block" aria-hidden="true">🚀</div>
           <div>
             <h1 className="truncate text-base font-black tracking-tight sm:text-lg">嗨，{displayName}！</h1>
-            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500 sm:gap-2 sm:text-xs">
-              <span>今日還有 2 個任務</span>
-              <button className="rounded-md bg-indigo-600 px-2 py-1 font-bold text-white transition hover:bg-indigo-700">查看</button>
-            </div>
+            {!loadingBots && pendingTaskBots.length ? (
+              <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500 sm:gap-2 sm:text-xs">
+                <span>今日還有 {pendingTaskBots.length} 個任務</span>
+                <button type="button" onClick={() => setSelectedBot(pendingTaskBots[0])} className="rounded-md bg-indigo-600 px-2 py-1 font-bold text-white transition hover:bg-indigo-700">查看</button>
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -82,7 +251,10 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
           <div className="hidden items-center gap-1.5 lg:flex">
             <div className="rounded-2xl border border-slate-200 bg-slate-100/80 px-4 py-2">
               <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Tokens</div>
-              <div className="text-sm font-black text-slate-600">{currentUser.quota?.remaining ?? 750} <span className="text-slate-300">/ {currentUser.quota?.monthlyLimit ?? 1000}</span></div>
+              <div className="text-sm font-black text-slate-600">
+                {typeof quotaRemaining === "number" ? quotaRemaining : "—"}
+                <span className="text-slate-300"> / {typeof quotaLimit === "number" ? quotaLimit : "—"}</span>
+              </div>
             </div>
             <button type="button" aria-label="Token 額度說明" onClick={() => setActiveTip("tokens")} className="text-slate-400 transition hover:text-indigo-600"><HelpCircle className="h-[18px] w-[18px]" /></button>
           </div>
@@ -103,28 +275,12 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
         </div>
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {companions.map((companion, index) => (
-            <motion.button
+            <StudentBotCard
               key={companion.id}
-              type="button"
-              onClick={() => setSelectedBot(companion)}
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.06, duration: 0.35 }}
-              whileHover={{ y: -5 }}
-              className="group flex min-h-[320px] flex-col rounded-[28px] border border-slate-100 bg-white p-[26px] text-left shadow-[0_10px_30px_rgba(15,23,42,0.05)] transition hover:border-indigo-200 hover:shadow-[0_18px_45px_rgba(79,70,229,0.12)]"
-            >
-              <div className="flex items-start justify-between">
-                <div className="bot-avatar-pulse relative flex h-[130px] w-[130px] items-center justify-center rounded-full bg-gradient-to-br from-indigo-400 to-violet-700 text-white">
-                  {companion.avatarUrl ? <img src={companion.avatarUrl} alt="" className="bot-avatar-breathe h-full w-full rounded-full border-4 border-white object-cover shadow-md" /> : <Bot className="h-12 w-12" />}
-                </div>
-                {companion.hasPendingQuiz ? (
-                  <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-1 text-[9px] font-bold text-amber-600 sm:px-2 sm:text-[10px]">測試題</span>
-                ) : null}
-              </div>
-              <h2 className="mt-4 truncate text-lg font-extrabold text-slate-950">{companion.name}</h2>
-              <span className="mt-2 inline-block rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-500">{companion.subject || "未分類"}</span>
-              <div className="mt-auto border-t border-slate-100 pt-4 text-[13px] text-slate-400">今日互動 {companion.interactions || 0} 次</div>
-            </motion.button>
+              companion={companion}
+              index={index}
+              onOpen={() => setSelectedBot(companion)}
+            />
           ))}
         </div>
 

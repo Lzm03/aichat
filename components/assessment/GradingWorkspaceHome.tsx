@@ -5,6 +5,8 @@ import { API_BASE } from '../../utils/api';
 import { Icons } from '../icons';
 import { GradingDetailView } from './GradingDetailView';
 import { InfoTipModal } from '../system/InfoTipModal';
+import { PlatformDialog } from '../system/PlatformDialog';
+import { usePlatformDialog } from '../../hooks/usePlatformDialog';
 
 interface GradingWorkspaceHomeProps {
   onBack: () => void;
@@ -28,6 +30,7 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
   const [loading, setLoading] = useState(true);
   const [deletingQuizId, setDeletingQuizId] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const { dialog, closeDialog, showAlert, showConfirm } = usePlatformDialog();
 
   const loadQuizzes = useCallback(() => {
     setLoading(true);
@@ -75,14 +78,30 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
     try {
       const response = await fetch(`${API_BASE}/api/quizzes/${quizId}`, { method: 'DELETE' });
       if (!response.ok) {
-        throw new Error('刪除測驗失敗');
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || '刪除測驗失敗');
       }
       setQuizzes((prev) => prev.filter((quiz) => quiz.id !== quizId));
     } catch (error) {
-      console.error(error);
+      showAlert({
+        title: '刪除失敗',
+        message: error instanceof Error ? error.message : '測驗暫時無法刪除，請稍後再試。',
+        tone: 'danger',
+      });
     } finally {
       setDeletingQuizId(null);
     }
+  };
+
+  const requestDeleteQuiz = (quiz: QuizSummary) => {
+    showConfirm({
+      title: '刪除測驗？',
+      message: `「${quiz.title}」刪除後無法復原，相關作答與批改資料也會一併移除。`,
+      confirmText: '刪除',
+      cancelText: '取消',
+      tone: 'danger',
+      onConfirm: () => void handleDeleteQuiz(quiz.id),
+    });
   };
 
   if (selectedQuizId) {
@@ -163,8 +182,9 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
 
                 <div className="shrink-0 w-full md:w-auto flex items-center justify-end gap-3">
                   <button
-                    onClick={() => void handleDeleteQuiz(quiz.id)}
+                    onClick={() => requestDeleteQuiz(quiz)}
                     disabled={deletingQuizId === quiz.id}
+                    aria-label={`刪除測驗 ${quiz.title}`}
                     className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition-colors hover:text-rose-600 disabled:opacity-50"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -189,6 +209,16 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
           })}
       </div>
       <InfoTipModal open={showHelp} title="AI 批改怎麼運作" body="學生作答後，AI 會先自動評分並給出建議分數，例如選擇題直接判對錯、簡答題會給參考理由。你可以直接採用，也能手動調整後再確認送出。" onClose={() => setShowHelp(false)} />
+      <PlatformDialog
+        open={dialog.open}
+        title={dialog.title}
+        message={dialog.message}
+        confirmText={dialog.confirmText}
+        cancelText={dialog.cancelText}
+        tone={dialog.tone}
+        onClose={closeDialog}
+        onConfirm={dialog.onConfirm || undefined}
+      />
     </div>
   );
 };

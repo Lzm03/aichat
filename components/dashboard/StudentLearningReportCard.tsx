@@ -8,40 +8,17 @@ import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { API_BASE } from '../../utils/api';
 import { parsePromptSource } from '../../utils/chat-prompt';
 
-// Mock Data
-const classList = [
-  { id: 'c1', name: '中三甲', lastDate: '2023-10-25', avgScore: 78.5, weakness: '分析' },
-  { id: 'c2', name: '中三乙', lastDate: '2023-10-22', avgScore: 72.0, weakness: '評價' },
-  { id: 'c3', name: '中四理', lastDate: '2023-10-20', avgScore: 81.5, weakness: '創造' },
-];
-
-const bloomData = [
-  { level: '記憶', score: 85, color: '#3b82f6' },
-  { level: '理解', score: 78, color: '#10b981' },
-  { level: '應用', score: 72, color: '#f59e0b' },
-  { level: '分析', score: 45, color: '#f97316' },
-  { level: '評價', score: 38, color: '#f43f5e' },
-  { level: '創造', score: 35, color: '#a855f7' },
-];
-
-const studentData = [
-  { id: 's1', name: '李逸朗', scoreRate: 30, diff: -15, avatar: '李' },
-  { id: 's2', name: '黃俊傑', scoreRate: 35, diff: -10, avatar: '黃' },
-  { id: 's3', name: '陳小明', scoreRate: 42, diff: -3, avatar: '陳' },
-  { id: 's4', name: '林美玲', scoreRate: 55, diff: 10, avatar: '林' },
-];
-
-const classAssessmentRows = [
-  { id: '03', name: '學生 03', mastery: 92, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'knowledge', statusText: '已完成' },
-  { id: '04', name: '學生 04', mastery: 92, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'knowledge', statusText: '已完成' },
-  { id: '13', name: '學生 13', mastery: 92, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'knowledge', statusText: '已完成' },
-  { id: '14', name: '學生 14', mastery: 92, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'knowledge', statusText: '已完成' },
-  { id: '23', name: '學生 23', mastery: 91, output: 'L3', outputText: '深入連結', interaction: 'Y3 深入探索', rounds: 8, mode: '主動輸入', status: 'normal', statusText: '進行中' },
-  { id: '08', name: '學生 08', mastery: 74, output: 'L2', outputText: '正確回憶', interaction: 'Y2 持續互動', rounds: 5, mode: '引導回答', status: 'warning', statusText: '未完成' },
-  { id: '17', name: '學生 17', mastery: 68, output: 'L1', outputText: '簡短回應', interaction: 'Y1 初步參與', rounds: 3, mode: '被動回覆', status: 'warning', statusText: '未完成' },
-];
-
-type AssessmentRow = (typeof classAssessmentRows)[number] & {
+type AssessmentRow = {
+  id: string;
+  name: string;
+  mastery: number;
+  output: string;
+  outputText: string;
+  interaction: string;
+  rounds: number;
+  mode: string;
+  status: 'warning' | 'knowledge' | 'normal';
+  statusText: string;
   studentId?: string;
   outputLevel?: number;
   interactionCode?: string;
@@ -124,15 +101,6 @@ const trackingToneConfig = {
   },
 } as const;
 
-const radarData = [
-  { subject: '記憶', A: 90, fullMark: 100 },
-  { subject: '理解', A: 85, fullMark: 100 },
-  { subject: '應用', A: 80, fullMark: 100 },
-  { subject: '分析', A: 30, fullMark: 100 },
-  { subject: '評價', A: 40, fullMark: 100 },
-  { subject: '創造', A: 50, fullMark: 100 },
-];
-
 export const StudentLearningReportCard = () => {
   const currentRole = readAuthSession()?.user?.role;
   const canViewClassAssessmentDetail = currentRole === 'teacher' || currentRole === 'admin';
@@ -141,7 +109,7 @@ export const StudentLearningReportCard = () => {
   const [detailFilter, setDetailFilter] = useState<'all' | 'warning' | 'knowledge' | 'normal'>('all');
   const [selectedDetailStudent, setSelectedDetailStudent] = useState<any | null>(null);
   const [isRankingOpen, setIsRankingOpen] = useState(false);
-  const [assessmentRows, setAssessmentRows] = useState<AssessmentRow[]>(classAssessmentRows);
+  const [assessmentRows, setAssessmentRows] = useState<AssessmentRow[]>([]);
   const [sharedBots, setSharedBots] = useState<SharedBotOption[]>([]);
   const [selectedBotId, setSelectedBotId] = useState('');
   const [knowledgePoints, setKnowledgePoints] = useState<KnowledgePoint[]>([]);
@@ -152,17 +120,17 @@ export const StudentLearningReportCard = () => {
     averageBubbleDependency: number;
     points: InteractionPoint[];
   }>({
-    independentRate: 45,
-    assistedRate: 55,
-    averageFreeInputLength: 21,
-    averageBubbleDependency: 2.1,
+    independentRate: 0,
+    assistedRate: 0,
+    averageFreeInputLength: 0,
+    averageBubbleDependency: 0,
     points: [],
   });
   const [assessmentCounts, setAssessmentCounts] = useState<AssessmentCounts>({
-    all: classAssessmentRows.length,
-    warning: classAssessmentRows.filter((row) => row.status === 'warning').length,
-    knowledge: classAssessmentRows.filter((row) => row.status === 'knowledge').length,
-    normal: classAssessmentRows.filter((row) => row.status === 'normal').length,
+    all: 0,
+    warning: 0,
+    knowledge: 0,
+    normal: 0,
   });
   const [assessmentLoading, setAssessmentLoading] = useState(false);
   const [assessmentError, setAssessmentError] = useState('');
@@ -310,7 +278,17 @@ export const StudentLearningReportCard = () => {
     setAssessmentLoading(true);
     setAssessmentError('');
     setSharedBots([]);
-    setAssessmentRows(classAssessmentRows);
+    setAssessmentRows([]);
+    setAssessmentCounts({ all: 0, warning: 0, knowledge: 0, normal: 0 });
+    setKnowledgePoints([]);
+    setChatRecords([]);
+    setInteractionSummary({
+      independentRate: 0,
+      assistedRate: 0,
+      averageFreeInputLength: 0,
+      averageBubbleDependency: 0,
+      points: [],
+    });
     const query = selectedBotId ? `?botId=${encodeURIComponent(selectedBotId)}` : '';
     fetch(`${API_BASE}/api/bots/teacher/assessment-report${query}`)
       .then(async (res) => {
@@ -429,8 +407,7 @@ export const StudentLearningReportCard = () => {
               </h3>
             </div>
             <div className="space-y-2 flex-1">
-              {sharedBots.length ? sharedBots.map((bot, index) => {
-                const summaryRow = assessmentRows[index] || assessmentRows[0];
+              {sharedBots.length ? sharedBots.map((bot) => {
                 return (
                   <button
                     key={bot.id}
@@ -448,16 +425,10 @@ export const StudentLearningReportCard = () => {
                       </div>
                       <div className="min-w-0">
                         <h4 className="truncate text-sm font-black text-slate-900">{bot.name}</h4>
-                        <p className="mt-0.5 text-[10px] text-slate-500">
-                          上次測驗: 2023-10-25 · 平均 {summaryRow?.mastery ?? 0} 分
-                        </p>
+                        <p className="mt-0.5 text-[10px] text-slate-500">查看由實際對話累積的學習分析</p>
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
-                      <span className="hidden rounded-lg bg-rose-50 px-2 py-1.5 text-[10px] font-black text-rose-600 sm:inline-flex">
-                        <AlertCircle className="mr-1 h-3 w-3" />
-                        薄弱點: {summaryRow?.outputText || '分析'}
-                      </span>
                       <span className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-2 text-[11px] font-black text-indigo-600">
                         查看報告
                         <ChevronRight className="h-4 w-4" />
@@ -467,7 +438,7 @@ export const StudentLearningReportCard = () => {
                 );
               }) : (
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-[11px] text-slate-500">
-                  目前沒有可顯示的共享 bot。
+                  {assessmentLoading ? '正在同步能力追蹤資料…' : assessmentError ? '暫時無法載入能力追蹤資料，請稍後再試。' : '尚未分享 AI 夥伴給學生；分享後會在此累積真實互動資料。'}
                 </div>
               )}
             </div>
@@ -993,7 +964,7 @@ export const StudentLearningReportCard = () => {
                           ? 'border-amber-200 bg-amber-50 text-amber-800'
                           : 'border-indigo-100 bg-indigo-50 text-indigo-700'
                       }`}>
-                        {assessmentError ? `使用示例資料顯示：${assessmentError}` : '正在同步學生聊天與知識庫分析...'}
+                        {assessmentError ? '資料暫時無法載入，目前不顯示推測或示例數值。' : '正在同步學生聊天與知識庫分析...'}
                       </div>
                     )}
 
@@ -1032,6 +1003,11 @@ export const StudentLearningReportCard = () => {
                             <span className={`text-[11px] font-black sm:text-xs ${row.status === 'warning' ? 'text-rose-600' : row.status === 'knowledge' ? 'text-emerald-600' : 'text-slate-500'}`}>{row.statusText}</span>
                           </button>
                         ))}
+                        {!assessmentLoading && !assessmentError && !sortedAssessmentRows.length ? (
+                          <div className="px-4 py-10 text-center text-sm font-semibold text-slate-500">
+                            尚未累積足夠的學生互動資料；學生開始對話後，能力追蹤會自動更新。
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </div>

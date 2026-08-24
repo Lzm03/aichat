@@ -141,7 +141,7 @@ const App: React.FC = () => {
         if (!cancelled) setIsUpdating(false);
       } catch {
         failedCount += 1;
-        if (!cancelled && failedCount >= 2) {
+        if (!cancelled && failedCount >= 5) {
           setIsUpdating(true);
         }
       }
@@ -197,12 +197,9 @@ const App: React.FC = () => {
   return (
     <div className={`min-h-screen ${shellThemeClasses} ${sharedBotId || stageBotId || shouldShowAuth || shouldShowLanding || isAccountRoute || isSettingsRoute || isProRoute || !isSessionReady ? "block" : "flex"}`}>
       {isUpdating && !shouldShowLanding ? (
-        <div className="fixed inset-0 z-[9999] bg-white/95 backdrop-blur-sm flex items-center justify-center">
-          <div className="text-center">
-            <div className="mx-auto h-12 w-12 rounded-full border-4 border-slate-200 border-t-indigo-600 animate-spin" />
-            <p className="mt-4 text-lg font-semibold text-slate-800">系统更新中</p>
-            <p className="mt-1 text-sm text-slate-500">新版本部署完成后将自动恢复</p>
-          </div>
+        <div className="pointer-events-none fixed right-4 top-4 z-[9999] max-w-[360px] rounded-2xl border border-amber-200 bg-amber-50/95 px-4 py-3 text-amber-900 shadow-lg backdrop-blur-sm">
+          <p className="text-sm font-black">系統連線不穩定</p>
+          <p className="mt-1 text-xs font-medium leading-5 text-amber-800">部分資料可能暫時無法更新，你仍可繼續使用目前頁面；連線恢復後會自動同步。</p>
         </div>
       ) : null}
       {!isSessionReady ? (

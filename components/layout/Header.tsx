@@ -3,10 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from '../icons';
 import { TokenUsageMonitor } from '../system/TokenUsageMonitor';
 import { TokenDetailModal, ProviderUsage } from '../system/TokenDetailModal';
-import { FeatureLimitPanel } from '../system/FeatureLimitPanel';
 import { UserMenu } from './UserMenu';
 import type { StoredAuthUser } from '../../utils/auth';
-import { useFeatureEntitlements } from '../../hooks/useFeatureEntitlements';
 import { DEFAULT_ACCOUNT_AVATAR } from '../../utils/default-avatar';
 
 interface HeaderProps {
@@ -37,17 +35,13 @@ export const Header: React.FC<HeaderProps> = ({
   searchPlaceholder = "全域搜尋...",
   onSearchChange,
 }) => {
-  const { features } = useFeatureEntitlements();
-  const primaryFeatures = features.filter((feature) => feature.key === "bot_publish" || feature.key === "chat_messages");
   const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
-  const [isFeatureMenuOpen, setIsFeatureMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [providers, setProviders] = useState<ProviderUsage[]>([]);
   const [tokenLoading, setTokenLoading] = useState(false);
   const [tokenError, setTokenError] = useState<string | null>(null);
   
   const tokenTriggerRef = useRef<HTMLDivElement>(null);
-  const featureMenuTriggerRef = useRef<HTMLDivElement>(null);
   const userMenuTriggerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -55,9 +49,6 @@ export const Header: React.FC<HeaderProps> = ({
     const handleClickOutside = (event: MouseEvent) => {
       if (tokenTriggerRef.current && !tokenTriggerRef.current.contains(event.target as Node)) {
         setIsTokenModalOpen(false);
-      }
-      if (featureMenuTriggerRef.current && !featureMenuTriggerRef.current.contains(event.target as Node)) {
-        setIsFeatureMenuOpen(false);
       }
       if (userMenuTriggerRef.current && !userMenuTriggerRef.current.contains(event.target as Node)) {
         setIsUserMenuOpen(false);
@@ -131,7 +122,6 @@ export const Header: React.FC<HeaderProps> = ({
 
   const okCount = providers.filter((p) => p.status === "ok").length;
   const totalCount = providers.length || 1;
-  const lockedCount = primaryFeatures.filter((feature) => feature.locked).length;
   const canViewProviderUsage = currentUser?.email?.trim().toLowerCase() === "lzm200303@gmail.com";
 
   return (
@@ -148,34 +138,6 @@ export const Header: React.FC<HeaderProps> = ({
           <p className="truncate text-2xl font-bold leading-tight text-[#1E293B]">{pageTitle}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1 sm:gap-2 lg:ml-auto">
-        {primaryFeatures.length ? (
-          <div className="relative" ref={featureMenuTriggerRef}>
-            <button
-              onClick={() => setIsFeatureMenuOpen((prev) => !prev)}
-              className="flex h-10 items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-2.5 text-xs font-semibold text-indigo-700 sm:h-11 sm:gap-2 sm:rounded-2xl sm:px-3"
-            >
-              <Icons.cpu className="h-4 w-4 xl:hidden" />
-              <span className="hidden xl:inline">使用次數</span>
-              <span className={`rounded-full px-1.5 py-0.5 sm:px-2 ${lockedCount > 0 ? "bg-rose-100 text-rose-700" : "bg-white text-indigo-700"}`}>
-                {lockedCount > 0 ? `${lockedCount} 已用完` : "查看"}
-              </span>
-              <Icons.down className={`h-4 w-4 transition-transform ${isFeatureMenuOpen ? "rotate-180" : ""}`} />
-            </button>
-            <AnimatePresence>
-              {isFeatureMenuOpen && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.96, y: -10 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.96, y: -10 }}
-                  transition={{ type: 'spring', damping: 20, stiffness: 280 }}
-                  className="fixed left-3 right-3 top-[74px] z-30 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2"
-                >
-                  <FeatureLimitPanel features={primaryFeatures} dropdown />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        ) : null}
         <div className="relative hidden md:block">
           <Icons.search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
           <input
