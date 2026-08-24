@@ -220,6 +220,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [cameraBackgroundReady, setCameraBackgroundReady] = useState(false);
   const [cameraBackgroundError, setCameraBackgroundError] = useState("");
   const [cameraBackgroundLoading, setCameraBackgroundLoading] = useState(false);
+  const [stageViewMode, setStageViewMode] = useState<"full" | "upper">("full");
   const [characterScale, setCharacterScale] = useState(0.82);
   const [characterOffset, setCharacterOffset] = useState({ x: 0, y: 0 });
   const [isRecordingScreen, setIsRecordingScreen] = useState(false);
@@ -3473,6 +3474,15 @@ const unlockAudioAndMic = async () => {
 
   const isQuizTaking = quizUiState === "taking" && Boolean(activeQuiz && quizQuestion);
   const shouldDisableRegularChat = shouldShowBooting || (shouldRequirePermission && !permissionReady) || isQuizTaking;
+  const arCharacterGroupClass = stageViewMode === "upper"
+    ? "relative left-1/2 h-[125%] w-[170%] shrink-0 -translate-x-1/2 transition-[width,height,transform] duration-300 ease-out"
+    : "relative h-full w-full transition-[width,height,transform] duration-300 ease-out";
+  const stageCharacterGroupClass = stageViewMode === "upper"
+    ? "relative h-[125%] w-[170%] shrink-0 self-start transition-[width,height,transform] duration-300 ease-out"
+    : "relative h-full w-full transition-[width,height,transform] duration-300 ease-out md:h-[80%]";
+  const characterLayerClass = `absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+    stageViewMode === "upper" ? "object-top" : ""
+  }`;
 
   if (!isOpen) return null;
 
@@ -3525,11 +3535,11 @@ const unlockAudioAndMic = async () => {
               )}
 
               <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(8,12,16,0.16)_0%,rgba(8,12,16,0.05)_34%,rgba(8,12,16,0.42)_100%)]" />
-              <div className="absolute left-4 top-5 z-30 hidden md:left-6 md:top-6 md:block">
+              <div className="absolute left-4 top-5 z-30 flex items-center gap-2 md:left-6 md:top-6">
                 <button
                   type="button"
                   onClick={() => setArControlsOpen((prev) => !prev)}
-                  className={`flex h-11 items-center gap-2 rounded-2xl px-3.5 text-xs font-semibold text-white shadow-lg backdrop-blur transition-all duration-200 ${
+                  className={`hidden h-11 items-center gap-2 rounded-2xl px-3.5 text-xs font-semibold text-white shadow-lg backdrop-blur transition-all duration-200 md:flex ${
                     arControlsOpen
                       ? "bg-white/22 ring-2 ring-white/65 shadow-[0_8px_24px_rgba(245,158,11,0.24)]"
                       : "bg-black/45 hover:bg-black/60"
@@ -3543,6 +3553,28 @@ const unlockAudioAndMic = async () => {
                     className={`transition-transform duration-300 ${arControlsOpen ? "rotate-180" : ""}`}
                   />
                 </button>
+                <div className="flex h-11 items-center rounded-2xl bg-black/45 p-1 text-[11px] font-semibold text-white shadow-lg ring-1 ring-white/15 backdrop-blur">
+                  <button
+                    type="button"
+                    aria-pressed={stageViewMode === "full"}
+                    onClick={() => setStageViewMode("full")}
+                    className={`h-9 rounded-xl px-3 transition ${
+                      stageViewMode === "full" ? "bg-white text-slate-900 shadow-sm" : "text-white/80 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    全身
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={stageViewMode === "upper"}
+                    onClick={() => setStageViewMode("upper")}
+                    className={`h-9 rounded-xl px-3 transition ${
+                      stageViewMode === "upper" ? "bg-white text-slate-900 shadow-sm" : "text-white/80 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    上半身
+                  </button>
+                </div>
               </div>
               <div className="absolute right-4 top-5 z-30 flex flex-col items-center gap-2 md:right-6 md:top-6 md:flex-row md:gap-3">
                 <button
@@ -3821,7 +3853,9 @@ const unlockAudioAndMic = async () => {
               {cameraBackgroundReady ? (
                 <div ref={arStageRef} className="absolute inset-0 overscroll-none touch-none">
                   <motion.div
-                    className="absolute left-1/2 bottom-12 h-[80%] w-full cursor-grab touch-none select-none active:cursor-grabbing md:w-[80%]"
+                    className={`absolute left-1/2 w-full cursor-grab touch-none select-none active:cursor-grabbing md:w-[80%] ${
+                      stageViewMode === "upper" ? "bottom-0 h-full" : "bottom-12 h-[80%]"
+                    }`}
                     transition={{ duration: 0.2 }}
                     style={{
                       transform: `translate(calc(-50% + ${characterOffset.x}px), ${characterOffset.y}px) scale(${characterScale})`,
@@ -3838,7 +3872,7 @@ const unlockAudioAndMic = async () => {
                     onTouchCancel={handleCharacterTouchEnd}
                   >
                     {hasAnyVideo ? (
-                      <div className="relative h-full w-full">
+                      <div className={arCharacterGroupClass}>
                         {seqIdle ? (
                           <SequencePngPlayer
                             folderUrl={seqIdle.folderUrl}
@@ -3846,7 +3880,7 @@ const unlockAudioAndMic = async () => {
                             frameCount={seqIdle.frameCount}
                             fps={seqIdle.fps}
                             data-stage-character="true"
-                            className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                            className={`${characterLayerClass} ${
                               visualState === "idle" ? "block" : "hidden"
                             }`}
                             active={visualState === "idle"}
@@ -3861,7 +3895,7 @@ const unlockAudioAndMic = async () => {
                             playsInline
                             preload="auto"
                             crossOrigin="anonymous"
-                            className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                            className={`${characterLayerClass} ${
                               visualState === "idle" ? "block" : "hidden"
                             }`}
                           />
@@ -3873,7 +3907,7 @@ const unlockAudioAndMic = async () => {
                             frameCount={seqThinking.frameCount}
                             fps={seqThinking.fps}
                             data-stage-character="true"
-                            className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                            className={`${characterLayerClass} ${
                               visualState === "thinking" ? "block" : "hidden"
                             }`}
                             active={visualState === "thinking"}
@@ -3888,7 +3922,7 @@ const unlockAudioAndMic = async () => {
                             playsInline
                             preload="auto"
                             crossOrigin="anonymous"
-                            className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                            className={`${characterLayerClass} ${
                               visualState === "thinking" ? "block" : "hidden"
                             }`}
                           />
@@ -3900,7 +3934,7 @@ const unlockAudioAndMic = async () => {
                             frameCount={seqTalking.frameCount}
                             fps={seqTalking.fps}
                             data-stage-character="true"
-                            className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                            className={`${characterLayerClass} ${
                               visualState === "speaking" ? "block" : "hidden"
                             }`}
                             active={visualState === "speaking"}
@@ -3915,7 +3949,7 @@ const unlockAudioAndMic = async () => {
                             playsInline
                             preload="auto"
                             crossOrigin="anonymous"
-                            className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                            className={`${characterLayerClass} ${
                               visualState === "speaking" ? "block" : "hidden"
                             }`}
                           />
@@ -3932,7 +3966,9 @@ const unlockAudioAndMic = async () => {
                             data-stage-character="true"
                             src={safeAvatar}
                             crossOrigin="anonymous"
-                            className="h-full w-full object-contain drop-shadow-xl"
+                            className={stageViewMode === "upper"
+                              ? "relative left-1/2 h-[125%] w-[170%] max-w-none shrink-0 -translate-x-1/2 self-start object-contain object-top drop-shadow-xl"
+                              : "h-full w-full object-contain drop-shadow-xl"}
                           />
                         );
                       })()
@@ -3942,10 +3978,10 @@ const unlockAudioAndMic = async () => {
               ) : (
                 <motion.div
                   className="absolute inset-0 flex items-end justify-center pb-12"
-                  transition={{ duration: 2, repeat: Infinity }}
+                  transition={{ duration: 0.25, ease: "easeOut" }}
                 >
                   {hasAnyVideo ? (
-                    <div className="relative h-full md:h-[80%] w-full">
+                    <div className={stageCharacterGroupClass}>
                       {seqIdle ? (
                         <SequencePngPlayer
                           folderUrl={seqIdle.folderUrl}
@@ -3953,7 +3989,7 @@ const unlockAudioAndMic = async () => {
                           frameCount={seqIdle.frameCount}
                           fps={seqIdle.fps}
                           data-stage-character="true"
-                          className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                          className={`${characterLayerClass} ${
                             visualState === "idle" ? "block" : "hidden"
                           }`}
                           active={visualState === "idle"}
@@ -3968,7 +4004,7 @@ const unlockAudioAndMic = async () => {
                           playsInline
                           preload="auto"
                           crossOrigin="anonymous"
-                          className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                          className={`${characterLayerClass} ${
                             visualState === "idle" ? "block" : "hidden"
                           }`}
                         />
@@ -3980,7 +4016,7 @@ const unlockAudioAndMic = async () => {
                           frameCount={seqThinking.frameCount}
                           fps={seqThinking.fps}
                           data-stage-character="true"
-                          className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                          className={`${characterLayerClass} ${
                             visualState === "thinking" ? "block" : "hidden"
                           }`}
                           active={visualState === "thinking"}
@@ -3995,7 +4031,7 @@ const unlockAudioAndMic = async () => {
                           playsInline
                           preload="auto"
                           crossOrigin="anonymous"
-                          className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                          className={`${characterLayerClass} ${
                             visualState === "thinking" ? "block" : "hidden"
                           }`}
                         />
@@ -4007,7 +4043,7 @@ const unlockAudioAndMic = async () => {
                           frameCount={seqTalking.frameCount}
                           fps={seqTalking.fps}
                           data-stage-character="true"
-                          className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                          className={`${characterLayerClass} ${
                             visualState === "speaking" ? "block" : "hidden"
                           }`}
                           active={visualState === "speaking"}
@@ -4022,7 +4058,7 @@ const unlockAudioAndMic = async () => {
                           playsInline
                           preload="auto"
                           crossOrigin="anonymous"
-                          className={`absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
+                          className={`${characterLayerClass} ${
                             visualState === "speaking" ? "block" : "hidden"
                           }`}
                         />
@@ -4039,7 +4075,9 @@ const unlockAudioAndMic = async () => {
                           data-stage-character="true"
                           src={safeAvatar}
                           crossOrigin="anonymous"
-                          className="h-[80%] object-contain drop-shadow-xl"
+                          className={stageViewMode === "upper"
+                            ? "relative h-[125%] w-[170%] max-w-none shrink-0 self-start object-contain object-top drop-shadow-xl"
+                            : "h-[80%] object-contain drop-shadow-xl"}
                         />
                       );
                     })()
