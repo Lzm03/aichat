@@ -10,3 +10,4 @@ server/uploads/
 dist/
 /tests
 /tests/load
+/tmp
