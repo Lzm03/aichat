@@ -134,7 +134,7 @@ export const AiAlertPlayground: React.FC = () => {
         <div className="flex gap-4">
           <span className="text-lg font-bold text-slate-400 shrink-0">1.</span>
           <div className="flex-1">
-            <p className="text-lg font-medium text-slate-800 mb-4">你認為桃花源是一個理想的社會嗎？請結合文本說明你的觀點。</p>
+            <p className="text-lg font-medium text-slate-800 mb-4">你認為桃花源是一個理想的社會嗎？請結合文本説明你的觀點。</p>
             
             <div className="space-y-6">
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 relative overflow-hidden">
@@ -163,7 +163,7 @@ export const AiAlertPlayground: React.FC = () => {
                   <div className="flex-1 pr-6">
                     <span className="text-xs font-bold text-purple-400 uppercase tracking-wider mb-1 block">草擬評語</span>
                     <p className="text-purple-900 font-medium leading-relaxed">
-                      作答內容未能針對題目進行有效論述，請老師進一步了解學生的學習狀況或給予適當引導。
+                      作答內容未能針對題目進行有效論述，請老師進一步瞭解學生的學習狀況或給予適當引導。
                     </p>
                   </div>
                   <div className="text-right shrink-0 bg-white px-4 py-2 rounded-xl shadow-sm border border-purple-100">

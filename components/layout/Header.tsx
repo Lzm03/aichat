@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Check } from 'lucide-react';
 import { Icons } from '../icons';
-import { TokenUsageMonitor } from '../system/TokenUsageMonitor';
-import { TokenDetailModal, ProviderUsage } from '../system/TokenDetailModal';
 import { FeatureLimitPanel } from '../system/FeatureLimitPanel';
 import { UserMenu } from './UserMenu';
 import type { StoredAuthUser } from '../../utils/auth';
 import { useFeatureEntitlements } from '../../hooks/useFeatureEntitlements';
 import { DEFAULT_ACCOUNT_AVATAR } from '../../utils/default-avatar';
+import { setTeacherLang, useTeacherLang, type TeacherLang } from '../../utils/teacherI18n';
 
 interface HeaderProps {
   pageTitle: string;
@@ -19,14 +19,26 @@ interface HeaderProps {
   onSearchChange?: (value: string) => void;
 }
 
-function getTimeGreeting(date = new Date()) {
+const GREETINGS: Record<TeacherLang, string[]> = {
+  "zh-HK": ["早安", "午安", "下午好", "晚上好", "夜深了"],
+  en: ["Good morning", "Good afternoon", "Good afternoon", "Good evening", "Good evening"],
+};
+
+function getTimeGreeting(date = new Date(), lang: TeacherLang = "zh-HK") {
   const hour = date.getHours();
-  if (hour >= 5 && hour < 11) return "早安";
-  if (hour >= 11 && hour < 14) return "午安";
-  if (hour >= 14 && hour < 18) return "下午好";
-  if (hour >= 18 && hour < 24) return "晚上好";
-  return "夜深了";
+  const index =
+    hour >= 5 && hour < 11 ? 0
+    : hour >= 11 && hour < 14 ? 1
+    : hour >= 14 && hour < 18 ? 2
+    : hour >= 18 && hour < 24 ? 3
+    : 4;
+  return GREETINGS[lang][index];
 }
+
+const HEADER_T = {
+  "zh-HK": { planUsage: "方案用量", switchLanguage: "切換語言", clearSearch: "清除搜尋" },
+  en: { planUsage: "Plan Usage", switchLanguage: "Switch language", clearSearch: "Clear search" },
+} as const;
 
 export const Header: React.FC<HeaderProps> = ({
   pageTitle,
@@ -39,28 +51,30 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { features } = useFeatureEntitlements();
   const primaryFeatures = features.filter((feature) => feature.key === "bot_publish" || feature.key === "chat_messages");
-  const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
   const [isFeatureMenuOpen, setIsFeatureMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [providers, setProviders] = useState<ProviderUsage[]>([]);
-  const [tokenLoading, setTokenLoading] = useState(false);
-  const [tokenError, setTokenError] = useState<string | null>(null);
-  
-  const tokenTriggerRef = useRef<HTMLDivElement>(null);
+  const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+  // 語言：與學生端共用 localStorage key（chopreality_ui_lang）
+  const lang = useTeacherLang();
+  const th = HEADER_T[lang];
+
   const featureMenuTriggerRef = useRef<HTMLDivElement>(null);
   const userMenuTriggerRef = useRef<HTMLDivElement>(null);
+  const langMenuTriggerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const switchLang = (next: TeacherLang) => setTeacherLang(next);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (tokenTriggerRef.current && !tokenTriggerRef.current.contains(event.target as Node)) {
-        setIsTokenModalOpen(false);
-      }
       if (featureMenuTriggerRef.current && !featureMenuTriggerRef.current.contains(event.target as Node)) {
         setIsFeatureMenuOpen(false);
       }
       if (userMenuTriggerRef.current && !userMenuTriggerRef.current.contains(event.target as Node)) {
         setIsUserMenuOpen(false);
+      }
+      if (langMenuTriggerRef.current && !langMenuTriggerRef.current.contains(event.target as Node)) {
+        setIsLangMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -81,58 +95,7 @@ export const Header: React.FC<HeaderProps> = ({
     return () => window.removeEventListener("keydown", handleSearchShortcut);
   }, [onSearchChange]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const envBase = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
-    const candidateBases = Array.from(new Set([envBase, ""].filter(Boolean)));
-
-    const fetchUsage = async () => {
-      setTokenLoading(true);
-      setTokenError(null);
-      try {
-        let lastErr = "No available endpoint";
-        for (const base of candidateBases) {
-          try {
-            const res = await fetch(`${base}/api/token-usage`);
-            if (!res.ok) {
-              lastErr = `HTTP ${res.status} @ ${base || "same-origin"}`;
-              continue;
-            }
-            const data = await res.json();
-            if (cancelled) return;
-            setProviders(Array.isArray(data?.providers) ? data.providers : []);
-            setTokenError(null);
-            return;
-          } catch (err) {
-            lastErr =
-              err instanceof Error ? err.message : `Fetch failed @ ${base || "same-origin"}`;
-          }
-        }
-        throw new Error(lastErr);
-      } catch (err) {
-        if (cancelled) return;
-        setProviders([]);
-        setTokenError(err instanceof Error ? err.message : "Fetch failed");
-      } finally {
-        if (!cancelled) setTokenLoading(false);
-      }
-    };
-
-    void fetchUsage();
-    const timer = window.setInterval(() => {
-      void fetchUsage();
-    }, 30000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, []);
-
-  const okCount = providers.filter((p) => p.status === "ok").length;
-  const totalCount = providers.length || 1;
   const lockedCount = primaryFeatures.filter((feature) => feature.locked).length;
-  const canViewProviderUsage = currentUser?.email?.trim().toLowerCase() === "lzm200303@gmail.com";
 
   return (
     <header className="sticky top-0 z-20 flex flex-col gap-2 border-b border-slate-200/80 bg-white/80 px-3 py-3 backdrop-blur-sm sm:px-5 lg:flex-row lg:items-center lg:justify-between lg:gap-2 lg:px-8 lg:py-4">
@@ -144,21 +107,23 @@ export const Header: React.FC<HeaderProps> = ({
           <Icons.menu className="w-6 h-6" />
         </button>
         <div className="hidden min-w-0 lg:block">
-          <h2 className="truncate text-xs leading-snug text-slate-500 sm:text-sm">{getTimeGreeting()}, {currentUser?.fullName || '老師'}</h2>
+          <h2 className="truncate text-xs leading-snug text-slate-500 sm:text-sm">{getTimeGreeting(new Date(), lang)}, {currentUser?.fullName || '老師'}</h2>
           <p className="truncate text-2xl font-bold leading-tight text-[#1E293B]">{pageTitle}</p>
         </div>
-        <div className="flex shrink-0 items-center gap-1 sm:gap-2 lg:ml-auto">
+        <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
         {primaryFeatures.length ? (
           <div className="relative" ref={featureMenuTriggerRef}>
             <button
               onClick={() => setIsFeatureMenuOpen((prev) => !prev)}
-              className="flex h-10 items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-2.5 text-xs font-semibold text-indigo-700 sm:h-11 sm:gap-2 sm:rounded-2xl sm:px-3"
+              className="flex h-10 items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3.5 text-xs font-semibold text-indigo-700"
             >
               <Icons.cpu className="h-4 w-4 xl:hidden" />
-              <span className="hidden xl:inline">使用次數</span>
-              <span className={`rounded-full px-1.5 py-0.5 sm:px-2 ${lockedCount > 0 ? "bg-rose-100 text-rose-700" : "bg-white text-indigo-700"}`}>
-                {lockedCount > 0 ? `${lockedCount} 已用完` : "查看"}
-              </span>
+              <span className="hidden xl:inline">{th.planUsage}</span>
+              {lockedCount > 0 && (
+                <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-rose-700 sm:px-2">
+                  {lang === "en" ? "Limit reached" : `${lockedCount} 已用完`}
+                </span>
+              )}
               <Icons.down className={`h-4 w-4 transition-transform ${isFeatureMenuOpen ? "rotate-180" : ""}`} />
             </button>
             <AnimatePresence>
@@ -176,71 +141,95 @@ export const Header: React.FC<HeaderProps> = ({
             </AnimatePresence>
           </div>
         ) : null}
-        <div className="relative hidden md:block">
-          <Icons.search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={searchValue}
-            onChange={(event) => onSearchChange?.(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape" && searchValue) {
-                event.preventDefault();
-                onSearchChange?.("");
-              }
-            }}
-            placeholder={searchPlaceholder}
-            aria-label={searchPlaceholder}
-            disabled={!onSearchChange}
-            className="w-64 rounded-xl border border-transparent bg-slate-100 py-2.5 pl-10 pr-12 text-sm transition-all duration-300 placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:opacity-60"
-          />
-          {searchValue && onSearchChange ? (
-            <button
-              type="button"
-              onClick={() => {
-                onSearchChange("");
-                searchInputRef.current?.focus();
+        {/* 全域搜尋：僅 AI 工作坊頁渲染（App.tsx 只對 workshop 傳 onSearchChange） */}
+        {onSearchChange ? (
+          <div className="relative hidden md:block">
+            <Icons.search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchValue}
+              onChange={(event) => onSearchChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && searchValue) {
+                  event.preventDefault();
+                  onSearchChange("");
+                }
               }}
-              aria-label="清除搜尋"
-              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
-            >
-              <Icons.close className="h-4 w-4" />
-            </button>
-          ) : (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 font-sans text-xs text-slate-500">
-              ⌘K
-            </div>
-          )}
-        </div>
-        
-        {canViewProviderUsage ? (
-          <div className="relative" ref={tokenTriggerRef}>
-              <motion.div 
-                  whileTap={{ scale: 0.95 }}
-                  className="cursor-pointer"
-                  onClick={() => setIsTokenModalOpen(prev => !prev)}
+              placeholder={searchPlaceholder}
+              aria-label={searchPlaceholder}
+              className="h-10 w-64 rounded-full border border-transparent bg-slate-100 pl-10 pr-12 text-sm transition-all duration-300 placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-200"
+            />
+            {searchValue ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onSearchChange("");
+                  searchInputRef.current?.focus();
+                }}
+                aria-label={th.clearSearch}
+                className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
               >
-                  <TokenUsageMonitor used={okCount} total={totalCount} resetDate="即時更新" />
-              </motion.div>
-              <AnimatePresence>
-                  {isTokenModalOpen && <TokenDetailModal providers={providers} loading={tokenLoading} error={tokenError} />}
-              </AnimatePresence>
+                <Icons.close className="h-4 w-4" />
+              </button>
+            ) : (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 font-sans text-xs text-slate-500">
+                ⌘K
+              </div>
+            )}
           </div>
         ) : null}
 
-        <div className="relative hidden sm:block">
-           <button className="h-11 px-3 flex items-center space-x-2 rounded-xl hover:bg-slate-100 transition-colors">
-            <Icons.language className="w-5 h-5 text-slate-500" />
-            <span className="text-sm font-medium text-slate-600">中</span>
-            <Icons.down className="w-4 h-4 text-slate-400" />
+        {/* 語言切換：中 / EN（普通話與粵語同屬中文，選項只設「中」） */}
+        <div className="relative hidden sm:block" ref={langMenuTriggerRef}>
+          <button
+            type="button"
+            onClick={() => setIsLangMenuOpen((prev) => !prev)}
+            aria-label={th.switchLanguage}
+            className="flex h-10 items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3.5 text-xs font-bold text-slate-600 transition hover:border-indigo-300 hover:text-indigo-600"
+          >
+            <Icons.language className="h-4 w-4 text-slate-400" />
+            {lang === "en" ? "EN" : "中"}
+            <Icons.down className={`h-3.5 w-3.5 text-slate-400 transition-transform ${isLangMenuOpen ? "rotate-180" : ""}`} />
           </button>
+          <AnimatePresence>
+            {isLangMenuOpen && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96, y: -6 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: -6 }}
+                transition={{ type: "spring", damping: 20, stiffness: 280 }}
+                className="absolute right-0 top-full z-30 mt-2 w-36 rounded-[14px] border border-slate-200 bg-white p-1.5 shadow-lg"
+              >
+                {([["zh-HK", "中"], ["en", "EN"]] as const).map(([value, label]) => {
+                  const active = lang === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        switchLang(value);
+                        setIsLangMenuOpen(false);
+                      }}
+                      className={`flex w-full items-center justify-between rounded-[10px] px-3 py-2 text-sm font-semibold transition ${
+                        active ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      {label}
+                      {active && <Check className="h-4 w-4" />}
+                    </button>
+                  );
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         <div className="relative" ref={userMenuTriggerRef}>
           <motion.button
             onClick={() => setIsUserMenuOpen(prev => !prev)}
             whileTap={{ scale: 0.9 }}
-            className="w-10 h-10 sm:w-11 sm:h-11 rounded-full border-2 border-transparent hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-2 transition-all"
+            className="h-10 w-10 rounded-full border-2 border-transparent hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-2 transition-all"
           >
             <img
               src={currentUser?.avatarUrl || DEFAULT_ACCOUNT_AVATAR}
@@ -255,7 +244,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
       </div>
       <div className="min-w-0 pl-10 lg:hidden">
-        <h2 className="truncate whitespace-nowrap text-xs leading-snug text-slate-500 sm:text-sm">{getTimeGreeting()}, {currentUser?.fullName || '老師'}</h2>
+        <h2 className="truncate whitespace-nowrap text-xs leading-snug text-slate-500 sm:text-sm">{getTimeGreeting(new Date(), lang)}, {currentUser?.fullName || '老師'}</h2>
         <p className="truncate whitespace-nowrap text-2xl font-black leading-tight text-[#1E293B] sm:text-3xl">{pageTitle}</p>
       </div>
     </header>

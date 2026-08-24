@@ -2,9 +2,16 @@
 
 import React from 'react';
 import { readAuthSession } from '../utils/auth';
+import { useTeacherLang } from '../utils/teacherI18n';
 
 import { AssessmentQualityCard } from '../components/assessment/AssessmentQualityCard';
 import { StudentLearningReportCard } from '../components/dashboard/StudentLearningReportCard';
+import { DemoNotice } from '../components/system/DemoNotice';
+
+const WELCOME_T = {
+  "zh-HK": "歡迎回到教學指揮艙，和學生們一起開啟今天的學習之旅！",
+  en: "Welcome back to the Command Center. Let's start today's learning journey with your students!",
+} as const;
 
 function getTimeGreeting(date = new Date()) {
   const hour = date.getHours();
@@ -18,7 +25,7 @@ function getTimeGreeting(date = new Date()) {
 const HeroBanner: React.FC<{ teacherName: string }> = ({ teacherName }) => (
     <div className="relative mb-5 h-[210px] w-full overflow-hidden rounded-[24px] shadow-md group sm:mb-6 sm:h-auto sm:aspect-[4/1] sm:rounded-[32px]">
       <img 
-      src="/Tomato_Robot.png" 
+      src="/Tomato_Robot.webp" 
         alt="AI Dashboard Hero" 
         className="absolute inset-0 h-full w-full object-cover object-center transition-transform duration-700 group-hover:scale-105"
     />
@@ -26,13 +33,7 @@ const HeroBanner: React.FC<{ teacherName: string }> = ({ teacherName }) => (
       <div className="max-w-2xl space-y-3 text-white sm:space-y-4">
         <h2 className="text-xl font-black leading-tight tracking-tight text-white sm:text-2xl md:text-4xl">{getTimeGreeting()}，{teacherName}</h2>
         <div className="inline-block max-w-full rounded-2xl border border-white/18 bg-white/10 p-3 text-white shadow-sm backdrop-blur-[3px] sm:rounded-xl">
-          <div className="flex flex-col gap-2 text-sm font-semibold leading-snug text-white/90 sm:block">
-            <span>本週 <span className="mx-0.5 rounded-md bg-white/18 px-1.5 py-0.5 font-black text-white shadow-sm">2</span> 份測驗已批改完成</span>
-            <span className="hidden sm:inline"> · </span>
-            <span><span className="mx-0.5 rounded-md bg-white/18 px-1.5 py-0.5 font-black text-white shadow-sm">3</span> 名學生在「分析」層級持續落後</span>
-            <span className="hidden sm:inline"> · </span>
-            <span><span className="mx-0.5 rounded-md bg-white/18 px-1.5 py-0.5 font-black text-white shadow-sm">1</span> 份 AI 評分偏差較高</span>
-          </div>
+          <p className="text-sm font-semibold leading-snug text-white/90">{WELCOME_T[useTeacherLang()]}</p>
         </div>
       </div>
     </div>
@@ -44,6 +45,7 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="h-full flex flex-col pb-32 md:pb-0">
+      <DemoNotice />
       <HeroBanner teacherName={teacherName} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
         <div className="md:col-span-1">

@@ -46,7 +46,7 @@ export const InfoTipModal: React.FC<InfoTipModalProps> = ({ open, title, body, o
             onClick={onClose}
             className="mt-[18px] w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-indigo-700"
           >
-            了解
+            瞭解
           </button>
         </motion.div>
       </motion.div>
