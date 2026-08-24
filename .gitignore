@@ -9,3 +9,4 @@ server/.env.*
 server/uploads/
 dist/
 /tests
+/tests/load
