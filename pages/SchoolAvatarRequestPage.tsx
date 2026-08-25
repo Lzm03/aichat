@@ -151,8 +151,7 @@ export const SchoolAvatarRequestPage: React.FC = () => {
         <div className="relative mx-auto max-w-5xl px-5 pb-12 pt-6 sm:px-8 sm:pb-16 sm:pt-8">
           <a href="/" className="inline-flex items-center gap-2 text-sm font-bold text-white/75 transition hover:text-white"><ArrowLeft className="h-4 w-4" /> ChopReality</a>
           <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="mt-10 max-w-3xl">
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#ffb703]">School customization</p>
-            <h1 className="mt-4 text-3xl font-black leading-tight tracking-tight sm:text-5xl">學校專屬 AI 數字人<br className="hidden sm:block" />客製化配置通道</h1>
+            <h1 className="text-3xl font-black leading-tight tracking-tight sm:text-5xl">學校專屬 AI 數字人<br className="hidden sm:block" />客製化配置通道</h1>
             <p className="mt-5 max-w-2xl text-[15px] leading-7 text-blue-100 sm:text-base">揀選角色方向並上載教材，ChopReality 團隊會協助配置角色人設、對話邏輯同專屬知識庫。</p>
           </motion.div>
           <div className="mt-9 flex flex-wrap gap-x-7 gap-y-3 text-sm font-semibold text-white/80">
@@ -177,7 +176,7 @@ export const SchoolAvatarRequestPage: React.FC = () => {
         </motion.section>
 
         <div className="mt-7 flex items-end justify-between gap-4">
-          <div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#e63946]">Avatar brief</p><h2 className="mt-1 text-2xl font-black text-[#1b365d]">角色需求</h2></div>
+          <h2 className="text-2xl font-black text-[#1b365d]">角色需求</h2>
           <span className="text-sm font-bold text-slate-400">共 {roles.length} 個角色</span>
         </div>
 
