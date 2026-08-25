@@ -69,6 +69,7 @@ export const SchoolAvatarRequestPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [reference, setReference] = useState('');
+  const [notificationSent, setNotificationSent] = useState(false);
 
   const requiredComplete = useMemo(
     () => Boolean(schoolName.trim() && teacherName.trim() && phone.trim() && /^\S+@\S+\.\S+$/.test(email.trim()) && roles.every((role) => role.name.trim()) && consent),
@@ -112,6 +113,7 @@ export const SchoolAvatarRequestPage: React.FC = () => {
       const response = await fetch(`${API_BASE}/api/school-avatar-requests`, { method: 'POST', body: form });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || '暫時未能提交，請稍後再試。');
+      setNotificationSent(data.notificationSent === true);
       setReference(data.reference || '已收到');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (reason) {
@@ -131,12 +133,13 @@ export const SchoolAvatarRequestPage: React.FC = () => {
             <p className="mt-7 text-xs font-black uppercase tracking-[0.2em] text-emerald-700">Request received</p>
             <h1 className="mt-3 text-3xl font-black tracking-tight text-[#1b365d]">已收到貴校嘅客製化需求</h1>
             <p className="mx-auto mt-4 max-w-lg text-[15px] leading-7 text-slate-600">ChopReality 團隊會整理角色設定同教材，並透過你提供嘅聯絡方式跟進。</p>
+            {notificationSent ? <p className="mx-auto mt-3 text-sm font-bold text-emerald-700">電郵通知已發送畀 ChopReality 團隊。</p> : null}
             <div className="mx-auto mt-7 max-w-sm rounded-2xl bg-slate-50 px-5 py-4 text-sm text-slate-500">
               參考編號 <strong className="ml-2 text-[#1b365d]">{reference}</strong>
             </div>
             <div className="mt-8 flex flex-wrap justify-center gap-3">
               <a href="/" className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"><ArrowLeft className="h-4 w-4" /> 返回首頁</a>
-              <button onClick={() => { setReference(''); setRoles([newRole()]); }} className="rounded-full bg-[#1b365d] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#142a49]">提交另一批</button>
+              <button onClick={() => { setReference(''); setNotificationSent(false); setRoles([newRole()]); }} className="rounded-full bg-[#1b365d] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#142a49]">提交另一批</button>
             </div>
           </div>
         </motion.section>

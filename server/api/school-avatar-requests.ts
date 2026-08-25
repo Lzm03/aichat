@@ -36,9 +36,18 @@ export function ensureSchoolAvatarRequestTables() {
           email TEXT NOT NULL,
           status TEXT NOT NULL DEFAULT 'new',
           source TEXT NOT NULL DEFAULT 'website',
+          notification_status TEXT NOT NULL DEFAULT 'pending',
+          notification_error TEXT,
+          notified_at TIMESTAMPTZ,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
+      `);
+      await pool.query(`
+        ALTER TABLE school_avatar_requests
+        ADD COLUMN IF NOT EXISTS notification_status TEXT NOT NULL DEFAULT 'pending',
+        ADD COLUMN IF NOT EXISTS notification_error TEXT,
+        ADD COLUMN IF NOT EXISTS notified_at TIMESTAMPTZ
       `);
       await pool.query(`
         CREATE TABLE IF NOT EXISTS school_avatar_request_roles (
@@ -94,6 +103,68 @@ function rateLimit(req: express.Request, res: express.Response, next: express.Ne
 function makeReference() {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   return `CR-${date}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+}
+
+async function sendRequestNotification(input: {
+  requestId: string;
+  reference: string;
+}) {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const recipients = (process.env.SCHOOL_AVATAR_REQUEST_NOTIFY_EMAIL || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const from = process.env.SCHOOL_AVATAR_REQUEST_FROM_EMAIL?.trim() || "ChopReality <noreply@chopreality.com>";
+
+  if (!apiKey || recipients.length === 0) {
+    await pool.query(
+      `UPDATE school_avatar_requests SET notification_status='skipped', notification_error=$1, updated_at=NOW() WHERE id=$2`,
+      [!apiKey ? "RESEND_API_KEY is not configured" : "Notification recipient is not configured", input.requestId]
+    );
+    return false;
+  }
+
+  const body = [
+    "收到新的學校 AI 數字人客製化申請。",
+    "",
+    `參考編號：${input.reference}`,
+    "",
+    "為保障學校及老師私隱，聯絡資料、角色內容及教材不會經電郵傳送，完整申請只保存在 ChopReality 私密資料庫。",
+  ].join("\n");
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to: recipients,
+        subject: `[ChopReality] 新學校數字人申請 ${input.reference}`,
+        text: body,
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) {
+      const detail = (await response.text()).slice(0, 500);
+      throw new Error(`Resend ${response.status}: ${detail}`);
+    }
+    await pool.query(
+      `UPDATE school_avatar_requests SET notification_status='sent', notification_error=NULL, notified_at=NOW(), updated_at=NOW() WHERE id=$1`,
+      [input.requestId]
+    );
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message.slice(0, 500) : "Unknown email error";
+    console.error("School avatar request notification failed:", message);
+    await pool.query(
+      `UPDATE school_avatar_requests SET notification_status='failed', notification_error=$1, updated_at=NOW() WHERE id=$2`,
+      [message, input.requestId]
+    ).catch(() => undefined);
+    return false;
+  }
 }
 
 router.post("/", rateLimit, upload.any(), async (req, res) => {
@@ -161,7 +232,11 @@ router.post("/", rateLimit, upload.any(), async (req, res) => {
       );
     }
     await client.query("COMMIT");
-    return res.status(201).json({ ok: true, reference });
+    const notificationSent = await sendRequestNotification({
+      requestId: id,
+      reference,
+    });
+    return res.status(201).json({ ok: true, reference, notificationSent });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     console.error("Failed to create school avatar request:", error);
