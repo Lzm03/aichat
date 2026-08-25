@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UploadCloud, FileText, Settings2, Lightbulb, ArrowRight, BookOpen, X, Bot, LoaderCircle } from 'lucide-react';
+import { UploadCloud, FileText, Settings2, Lightbulb, ArrowRight, BookOpen, X, Bot, LoaderCircle, FolderOpen } from 'lucide-react';
 import { API_BASE } from '../../../utils/api';
 
 interface PublishBotOption {
@@ -36,8 +36,18 @@ type GeneratedQuizPayload = {
   questions: GeneratedQuestion[];
 };
 
+type DraftSummary = {
+  id: string;
+  title: string;
+  targetGrade: string;
+  questionCount: number;
+  updatedAt: string;
+};
+
 interface Step1TextAndGradeProps {
   onGenerated: (payload: GeneratedQuizPayload) => void;
+  onDraftImported: (payload: GeneratedQuizPayload) => void;
+  onDraftModeChange: (isDraftMode: boolean) => void;
 }
 
 const mockHistoryTexts = [
@@ -52,12 +62,18 @@ const DEFAULT_QUESTION_COUNT_BY_GRADE: Record<string, number> = {
   'S4-S6': 12,
 };
 
-export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerated }) => {
+export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerated, onDraftImported, onDraftModeChange }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [text, setText] = useState('');
   const [grade, setGrade] = useState('P1-P3');
   const [questionCount, setQuestionCount] = useState(5);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [isDraftModalOpen, setIsDraftModalOpen] = useState(false);
+  const [drafts, setDrafts] = useState<DraftSummary[]>([]);
+  const [loadingDrafts, setLoadingDrafts] = useState(false);
+  const [importingDraftId, setImportingDraftId] = useState('');
+  const [draftError, setDraftError] = useState('');
+  const [importedDraft, setImportedDraft] = useState<GeneratedQuizPayload | null>(null);
   const [publishBots, setPublishBots] = useState<PublishBotOption[]>([]);
   const [selectedBotId, setSelectedBotId] = useState('');
   const [loadingBots, setLoadingBots] = useState(true);
@@ -65,9 +81,78 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
   const [isGenerating, setIsGenerating] = useState(false);
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
 
+  const clearImportedDraft = () => {
+    setImportedDraft(null);
+    onDraftModeChange(false);
+  };
+
   const handleImportHistory = (content: string) => {
     setText(content);
+    clearImportedDraft();
     setIsHistoryModalOpen(false);
+  };
+
+  const handleOpenDrafts = async () => {
+    setIsDraftModalOpen(true);
+    setDraftError('');
+    setLoadingDrafts(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/drafts`, { cache: 'no-store' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(data?.error || '載入草稿失敗，請稍後再試。'));
+      }
+      const nextDrafts = Array.isArray(data?.drafts)
+        ? data.drafts.map((item: any) => ({
+            id: String(item.id || ''),
+            title: String(item.title || '未命名測驗'),
+            targetGrade: String(item.targetGrade || ''),
+            questionCount: Number(item.questionCount || 0),
+            updatedAt: String(item.updatedAt || ''),
+          })).filter((item: DraftSummary) => item.id)
+        : [];
+      setDrafts(nextDrafts);
+    } catch (error) {
+      setDrafts([]);
+      setDraftError(error instanceof Error ? error.message : '載入草稿失敗，請稍後再試。');
+    } finally {
+      setLoadingDrafts(false);
+    }
+  };
+
+  const handleImportDraft = async (draftId: string) => {
+    setImportingDraftId(draftId);
+    setDraftError('');
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/${encodeURIComponent(draftId)}`, { cache: 'no-store' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.quiz) {
+        throw new Error(String(data?.error || '導入草稿失敗，請稍後再試。'));
+      }
+      const payload: GeneratedQuizPayload = {
+        quiz: {
+          id: String(data.quiz.id || draftId),
+          title: String(data.quiz.title || '未命名測驗'),
+          botId: String(data.quiz.botId || ''),
+          targetGrade: String(data.quiz.targetGrade || ''),
+          questionCount: Number(data.quiz.questionCount || data.questions?.length || 0),
+          questionTypeMode: String(data.quiz.questionTypeMode || 'ai_auto'),
+          sourceText: String(data.quiz.sourceText || ''),
+        },
+        questions: Array.isArray(data.questions) ? data.questions : [],
+      };
+      setText(payload.quiz.sourceText || '');
+      setGrade(payload.quiz.targetGrade || 'P1-P3');
+      setQuestionCount(payload.quiz.questionCount || payload.questions.length || 5);
+      setSelectedBotId(payload.quiz.botId || '');
+      setImportedDraft(payload);
+      onDraftModeChange(true);
+      setIsDraftModalOpen(false);
+    } catch (error) {
+      setDraftError(error instanceof Error ? error.message : '導入草稿失敗，請稍後再試。');
+    } finally {
+      setImportingDraftId('');
+    }
   };
 
   const handleUploadDocument = async (file: File) => {
@@ -85,6 +170,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
         throw new Error(String(data?.error || '文檔上傳失敗，請稍後再試。'));
       }
       setText(String(data?.text || ''));
+      clearImportedDraft();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '文檔上傳失敗，請稍後再試。');
     } finally {
@@ -141,6 +227,10 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
   }, []);
 
   const handleGenerate = async () => {
+    if (importedDraft) {
+      onDraftImported(importedDraft);
+      return;
+    }
     const trimmedText = text.trim();
     if (!selectedBotId) {
       setErrorMessage('請先選擇要發布測驗的 AI Bot。');
@@ -216,7 +306,16 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
               <FileText className="w-5 h-5 text-indigo-500" />
               文本材料
             </h2>
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => void handleOpenDrafts()}
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-bold text-amber-700 bg-amber-50 px-4 py-2 rounded-full hover:bg-amber-100 transition-colors"
+              >
+                <FolderOpen className="w-4 h-4" />
+                <span className="hidden sm:inline">從草稿導入</span>
+                <span className="sm:hidden">草稿</span>
+              </button>
               <button 
                 type="button"
                 onClick={() => setIsHistoryModalOpen(true)}
@@ -253,7 +352,10 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
           </div>
           <textarea
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              clearImportedDraft();
+            }}
             placeholder="請在此貼上文章內容，或點擊右上角上傳文檔 (支援 PDF, DOCX, TXT)..."
             className="flex-1 min-h-[400px] w-full bg-slate-50 rounded-2xl p-6 text-slate-700 placeholder:text-slate-400 resize-none outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
           />
@@ -272,7 +374,10 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
             <div className="relative">
               <select
                 value={selectedBotId}
-                onChange={(e) => setSelectedBotId(e.target.value)}
+                onChange={(e) => {
+                  setSelectedBotId(e.target.value);
+                  clearImportedDraft();
+                }}
                 className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 rounded-xl px-4 py-3 pr-10 outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-medium disabled:opacity-60"
                 disabled={loadingBots || publishBots.length === 0}
               >
@@ -311,6 +416,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
                   const nextGrade = e.target.value;
                   setGrade(nextGrade);
                   setQuestionCount(DEFAULT_QUESTION_COUNT_BY_GRADE[nextGrade] || 5);
+                  clearImportedDraft();
                 }}
                 className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 rounded-xl px-4 py-3 pr-10 outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-medium"
               >
@@ -350,7 +456,10 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
                 min="1" 
                 max="15" 
                 value={questionCount}
-                onChange={(e) => setQuestionCount(Number(e.target.value))}
+                onChange={(e) => {
+                  setQuestionCount(Number(e.target.value));
+                  clearImportedDraft();
+                }}
                 className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
               />
             </div>
@@ -372,6 +481,12 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
         </div>
       ) : null}
 
+      {importedDraft ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          已導入草稿「{importedDraft.quiz.title}」。確認內容後，請按下一步繼續編輯題目。
+        </div>
+      ) : null}
+
       {/* 底部導航 */}
       <div className="flex justify-end pt-4">
         <button 
@@ -386,7 +501,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
             </>
           ) : (
             <>
-              下一步：預覽與發佈
+              {importedDraft ? '下一步：預覽與儲存' : '下一步：預覽與發佈'}
               <ArrowRight className="w-5 h-5" />
             </>
           )}
@@ -430,6 +545,76 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
                   >
                     <h4 className="font-bold text-slate-700 group-hover:text-indigo-700 transition-colors mb-1">{item.title}</h4>
                     <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">{item.content}</p>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 草稿導入 Modal */}
+      <AnimatePresence>
+        {isDraftModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="w-full max-w-lg bg-white rounded-[24px] shadow-2xl overflow-hidden"
+            >
+              <div className="flex items-center justify-between p-6 border-b border-slate-100">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <FolderOpen className="w-5 h-5 text-amber-500" />
+                    從草稿導入
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">選擇草稿後會載入完整題目，繼續預覽與編輯。</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsDraftModalOpen(false)}
+                  className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-full hover:bg-slate-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="max-h-[60vh] overflow-y-auto p-6 space-y-3">
+                {loadingDrafts ? (
+                  <div className="flex items-center justify-center gap-2 rounded-xl bg-slate-50 p-8 text-sm font-semibold text-slate-500">
+                    <LoaderCircle className="h-5 w-5 animate-spin" />
+                    正在載入草稿...
+                  </div>
+                ) : null}
+                {!loadingDrafts && draftError ? (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">{draftError}</div>
+                ) : null}
+                {!loadingDrafts && !draftError && drafts.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm font-semibold text-slate-400">目前沒有可導入的草稿</div>
+                ) : null}
+                {!loadingDrafts && drafts.map((draft) => (
+                  <button
+                    key={draft.id}
+                    type="button"
+                    onClick={() => void handleImportDraft(draft.id)}
+                    disabled={Boolean(importingDraftId)}
+                    className="w-full rounded-xl border border-slate-100 p-4 text-left transition-all hover:border-amber-200 hover:bg-amber-50/50 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <h4 className="truncate font-bold text-slate-700">{draft.title}</h4>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {draft.targetGrade || '未設定年級'} · {draft.questionCount} 題
+                          {draft.updatedAt ? ` · ${new Date(draft.updatedAt).toLocaleDateString('zh-HK')}` : ''}
+                        </p>
+                      </div>
+                      {importingDraftId === draft.id ? <LoaderCircle className="h-5 w-5 shrink-0 animate-spin text-amber-600" /> : <ArrowRight className="h-5 w-5 shrink-0 text-slate-300" />}
+                    </div>
                   </button>
                 ))}
               </div>

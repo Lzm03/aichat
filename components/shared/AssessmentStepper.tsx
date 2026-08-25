@@ -4,12 +4,13 @@ import { FileText, Eye, Check } from 'lucide-react';
 
 interface AssessmentStepperProps {
   currentStep: number;
+  isDraftMode?: boolean;
 }
 
-export const AssessmentStepper: React.FC<AssessmentStepperProps> = ({ currentStep }) => {
+export const AssessmentStepper: React.FC<AssessmentStepperProps> = ({ currentStep, isDraftMode = false }) => {
   const steps = [
     { id: 1, label: '文本與年級', icon: FileText },
-    { id: 2, label: '預覽與發佈', icon: Eye },
+    { id: 2, label: isDraftMode ? '預覽與儲存' : '預覽與發佈', icon: Eye },
   ];
   const progress = steps.length > 1 ? ((currentStep - 1) / (steps.length - 1)) * 100 : 0;
 

@@ -40,6 +40,7 @@ export const AssessmentWizard: React.FC<AssessmentWizardProps> = ({ onBack, draf
   const [generatedQuiz, setGeneratedQuiz] = useState<GeneratedQuiz | null>(null);
   const [generatedQuestions, setGeneratedQuestions] = useState<GeneratedQuestion[]>([]);
   const [loadingDraft, setLoadingDraft] = useState(Boolean(draftId));
+  const [isDraftMode, setIsDraftMode] = useState(Boolean(draftId));
 
   React.useEffect(() => {
     if (!draftId) return;
@@ -50,6 +51,7 @@ export const AssessmentWizard: React.FC<AssessmentWizardProps> = ({ onBack, draf
       .then((data) => {
         if (!active) return;
         if (data?.quiz) {
+          setIsDraftMode(true);
           setGeneratedQuiz(data.quiz);
           setGeneratedQuestions(Array.isArray(data.questions) ? data.questions : []);
           setCurrentStep(2);
@@ -73,7 +75,6 @@ export const AssessmentWizard: React.FC<AssessmentWizardProps> = ({ onBack, draf
   };
 
   const handlePublish = () => {
-    // 模擬發佈成功後返回首頁
     onBack();
   };
 
@@ -84,7 +85,7 @@ export const AssessmentWizard: React.FC<AssessmentWizardProps> = ({ onBack, draf
         返回智能評測
       </button>
 
-      <AssessmentStepper currentStep={currentStep} />
+      <AssessmentStepper currentStep={currentStep} isDraftMode={isDraftMode} />
 
       <div className="mt-2 flex-1 flex flex-col">
         {loadingDraft ? (
@@ -95,16 +96,25 @@ export const AssessmentWizard: React.FC<AssessmentWizardProps> = ({ onBack, draf
         {!loadingDraft && currentStep === 1 && (
           <Step1TextAndGrade
             onGenerated={(payload) => {
+              setIsDraftMode(false);
               setGeneratedQuiz(payload.quiz);
               setGeneratedQuestions(payload.questions);
               handleNext();
             }}
+            onDraftImported={(payload) => {
+              setIsDraftMode(true);
+              setGeneratedQuiz(payload.quiz);
+              setGeneratedQuestions(payload.questions);
+              handleNext();
+            }}
+            onDraftModeChange={setIsDraftMode}
           />
         )}
         {!loadingDraft && currentStep === 2 && (
           <Step3PreviewAndPublish
             onPrev={handlePrev}
             onPublish={handlePublish}
+            showPublishAction={!isDraftMode}
             initialQuiz={generatedQuiz}
             initialQuestions={generatedQuestions}
           />

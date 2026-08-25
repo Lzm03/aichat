@@ -6,6 +6,7 @@ import { API_BASE } from '../../../utils/api';
 interface Step3PreviewAndPublishProps {
   onPrev: () => void;
   onPublish: () => void;
+  showPublishAction?: boolean;
   initialQuiz?: {
     id: string;
     title: string;
@@ -86,6 +87,7 @@ const mockQuestions = [
 export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
   onPrev,
   onPublish,
+  showPublishAction = true,
   initialQuiz,
   initialQuestions = [],
 }) => {
@@ -799,14 +801,16 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
               <Save className="w-4 h-4" />
               {isSavingDraft ? '儲存中...' : draftSaved ? '已儲存草稿' : '儲存草稿'}
             </button>
-            <button 
-              onClick={() => void handlePublishQuiz()}
-              disabled={isPublishing}
-              className="flex items-center gap-2 px-8 py-3.5 rounded-full text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-200/50 hover:-translate-y-0.5 transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
-            >
-              {isPublishing ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4" />}
-              {isPublishing ? '發佈中...' : '立即發佈'}
-            </button>
+            {showPublishAction ? (
+              <button
+                onClick={() => void handlePublishQuiz()}
+                disabled={isPublishing}
+                className="flex items-center gap-2 px-8 py-3.5 rounded-full text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-200/50 hover:-translate-y-0.5 transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
+              >
+                {isPublishing ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4" />}
+                {isPublishing ? '發佈中...' : '立即發佈'}
+              </button>
+            ) : null}
           </div>
         </div>
         {publishError ? (

@@ -152,7 +152,7 @@ async function extractAssessmentSourceText(file: Express.Multer.File): Promise<s
   throw new Error(`不支援的文件格式：${file.originalname || "unknown"}`);
 }
 
-export async function ensureQuizTables() {
+async function initializeQuizTables() {
   await ensurePlatformTables();
   await pool.query(`
     CREATE TABLE IF NOT EXISTS quizzes (
@@ -266,6 +266,21 @@ export async function ensureQuizTables() {
     ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS quiz_attempts_student_updated_idx ON quiz_attempts(student_id, updated_at DESC);`);
+}
+
+let ensureQuizTablesPromise: Promise<void> | null = null;
+
+export function ensureQuizTables() {
+  if (!ensureQuizTablesPromise) {
+    const initialization = initializeQuizTables();
+    ensureQuizTablesPromise = initialization;
+    initialization.catch(() => {
+      if (ensureQuizTablesPromise === initialization) {
+        ensureQuizTablesPromise = null;
+      }
+    });
+  }
+  return ensureQuizTablesPromise;
 }
 
 function cleanJsonPayload(raw: string) {

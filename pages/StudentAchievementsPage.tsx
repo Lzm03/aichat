@@ -3,19 +3,17 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Icons } from "../components/icons";
 import { API_BASE } from "../utils/api";
 
-// ---- mock 資料（接後端後由接口取代）----
-// desc 為常駐顯示在維度名稱下的小字說明（由原長句精簡，避免標籤區過擠）
-const skillsData = [
-  { label: "記憶 (Remember)", value: 70, desc: "提取事實與概念" },
-  { label: "理解 (Understand)", value: 80, desc: "解釋想法與邏輯" },
-  { label: "應用 (Apply)", value: 85, desc: "運用於新情境" },
-  { label: "分析 (Analyze)", value: 95, desc: "拆解資訊的關聯" },
-  { label: "評價 (Evaluate)", value: 85, desc: "批判與辯護" },
-  { label: "創造 (Create)", value: 95, desc: "產出原創作品" },
+const emptySkillsData = [
+  { label: "記憶 (Remember)", value: 0, desc: "提取事實與概念", answered: 0, correct: 0 },
+  { label: "理解 (Understand)", value: 0, desc: "解釋想法與邏輯", answered: 0, correct: 0 },
+  { label: "應用 (Apply)", value: 0, desc: "運用於新情境", answered: 0, correct: 0 },
+  { label: "分析 (Analyze)", value: 0, desc: "拆解資訊的關聯", answered: 0, correct: 0 },
+  { label: "評價 (Evaluate)", value: 0, desc: "批判與辯護", answered: 0, correct: 0 },
+  { label: "創造 (Create)", value: 0, desc: "產出原創作品", answered: 0, correct: 0 },
 ];
 
 // ---- 六軸雷達圖（自繪 SVG，移植自 3001 成就博物館；色彩走主題 token）----
-type SkillDimension = { label: string; value: number; desc: string };
+type SkillDimension = { label: string; value: number; desc: string; answered?: number; correct?: number };
 
 const RadarChart: React.FC<{ data: SkillDimension[] }> = ({ data }) => {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -23,6 +21,7 @@ const RadarChart: React.FC<{ data: SkillDimension[] }> = ({ data }) => {
   const center = size / 2;
   const maxRadius = 130;
   const levels = 5;
+  const hasData = data.some((item) => item.value > 0);
 
   const getPoint = (index: number, value: number, radius: number = maxRadius) => {
     const angle = (Math.PI / 3) * index - Math.PI / 2;
@@ -85,16 +84,18 @@ const RadarChart: React.FC<{ data: SkillDimension[] }> = ({ data }) => {
         })}
 
         {/* 數據多邊形動畫 */}
-        <motion.polygon
-          initial={{ points: centerPoints }}
-          animate={{ points: animatedPoints }}
-          transition={{ duration: 1, ease: "easeOut" }}
-          fill="url(#bloomGradient)"
-          stroke="#6366F1"
-          strokeWidth="3"
-          strokeLinejoin="round"
-          style={{ pointerEvents: "none" }}
-        />
+        {hasData ? (
+          <motion.polygon
+            initial={{ points: centerPoints }}
+            animate={{ points: animatedPoints }}
+            transition={{ duration: 1, ease: "easeOut" }}
+            fill="url(#bloomGradient)"
+            stroke="#6366F1"
+            strokeWidth="3"
+            strokeLinejoin="round"
+            style={{ pointerEvents: "none" }}
+          />
+        ) : null}
 
         {/* 節點 + 標籤 */}
         {data.map((item, index) => {
@@ -116,15 +117,17 @@ const RadarChart: React.FC<{ data: SkillDimension[] }> = ({ data }) => {
               style={{ cursor: "pointer" }}
             >
               <circle cx={labelPoint.x} cy={labelPoint.y} r="30" fill="transparent" />
-              <circle
-                cx={nodePoint.x}
-                cy={nodePoint.y}
-                r={hoveredIndex === index ? 7 : 5}
-                fill={hoveredIndex === index ? "#818CF8" : "#6366F1"}
-                stroke="#FFFFFF"
-                strokeWidth="2"
-                style={{ transition: "r 0.2s" }}
-              />
+              {item.value > 0 ? (
+                <circle
+                  cx={nodePoint.x}
+                  cy={nodePoint.y}
+                  r={hoveredIndex === index ? 7 : 5}
+                  fill={hoveredIndex === index ? "#818CF8" : "#6366F1"}
+                  stroke="#FFFFFF"
+                  strokeWidth="2"
+                  style={{ transition: "r 0.2s" }}
+                />
+              ) : null}
               <motion.text
                 x={labelPoint.x}
                 y={labelPoint.y}
@@ -165,7 +168,6 @@ const RadarChart: React.FC<{ data: SkillDimension[] }> = ({ data }) => {
 
 // ---- 勳章牆 ----
 // 12 個勳章（判定規則見對接文件）：前 6 個預設顯示，其餘經「展開全部」展示。
-// unlocked 為 mock（後端 /api/student/achievements 就緒後取代）
 
 type StudentBadge = {
   id: string;
@@ -178,10 +180,10 @@ type StudentBadge = {
   unlockedAt?: string;
 };
 
-const mockBadges: StudentBadge[] = [
-  { id: "first-voyage", name: "初次啟航", emoji: "🚀", description: "與 AI 夥伴完成第一次對話，學習之旅正式啟程", unlockCondition: "首次與 AI 夥伴對話", gradient: "linear-gradient(135deg, #3B82F6, #4F46E5)", unlocked: true, unlockedAt: "2026-08-20" },
-  { id: "streak-rookie", name: "連勝新手", emoji: "🔥", description: "連續 5 天與夥伴對話，好習慣正在養成", unlockCondition: "連續 5 天與夥伴對話", gradient: "linear-gradient(135deg, #F59E0B, #F43F5E)", unlocked: true, unlockedAt: "2026-08-21" },
-  { id: "early-bird", name: "早起之鳥", emoji: "🌅", description: "早上 6–10 點就開始學習，比太陽還勤奮", unlockCondition: "早上 6:00–10:00 學習", gradient: "linear-gradient(135deg, #F59E0B, #FBBF24)", unlocked: true, unlockedAt: "2026-08-22" },
+const badgeDefinitions: StudentBadge[] = [
+  { id: "first-voyage", name: "初次啟航", emoji: "🚀", description: "與 AI 夥伴完成第一次對話，學習之旅正式啟程", unlockCondition: "首次與 AI 夥伴對話", gradient: "linear-gradient(135deg, #3B82F6, #4F46E5)", unlocked: false },
+  { id: "streak-rookie", name: "連勝新手", emoji: "🔥", description: "連續 5 天與夥伴對話，好習慣正在養成", unlockCondition: "連續 5 天與夥伴對話", gradient: "linear-gradient(135deg, #F59E0B, #F43F5E)", unlocked: false },
+  { id: "early-bird", name: "早起之鳥", emoji: "🌅", description: "早上 6–10 點就開始學習，比太陽還勤奮", unlockCondition: "早上 6:00–10:00 學習", gradient: "linear-gradient(135deg, #F59E0B, #FBBF24)", unlocked: false },
   { id: "streak-master", name: "連勝高手", emoji: "🏆", description: "連續 10 天不間斷，堅持就是你的超能力", unlockCondition: "連續 10 天與夥伴對話", gradient: "linear-gradient(135deg, #F43F5E, #DB2777)", unlocked: false },
   { id: "stem-master", name: "STEM 大師", emoji: "🔢", description: "STEM 測驗拿下 85 分以上，數理科技小天才", unlockCondition: "STEM 測驗得分 ≥85", gradient: "linear-gradient(135deg, #8B5CF6, #7C3AED)", unlocked: false },
   { id: "word-wizard", name: "文字魔法師", emoji: "✍️", description: "與寫作夥伴對話 10 次以上，筆下生花", unlockCondition: "與寫作/語文夥伴對話 ≥10 次", gradient: "linear-gradient(135deg, #06B6D4, #0891B2)", unlocked: false },
@@ -266,7 +268,7 @@ type StudentStats = {
   currentStreak: number;    // 當前連勝天數（HKT 日界）
 };
 
-const mockStats: StudentStats = { botsTalked: 4, topicsTalked: 18, todayInteractions: 7, totalMessages: 126, currentStreak: 8 };
+const emptyStats: StudentStats = { botsTalked: 0, topicsTalked: 0, todayInteractions: 0, totalMessages: 0, currentStreak: 0 };
 
 const statCards: { key: keyof StudentStats; icon: string; label: string; color: string }[] = [
   { key: "botsTalked", icon: "🤖", label: "已對話機器人", color: "#6366F1" },
@@ -363,22 +365,53 @@ const StreakRoad: React.FC<{ userStreak: number }> = ({ userStreak }) => {
 };
 
 export const StudentAchievementsPage: React.FC = () => {
-  const [badges, setBadges] = useState<StudentBadge[]>(mockBadges);
-  const [stats, setStats] = useState<StudentStats>(mockStats);
+  const [badges, setBadges] = useState<StudentBadge[]>(badgeDefinitions);
+  const [stats, setStats] = useState<StudentStats>(emptyStats);
+  const [skills, setSkills] = useState<SkillDimension[]>(emptySkillsData);
+  const [skillsError, setSkillsError] = useState("");
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
+    setSkillsError("");
     fetch(`${API_BASE}/api/student/achievements`)
       .then(async (res) => {
-        const data = await res.json();
+        const responseText = await res.text();
+        let data: any = {};
+        try {
+          data = responseText ? JSON.parse(responseText) : {};
+        } catch {
+          throw new Error(`API 回傳格式錯誤（${res.status} ${res.url}）`);
+        }
         if (!res.ok) throw new Error(data?.error || "載入失敗");
-        setBadges(Array.isArray(data?.badges) ? data.badges : mockBadges);
+        if (Array.isArray(data?.badges)) {
+          const statusById = new Map(data.badges.map((item: any) => [String(item?.id || ""), item]));
+          setBadges(badgeDefinitions.map((definition) => {
+            const status: any = statusById.get(definition.id);
+            return {
+              ...definition,
+              unlocked: Boolean(status?.unlocked),
+              unlockedAt: status?.unlockedAt ? String(status.unlockedAt) : undefined,
+            };
+          }));
+        }
         if (data?.stats && typeof data.stats.botsTalked === "number") {
           setStats(data.stats);
         }
+        if (Array.isArray(data?.skills) && data.skills.length === 6) {
+          setSkills(data.skills.map((item: any, index: number) => ({
+            label: String(item?.label || emptySkillsData[index].label),
+            value: Math.max(0, Math.min(100, Number(item?.value || 0))),
+            desc: String(item?.desc || emptySkillsData[index].desc),
+            answered: Number(item?.answered || 0),
+            correct: Number(item?.correct || 0),
+          })));
+        }
       })
-      .catch(() => {
-        // 後端未就緒 → 保留 mock
+      .catch((error) => {
+        setSkills(emptySkillsData);
+        setStats(emptyStats);
+        setBadges(badgeDefinitions);
+        setSkillsError(error instanceof Error ? error.message : "載入學習維度失敗");
       });
   }, []);
 
@@ -406,8 +439,13 @@ export const StudentAchievementsPage: React.FC = () => {
         <section className="mt-8 rounded-[24px] border border-[var(--border-soft)] bg-[var(--bg-card)] p-8 shadow-[var(--shadow-card)]">
           <h2 className="text-center text-xl font-black text-[var(--text-main)]">我的學習維度</h2>
           <div className="relative mx-auto mt-6 aspect-square max-w-[400px]">
-            <RadarChart data={skillsData} />
+            <RadarChart data={skills} />
           </div>
+          {skillsError ? (
+            <p className="mt-2 text-center text-xs font-semibold text-rose-600">
+              學習維度暫時無法載入：{skillsError}
+            </p>
+          ) : null}
         </section>
 
         {/* ---- 統計卡 ---- */}

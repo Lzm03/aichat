@@ -9,6 +9,7 @@ import {
   findUserByEmail,
   getBearerToken,
   hashPassword,
+  invalidateAuthUserCache,
   getUserFeatureSummary,
   maybeAssignLegacyDataByEmail,
   normalizeUserPreferences,
@@ -90,7 +91,7 @@ router.get("/me", async (req, res) => {
       return res.status(404).json({ error: "user not found" });
     }
 
-    return res.json({ user: sanitizeUser(user), features: await getUserFeatureSummary(user.id) });
+    return res.json({ user: sanitizeUser(user), features: await getUserFeatureSummary(user.id, user) });
   } catch (error) {
     console.error("GET /api/auth/me failed:", error);
     return res.status(500).json({ error: "failed to load current user" });
@@ -253,6 +254,8 @@ router.put("/profile", async (req, res) => {
       );
     }
 
+    invalidateAuthUserCache(payload.sub);
+
     return res.json({ user: sanitizeUser(result.rows[0]) });
   } catch (error) {
     console.error("PUT /api/auth/profile failed:", error);
@@ -377,6 +380,7 @@ router.delete("/admin/accounts/:userId", async (req, res) => {
         return res.status(404).json({ error: "user not found" });
       }
       await client.query("COMMIT");
+      invalidateAuthUserCache(targetUserId);
     } catch (txError) {
       await client.query("ROLLBACK");
       throw txError;

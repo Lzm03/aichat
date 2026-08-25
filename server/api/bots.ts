@@ -548,12 +548,33 @@ router.put("/:id/shares", requireAuth, async (req, res) => {
       [user?.id, studentIds]
     );
     const allowedIds = allowed.rows.map((row) => row.student_id);
-    await pool.query("DELETE FROM bot_student_shares WHERE bot_id=$1 AND teacher_id=$2", [botId, user?.id]);
-    for (const studentId of allowedIds) {
-      await pool.query(
-        "INSERT INTO bot_student_shares (bot_id, teacher_id, student_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
-        [botId, user?.id, studentId]
-      );
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      if (allowedIds.length) {
+        await client.query(
+          `DELETE FROM bot_student_shares
+           WHERE bot_id=$1 AND teacher_id=$2 AND NOT (student_id = ANY($3::text[]))`,
+          [botId, user?.id, allowedIds]
+        );
+        await client.query(
+          `INSERT INTO bot_student_shares (bot_id, teacher_id, student_id)
+           SELECT $1, $2, UNNEST($3::text[])
+           ON CONFLICT DO NOTHING`,
+          [botId, user?.id, allowedIds]
+        );
+      } else {
+        await client.query(
+          "DELETE FROM bot_student_shares WHERE bot_id=$1 AND teacher_id=$2",
+          [botId, user?.id]
+        );
+      }
+      await client.query("COMMIT");
+    } catch (transactionError) {
+      await client.query("ROLLBACK");
+      throw transactionError;
+    } finally {
+      client.release();
     }
     return res.json({ ok: true, studentIds: allowedIds });
   } catch (err) {

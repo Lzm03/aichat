@@ -48,6 +48,9 @@ type AuthTokenPayload = {
 };
 
 let ensurePlatformTablesPromise: Promise<void> | null = null;
+const authUserCache = new Map<string, { user: AuthUser; expiresAt: number }>();
+const AUTH_USER_CACHE_TTL_MS = Math.max(0, Number(process.env.AUTH_USER_CACHE_TTL_MS || 60000));
+const AUTH_USER_CACHE_MAX = Math.max(100, Number(process.env.AUTH_USER_CACHE_MAX || 2000));
 const LEGACY_OWNER_EMAIL = (process.env.LEGACY_OWNER_EMAIL?.trim().toLowerCase() || "lzm200303@gmail.com");
 export const DEFAULT_MONTHLY_CREDIT_LIMIT = Number(process.env.DEFAULT_MONTHLY_CREDIT_LIMIT || 200);
 
@@ -446,12 +449,30 @@ export async function findUserByEmail(email: string) {
 
 export async function findUserById(userId: string) {
   await ensurePlatformTables();
+  const cached = authUserCache.get(userId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.user;
+  }
+  if (cached) authUserCache.delete(userId);
+
   const result = await pool.query(
     `SELECT id, full_name, email, role, avatar_url, preferences_json, created_at, status, plan_name, monthly_credit_limit, credit_balance, credit_used
      FROM users WHERE id=$1`,
     [userId]
   );
-  return (result.rows[0] as AuthUser | undefined) || null;
+  const user = (result.rows[0] as AuthUser | undefined) || null;
+  if (user && AUTH_USER_CACHE_TTL_MS > 0) {
+    if (authUserCache.size >= AUTH_USER_CACHE_MAX) {
+      const oldestKey = authUserCache.keys().next().value;
+      if (oldestKey) authUserCache.delete(oldestKey);
+    }
+    authUserCache.set(userId, { user, expiresAt: Date.now() + AUTH_USER_CACHE_TTL_MS });
+  }
+  return user;
+}
+
+export function invalidateAuthUserCache(userId: string) {
+  authUserCache.delete(userId);
 }
 
 export async function assignLegacyBotsToUser(userId: string) {
@@ -550,22 +571,24 @@ async function getUserFeatureLimitOverrides(userId: string) {
   return overrides;
 }
 
-export async function getUserFeatureSummary(userId: string) {
+export async function getUserFeatureSummary(userId: string, knownUser?: Pick<AuthUser, "email"> | null) {
   await ensurePlatformTables();
-  const user = await findUserById(userId);
+  const user = knownUser || await findUserById(userId);
   const unlimited = Boolean(user?.email && isUnlimitedAccount(user.email));
-  const limitOverrides = await getUserFeatureLimitOverrides(userId);
   const actionNames = FEATURE_LIMIT_LIST.map((item) => featureActionName(item.key));
-  const result = await pool.query(
-    `SELECT action, COALESCE(SUM(meta_usage_count), 0) AS used
-     FROM (
-       SELECT action, COALESCE((meta->>'amount')::int, 1) AS meta_usage_count
-       FROM usage_events
-       WHERE user_id=$1 AND action = ANY($2)
-     ) usage_rows
-     GROUP BY action`,
-    [userId, actionNames]
-  );
+  const [limitOverrides, result] = await Promise.all([
+    getUserFeatureLimitOverrides(userId),
+    pool.query(
+      `SELECT action, COALESCE(SUM(meta_usage_count), 0) AS used
+       FROM (
+         SELECT action, COALESCE((meta->>'amount')::int, 1) AS meta_usage_count
+         FROM usage_events
+         WHERE user_id=$1 AND action = ANY($2)
+       ) usage_rows
+       GROUP BY action`,
+      [userId, actionNames]
+    ),
+  ]);
 
   const usedMap = new Map<string, number>();
   for (const row of result.rows) {

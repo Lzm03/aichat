@@ -1,4 +1,5 @@
 node_modules/
+.DS_Store
 .env
 .env.*
 !.env.example
@@ -8,5 +9,8 @@ server/.env
 server/.env.*
 server/uploads/
 dist/
-/tests
 /tmp
+/tests/load/users.csv
+/tests/load/results/
+/tests/load/tmp/
+/tests
