@@ -75,6 +75,15 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen
                   </button>
                 ))}
               </nav>
+              <div className="px-4 pb-4">
+                <button
+                  onClick={() => { window.location.href = "/school-avatar-request"; }}
+                  className="flex w-full items-center gap-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-semibold text-[#1b365d]"
+                >
+                  <Icons.clipboardList className="h-5 w-5" />
+                  <span>客製化申請</span>
+                </button>
+              </div>
               
               <div className="p-6 border-t border-slate-100">
                 <button

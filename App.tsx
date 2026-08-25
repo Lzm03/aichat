@@ -15,6 +15,7 @@ import { TeacherSharingPage } from './pages/TeacherSharingPage';
 import { CharacterStagePage } from './pages/CharacterStagePage';
 import { ProPlanPage } from './pages/ProPlanPage';
 import { HelpCenterPage } from './pages/HelpCenterPage';
+import { SchoolAvatarRequestPage } from './pages/SchoolAvatarRequestPage';
 import { StudentAchievementsPage } from './pages/StudentAchievementsPage';
 import { StudentTasksPage } from './pages/StudentTasksPage';
 import { MobileSidebarDrawer } from './components/layout/MobileSidebarDrawer';
@@ -63,6 +64,7 @@ const App: React.FC = () => {
   const [isHelpRoute, setIsHelpRoute] = useState(false);
   const [isAchievementsRoute, setIsAchievementsRoute] = useState(false);
   const [isTasksRoute, setIsTasksRoute] = useState(false);
+  const [isSchoolAvatarRequestRoute, setIsSchoolAvatarRequestRoute] = useState(false);
   const [currentUser, setCurrentUser] = useState<StoredAuthUser | null>(null);
   const [isSessionReady, setIsSessionReady] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -112,6 +114,7 @@ const App: React.FC = () => {
       setIsHelpRoute(window.location.pathname === "/help");
       setIsAchievementsRoute(window.location.pathname === "/achievements");
       setIsTasksRoute(window.location.pathname === "/tasks");
+      setIsSchoolAvatarRequestRoute(window.location.pathname === "/school-avatar-request");
       setSharedBotId(m ? decodeURIComponent(m[1]) : null);
       setStageBotId(stageMatch ? decodeURIComponent(stageMatch[1]) : null);
     };
@@ -222,7 +225,7 @@ const App: React.FC = () => {
   }, [themeMode]);
 
   return (
-    <div className={`min-h-screen ${shellThemeClasses} ${sharedBotId || stageBotId || shouldShowAuth || shouldShowLanding || isAccountRoute || isSettingsRoute || isProRoute || isHelpRoute || isAchievementsRoute || isTasksRoute || !isSessionReady ? "block" : "flex"}`}>
+    <div className={`min-h-screen ${shellThemeClasses} ${sharedBotId || stageBotId || shouldShowAuth || shouldShowLanding || isAccountRoute || isSettingsRoute || isProRoute || isHelpRoute || isAchievementsRoute || isTasksRoute || isSchoolAvatarRequestRoute || !isSessionReady ? "block" : "flex"}`}>
       {isUpdating && !shouldShowLanding ? (
         <div className="fixed inset-0 z-[9999] bg-white/95 backdrop-blur-sm flex items-center justify-center">
           <div className="text-center">
@@ -244,6 +247,8 @@ const App: React.FC = () => {
         <div className="flex min-h-screen items-center justify-center bg-white text-sm font-semibold text-slate-500">
           正在載入…
         </div>
+      ) : isSchoolAvatarRequestRoute ? (
+        <SchoolAvatarRequestPage />
       ) : stageBotId ? (
         <CharacterStagePage botId={stageBotId} />
       ) : sharedBotId ? (

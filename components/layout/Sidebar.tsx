@@ -72,6 +72,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, for
             ))}
           </ul>
         </nav>
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          <NavItem icon={Icons.clipboardList} label="客製化申請" onClick={() => { window.location.href = "/school-avatar-request"; }} />
+        </div>
       </div>
       <div className="p-2 mb-4">
         <NavItem icon={Icons.settings} label="設定" onClick={() => { window.location.href = "/settings"; }} />

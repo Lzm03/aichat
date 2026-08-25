@@ -28,6 +28,7 @@ import debugStorageRoute from "./api/debug-storage.ts";
 import tokenUsageRoute from "./api/token-usage.ts";
 import webmSequenceRoute from "./api/webm-sequence.ts";
 import modoIntegrationRoute from "./api/modo-integration.ts";
+import schoolAvatarRequestsRoute, { ensureSchoolAvatarRequestTables } from "./api/school-avatar-requests.ts";
 import { pool, warmDatabasePool } from "./db.ts";
 import { uploadsDir } from "./lib/uploads-dir.ts";
 import { ensurePlatformTables, maybeAssignLegacyDataByEmail } from "./lib/platform-auth.ts";
@@ -52,7 +53,7 @@ app.use(
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
 
-      if (origin.startsWith("http://localhost:"))
+      if (origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:"))
         return callback(null, true);
 
       if (allowedOrigins.has(origin))
@@ -128,6 +129,7 @@ app.get("/api/media-proxy", async (req, res) => {
 app.use("/api/bots/:characterId/topics", characterTopicsRoute);
 app.use("/api/bots", botsRoute);
 app.use("/api/integrations/modo", modoIntegrationRoute);
+app.use("/api/school-avatar-requests", schoolAvatarRequestsRoute);
 // Routes
 app.use("/api/generate-image", generateImageRoute);
 app.use("/api", ttsRoute);
@@ -196,6 +198,7 @@ async function start() {
   await ensureQuizTables();
   await ensureCharacterTopicTables();
   await ensureStudentTaskTables();
+  await ensureSchoolAvatarRequestTables();
   await warmDatabasePool();
   try {
     await maybeAssignLegacyDataByEmail("lzm200303@gmail.com");

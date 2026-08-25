@@ -14,3 +14,5 @@ dist/
 /tests/load/results/
 /tests/load/tmp/
 /tests
+.playwright-cli/
+output/playwright/
