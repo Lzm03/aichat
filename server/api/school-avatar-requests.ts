@@ -4,6 +4,7 @@ import multer from "multer";
 import path from "path";
 import { pool } from "../db.ts";
 import { getAuthUser, requireAuth } from "../lib/platform-auth.ts";
+import { canManageAllAccounts } from "../config/account-overrides.ts";
 
 const router = express.Router();
 
@@ -36,18 +37,9 @@ export function ensureSchoolAvatarRequestTables() {
           email TEXT NOT NULL,
           status TEXT NOT NULL DEFAULT 'new',
           source TEXT NOT NULL DEFAULT 'website',
-          notification_status TEXT NOT NULL DEFAULT 'pending',
-          notification_error TEXT,
-          notified_at TIMESTAMPTZ,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-      `);
-      await pool.query(`
-        ALTER TABLE school_avatar_requests
-        ADD COLUMN IF NOT EXISTS notification_status TEXT NOT NULL DEFAULT 'pending',
-        ADD COLUMN IF NOT EXISTS notification_error TEXT,
-        ADD COLUMN IF NOT EXISTS notified_at TIMESTAMPTZ
       `);
       await pool.query(`
         CREATE TABLE IF NOT EXISTS school_avatar_request_roles (
@@ -103,68 +95,6 @@ function rateLimit(req: express.Request, res: express.Response, next: express.Ne
 function makeReference() {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   return `CR-${date}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
-}
-
-async function sendRequestNotification(input: {
-  requestId: string;
-  reference: string;
-}) {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  const recipients = (process.env.SCHOOL_AVATAR_REQUEST_NOTIFY_EMAIL || "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const from = process.env.SCHOOL_AVATAR_REQUEST_FROM_EMAIL?.trim() || "ChopReality <noreply@chopreality.com>";
-
-  if (!apiKey || recipients.length === 0) {
-    await pool.query(
-      `UPDATE school_avatar_requests SET notification_status='skipped', notification_error=$1, updated_at=NOW() WHERE id=$2`,
-      [!apiKey ? "RESEND_API_KEY is not configured" : "Notification recipient is not configured", input.requestId]
-    );
-    return false;
-  }
-
-  const body = [
-    "收到新的學校 AI 數字人客製化申請。",
-    "",
-    `參考編號：${input.reference}`,
-    "",
-    "為保障學校及老師私隱，聯絡資料、角色內容及教材不會經電郵傳送，完整申請只保存在 ChopReality 私密資料庫。",
-  ].join("\n");
-
-  try {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from,
-        to: recipients,
-        subject: `[ChopReality] 新學校數字人申請 ${input.reference}`,
-        text: body,
-      }),
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!response.ok) {
-      const detail = (await response.text()).slice(0, 500);
-      throw new Error(`Resend ${response.status}: ${detail}`);
-    }
-    await pool.query(
-      `UPDATE school_avatar_requests SET notification_status='sent', notification_error=NULL, notified_at=NOW(), updated_at=NOW() WHERE id=$1`,
-      [input.requestId]
-    );
-    return true;
-  } catch (error) {
-    const message = error instanceof Error ? error.message.slice(0, 500) : "Unknown email error";
-    console.error("School avatar request notification failed:", message);
-    await pool.query(
-      `UPDATE school_avatar_requests SET notification_status='failed', notification_error=$1, updated_at=NOW() WHERE id=$2`,
-      [message, input.requestId]
-    ).catch(() => undefined);
-    return false;
-  }
 }
 
 router.post("/", rateLimit, upload.any(), async (req, res) => {
@@ -232,11 +162,7 @@ router.post("/", rateLimit, upload.any(), async (req, res) => {
       );
     }
     await client.query("COMMIT");
-    const notificationSent = await sendRequestNotification({
-      requestId: id,
-      reference,
-    });
-    return res.status(201).json({ ok: true, reference, notificationSent });
+    return res.status(201).json({ ok: true, reference });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     console.error("Failed to create school avatar request:", error);
@@ -248,9 +174,10 @@ router.post("/", rateLimit, upload.any(), async (req, res) => {
 
 router.get("/", requireAuth, async (req, res) => {
   const user = getAuthUser(req);
-  if (user?.role !== "admin") return res.status(403).json({ error: "forbidden" });
+  if (!user || !canManageAllAccounts(user.email)) return res.status(403).json({ error: "forbidden" });
   const result = await pool.query(`
-    SELECT r.*, COUNT(DISTINCT rr.id)::int AS role_count, COUNT(DISTINCT f.id)::int AS file_count
+    SELECT r.id, r.reference_code, r.school_name, r.teacher_name, r.email, r.status, r.created_at,
+      COUNT(DISTINCT rr.id)::int AS role_count, COUNT(DISTINCT f.id)::int AS file_count
     FROM school_avatar_requests r
     LEFT JOIN school_avatar_request_roles rr ON rr.request_id = r.id
     LEFT JOIN school_avatar_request_files f ON f.request_id = r.id
@@ -259,9 +186,48 @@ router.get("/", requireAuth, async (req, res) => {
   return res.json({ requests: result.rows });
 });
 
+router.get("/:requestId", requireAuth, async (req, res) => {
+  const user = getAuthUser(req);
+  if (!user || !canManageAllAccounts(user.email)) return res.status(403).json({ error: "forbidden" });
+  const [requestResult, rolesResult, filesResult] = await Promise.all([
+    pool.query(
+      `SELECT id, reference_code, school_name, teacher_name, phone, email, status, created_at, updated_at
+       FROM school_avatar_requests WHERE id=$1`,
+      [req.params.requestId]
+    ),
+    pool.query(
+      `SELECT id, role_index, name, subjects, custom_subject, visual_styles, material_text, notes
+       FROM school_avatar_request_roles WHERE request_id=$1 ORDER BY role_index ASC`,
+      [req.params.requestId]
+    ),
+    pool.query(
+      `SELECT id, role_index, kind, original_name, mime_type, size_bytes, created_at
+       FROM school_avatar_request_files WHERE request_id=$1 ORDER BY role_index ASC, created_at ASC`,
+      [req.params.requestId]
+    ),
+  ]);
+  if (!requestResult.rowCount) return res.status(404).json({ error: "request not found" });
+  return res.json({ request: requestResult.rows[0], roles: rolesResult.rows, files: filesResult.rows });
+});
+
+router.patch("/:requestId/status", requireAuth, async (req, res) => {
+  const user = getAuthUser(req);
+  if (!user || !canManageAllAccounts(user.email)) return res.status(403).json({ error: "forbidden" });
+  const status = text(req.body?.status, 40);
+  if (!["new", "reviewing", "completed"].includes(status)) {
+    return res.status(400).json({ error: "invalid status" });
+  }
+  const result = await pool.query(
+    `UPDATE school_avatar_requests SET status=$1, updated_at=NOW() WHERE id=$2 RETURNING status, updated_at`,
+    [status, req.params.requestId]
+  );
+  if (!result.rowCount) return res.status(404).json({ error: "request not found" });
+  return res.json(result.rows[0]);
+});
+
 router.get("/:requestId/files/:fileId", requireAuth, async (req, res) => {
   const user = getAuthUser(req);
-  if (user?.role !== "admin") return res.status(403).json({ error: "forbidden" });
+  if (!user || !canManageAllAccounts(user.email)) return res.status(403).json({ error: "forbidden" });
   const result = await pool.query(
     `SELECT original_name, mime_type, content FROM school_avatar_request_files WHERE id=$1 AND request_id=$2`,
     [req.params.fileId, req.params.requestId]

@@ -40,9 +40,11 @@ interface SidebarProps {
   activePage: Page;
   setActivePage: (page: Page) => void;
   forceHidden?: boolean;
+  showRequestAdmin?: boolean;
+  requestAdminActive?: boolean;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, forceHidden = false }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, forceHidden = false, showRequestAdmin = false, requestAdminActive = false }) => {
   const navItems: { id: Page; label: string; icon: React.ElementType; disabled?: boolean }[] = [
     { id: 'dashboard', label: '指揮倉', icon: Icons.dashboard },
     { id: 'assessment', label: '智能評測', icon: Icons.assessment },
@@ -74,6 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, for
         </nav>
         <div className="mt-4 border-t border-slate-100 pt-4">
           <NavItem icon={Icons.clipboardList} label="客製化申請" onClick={() => { window.location.href = "/school-avatar-request"; }} />
+          {showRequestAdmin ? <NavItem icon={Icons.inbox} label="申請管理" active={requestAdminActive} onClick={() => { window.location.href = "/admin/avatar-requests"; }} /> : null}
         </div>
       </div>
       <div className="p-2 mb-4">

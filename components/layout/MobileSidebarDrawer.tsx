@@ -9,9 +9,11 @@ interface MobileSidebarDrawerProps {
     activePage: Page;
     setActivePage: (page: Page) => void;
     forceVisible?: boolean;
+    showRequestAdmin?: boolean;
+    requestAdminActive?: boolean;
 }
 
-export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen, setIsOpen, activePage, setActivePage, forceVisible = false }) => {
+export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen, setIsOpen, activePage, setActivePage, forceVisible = false, showRequestAdmin = false, requestAdminActive = false }) => {
   
   const menuItems: { id: Page; label: string; icon: React.ElementType; disabled?: boolean }[] = [
     { id: 'dashboard', label: '指揮倉', icon: Icons.dashboard },
@@ -83,6 +85,13 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen
                   <Icons.clipboardList className="h-5 w-5" />
                   <span>客製化申請</span>
                 </button>
+                {showRequestAdmin ? <button
+                  onClick={() => { window.location.href = "/admin/avatar-requests"; }}
+                  className={`mt-2 flex w-full items-center gap-4 rounded-2xl px-4 py-3 text-sm font-semibold ${requestAdminActive ? 'bg-[#1b365d] text-white' : 'border border-slate-200 bg-white text-slate-600'}`}
+                >
+                  <Icons.inbox className="h-5 w-5" />
+                  <span>申請管理</span>
+                </button> : null}
               </div>
               
               <div className="p-6 border-t border-slate-100">

@@ -16,6 +16,7 @@ import { CharacterStagePage } from './pages/CharacterStagePage';
 import { ProPlanPage } from './pages/ProPlanPage';
 import { HelpCenterPage } from './pages/HelpCenterPage';
 import { SchoolAvatarRequestPage } from './pages/SchoolAvatarRequestPage';
+import { SchoolAvatarRequestsAdminPage } from './pages/SchoolAvatarRequestsAdminPage';
 import { StudentAchievementsPage } from './pages/StudentAchievementsPage';
 import { StudentTasksPage } from './pages/StudentTasksPage';
 import { MobileSidebarDrawer } from './components/layout/MobileSidebarDrawer';
@@ -65,6 +66,7 @@ const App: React.FC = () => {
   const [isAchievementsRoute, setIsAchievementsRoute] = useState(false);
   const [isTasksRoute, setIsTasksRoute] = useState(false);
   const [isSchoolAvatarRequestRoute, setIsSchoolAvatarRequestRoute] = useState(false);
+  const [isAvatarRequestsAdminRoute, setIsAvatarRequestsAdminRoute] = useState(false);
   const [currentUser, setCurrentUser] = useState<StoredAuthUser | null>(null);
   const [isSessionReady, setIsSessionReady] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -115,6 +117,7 @@ const App: React.FC = () => {
       setIsAchievementsRoute(window.location.pathname === "/achievements");
       setIsTasksRoute(window.location.pathname === "/tasks");
       setIsSchoolAvatarRequestRoute(window.location.pathname === "/school-avatar-request");
+      setIsAvatarRequestsAdminRoute(window.location.pathname === "/admin/avatar-requests");
       setSharedBotId(m ? decodeURIComponent(m[1]) : null);
       setStageBotId(stageMatch ? decodeURIComponent(stageMatch[1]) : null);
     };
@@ -216,6 +219,7 @@ const App: React.FC = () => {
   const shouldShowLanding = isSessionReady && !sharedBotId && !stageBotId && !currentUser && isLandingRoute;
   const shouldShowAuth = isSessionReady && !sharedBotId && !stageBotId && (isAuthRoute || (!currentUser && !isLandingRoute));
   const userPreferences = normalizeUserPreferences(currentUser?.preferences || DEFAULT_USER_PREFERENCES);
+  const canManageAvatarRequests = currentUser?.email?.trim().toLowerCase() === 'lzm200303@gmail.com';
   const shellThemeClasses = getAppShellThemeClasses(userPreferences);
   const themeMode = userPreferences.appearance.themeMode;
 
@@ -281,17 +285,19 @@ const App: React.FC = () => {
         <HelpCenterPage variant="teacher" />
       ) : (
         <>
-          <Sidebar activePage={activePage} setActivePage={setActivePage} forceHidden={isPortraitLayout} />
+          <Sidebar activePage={activePage} setActivePage={setActivePage} forceHidden={isPortraitLayout} showRequestAdmin={canManageAvatarRequests} requestAdminActive={isAvatarRequestsAdminRoute} />
           <MobileSidebarDrawer 
             isOpen={isMobileDrawerOpen}
             setIsOpen={setIsMobileDrawerOpen}
             activePage={activePage}
             setActivePage={setActivePage}
             forceVisible={isPortraitLayout}
+            showRequestAdmin={canManageAvatarRequests}
+            requestAdminActive={isAvatarRequestsAdminRoute}
           />
           <div className="flex-1 flex flex-col">
             <Header
-              pageTitle={PAGE_TITLES[activePage][teacherLang]}
+              pageTitle={isAvatarRequestsAdminRoute ? (teacherLang === 'en' ? 'Avatar Requests' : '申請管理') : PAGE_TITLES[activePage][teacherLang]}
               onMenuClick={() => setIsMobileDrawerOpen(true)}
               forceMobileMenu={isPortraitLayout}
               currentUser={currentUser}
@@ -300,7 +306,11 @@ const App: React.FC = () => {
               onSearchChange={activePage === 'workshop' ? setBotSearchQuery : undefined}
             />
             <main className="flex-1 p-6 lg:p-8 overflow-y-auto">
-              {renderCurrentPage()}
+              {isAvatarRequestsAdminRoute ? (
+                canManageAvatarRequests ? <SchoolAvatarRequestsAdminPage /> : (
+                  <div className="flex min-h-[50vh] items-center justify-center text-sm font-bold text-slate-500">你沒有權限查看此頁面。</div>
+                )
+              ) : renderCurrentPage()}
             </main>
           </div>
         </>

@@ -52,6 +52,7 @@ import {
   Lightbulb,
   MousePointer2,
   Hand,
+  Inbox,
 } from 'lucide-react';
 
 export const Icons = {
@@ -108,4 +109,5 @@ export const Icons = {
   lightbulb: Lightbulb,
   pointer: MousePointer2,
   hand: Hand,
+  inbox: Inbox,
 };
