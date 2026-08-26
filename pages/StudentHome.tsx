@@ -8,7 +8,6 @@ import { PublishSuccessModal } from "../components/workshop/PublishSuccessModal"
 import { InfoTipModal } from "../components/system/InfoTipModal";
 import { SequencePngPlayer } from "../components/workshop/SequencePngPlayer";
 import { UserMenu } from "../components/layout/UserMenu";
-import { TokenHistoryModal } from "../components/student/TokenHistoryModal";
 import { TEACHER_LANG_CHANGED_EVENT } from "../utils/teacherI18n";
 
 type StudentHomeProps = {
@@ -186,7 +185,6 @@ const StudentBotCard: React.FC<{
 // 學生首頁 i18n 字典：繁體中文（預設）與英文
 type StudentHomeStrings = {
   greeting: (name: string) => string;
-  tokenHelp: string;
   chooseCompanion: string;
   companionHelp: string;
   quizBadge: string;
@@ -198,8 +196,6 @@ type StudentHomeStrings = {
   starMap: string;
   todayTasks: string;
   achievements: string;
-  tokenTipTitle: string;
-  tokenTipBody: string;
   companionTipTitle: string;
   companionTipBody: string;
 };
@@ -207,7 +203,6 @@ type StudentHomeStrings = {
 const T: Record<"zh-HK" | "en", StudentHomeStrings> = {
   "zh-HK": {
     greeting: (name) => `嗨，${name}！`,
-    tokenHelp: "Token 額度說明",
     chooseCompanion: "選擇一位學習夥伴",
     companionHelp: "學習夥伴說明",
     quizBadge: "測試題",
@@ -216,17 +211,14 @@ const T: Record<"zh-HK" | "en", StudentHomeStrings> = {
     loadingBots: "正在載入老師分享的 AI Bot...",
     startAdventure: "選擇一位學習夥伴，開始今天的冒險",
     noBots: "老師尚未分享 AI Bot 給你",
-    starMap: "星際地圖",
+    starMap: "學習夥伴",
     todayTasks: "今日任務",
     achievements: "我的成就",
-    tokenTipTitle: "Token 額度是什麼",
-    tokenTipBody: "Token 代表你還能與 AI 夥伴對話的額度。實際使用量會按對話內容計算，用完時可以請老師調整方案。",
     companionTipTitle: "如何選擇學習夥伴",
     companionTipBody: "點擊任一張卡片即可開始與這位 AI 夥伴聊天。頭像會依老師設定呈現，讓你先感受它的個性再開始對話。",
   },
   en: {
     greeting: (name) => `Hi, ${name}!`,
-    tokenHelp: "Token balance info",
     chooseCompanion: "Choose a study buddy",
     companionHelp: "Study buddy info",
     quizBadge: "Quiz",
@@ -235,11 +227,9 @@ const T: Record<"zh-HK" | "en", StudentHomeStrings> = {
     loadingBots: "Loading AI buddies shared by your teacher...",
     startAdventure: "Pick a buddy and start today's adventure",
     noBots: "Your teacher hasn't shared any AI buddies with you",
-    starMap: "Star Map",
+    starMap: "Study buddy",
     todayTasks: "Today's Tasks",
     achievements: "Achievements",
-    tokenTipTitle: "What are Tokens?",
-    tokenTipBody: "Tokens are your quota for chatting with AI buddies. Usage is calculated by conversation length, and your teacher can adjust your plan when it runs out.",
     companionTipTitle: "How do I pick a buddy?",
     companionTipBody: "Tap any card to start chatting with that AI buddy. The avatar follows your teacher's settings, so you can feel its personality before diving in.",
   },
@@ -259,8 +249,7 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
   const [companions, setCompanions] = useState<SharedBot[]>([]);
   const [selectedBot, setSelectedBot] = useState<SharedBot | null>(null);
   const [loadingBots, setLoadingBots] = useState(true);
-  const [activeTip, setActiveTip] = useState<"companions" | "tokens" | null>(null);
-  const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
+  const [activeTip, setActiveTip] = useState<"companions" | null>(null);
 
   // 語言狀態：優先 localStorage 記住的上次選擇，其次用戶偏好，預設繁中
   const [lang, setLang] = useState<"zh-HK" | "en">(() => {
@@ -342,26 +331,6 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          {/* Token：手機精簡 🪙 750，lg+ 完整 750 / 1000；點按開消耗記錄 */}
-          <button
-            type="button"
-            aria-label={t("tokenHelp")}
-            onClick={() => setIsTokenModalOpen(true)}
-            className="flex h-10 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-subtle-2)] px-3.5 text-sm transition-all hover:border-[var(--accent-border)] hover:shadow-sm"
-          >
-            <span aria-hidden="true">🪙</span>
-            <span className="font-black text-[var(--text-body)]">{currentUser.quota?.remaining ?? 750}</span>
-            <span className="hidden font-semibold text-[var(--text-faint)] lg:inline">/ {currentUser.quota?.monthlyLimit ?? 1000}</span>
-          </button>
-          {/* ？說明（lg+）：圓形 ghost 鈕，與其他控制項等高 */}
-          <button
-            type="button"
-            aria-label={t("tokenHelp")}
-            onClick={() => setActiveTip("tokens")}
-            className="hidden h-10 w-10 items-center justify-center rounded-full border border-[var(--border)] text-[var(--text-faint)] transition hover:border-[var(--accent-border)] hover:text-[var(--accent-text)] lg:flex"
-          >
-            <HelpCircle className="h-4 w-4" />
-          </button>
           {/* 語言切換：繁中 / English */}
           <div className="flex shrink-0 items-center rounded-full border border-[var(--border)] bg-[var(--bg-subtle-2)] p-1">
             <button type="button" onClick={() => switchLang("zh-HK")} className={`h-8 rounded-full px-3 text-xs font-bold transition ${lang === "zh-HK" ? "bg-[var(--accent)] text-white shadow-sm" : "text-[var(--text-muted)] hover:text-[var(--text-main)]"}`}>中</button>
@@ -452,14 +421,9 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
       ) : null}
       <InfoTipModal
         open={Boolean(activeTip)}
-        title={activeTip === "tokens" ? t("tokenTipTitle") : t("companionTipTitle")}
-        body={activeTip === "tokens" ? t("tokenTipBody") : t("companionTipBody")}
+        title={t("companionTipTitle")}
+        body={t("companionTipBody")}
         onClose={() => setActiveTip(null)}
-      />
-      <TokenHistoryModal
-        isOpen={isTokenModalOpen}
-        onClose={() => setIsTokenModalOpen(false)}
-        quota={currentUser.quota}
       />
     </div>
   );
