@@ -129,13 +129,13 @@ export const SchoolAvatarRequestPage: React.FC = () => {
           <div className="p-8 text-center sm:p-12">
             <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"><Check className="h-8 w-8" /></span>
             <h1 className="mt-3 text-3xl font-black tracking-tight text-[#1b365d]">已收到貴校的客製化需求</h1>
-            <p className="mx-auto mt-4 max-w-lg text-[15px] leading-7 text-slate-600">ChopReality 團隊會整理角色設定同教材，並透過你提供嘅聯絡方式跟進。</p>
+            <p className="mx-auto mt-4 max-w-lg text-[15px] leading-7 text-slate-600">ChopReality 團隊將整理角色設定與教材，並透過您提供的聯絡方式跟進。</p>
             <div className="mx-auto mt-7 max-w-sm rounded-2xl bg-slate-50 px-5 py-4 text-sm text-slate-500">
               參考編號 <strong className="ml-2 text-[#1b365d]">{reference}</strong>
             </div>
             <div className="mt-8 flex flex-wrap justify-center gap-3">
               <a href="/" className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"><ArrowLeft className="h-4 w-4" /> 返回首頁</a>
-              <button onClick={() => { setReference(''); setRoles([newRole()]); }} className="rounded-full bg-[#1b365d] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#142a49]">提交另一批</button>
+              <button onClick={() => { setReference(''); setRoles([newRole()]); }} className="rounded-full bg-[#1b365d] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#142a49]">提交另一份申請</button>
             </div>
           </div>
         </motion.section>
@@ -151,7 +151,7 @@ export const SchoolAvatarRequestPage: React.FC = () => {
           <a href="/" className="inline-flex items-center gap-2 text-sm font-bold text-white/75 transition hover:text-white"><ArrowLeft className="h-4 w-4" /> ChopReality</a>
           <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="mt-10 max-w-3xl">
             <h1 className="text-3xl font-black leading-tight tracking-tight sm:text-5xl">學校專屬 AI 數字人<br className="hidden sm:block" />客製化配置通道</h1>
-            <p className="mt-5 max-w-2xl text-[15px] leading-7 text-blue-100 sm:text-base">揀選角色方向並上載教材，ChopReality 團隊會協助配置角色人設、對話邏輯同專屬知識庫。</p>
+            <p className="mt-5 max-w-2xl text-[15px] leading-7 text-blue-100 sm:text-base">選擇角色方向並上載教材，ChopReality 團隊將協助配置角色人設、對話邏輯與專屬知識庫。</p>
           </motion.div>
           <div className="mt-9 flex flex-wrap gap-x-7 gap-y-3 text-sm font-semibold text-white/80">
             {['約 8–12 分鐘完成', '可一次提交多個角色', '教材只供專案配置使用'].map((item) => <span key={item} className="flex items-center gap-2"><Check className="h-4 w-4 text-[#ffb703]" />{item}</span>)}
@@ -163,7 +163,7 @@ export const SchoolAvatarRequestPage: React.FC = () => {
         <motion.section initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_16px_50px_rgba(15,23,42,0.06)] sm:p-8">
           <div className="flex items-start gap-4">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1b365d] text-sm font-black text-white">01</span>
-            <div><h2 className="text-xl font-black text-[#1b365d]">學校與聯絡資料</h2><p className="mt-1 text-sm text-slate-500">方便團隊確認需求同安排跟進。</p></div>
+            <div><h2 className="text-xl font-black text-[#1b365d]">學校與聯絡資料</h2><p className="mt-1 text-sm text-slate-500">方便團隊確認需求並安排跟進。</p></div>
           </div>
           <div className="mt-7 grid gap-5 sm:grid-cols-2">
             <label><FieldLabel required>學校名稱</FieldLabel><input value={schoolName} onChange={(e) => setSchoolName(e.target.value)} className={textInputClass} placeholder="請輸入學校全名" required /></label>
@@ -237,7 +237,7 @@ export const SchoolAvatarRequestPage: React.FC = () => {
         {roles.length < 10 ? <button type="button" onClick={() => setRoles((current) => [...current, newRole()])} className="mt-5 flex w-full items-center justify-center gap-2 rounded-[22px] border-2 border-dashed border-blue-200 bg-blue-50/40 px-5 py-4 text-sm font-black text-[#1b365d] transition hover:border-blue-300 hover:bg-blue-50"><Plus className="h-5 w-5" /> 新增下一個角色</button> : null}
 
         <section className="mt-8 rounded-[28px] bg-[#102744] p-6 text-white sm:p-8">
-          <div className="flex items-start gap-4"><ShieldCheck className="mt-0.5 h-6 w-6 shrink-0 text-[#ffb703]" /><div><h2 className="font-black">提交前確認</h2><p className="mt-2 text-sm leading-6 text-blue-100">上載內容只供 ChopReality 團隊處理本次數字人配置。請勿上載學生個人資料、成績或未獲授權嘅受版權保護內容。</p></div></div>
+          <div className="flex items-start gap-4"><ShieldCheck className="mt-0.5 h-6 w-6 shrink-0 text-[#ffb703]" /><div><h2 className="font-black">提交前確認</h2><p className="mt-2 text-sm leading-6 text-blue-100">上載內容只供 ChopReality 團隊處理本次數字人配置。請勿上載學生個人資料、成績或未獲授權的受版權保護內容。</p></div></div>
           <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-2xl bg-white/10 p-4 text-sm leading-6 text-blue-50"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 h-4 w-4 accent-[#ffb703]" /><span>我確認有權提供以上教材及圖片，並同意 ChopReality 團隊為處理本次申請而使用。</span></label>
           {error ? <div role="alert" className="mt-5 rounded-2xl border border-red-300/30 bg-red-500/15 px-4 py-3 text-sm font-semibold text-red-100">{error}</div> : null}
           <div className="mt-6 flex flex-col items-stretch justify-between gap-4 sm:flex-row sm:items-center">

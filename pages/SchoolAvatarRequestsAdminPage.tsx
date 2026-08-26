@@ -147,7 +147,7 @@ export const SchoolAvatarRequestsAdminPage: React.FC = () => {
       <div className="flex flex-col gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="flex items-center gap-3"><h1 className="text-2xl font-black tracking-tight text-slate-900">學校客製化申請</h1>{newCount > 0 ? <span className="rounded-full bg-[#e63946] px-2.5 py-1 text-xs font-black text-white">{newCount} 新</span> : null}</div>
-          <p className="mt-2 text-sm text-slate-500">查看老師提交嘅角色需求、教材及跟進狀態。</p>
+          <p className="mt-2 text-sm text-slate-500">查看教師提交的角色需求、教材及跟進狀態。</p>
         </div>
         <button onClick={() => void loadRequests()} className="inline-flex items-center justify-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> 重新整理</button>
       </div>
@@ -163,7 +163,7 @@ export const SchoolAvatarRequestsAdminPage: React.FC = () => {
       <div className="mt-5 grid min-h-[640px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:grid-cols-[360px_minmax(0,1fr)]">
         <aside className="border-b border-slate-200 bg-slate-50/60 lg:border-b-0 lg:border-r">
           {loading ? <div className="flex h-48 items-center justify-center text-slate-400"><LoaderCircle className="h-6 w-6 animate-spin" /></div> : filtered.length === 0 ? (
-            <div className="flex h-56 flex-col items-center justify-center px-8 text-center"><Inbox className="h-9 w-9 text-slate-300" /><p className="mt-3 text-sm font-bold text-slate-600">暫時未有申請</p><p className="mt-1 text-xs text-slate-400">新提交會出現喺呢度。</p></div>
+            <div className="flex h-56 flex-col items-center justify-center px-8 text-center"><Inbox className="h-9 w-9 text-slate-300" /><p className="mt-3 text-sm font-bold text-slate-600">暫時沒有申請</p><p className="mt-1 text-xs text-slate-400">新提交的申請將顯示於此。</p></div>
           ) : <div className="max-h-[640px] overflow-y-auto">
             {filtered.map((request) => (
               <button key={request.id} onClick={() => setSelectedId(request.id)} className={`group flex w-full items-start gap-3 border-b border-slate-200/80 px-5 py-5 text-left transition ${selectedId === request.id ? 'bg-white shadow-[inset_3px_0_0_#1b365d]' : 'hover:bg-white/80'}`}>
