@@ -1,3 +1,4 @@
+import { uiText } from '../../utils/uiI18n';
 import React from 'react';
 import { Island } from './Island';
 
@@ -42,9 +43,7 @@ export const StarMap: React.FC<StarMapProps> = ({ onMissionClick }) => {
         ))}
 
         {/* 【分級支架】根據學生的學習進度，動態調整任務難度或提供額外輔助。 */}
-        <div className="absolute bottom-4 right-4 p-3 bg-white/50 backdrop-blur-md rounded-full text-xs text-slate-600 shadow-md">
-            學習路徑：初級冒險家
-        </div>
+        <div className="absolute bottom-4 right-4 p-3 bg-white/50 backdrop-blur-md rounded-full text-xs text-slate-600 shadow-md">{uiText("學習路徑：初級冒險家")}</div>
     </div>
   );
 };

@@ -1,3 +1,4 @@
+import { uiText } from '../../utils/uiI18n';
 import React, { useState } from 'react';
 
 interface IosToggleProps {
@@ -11,7 +12,7 @@ export const IosToggle: React.FC<IosToggleProps> = ({ initialValue = false, labe
 
   return (
     <label className="flex items-center cursor-pointer">
-      {label && <span className="mr-3 text-sm font-medium text-slate-600">{label}</span>}
+      {label && <span className="mr-3 text-sm font-medium text-slate-600">{uiText(label)}</span>}
       <div className="relative">
         <input 
           type="checkbox" 

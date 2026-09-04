@@ -1,3 +1,4 @@
+import { uiText } from '../../utils/uiI18n';
 import React from 'react';
 import { Icons } from '../icons';
 import { motion } from 'framer-motion';
@@ -37,9 +38,7 @@ export const Header = () => {
                     <img src="https://i.pravatar.cc/150?u=student1" alt="Student Avatar" className="w-12 h-12 rounded-full border-2 border-white shadow-md"/>
                     <div>
                         <h1 className="font-bold text-lg text-slate-800">陳同學</h1>
-                        <div className="px-2 py-0.5 bg-gradient-to-r from-violet-500 to-indigo-500 text-white text-xs font-bold rounded-full inline-block">
-                           Lv. 5 冒險家
-                        </div>
+                        <div className="px-2 py-0.5 bg-gradient-to-r from-violet-500 to-indigo-500 text-white text-xs font-bold rounded-full inline-block">{uiText("Lv. 5 冒險家")}</div>
                     </div>
                 </div>
                  <div className="w-64">
@@ -49,13 +48,13 @@ export const Header = () => {
             <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-1.5 px-4 py-2 bg-white/60 rounded-full border border-white/30 shadow-sm">
                     <span className="text-xl">🔥</span>
-                    <span className="font-bold text-sm text-orange-600">3 天連勝</span>
+                    <span className="font-bold text-sm text-orange-600">{uiText("3 天連勝")}</span>
                 </div>
                 {/* 【情緒護盾】當學生遇到挫折，可點擊此處獲得 AI 安慰與鼓勵 */}
                 <button className="w-11 h-11 flex items-center justify-center bg-white/60 rounded-full border border-white/30 shadow-sm hover:bg-white transition-colors">
                     <Icons.shieldCheck className="w-6 h-6 text-orange-500" />
                 </button>
-                <TokenUsageMonitor used={3.8} total={5.0} resetDate="3月1日" />
+                <TokenUsageMonitor used={3.8} total={5.0} resetDate={uiText("3月1日")} />
             </div>
         </header>
     );

@@ -1,3 +1,5 @@
+import { uiText, uiTemplate, uiError } from '../utils/uiI18n';
+import { getTeacherLang, setTeacherLang } from '../utils/teacherI18n';
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -85,8 +87,8 @@ interface SettingsPageProps {
 function SectionTitle({ title, desc }: { title: string; desc: string }) {
   return (
     <div className="border-b border-slate-100 pb-4">
-      <div className="text-base font-extrabold text-slate-950">{title}</div>
-      <div className="mt-1 text-xs leading-5 text-slate-500">{desc}</div>
+      <div className="text-base font-extrabold text-slate-950">{uiText(title)}</div>
+      <div className="mt-1 text-xs leading-5 text-slate-500">{uiText(desc)}</div>
     </div>
   );
 }
@@ -98,7 +100,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
   const [email, setEmail] = useState(currentUser.email || "");
   const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl || "");
   const [preferences, setPreferences] = useState<UserPreferences>(
-    normalizeUserPreferences(currentUser.preferences || DEFAULT_USER_PREFERENCES)
+    () => {
+      const saved = normalizeUserPreferences(currentUser.preferences || DEFAULT_USER_PREFERENCES);
+      return { ...saved, experience: { ...saved.experience, language: getTeacherLang() } };
+    }
   );
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -280,6 +285,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
 
       saveAuthSession({ token: session.token, user: data.user }, isAuthPersistedInLocalStorage());
       onProfileUpdated(data.user);
+      setTeacherLang(preferences.experience.language === 'en' ? 'en' : 'zh-HK');
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
@@ -534,19 +540,18 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
           <div className="border-b border-slate-200 bg-white px-5 pt-7 md:px-8 lg:px-10">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-                <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">帳戶與系統設定</h1>
-                <p className="mt-1 text-sm text-slate-500">管理帳戶資料、個人偏好與平台設定。</p>
+                <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">{uiText("帳戶與系統設定")}</h1>
+                <p className="mt-1 text-sm text-slate-500">{uiText("管理帳戶資料、個人偏好與平台設定。")}</p>
               </div>
               <div className="flex items-center gap-3 self-start">
                 <a href="/" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:border-indigo-200 hover:text-indigo-600">
-                  <ArrowLeft className="h-4 w-4" />返回工作台
-          </a>
+                  <ArrowLeft className="h-4 w-4" />{uiText("返回工作台")}</a>
               </div>
             </div>
             <div className="mt-7 flex gap-7 overflow-x-auto text-sm font-bold text-slate-400">
-              <a href="#profile-settings" onClick={() => setActiveSettingsTab("personal")} className={`px-1 pb-4 transition ${activeSettingsTab === "personal" ? "border-b-2 border-indigo-600 text-indigo-600" : "hover:text-slate-700"}`}>個人帳戶</a>
-              <a href="#appearance-settings" onClick={() => setActiveSettingsTab("personal")} className={`px-1 pb-4 transition ${activeSettingsTab === "personal" ? "hover:text-slate-700" : ""}`}>介面與偏好</a>
-              {isDeveloperAccount && <a href="#admin-settings" onClick={() => setActiveSettingsTab("admin")} className={`px-1 pb-4 transition ${activeSettingsTab === "admin" ? "border-b-2 border-indigo-600 text-indigo-600" : "hover:text-slate-700"}`}>平台管理</a>}
+              <a href="#profile-settings" onClick={() => setActiveSettingsTab("personal")} className={`px-1 pb-4 transition ${activeSettingsTab === "personal" ? "border-b-2 border-indigo-600 text-indigo-600" : "hover:text-slate-700"}`}>{uiText("個人帳戶")}</a>
+              <a href="#appearance-settings" onClick={() => setActiveSettingsTab("personal")} className={`px-1 pb-4 transition ${activeSettingsTab === "personal" ? "hover:text-slate-700" : ""}`}>{uiText("介面與偏好")}</a>
+              {isDeveloperAccount && <a href="#admin-settings" onClick={() => setActiveSettingsTab("admin")} className={`px-1 pb-4 transition ${activeSettingsTab === "admin" ? "border-b-2 border-indigo-600 text-indigo-600" : "hover:text-slate-700"}`}>{uiText("平台管理")}</a>}
             </div>
         </div>
 
@@ -560,23 +565,23 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                 { label: "Bot 數量", value: isDeveloperAccount ? String(managedBots.length) : "—", hint: isDeveloperAccount ? "可管理的 AI Bot" : "僅管理員可查看", tone: "border-amber-200 bg-amber-50/70" },
               ].map((metric) => (
                 <div key={metric.label} className={`rounded-2xl border border-slate-200 p-5 shadow-sm ${metric.tone}`}>
-                  <div className="text-xs font-bold text-slate-400">{metric.label}</div>
+                  <div className="text-xs font-bold text-slate-400">{uiText(metric.label)}</div>
                   <div className="mt-3 text-2xl font-black capitalize text-slate-950">{metric.value}</div>
-                  <div className="mt-1 text-xs text-slate-500">{metric.hint}</div>
+                  <div className="mt-1 text-xs text-slate-500">{uiText(metric.hint)}</div>
                 </div>
               ))}
             </div>
 
         {(message || error) && (
               <div className={`mt-5 rounded-xl border px-4 py-3 text-sm ${error ? "border-rose-200 bg-rose-50 text-rose-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
-            {error || message}
+            {uiError(error) || uiText(message)}
           </div>
         )}
 
             <div className="mt-6">
           <div className={activeSettingsTab === "admin" ? "hidden" : "space-y-6"}>
                 <section id="profile-settings" className="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-              <SectionTitle title="個人資料" desc="這些是其他網站最常見的帳戶基本資料設定。" />
+              <SectionTitle title={uiText("個人資料")} desc={uiText("這些是其他網站最常見的帳戶基本資料設定。")} />
               <div className="mt-5 grid gap-5 md:grid-cols-[160px_minmax(0,1fr)]">
                 <div className="flex flex-col items-center gap-3">
                   <img
@@ -589,7 +594,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                     onClick={() => fileInputRef.current?.click()}
                     className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                   >
-                    {uploadingAvatar ? "上傳中..." : "更換頭像"}
+                    {uploadingAvatar ? uiText("上傳中...") : uiText("更換頭像")}
                   </button>
                   <input
                     ref={fileInputRef}
@@ -605,7 +610,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="block">
-                    <span className="mb-2 block text-sm font-semibold text-slate-700">名字</span>
+                    <span className="mb-2 block text-sm font-semibold text-slate-700">{uiText("名字")}</span>
                     <input
                       type="text"
                       value={fullName}
@@ -614,24 +619,24 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                     />
                   </label>
                   <label className="block">
-                    <span className="mb-2 block text-sm font-semibold text-slate-700">電郵</span>
+                    <span className="mb-2 block text-sm font-semibold text-slate-700">{uiText("電郵")}</span>
                     <input
                       type="email"
                       value={email}
                       onChange={(event) => setEmail(event.target.value)}
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                     />
-                    <div className="mt-2 text-xs text-slate-500">修改電郵時需要輸入目前密碼確認。</div>
+                    <div className="mt-2 text-xs text-slate-500">{uiText("修改電郵時需要輸入目前密碼確認。")}</div>
                   </label>
                 </div>
               </div>
             </section>
 
                 <section id="security-settings" className="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-              <SectionTitle title="安全設定" desc="管理密碼與電郵驗證，保護帳戶登入安全。" />
+              <SectionTitle title={uiText("安全設定")} desc={uiText("管理密碼與電郵驗證，保護帳戶登入安全。")} />
               <div className="mt-5 grid gap-4 md:grid-cols-3">
                 <label className="block">
-                  <span className="mb-2 block text-sm font-semibold text-slate-700">目前密碼</span>
+                  <span className="mb-2 block text-sm font-semibold text-slate-700">{uiText("目前密碼")}</span>
                   <input
                     type="password"
                     value={currentPassword}
@@ -640,7 +645,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-2 block text-sm font-semibold text-slate-700">新密碼</span>
+                  <span className="mb-2 block text-sm font-semibold text-slate-700">{uiText("新密碼")}</span>
                   <input
                     type="password"
                     value={newPassword}
@@ -649,7 +654,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-2 block text-sm font-semibold text-slate-700">確認新密碼</span>
+                  <span className="mb-2 block text-sm font-semibold text-slate-700">{uiText("確認新密碼")}</span>
                   <input
                     type="password"
                     value={confirmPassword}
@@ -661,10 +666,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
             </section>
 
                 <section id="appearance-settings" className="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-              <SectionTitle title="外觀" desc="調整整個工作台的主背景與視覺風格。" />
+              <SectionTitle title={uiText("外觀")} desc={uiText("調整整個工作台的主背景與視覺風格。")} />
               <div className="mt-5 grid gap-5 lg:grid-cols-3">
                 <div>
-                  <div className="mb-3 text-sm font-semibold text-slate-700">主題模式</div>
+                  <div className="mb-3 text-sm font-semibold text-slate-700">{uiText("主題模式")}</div>
                   <div className="grid gap-3">
                     {themeChoices.map((item) => (
                       <button
@@ -682,13 +687,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                             : "border-slate-200 bg-white text-slate-700"
                         }`}
                       >
-                        {item.label}
+                        {uiText(item.label)}
                       </button>
                     ))}
                   </div>
                 </div>
                 <div className="lg:col-span-2">
-                  <div className="mb-3 text-sm font-semibold text-slate-700">背景風格</div>
+                  <div className="mb-3 text-sm font-semibold text-slate-700">{uiText("背景風格")}</div>
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {backgroundChoices.map((item) => (
                       <button
@@ -706,8 +711,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                             : "border-slate-200 bg-white"
                         }`}
                       >
-                        <div className="text-sm font-bold text-slate-900">{item.label}</div>
-                        <div className="mt-1 text-xs text-slate-500">{item.hint}</div>
+                        <div className="text-sm font-bold text-slate-900">{uiText(item.label)}</div>
+                        <div className="mt-1 text-xs text-slate-500">{uiText(item.hint)}</div>
                       </button>
                     ))}
                   </div>
@@ -715,7 +720,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
               </div>
 
               <div className="mt-5">
-                <div className="mb-3 text-sm font-semibold text-slate-700">卡片樣式</div>
+                <div className="mb-3 text-sm font-semibold text-slate-700">{uiText("卡片樣式")}</div>
                 <div className="flex flex-wrap gap-3">
                   {cardChoices.map((item) => (
                     <button
@@ -733,7 +738,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                           : "border-slate-200 bg-white text-slate-700"
                       }`}
                     >
-                      {item.label}
+                      {uiText(item.label)}
                     </button>
                   ))}
                 </div>
@@ -741,13 +746,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
             </section>
 
                 <section id="preference-settings" className="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-              <SectionTitle title="使用偏好" desc="這些選項在大多數平台都屬於常見個人化設定。" />
+              <SectionTitle title={uiText("使用偏好")} desc={uiText("這些選項在大多數平台都屬於常見個人化設定。")} />
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <label className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <div className="text-sm font-bold text-slate-900">產品更新通知</div>
-                      <div className="mt-1 text-xs text-slate-500">接收新功能與更新電郵</div>
+                      <div className="text-sm font-bold text-slate-900">{uiText("產品更新通知")}</div>
+                      <div className="mt-1 text-xs text-slate-500">{uiText("接收新功能與更新電郵")}</div>
                     </div>
                     <input
                       type="checkbox"
@@ -764,8 +769,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                 <label className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <div className="text-sm font-bold text-slate-900">每週摘要</div>
-                      <div className="mt-1 text-xs text-slate-500">每週收到功能使用與更新摘要</div>
+                      <div className="text-sm font-bold text-slate-900">{uiText("每週摘要")}</div>
+                      <div className="mt-1 text-xs text-slate-500">{uiText("每週收到功能使用與更新摘要")}</div>
                     </div>
                     <input
                       type="checkbox"
@@ -782,8 +787,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                 <label className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <div className="text-sm font-bold text-slate-900">安全通知</div>
-                      <div className="mt-1 text-xs text-slate-500">登入與帳戶異常變更提醒</div>
+                      <div className="text-sm font-bold text-slate-900">{uiText("安全通知")}</div>
+                      <div className="mt-1 text-xs text-slate-500">{uiText("登入與帳戶異常變更提醒")}</div>
                     </div>
                     <input
                       type="checkbox"
@@ -800,8 +805,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                 <label className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <div className="text-sm font-bold text-slate-900">自動播放語音</div>
-                      <div className="mt-1 text-xs text-slate-500">聊天語音生成後自動播放</div>
+                      <div className="text-sm font-bold text-slate-900">{uiText("自動播放語音")}</div>
+                      <div className="mt-1 text-xs text-slate-500">{uiText("聊天語音生成後自動播放")}</div>
                     </div>
                     <input
                       type="checkbox"
@@ -818,8 +823,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                 <label className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <div className="text-sm font-bold text-slate-900">Enter 直接送出</div>
-                      <div className="mt-1 text-xs text-slate-500">關閉後改成 Enter 換行、按鈕送出</div>
+                      <div className="text-sm font-bold text-slate-900">{uiText("Enter 直接送出")}</div>
+                      <div className="mt-1 text-xs text-slate-500">{uiText("關閉後改成 Enter 換行、按鈕送出")}</div>
                     </div>
                     <input
                       type="checkbox"
@@ -836,8 +841,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                 <label className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <div className="text-sm font-bold text-slate-900">減少動畫</div>
-                      <div className="mt-1 text-xs text-slate-500">降低界面過場與動態效果</div>
+                      <div className="text-sm font-bold text-slate-900">{uiText("減少動畫")}</div>
+                      <div className="mt-1 text-xs text-slate-500">{uiText("降低界面過場與動態效果")}</div>
                     </div>
                     <input
                       type="checkbox"
@@ -855,19 +860,21 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
 
               <div className="mt-5 max-w-xs">
                 <label className="block">
-                  <span className="mb-2 block text-sm font-semibold text-slate-700">語言</span>
+                  <span className="mb-2 block text-sm font-semibold text-slate-700">{uiText("語言")}</span>
                   <select
                     value={preferences.experience.language}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      const language = event.target.value as UserPreferences["experience"]["language"];
+                      setTeacherLang(language === 'en' ? 'en' : 'zh-HK');
                       setPreferences((prev) => ({
                         ...prev,
-                        experience: { ...prev.experience, language: event.target.value as UserPreferences["experience"]["language"] },
-                      }))
-                    }
+                        experience: { ...prev.experience, language },
+                      }));
+                    }}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
                   >
-                    <option value="zh-HK">繁體中文（香港）</option>
-                    <option value="zh-CN">简体中文</option>
+                    <option value="zh-HK">{uiText("繁體中文（香港）")}</option>
+                    <option value="zh-CN">{uiText("简体中文")}</option>
                     <option value="en">English</option>
                   </select>
                 </label>
@@ -882,7 +889,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                     className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition hover:-translate-y-0.5 hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-400"
               >
                     <Save className="h-4 w-4" />
-                {savingProfile ? "儲存中..." : "儲存所有設定"}
+                {savingProfile ? uiText("儲存中...") : uiText("儲存所有設定")}
               </button>
             </div>
           </div>
@@ -893,32 +900,31 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
               <section id="admin-settings" className="scroll-mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 md:flex-row md:items-center md:justify-between md:px-6">
                   <div>
-                    <h2 className="text-lg font-black text-slate-950">使用者帳號</h2>
-                    <p className="mt-1 text-sm text-slate-500">管理平台成員、方案及功能用量。</p>
+                    <h2 className="text-lg font-black text-slate-950">{uiText("使用者帳號")}</h2>
+                    <p className="mt-1 text-sm text-slate-500">{uiText("管理平台成員、方案及功能用量。")}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={() => void loadAccounts()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
                       <RefreshCw className={`h-4 w-4 ${loadingAccounts ? "animate-spin" : ""}`} />
-                      {loadingAccounts ? "刷新中" : "刷新"}
+                      {loadingAccounts ? uiText("刷新中") : uiText("刷新")}
                     </button>
                     <button type="button" onClick={() => setShowCreateAccount((value) => !value)} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700">
-                      <Plus className="h-4 w-4" />邀請成員
-                    </button>
+                      <Plus className="h-4 w-4" />{uiText("邀請成員")}</button>
                   </div>
                 </div>
 
                 {showCreateAccount && (
                   <div className="border-b border-indigo-100 bg-indigo-50/60 px-5 py-5 md:px-6">
-                    <div className="mb-3 text-sm font-extrabold text-slate-900">建立新帳戶</div>
+                    <div className="mb-3 text-sm font-extrabold text-slate-900">{uiText("建立新帳戶")}</div>
                     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1.4fr_1fr_180px_auto]">
-                      <input type="text" value={newAccountFullName} onChange={(event) => setNewAccountFullName(event.target.value)} placeholder="姓名" className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-400" />
+                      <input type="text" value={newAccountFullName} onChange={(event) => setNewAccountFullName(event.target.value)} placeholder={uiText("姓名")} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-400" />
                       <input type="email" value={newAccountEmail} onChange={(event) => setNewAccountEmail(event.target.value)} placeholder="email@example.com" className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-400" />
-                      <input type="password" value={newAccountPassword} onChange={(event) => setNewAccountPassword(event.target.value)} placeholder="初始密碼（至少8位）" className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-400" />
+                      <input type="password" value={newAccountPassword} onChange={(event) => setNewAccountPassword(event.target.value)} placeholder={uiText("初始密碼（至少8位）")} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-400" />
                       <select value={newAccountRole} onChange={(event) => setNewAccountRole(event.target.value as "teacher" | "student" | "admin")} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm">
-                        <option value="teacher">教師</option><option value="student">學生</option><option value="admin">管理員</option>
+                        <option value="teacher">{uiText("教師")}</option><option value="student">{uiText("學生")}</option><option value="admin">{uiText("管理員")}</option>
                       </select>
                       <button type="button" onClick={() => void createManagedAccount()} disabled={creatingAccount} className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 disabled:bg-indigo-300">
-                        {creatingAccount ? "建立中..." : "建立帳戶"}
+                        {creatingAccount ? uiText("建立中...") : uiText("建立帳戶")}
                       </button>
                     </div>
                   </div>
@@ -927,17 +933,17 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                 <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 md:flex-row md:items-center md:justify-between md:px-6">
                   <label className="relative block w-full max-w-md">
                     <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input type="text" value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} placeholder="搜尋姓名或電子郵件" className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-indigo-400 focus:bg-white" />
+                    <input type="text" value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} placeholder={uiText("搜尋姓名或電子郵件")} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-indigo-400 focus:bg-white" />
                   </label>
                   <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                    <span className="rounded-lg bg-indigo-50 px-3 py-2 text-indigo-700">全部 {filteredAccounts.length}</span>
-                    <span className="rounded-lg px-3 py-2">每頁 {accountPageSize} 位</span>
+                    <span className="rounded-lg bg-indigo-50 px-3 py-2 text-indigo-700">{uiText("全部 ")}{filteredAccounts.length}</span>
+                    <span className="rounded-lg px-3 py-2">{uiText("每頁 ")}{accountPageSize}{uiText(" 位")}</span>
                   </div>
                 </div>
 
                 <div className="overflow-x-auto">
                   <div className="grid grid-cols-[minmax(260px,1.5fr)_140px_140px_minmax(240px,1fr)_96px] gap-4 bg-slate-50 px-6 py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                    <span>成員</span><span>角色</span><span>方案</span><span>本月用量</span><span className="text-right">操作</span>
+                    <span>{uiText("成員")}</span><span>{uiText("角色")}</span><span>{uiText("方案")}</span><span>{uiText("本月用量")}</span><span className="text-right">{uiText("操作")}</span>
                   </div>
                   {visibleAccounts.map((account) => {
                     const usage = account.features.find((feature) => !feature.unlimited && feature.limit > 0);
@@ -948,26 +954,26 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                       <button key={account.user.id} type="button" onClick={() => setSelectedUserId(account.user.id)} className={`grid w-full grid-cols-[minmax(260px,1.5fr)_140px_140px_minmax(240px,1fr)_96px] items-center gap-4 border-t border-slate-100 px-6 py-4 text-left transition ${selected ? "bg-indigo-50/70" : "hover:bg-slate-50"}`}>
                         <span className="flex min-w-0 items-center gap-3">
                           {account.user.avatarUrl ? <img src={account.user.avatarUrl} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" /> : <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-indigo-600 text-sm font-black text-white">{initials}</span>}
-                          <span className="min-w-0"><span className="block truncate text-sm font-extrabold text-slate-900">{account.user.fullName || "未命名帳戶"}</span><span className="mt-0.5 block truncate text-xs text-slate-400">{account.user.email}</span></span>
+                          <span className="min-w-0"><span className="block truncate text-sm font-extrabold text-slate-900">{account.user.fullName || uiText("未命名帳戶")}</span><span className="mt-0.5 block truncate text-xs text-slate-400">{account.user.email}</span></span>
                         </span>
                         <span><span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold capitalize text-slate-600">{account.user.role}</span></span>
                         <span><span className={`rounded-full px-3 py-1.5 text-xs font-bold capitalize ${account.user.plan === "starter" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>{account.user.plan || "starter"}</span></span>
                         <span>
-                          <span className="flex items-center justify-between text-[11px] font-bold text-slate-500"><span>{usage?.label || "不限用量"}</span><span>{usage ? `${usage.used} / ${usage.limit}` : "無限制"}</span></span>
+                          <span className="flex items-center justify-between text-[11px] font-bold text-slate-500"><span>{uiText(usage?.label) || uiText("不限用量")}</span><span>{usage ? `${usage.used} / ${usage.limit}` : uiText("無限制")}</span></span>
                           <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-slate-200"><span className={`block h-full rounded-full ${usageRate >= 80 ? "bg-amber-500" : "bg-indigo-500"}`} style={{ width: `${usageRate}%` }} /></span>
                         </span>
-                        <span className="text-right text-xs font-extrabold text-indigo-600">{selected ? "已選取" : "詳情"}</span>
+                        <span className="text-right text-xs font-extrabold text-indigo-600">{selected ? uiText("已選取") : uiText("詳情")}</span>
                       </button>
                     );
                   })}
-                  {visibleAccounts.length === 0 && <div className="px-6 py-14 text-center text-sm text-slate-500">找不到符合條件的帳戶。</div>}
+                  {visibleAccounts.length === 0 && <div className="px-6 py-14 text-center text-sm text-slate-500">{uiText("找不到符合條件的帳戶。")}</div>}
                 </div>
 
                 <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4 text-xs text-slate-500 md:px-6">
-                  <span>顯示 {filteredAccounts.length ? accountPage * accountPageSize + 1 : 0} - {Math.min((accountPage + 1) * accountPageSize, filteredAccounts.length)}，共 {filteredAccounts.length} 個帳戶</span>
+                  <span>{uiText("顯示 ")}{filteredAccounts.length ? accountPage * accountPageSize + 1 : 0} - {Math.min((accountPage + 1) * accountPageSize, filteredAccounts.length)}{uiText("，共 ")}{filteredAccounts.length}{uiText(" 個帳戶")}</span>
                   <div className="flex gap-2">
-                    <button type="button" disabled={accountPage === 0} onClick={() => setAccountPage((page) => Math.max(0, page - 1))} className="rounded-lg border border-slate-200 px-3 py-2 font-bold text-slate-700 disabled:opacity-40">上一頁</button>
-                    <button type="button" disabled={accountPage >= accountPageCount - 1} onClick={() => setAccountPage((page) => Math.min(accountPageCount - 1, page + 1))} className="rounded-lg border border-slate-200 px-3 py-2 font-bold text-slate-700 disabled:opacity-40">下一頁</button>
+                    <button type="button" disabled={accountPage === 0} onClick={() => setAccountPage((page) => Math.max(0, page - 1))} className="rounded-lg border border-slate-200 px-3 py-2 font-bold text-slate-700 disabled:opacity-40">{uiText("上一頁")}</button>
+                    <button type="button" disabled={accountPage >= accountPageCount - 1} onClick={() => setAccountPage((page) => Math.min(accountPageCount - 1, page + 1))} className="rounded-lg border border-slate-200 px-3 py-2 font-bold text-slate-700 disabled:opacity-40">{uiText("下一頁")}</button>
                   </div>
                 </div>
               </section>
@@ -977,15 +983,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                   <div className="flex flex-col gap-4 border-b border-slate-100 pb-5 md:flex-row md:items-center md:justify-between">
                     <div><h3 className="text-lg font-black text-slate-950">{selectedAccount.user.fullName}</h3><p className="mt-1 text-sm text-slate-500">{selectedAccount.user.email}</p></div>
                     <div className="flex gap-2">
-                      <button type="button" onClick={() => void resetFeatures(selectedAccount.user.id)} className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-bold text-amber-700 hover:bg-amber-100"><RotateCcw className="h-4 w-4" />重置用量</button>
-                      <button type="button" onClick={() => void deleteManagedAccount(selectedAccount.user.id)} disabled={deletingAccountId === selectedAccount.user.id || selectedAccount.user.id === currentUser.id} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-40"><Trash2 className="h-4 w-4" />{deletingAccountId === selectedAccount.user.id ? "刪除中" : "刪除帳戶"}</button>
+                      <button type="button" onClick={() => void resetFeatures(selectedAccount.user.id)} className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-bold text-amber-700 hover:bg-amber-100"><RotateCcw className="h-4 w-4" />{uiText("重置用量")}</button>
+                      <button type="button" onClick={() => void deleteManagedAccount(selectedAccount.user.id)} disabled={deletingAccountId === selectedAccount.user.id || selectedAccount.user.id === currentUser.id} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-40"><Trash2 className="h-4 w-4" />{deletingAccountId === selectedAccount.user.id ? uiText("刪除中") : uiText("刪除帳戶")}</button>
                     </div>
                   </div>
                   <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {selectedAccount.features.filter((feature) => feature.key !== "avatar_ai_generate" && feature.key !== "background_ai_generate").map((feature) => (
                       <div key={feature.key} className="rounded-xl border border-slate-200 p-4">
-                        <div className="flex items-center justify-between gap-3"><span className="text-sm font-extrabold text-slate-900">{feature.label}</span><span className="text-xs font-bold text-slate-400">{feature.unlimited ? "無限制" : `${feature.used}/${feature.limit}`}</span></div>
-                        {feature.unlimited ? <div className="mt-4 h-1.5 rounded-full bg-emerald-400" /> : <><div className="mt-3 grid grid-cols-2 gap-2"><input type="number" min={0} max={feature.limit} value={featureDrafts[feature.key]?.used ?? String(feature.used)} onChange={(event) => setFeatureDrafts((prev) => ({ ...prev, [feature.key]: { used: event.target.value, limit: prev[feature.key]?.limit ?? String(feature.limit) } }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" aria-label={`${feature.label} 已用`} /><input type="number" min={0} value={featureDrafts[feature.key]?.limit ?? String(feature.limit)} onChange={(event) => setFeatureDrafts((prev) => ({ ...prev, [feature.key]: { used: prev[feature.key]?.used ?? String(feature.used), limit: event.target.value } }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" aria-label={`${feature.label} 上限`} /></div><button type="button" onClick={() => void saveFeatureDraft(selectedAccount.user.id, feature)} className="mt-2 w-full rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-600">儲存修改</button></>}
+                        <div className="flex items-center justify-between gap-3"><span className="text-sm font-extrabold text-slate-900">{uiText(feature.label)}</span><span className="text-xs font-bold text-slate-400">{feature.unlimited ? uiText("無限制") : `${feature.used}/${feature.limit}`}</span></div>
+                        {feature.unlimited ? <div className="mt-4 h-1.5 rounded-full bg-emerald-400" /> : <><div className="mt-3 grid grid-cols-2 gap-2"><input type="number" min={0} max={feature.limit} value={featureDrafts[feature.key]?.used ?? String(feature.used)} onChange={(event) => setFeatureDrafts((prev) => ({ ...prev, [feature.key]: { used: event.target.value, limit: prev[feature.key]?.limit ?? String(feature.limit) } }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" aria-label={uiTemplate("{0} 已用", feature.label)} /><input type="number" min={0} value={featureDrafts[feature.key]?.limit ?? String(feature.limit)} onChange={(event) => setFeatureDrafts((prev) => ({ ...prev, [feature.key]: { used: prev[feature.key]?.used ?? String(feature.used), limit: event.target.value } }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" aria-label={uiTemplate("{0} 上限", feature.label)} /></div><button type="button" onClick={() => void saveFeatureDraft(selectedAccount.user.id, feature)} className="mt-2 w-full rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-600">{uiText("儲存修改")}</button></>}
                       </div>
                     ))}
                   </div>
@@ -993,13 +999,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
               )}
 
               <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-                <div className="flex items-center justify-between gap-4"><div><h3 className="text-base font-black text-slate-950">Bot 歸屬整理</h3><p className="mt-1 text-sm text-slate-500">把現有 Bot 轉移至正確帳戶。</p></div><button type="button" onClick={() => void loadManagedBots()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700"><RefreshCw className={`h-3.5 w-3.5 ${loadingManagedBots ? "animate-spin" : ""}`} />刷新 Bot</button></div>
+                <div className="flex items-center justify-between gap-4"><div><h3 className="text-base font-black text-slate-950">{uiText("Bot 歸屬整理")}</h3><p className="mt-1 text-sm text-slate-500">{uiText("把現有 Bot 轉移至正確帳戶。")}</p></div><button type="button" onClick={() => void loadManagedBots()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700"><RefreshCw className={`h-3.5 w-3.5 ${loadingManagedBots ? "animate-spin" : ""}`} />{uiText("刷新 Bot")}</button></div>
                 <div className="mt-5 grid gap-3 xl:grid-cols-[1fr_1fr_auto]">
-                  <select value={selectedManagedBotId} onChange={(event) => { setSelectedManagedBotId(event.target.value); setTargetOwnerId(""); }} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm">{managedBots.map((bot) => <option key={bot.id} value={bot.id}>{bot.name || "未命名 Bot"} ({bot.ownerEmail || "未分配帳戶"})</option>)}</select>
-                  <select value={targetOwnerId} onChange={(event) => setTargetOwnerId(event.target.value)} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm"><option value="">選擇目標帳戶</option>{accounts.map((account) => <option key={account.user.id} value={account.user.id}>{account.user.fullName} ({account.user.email})</option>)}</select>
-                  <button type="button" onClick={() => void transferBotOwner()} disabled={!selectedManagedBotId || !targetOwnerId || transferringBotId === selectedManagedBotId} className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white hover:bg-indigo-700 disabled:bg-indigo-300">{transferringBotId === selectedManagedBotId ? "轉移中..." : "轉移歸屬"}</button>
+                  <select value={selectedManagedBotId} onChange={(event) => { setSelectedManagedBotId(event.target.value); setTargetOwnerId(""); }} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm">{managedBots.map((bot) => <option key={bot.id} value={bot.id}>{bot.name || uiText("未命名 Bot")} ({bot.ownerEmail || uiText("未分配帳戶")})</option>)}</select>
+                  <select value={targetOwnerId} onChange={(event) => setTargetOwnerId(event.target.value)} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm"><option value="">{uiText("選擇目標帳戶")}</option>{accounts.map((account) => <option key={account.user.id} value={account.user.id}>{account.user.fullName} ({account.user.email})</option>)}</select>
+                  <button type="button" onClick={() => void transferBotOwner()} disabled={!selectedManagedBotId || !targetOwnerId || transferringBotId === selectedManagedBotId} className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white hover:bg-indigo-700 disabled:bg-indigo-300">{transferringBotId === selectedManagedBotId ? uiText("轉移中...") : uiText("轉移歸屬")}</button>
                 </div>
-                {selectedManagedBot && <div className="mt-3 text-xs text-slate-500">目前歸屬：{selectedManagedBot.ownerName || "未知"} {selectedManagedBot.ownerEmail ? `(${selectedManagedBot.ownerEmail})` : ""}</div>}
+                {selectedManagedBot && <div className="mt-3 text-xs text-slate-500">{uiText("目前歸屬：")}{selectedManagedBot.ownerName || uiText("未知")} {selectedManagedBot.ownerEmail ? `(${selectedManagedBot.ownerEmail})` : ""}</div>}
               </section>
               </>
             )}

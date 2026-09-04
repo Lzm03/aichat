@@ -1,3 +1,4 @@
+import { uiText, uiTemplate, uiLocale, uiError } from '../utils/uiI18n';
 import React, { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Icons } from "../components/icons";
@@ -143,7 +144,7 @@ const RadarChart: React.FC<{ data: SkillDimension[] }> = ({ data }) => {
                   transition: "fill 0.2s",
                 }}
               >
-                {item.label}
+                {uiText(item.label)}
               </motion.text>
               {/* 常駐小字說明：位於維度名稱正下方 */}
               <motion.text
@@ -156,7 +157,7 @@ const RadarChart: React.FC<{ data: SkillDimension[] }> = ({ data }) => {
                 dominantBaseline="middle"
                 style={{ fill: "var(--text-faint)", fontSize: "10px", fontWeight: 400 }}
               >
-                {item.desc}
+                {uiText(item.desc)}
               </motion.text>
             </g>
           );
@@ -198,7 +199,7 @@ const badgeDefinitions: StudentBadge[] = [
 const formatUnlockDate = (iso?: string): string | null => {
   if (!iso) return null;
   const d = new Date(iso);
-  return `${d.getMonth() + 1} 月 ${d.getDate()} 日`;
+  return d.toLocaleDateString(uiLocale(), { month: 'short', day: 'numeric' });
 };
 
 // 翻牌卡：hover（桌面）＋點按（觸屏）雙觸發；未解鎖為神秘剪影
@@ -230,15 +231,15 @@ const BadgeCard: React.FC<{ badge: StudentBadge; index: number }> = ({ badge, in
           {badge.unlocked ? (
             <>
               <span className="text-5xl" aria-hidden="true">{badge.emoji}</span>
-              <p className="mt-2 text-center text-xs font-bold leading-4 text-white">{badge.name}</p>
+              <p className="mt-2 text-center text-xs font-bold leading-4 text-white">{uiText(badge.name)}</p>
               {formatUnlockDate(badge.unlockedAt) && (
-                <span className="mt-1.5 text-[10px] text-white/80">{formatUnlockDate(badge.unlockedAt)}</span>
+                <span className="mt-1.5 text-[10px] text-white/80">{uiText(formatUnlockDate(badge.unlockedAt))}</span>
               )}
             </>
           ) : (
             <>
               <span className="text-5xl font-black text-[var(--text-faint)]" aria-hidden="true">?</span>
-              <p className="mt-2 text-[11px] font-bold text-[var(--text-faint)]">神祕徽章</p>
+              <p className="mt-2 text-[11px] font-bold text-[var(--text-faint)]">{uiText("神祕徽章")}</p>
             </>
           )}
         </div>
@@ -246,11 +247,11 @@ const BadgeCard: React.FC<{ badge: StudentBadge; index: number }> = ({ badge, in
         {/* 背面：解鎖＝意義；未解鎖＝解鎖條件 */}
         <div className="absolute inset-0 flex flex-col items-center justify-center rounded-[24px] border-2 border-[var(--border)] bg-[var(--bg-card)] p-4 [backface-visibility:hidden] [transform:rotateY(180deg)]">
           <span className={`text-4xl ${badge.unlocked ? "" : "opacity-60 grayscale"}`} aria-hidden="true">{badge.emoji}</span>
-          <p className="mt-2 text-center text-xs font-bold text-[var(--text-main)]">{badge.name}</p>
+          <p className="mt-2 text-center text-xs font-bold text-[var(--text-main)]">{uiText(badge.name)}</p>
           {badge.unlocked ? (
-            <p className="mt-2 text-center text-[11px] font-semibold leading-5 text-[var(--text-muted)]">{badge.description}</p>
+            <p className="mt-2 text-center text-[11px] font-semibold leading-5 text-[var(--text-muted)]">{uiText(badge.description)}</p>
           ) : (
-            <p className="mt-2 text-center text-[11px] font-semibold leading-5 text-[var(--text-muted)]">🔒 {badge.unlockCondition}</p>
+            <p className="mt-2 text-center text-[11px] font-semibold leading-5 text-[var(--text-muted)]">🔒 {uiText(badge.unlockCondition)}</p>
           )}
         </div>
       </div>
@@ -304,7 +305,7 @@ const StatCard: React.FC<{ icon: string; value: number; label: string; color: st
     >
       <div className="text-[40px] leading-none" aria-hidden="true">{icon}</div>
       <p className="mt-3 text-3xl font-black text-[var(--text-main)]">{value}</p>
-      <p className="mt-1 text-xs font-semibold text-[var(--text-muted)]">{label}</p>
+      <p className="mt-1 text-xs font-semibold text-[var(--text-muted)]">{uiText(label)}</p>
     </div>
   </motion.div>
 );
@@ -321,7 +322,7 @@ const StreakRoad: React.FC<{ userStreak: number }> = ({ userStreak }) => {
       className="mt-8 rounded-[24px] p-8 shadow-[0_20px_40px_rgba(0,0,0,0.15)]"
       style={{ background: "linear-gradient(135deg, #F59E0B, #F43F5E, #8B5CF6)" }}
     >
-      <h2 className="text-center text-2xl font-black text-white">🔥 連勝之路</h2>
+      <h2 className="text-center text-2xl font-black text-white">{uiText("🔥 連勝之路")}</h2>
 
       <div className="mx-auto mt-8 flex max-w-[800px] flex-wrap items-center justify-between gap-5">
         {streakMilestones.map((milestone, index) => {
@@ -341,7 +342,7 @@ const StreakRoad: React.FC<{ userStreak: number }> = ({ userStreak }) => {
                 >
                   {reached ? "🏆" : "🔒"}
                 </motion.div>
-                <p className="text-xs font-bold text-white">{milestone}天</p>
+                <p className="text-xs font-bold text-white">{milestone}{uiText("天")}</p>
               </div>
 
               {index < streakMilestones.length - 1 && (
@@ -357,8 +358,8 @@ const StreakRoad: React.FC<{ userStreak: number }> = ({ userStreak }) => {
 
       <p className="mt-6 text-center text-sm font-semibold text-white/90">
         {nextMilestone
-          ? `已連續學習 ${userStreak} 天，再堅持 ${nextMilestone - userStreak} 天解鎖下一個里程碑！`
-          : "🎉 恭喜！你已達成 10 天最高里程碑！"}
+          ? uiTemplate("已連續學習 {0} 天，再堅持 {1} 天解鎖下一個里程碑！", userStreak, nextMilestone - userStreak)
+          : uiText("🎉 恭喜！你已達成 10 天最高里程碑！")}
       </p>
     </section>
   );
@@ -426,24 +427,21 @@ export const StudentAchievementsPage: React.FC = () => {
           href="/"
           className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] px-4 py-2 text-sm font-semibold text-[var(--text-body)] transition hover:bg-[var(--bg-subtle)]"
         >
-          <Icons.back className="h-4 w-4" />
-          返回工作台
-        </a>
+          <Icons.back className="h-4 w-4" />{uiText("返回工作台")}</a>
 
         <div className="mt-6 text-center">
-          <h1 className="text-3xl font-black tracking-tight text-[var(--text-main)]">🏆 我的成就</h1>
-          <p className="mt-2 text-sm text-[var(--text-muted)]">記錄你的成長軌跡，見證每一個進步</p>
+          <h1 className="text-3xl font-black tracking-tight text-[var(--text-main)]">{uiText("🏆 我的成就")}</h1>
+          <p className="mt-2 text-sm text-[var(--text-muted)]">{uiText("記錄你的成長軌跡，見證每一個進步")}</p>
         </div>
 
         {/* ---- 我的學習維度 ---- */}
         <section className="mt-8 rounded-[24px] border border-[var(--border-soft)] bg-[var(--bg-card)] p-8 shadow-[var(--shadow-card)]">
-          <h2 className="text-center text-xl font-black text-[var(--text-main)]">我的學習維度</h2>
+          <h2 className="text-center text-xl font-black text-[var(--text-main)]">{uiText("我的學習維度")}</h2>
           <div className="relative mx-auto mt-6 aspect-square max-w-[400px]">
             <RadarChart data={skills} />
           </div>
           {skillsError ? (
-            <p className="mt-2 text-center text-xs font-semibold text-rose-600">
-              學習維度暫時無法載入：{skillsError}
+            <p className="mt-2 text-center text-xs font-semibold text-rose-600">{uiText("學習維度暫時無法載入：")}{uiError(skillsError)}
             </p>
           ) : null}
         </section>
@@ -451,7 +449,7 @@ export const StudentAchievementsPage: React.FC = () => {
         {/* ---- 統計卡 ---- */}
         <section className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
           {statCards.map((card, index) => (
-            <StatCard key={card.key} icon={card.icon} value={stats[card.key]} label={card.label} color={card.color} index={index} />
+            <StatCard key={card.key} icon={card.icon} value={stats[card.key]} label={uiText(card.label)} color={card.color} index={index} />
           ))}
         </section>
 
@@ -461,9 +459,8 @@ export const StudentAchievementsPage: React.FC = () => {
         {/* ---- 勳章牆 ---- */}
         <section className="mt-8 rounded-[24px] border border-[var(--border-soft)] bg-[var(--bg-card)] p-8 shadow-[var(--shadow-card)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-xl font-black text-[var(--text-main)]">🏅 勳章收藏</h2>
-            <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-xs font-bold text-[var(--accent-text)]">
-              已解鎖 {unlockedCount} / {badges.length}
+            <h2 className="text-xl font-black text-[var(--text-main)]">{uiText("🏅 勳章收藏")}</h2>
+            <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-xs font-bold text-[var(--accent-text)]">{uiText("已解鎖 ")}{unlockedCount} / {badges.length}
             </span>
           </div>
 
@@ -483,7 +480,7 @@ export const StudentAchievementsPage: React.FC = () => {
                   onClick={() => setExpanded((v) => !v)}
                   className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--bg-subtle)] px-4 py-2 text-xs font-bold text-[var(--text-muted)] transition hover:text-[var(--accent-text)]"
                 >
-                  {expanded ? "收起" : "展開全部"}
+                  {expanded ? uiText("收起") : uiText("展開全部")}
                   <Icons.down className={`h-3.5 w-3.5 transition-transform duration-300 ${expanded ? "rotate-180" : ""}`} />
                 </button>
               </div>

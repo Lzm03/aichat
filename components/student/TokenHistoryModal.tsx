@@ -1,3 +1,4 @@
+import { uiText } from '../../utils/uiI18n';
 import React, { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
@@ -98,12 +99,12 @@ export const TokenHistoryModal: React.FC<TokenHistoryModalProps> = ({ isOpen, on
             {/* 頭部：標題 + 剩餘額度 + 關閉 */}
             <div className="flex items-center justify-between border-b border-[var(--border-soft)] px-6 py-5">
               <div>
-                <h3 id="token-modal-title" className="text-lg font-black text-[var(--text-main)]">Token 消耗記錄</h3>
-                <p className="mt-0.5 text-xs text-[var(--text-muted)]">剩餘可用：{remaining} / {monthlyLimit}</p>
+                <h3 id="token-modal-title" className="text-lg font-black text-[var(--text-main)]">{uiText("Token 消耗記錄")}</h3>
+                <p className="mt-0.5 text-xs text-[var(--text-muted)]">{uiText("剩餘可用：")}{remaining} / {monthlyLimit}</p>
               </div>
               <button
                 type="button"
-                aria-label="關閉"
+                aria-label={uiText("關閉")}
                 onClick={onClose}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--bg-subtle)] text-[var(--text-muted)] transition hover:text-[var(--text-main)]"
               >
@@ -124,7 +125,7 @@ export const TokenHistoryModal: React.FC<TokenHistoryModalProps> = ({ isOpen, on
                       : "text-[var(--text-muted)] hover:bg-[var(--bg-subtle)]"
                   }`}
                 >
-                  {label}
+                  {uiText(label)}
                 </button>
               ))}
             </div>
@@ -132,7 +133,7 @@ export const TokenHistoryModal: React.FC<TokenHistoryModalProps> = ({ isOpen, on
             {/* 記錄列表 */}
             <div className="max-h-[300px] overflow-y-auto">
               {filteredLogs.length === 0 ? (
-                <p className="px-6 py-10 text-center text-xs text-[var(--text-faint)]">該時段沒有記錄</p>
+                <p className="px-6 py-10 text-center text-xs text-[var(--text-faint)]">{uiText("該時段沒有記錄")}</p>
               ) : (
                 filteredLogs.map((log) => (
                   <div

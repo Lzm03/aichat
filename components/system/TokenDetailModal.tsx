@@ -1,3 +1,4 @@
+import { uiText, uiTemplate, uiError } from '../../utils/uiI18n';
 import React from 'react';
 import { motion } from 'framer-motion';
 export interface ProviderUsage {
@@ -43,12 +44,12 @@ export const TokenDetailModal: React.FC<TokenDetailModalProps> = ({ providers, l
       className="fixed left-3 right-3 top-[74px] z-30 rounded-3xl border border-slate-200/80 bg-white p-4 shadow-lg origin-top sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96 sm:origin-top-right"
     >
       <div className="flex justify-between items-center mb-4">
-        <h3 className="font-bold text-slate-800">第三方 API 額度監控</h3>
+        <h3 className="font-bold text-slate-800">{uiText("第三方 API 額度監控")}</h3>
       </div>
 
       <div className="max-h-64 overflow-y-auto custom-scrollbar pr-2 -mr-2">
         {loading ? (
-          <div className="text-sm text-slate-500">正在更新配額資料...</div>
+          <div className="text-sm text-slate-500">{uiText("正在更新配額資料...")}</div>
         ) : (
           <ul className="space-y-3">
             {providers.map((p) => (
@@ -56,31 +57,28 @@ export const TokenDetailModal: React.FC<TokenDetailModalProps> = ({ providers, l
                 <div className="flex items-center justify-between">
                   <p className="font-semibold text-slate-800">{p.provider}</p>
                   <span className={`text-xs font-semibold ${colorByStatus[p.status]}`}>
-                    {labelByStatus[p.status]}
+                    {uiText(labelByStatus[p.status])}
                   </span>
                 </div>
                 <div className="mt-1 text-sm text-slate-600">
                   {fmt(p.remaining) !== null
-                    ? `剩餘：${fmt(p.remaining)}${p.unit ? ` ${p.unit}` : ""}`
-                    : "剩餘：未知"}
+                    ? uiTemplate("剩餘：{0}{1}", fmt(p.remaining), p.unit ? ` ${p.unit}` : "")
+                    : uiText("剩餘：未知")}
                   {fmt(p.total) !== null
-                    ? ` / 總額：${fmt(p.total)}${p.unit ? ` ${p.unit}` : ""}`
+                    ? uiTemplate(" / 總額：{0}{1}", fmt(p.total), p.unit ? ` ${p.unit}` : "")
                     : ""}
                 </div>
                 {p.message ? (
-                  <div className="mt-1 text-xs text-slate-500">{p.message}</div>
+                  <div className="mt-1 text-xs text-slate-500">{uiText(p.message)}</div>
                 ) : null}
-                <div className="mt-1 text-[11px] text-slate-400">
-                  更新：{new Date(p.checkedAt).toLocaleString()}
+                <div className="mt-1 text-[11px] text-slate-400">{uiText("更新：")}{new Date(p.checkedAt).toLocaleString()}
                 </div>
               </li>
             ))}
           </ul>
         )}
         {!loading && providers.length === 0 ? (
-          <div className="text-sm text-slate-500">
-            尚無可用資料
-            {error ? <div className="mt-1 text-xs text-rose-500">錯誤：{error}</div> : null}
+          <div className="text-sm text-slate-500">{uiText("尚無可用資料")}{error ? <div className="mt-1 text-xs text-rose-500">{uiText("錯誤：")}{uiError(error)}</div> : null}
           </div>
         ) : null}
       </div>

@@ -1,3 +1,4 @@
+import { uiText } from '../../utils/uiI18n';
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Icons } from "../icons";
@@ -56,9 +57,9 @@ export const PlatformDialog: React.FC<PlatformDialogProps> = ({
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="text-lg font-bold text-slate-900">{title}</h3>
+                <h3 className="text-lg font-bold text-slate-900">{uiText(title)}</h3>
                 <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">
-                  {message}
+                  {uiText(message)}
                 </p>
               </div>
               <button
@@ -77,7 +78,7 @@ export const PlatformDialog: React.FC<PlatformDialogProps> = ({
                   onClick={onClose}
                   className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
                 >
-                  {cancelText}
+                  {uiText(cancelText)}
                 </button>
               ) : null}
               <button
@@ -89,7 +90,7 @@ export const PlatformDialog: React.FC<PlatformDialogProps> = ({
                     : "bg-indigo-600 hover:bg-indigo-700"
                 }`}
               >
-                {confirmText}
+                {uiText(confirmText)}
               </button>
             </div>
           </motion.div>

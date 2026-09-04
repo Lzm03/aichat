@@ -1,3 +1,4 @@
+import { uiText } from '../../utils/uiI18n';
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from '../icons';
@@ -68,7 +69,7 @@ export const Island: React.FC<IslandProps> = ({ name, difficulty, status, positi
         <AnimatePresence>
         <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-max opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
           <div className="px-3 py-1.5 bg-slate-800 text-white text-xs font-bold rounded-lg shadow-xl">
-            {name} <span className="font-normal opacity-80">({difficulty})</span>
+            {name} <span className="font-normal opacity-80">({uiText(difficulty)})</span>
           </div>
         </div>
         </AnimatePresence>

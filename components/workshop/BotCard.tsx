@@ -1,3 +1,4 @@
+import { uiText, uiTemplate } from '../../utils/uiI18n';
 import React, { useEffect, useRef, useState } from "react";
 import type { AiBot } from "../../types";
 import { SequencePngPlayer } from "./SequencePngPlayer";
@@ -96,7 +97,7 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onShowSub
     <div
       role="button"
       tabIndex={0}
-      aria-label={`開啟 ${bot.name}`}
+      aria-label={uiTemplate("開啟 {0}", bot.name)}
       data-idle-preview={idleVideoUrl ? "available" : "unavailable"}
       data-thinking-preview={bot.videoThinking?.trim() ? "available" : "unavailable"}
       data-talking-preview={bot.videoTalking?.trim() ? "available" : "unavailable"}
@@ -130,7 +131,7 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onShowSub
               fps={idleSequence.fps}
               active
               startWhenBuffered
-              aria-label={`${bot.name} 待機動畫`}
+              aria-label={uiTemplate("{0} 待機動畫", bot.name)}
               className="absolute inset-0 h-full w-full rounded-full bg-white object-contain"
             />
           ) : null}
@@ -144,7 +145,7 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onShowSub
               playsInline
               preload="metadata"
               poster={bot.avatarUrl || undefined}
-              aria-label={`${bot.name} 待機動畫`}
+              aria-label={uiTemplate("{0} 待機動畫", bot.name)}
               onError={() => setIdleVideoFailed(true)}
               onEnded={(event) => {
                 if (!isPreviewingIdle) return;
@@ -158,9 +159,7 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onShowSub
 
         <div className="flex flex-col items-end gap-2">
           {bot.hasPendingQuiz ? (
-            <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-600 shadow-sm">
-              測試題
-            </span>
+            <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-600 shadow-sm">{uiText("測試題")}</span>
           ) : null}
         </div>
       </div>
@@ -173,14 +172,14 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onShowSub
 
         {/* 學科顏色 - 你可以改為用戶自定義 */}
         <div className="flex items-center gap-1.5">
-          <span className={`rounded-full px-3 py-1 text-xs font-bold ${colorMap[bot.subjectColor] || colorMap.indigo}`}>{bot.subject}</span>
-          {onShowSubjectHelp ? <button type="button" aria-label="科目標籤説明" onClick={(event) => { event.stopPropagation(); onShowSubjectHelp(); }} className="flex h-[18px] w-[18px] items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-[11px] font-extrabold text-slate-400">?</button> : null}
+          <span className={`rounded-full px-3 py-1 text-xs font-bold ${colorMap[bot.subjectColor] || colorMap.indigo}`}>{uiText(bot.subject)}</span>
+          {onShowSubjectHelp ? <button type="button" aria-label={uiText("科目標籤説明")} onClick={(event) => { event.stopPropagation(); onShowSubjectHelp(); }} className="flex h-[18px] w-[18px] items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-[11px] font-extrabold text-slate-400">?</button> : null}
         </div>
       </div>
 
       {/* 底部：互動次數 */}
       <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-[18px]">
-        <p className="text-[13px] text-slate-400">今日互動 {bot.interactions || 0} 次</p>
+        <p className="text-[13px] text-slate-400">{uiText("今日互動 ")}{bot.interactions || 0}{uiText(" 次")}</p>
         <button
           type="button"
           onClick={(event) => {
@@ -188,9 +187,7 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onShowSub
             onEdit();
           }}
           className="rounded-lg px-2 py-1 text-[13px] font-bold text-indigo-600 transition hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-        >
-          編輯 →
-        </button>
+        >{uiText("編輯 →")}</button>
       </div>
     </div>
   );

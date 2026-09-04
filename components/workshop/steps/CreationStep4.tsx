@@ -1,3 +1,4 @@
+import { uiText } from '../../../utils/uiI18n';
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Icons } from '../../icons';
@@ -13,8 +14,8 @@ const Section: React.FC<{ title: string; children: React.ReactNode; subtitle?: s
   children,
 }) => (
   <div className="border border-slate-200/80 rounded-3xl p-6 space-y-4">
-    <h4 className="text-lg font-bold text-slate-800">{title}</h4>
-    {subtitle && <p className="text-xs text-slate-500 -mt-3">{subtitle}</p>}
+    <h4 className="text-lg font-bold text-slate-800">{uiText(title)}</h4>
+    {subtitle && <p className="text-xs text-slate-500 -mt-3">{uiText(subtitle)}</p>}
     {children}
   </div>
 );
@@ -46,8 +47,8 @@ const PermissionCard: React.FC<{
       <Icon className={`w-5 h-5 ${isSelected ? 'text-indigo-600' : 'text-slate-500'}`} />
     </div>
     <div>
-      <h5 className="font-semibold text-slate-800">{title}</h5>
-      <p className="text-xs text-slate-500">{description}</p>
+      <h5 className="font-semibold text-slate-800">{uiText(title)}</h5>
+      <p className="text-xs text-slate-500">{uiText(description)}</p>
     </div>
   </motion.div>
 );
@@ -70,10 +71,10 @@ const FilterCard: React.FC<{
     }`}
   >
     <div className="flex justify-between items-center mb-2">
-      <h5 className="font-bold text-slate-800">{title}</h5>
+      <h5 className="font-bold text-slate-800">{uiText(title)}</h5>
       {isSelected && <Icons.success className="w-6 h-6 text-indigo-600" />}
     </div>
-    <p className="text-xs text-slate-500">{description}</p>
+    <p className="text-xs text-slate-500">{uiText(description)}</p>
   </div>
 );
 
@@ -173,24 +174,22 @@ ${customWords
     <div className="space-y-6 animate-fade-in">
       {/* Title */}
       <div>
-        <h3 className="text-xl font-bold text-[#1E293B]">5. 安全與權限</h3>
-        <p className="text-sm text-slate-500">
-          設定機器人的使用對象與內容安全級別，保護學生安全。
-        </p>
+        <h3 className="text-xl font-bold text-[#1E293B]">{uiText("5. 安全與權限")}</h3>
+        <p className="text-sm text-slate-500">{uiText("設定機器人的使用對象與內容安全級別，保護學生安全。")}</p>
       </div>
 
-      <Section title="權限分享模式">
+      <Section title={uiText("權限分享模式")}>
         <div className="space-y-3">
           <PermissionCard
             icon={Icons.classes}
-            title="特定羣組"
+            title={uiText("特定羣組")}
             description="僅限指定名單成員存取"
             isSelected={sharingMode === 'group'}
             onClick={() => setSharingMode('group')}
           />
           <PermissionCard
             icon={Icons.link}
-            title="任何擁有連結的人"
+            title={uiText("任何擁有連結的人")}
             description="組織內使用者可憑連結存取"
             isSelected={sharingMode === 'link'}
             onClick={() => setSharingMode('link')}
@@ -225,7 +224,7 @@ ${customWords
               }`}
             >
               {isCopied ? <Icons.success className="w-4 h-4" /> : <Icons.copy className="w-4 h-4" />}
-              <span>{isCopied ? '已複製' : '複製連結'}</span>
+              <span>{isCopied ? uiText('已複製') : uiText('複製連結')}</span>
             </button>
           </motion.div>
         )}
@@ -233,24 +232,24 @@ ${customWords
 
       {/* Safety Filter */}
       <Section
-        title="安全過濾強度"
+        title={uiText("安全過濾強度")}
         subtitle="系統會自動過濾不適當內容，包括色情、暴力、歧視、自殘話題等"
       >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <FilterCard
-            title="標準"
+            title={uiText("標準")}
             description="教育場景預設濾網，適度引導學生"
             isSelected={filterLevel === 'standard'}
             onClick={() => setFilterLevel('standard')}
           />
           <FilterCard
-            title="嚴格"
+            title={uiText("嚴格")}
             description="偵測到敏感內容將停止回答"
             isSelected={filterLevel === 'strict'}
             onClick={() => setFilterLevel('strict')}
           />
           <FilterCard
-            title="自定義"
+            title={uiText("自定義")}
             description="輸入你額外想封鎖的詞彙"
             isSelected={filterLevel === 'custom'}
             onClick={() => setFilterLevel('custom')}
@@ -268,7 +267,7 @@ ${customWords
               maxLength={500}
               value={customWords}
               onChange={(e) => setCustomWords(e.target.value)}
-              placeholder="例如：暴力, 色情, 烏煙瘴氣（使用逗號分隔）"
+              placeholder={uiText("例如：暴力, 色情, 烏煙瘴氣（使用逗號分隔）")}
               className="w-full px-4 py-3 border rounded-xl transition resize-none border-slate-300 focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400"
             />
             <p className="text-right text-xs text-slate-500 mt-1">

@@ -1,3 +1,4 @@
+import { uiText } from '../../utils/uiI18n';
 import React from 'react';
 import { motion } from 'framer-motion';
 import { FileText, Eye, Check } from 'lucide-react';
@@ -53,7 +54,7 @@ export const AssessmentStepper: React.FC<AssessmentStepperProps> = ({ currentSte
               <div className={`mt-3 text-sm tracking-wide transition-colors duration-300 font-['Nunito',_'Noto_Sans_TC']
                 ${isCurrent ? 'text-indigo-600 font-bold' : isCompleted ? 'text-slate-700 font-semibold' : 'text-slate-400 font-medium'}
               `}>
-                {step.id}. {step.label}
+                {step.id}. {uiText(step.label)}
               </div>
             </div>
           );

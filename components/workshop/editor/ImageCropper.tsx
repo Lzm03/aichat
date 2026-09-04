@@ -1,3 +1,4 @@
+import { uiText } from '../../../utils/uiI18n';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icons } from "../../icons";
 import { useBodyScrollLock } from "../../../hooks/useBodyScrollLock";
@@ -308,7 +309,7 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
       <div className="bg-white w-full max-w-4xl rounded-3xl shadow-lg flex flex-col h-[85vh] overflow-hidden">
         <div className="flex flex-col gap-3 p-4 border-b border-slate-200 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="shrink-0 text-lg font-bold text-[#1E293B]">裁剪背景圖</span>
+            <span className="shrink-0 text-lg font-bold text-[#1E293B]">{uiText("裁剪背景圖")}</span>
             <div className="flex min-w-0 flex-1 items-center overflow-x-auto bg-slate-100 p-1 rounded-full sm:flex-none">
               {Object.keys(aspectRatios).map((key) => (
                 <button
@@ -329,15 +330,13 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
             <button
               onClick={onCancel}
               className="whitespace-nowrap px-4 py-2 text-sm font-semibold bg-white border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50"
-            >
-              取消
-            </button>
+            >{uiText("取消")}</button>
             <button
               onClick={handleApply}
               disabled={isApplying}
               className="whitespace-nowrap px-4 py-2 text-sm font-semibold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-60"
             >
-              {isApplying ? "應用中..." : "應用"}
+              {isApplying ? uiText("應用中...") : uiText("應用")}
             </button>
           </div>
         </div>
@@ -382,7 +381,7 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
                       <button
                         key={handle}
                         type="button"
-                        aria-label="調整裁剪框"
+                        aria-label={uiText("調整裁剪框")}
                         onPointerDown={startFreeResize(handle)}
                         onPointerMove={onFreeResizeMove}
                         onPointerUp={onFreeResizeEnd}
@@ -399,7 +398,7 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
 
         <div className="p-4 border-t border-slate-200 flex flex-col gap-3">
           <div className="flex items-center space-x-3">
-            <span className="text-sm font-medium text-slate-600 whitespace-nowrap">縮放</span>
+            <span className="text-sm font-medium text-slate-600 whitespace-nowrap">{uiText("縮放")}</span>
             <input
               type="range"
               min="1"
@@ -411,9 +410,7 @@ export const ImageCropper: React.FC<ImageCropperProps> = ({
             />
           </div>
           {aspect === "自由" && (
-            <p className="text-xs font-semibold text-slate-500">
-                自由模式：拖動裁剪框邊緣或角點調整範圍，圖片保持不動。
-            </p>
+            <p className="text-xs font-semibold text-slate-500">{uiText("自由模式：拖動裁剪框邊緣或角點調整範圍，圖片保持不動。")}</p>
           )}
         </div>
       </div>

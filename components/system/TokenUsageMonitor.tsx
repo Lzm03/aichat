@@ -1,4 +1,5 @@
 import React from 'react';
+import { uiText } from '../../utils/uiI18n';
 import { Icons } from '../icons';
 
 interface TokenUsageMonitorProps {
@@ -25,7 +26,7 @@ export const TokenUsageMonitor: React.FC<TokenUsageMonitorProps> = ({ used, tota
 
   return (
     <button
-      title={tooltipText}
+      title={uiText(tooltipText)}
       className="relative flex h-10 items-center gap-1.5 overflow-hidden rounded-full bg-slate-100/80 px-2.5 transition-colors hover:bg-slate-200/80 group cursor-pointer sm:h-11 sm:gap-2 sm:px-4"
     >
       <Icons.cpu className={`h-4 w-4 sm:h-5 sm:w-5 ${iconColor}`} />

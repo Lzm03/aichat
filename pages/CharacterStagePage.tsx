@@ -1,3 +1,4 @@
+import { uiText, uiError } from '../utils/uiI18n';
 import React, { useEffect, useMemo, useState } from "react";
 import { SequencePngPlayer } from "../components/workshop/SequencePngPlayer";
 
@@ -53,8 +54,8 @@ export const CharacterStagePage: React.FC<{ botId: string }> = ({ botId }) => {
     speaking: bot?.videoTalking || bot?.videoIdle || "",
   }), [bot]);
 
-  if (error && !bot) return <div className="flex h-screen items-center justify-center bg-slate-100 text-sm text-slate-600">{error}</div>;
-  if (!bot) return <div className="flex h-screen items-center justify-center bg-slate-100 text-sm text-slate-500">正在載入角色…</div>;
+  if (error && !bot) return <div className="flex h-screen items-center justify-center bg-slate-100 text-sm text-slate-600">{uiError(error)}</div>;
+  if (!bot) return <div className="flex h-screen items-center justify-center bg-slate-100 text-sm text-slate-500">{uiText("正在載入角色…")}</div>;
 
   const renderCharacter = (key: CharacterState) => {
     const manifest = manifests[key];

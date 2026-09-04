@@ -1,3 +1,4 @@
+import { uiText } from '../../utils/uiI18n';
 import React, { useState } from 'react';
 import { AssessmentStepper } from '../shared/AssessmentStepper';
 import { Icons } from '../icons';
@@ -81,17 +82,13 @@ export const AssessmentWizard: React.FC<AssessmentWizardProps> = ({ onBack, draf
   return (
     <div className="max-w-5xl mx-auto h-full flex flex-col">
       <button onClick={onBack} className="flex items-center text-sm font-medium text-slate-600 hover:text-indigo-600 mb-6 transition-colors self-start">
-        <Icons.back className="w-4 h-4 mr-2" />
-        返回智能評測
-      </button>
+        <Icons.back className="w-4 h-4 mr-2" />{uiText("返回智能評測")}</button>
 
       <AssessmentStepper currentStep={currentStep} isDraftMode={isDraftMode} />
 
       <div className="mt-2 flex-1 flex flex-col">
         {loadingDraft ? (
-          <div className="rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">
-            正在載入草稿內容...
-          </div>
+          <div className="rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">{uiText("正在載入草稿內容...")}</div>
         ) : null}
         {!loadingDraft && currentStep === 1 && (
           <Step1TextAndGrade

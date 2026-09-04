@@ -1,3 +1,4 @@
+import { uiText } from '../utils/uiI18n';
 import React, { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
@@ -72,12 +73,10 @@ export const HelpCenterPage: React.FC<{ variant?: "student" | "teacher" }> = ({ 
           href="/"
           className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] px-4 py-2 text-sm font-semibold text-[var(--text-body)] transition hover:bg-[var(--bg-subtle)]"
         >
-          <Icons.back className="h-4 w-4" />
-          返回工作台
-        </a>
+          <Icons.back className="h-4 w-4" />{uiText("返回工作台")}</a>
 
-        <h1 className="mt-6 text-3xl font-black tracking-tight text-[var(--text-main)]">幫助中心</h1>
-        <p className="mt-2 text-sm leading-6 text-[var(--text-muted)]">常見問題與聯絡方式</p>
+        <h1 className="mt-6 text-3xl font-black tracking-tight text-[var(--text-main)]">{uiText("幫助中心")}</h1>
+        <p className="mt-2 text-sm leading-6 text-[var(--text-muted)]">{uiText("常見問題與聯絡方式")}</p>
 
         {/* ---- 常見問題（摺疊） ---- */}
         <section className="mt-8 space-y-3">
@@ -90,7 +89,7 @@ export const HelpCenterPage: React.FC<{ variant?: "student" | "teacher" }> = ({ 
                   onClick={() => setOpenIndex(isOpen ? null : index)}
                   className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
                 >
-                  <span className="text-sm font-bold text-[var(--text-main)]">{faq.q}</span>
+                  <span className="text-sm font-bold text-[var(--text-main)]">{uiText(faq.q)}</span>
                   <ChevronDown
                     className={`h-5 w-5 shrink-0 text-[var(--text-muted)] transition-transform duration-300 ${isOpen ? "rotate-180" : ""}`}
                   />
@@ -103,7 +102,7 @@ export const HelpCenterPage: React.FC<{ variant?: "student" | "teacher" }> = ({ 
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.25 }}
                     >
-                      <p className="border-t border-[var(--border-soft)] px-5 py-4 text-sm leading-7 text-[var(--text-muted)]">{faq.a}</p>
+                      <p className="border-t border-[var(--border-soft)] px-5 py-4 text-sm leading-7 text-[var(--text-muted)]">{uiText(faq.a)}</p>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -116,15 +115,13 @@ export const HelpCenterPage: React.FC<{ variant?: "student" | "teacher" }> = ({ 
         {variant === "teacher" && (
           <section className="mt-8 flex flex-col items-center justify-between gap-4 rounded-[24px] border border-[var(--accent-border)] bg-[var(--accent-soft)] p-6 sm:flex-row">
             <div>
-              <p className="text-sm font-bold text-[var(--text-main)]">PRO 方案説明</p>
-              <p className="mt-1 text-xs text-[var(--text-muted)]">了解方案內容與權益</p>
+              <p className="text-sm font-bold text-[var(--text-main)]">{uiText("PRO 方案説明")}</p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">{uiText("了解方案內容與權益")}</p>
             </div>
             <a
               href="/pro"
               className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition hover:brightness-110 active:scale-95"
-            >
-              查看方案説明
-              <Icons.right className="h-4 w-4" />
+            >{uiText("查看方案説明")}<Icons.right className="h-4 w-4" />
             </a>
           </section>
         )}
@@ -135,7 +132,7 @@ export const HelpCenterPage: React.FC<{ variant?: "student" | "teacher" }> = ({ 
             <div key={group.label} className="rounded-[24px] border border-[var(--border-soft)] bg-[var(--bg-card)] p-5 shadow-[var(--shadow-card)]">
               <div className="flex items-center gap-2">
                 <span className="text-xl" aria-hidden="true">{group.icon}</span>
-                <span className="text-sm font-bold text-[var(--text-main)]">{group.label}</span>
+                <span className="text-sm font-bold text-[var(--text-main)]">{uiText(group.label)}</span>
               </div>
               <div className="mt-4 space-y-3">
                 {group.lines.map((line) => (
@@ -144,8 +141,8 @@ export const HelpCenterPage: React.FC<{ variant?: "student" | "teacher" }> = ({ 
                     href={line.href}
                     className="block rounded-2xl border border-[var(--border)] bg-[var(--bg-subtle)] px-4 py-3 transition hover:border-[var(--accent-border)]"
                   >
-                    <div className="text-sm font-bold text-[var(--text-body)]">{line.text}</div>
-                    {line.sub && <div className="mt-0.5 text-xs text-[var(--text-faint)]">{line.sub}</div>}
+                    <div className="text-sm font-bold text-[var(--text-body)]">{uiText(line.text)}</div>
+                    {line.sub && <div className="mt-0.5 text-xs text-[var(--text-faint)]">{uiText(line.sub)}</div>}
                   </a>
                 ))}
               </div>

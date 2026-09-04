@@ -1,3 +1,4 @@
+import { uiText } from '../utils/uiI18n';
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { API_BASE } from "../utils/api";
@@ -98,12 +99,8 @@ export const AuthPage: React.FC = () => {
       <main className="relative z-10 mx-auto flex min-h-[calc(100vh-88px)] max-w-6xl flex-col justify-center gap-10 px-6 py-10 md:px-10 lg:grid lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
         <section className="max-w-xl">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
-            <h1 className="mt-6 text-4xl font-black leading-tight tracking-tight text-slate-900 md:text-6xl">
-              專為學習而設
-            </h1>
-            <p className="mt-5 text-base leading-7 text-slate-600 md:text-lg">
-              Chopreality 是一個無需編程的AI 藝術創作平台，讓師生在零基礎下也能輕鬆一站式創作不同AI作品，製作出用於教學或展示的互動作品。
-            </p>
+            <h1 className="mt-6 text-4xl font-black leading-tight tracking-tight text-slate-900 md:text-6xl">{uiText("專為學習而設")}</h1>
+            <p className="mt-5 text-base leading-7 text-slate-600 md:text-lg">{uiText("Chopreality 是一個無需編程的AI 藝術創作平台，讓師生在零基礎下也能輕鬆一站式創作不同AI作品，製作出用於教學或展示的互動作品。")}</p>
           </motion.div>
         </section>
 
@@ -114,14 +111,14 @@ export const AuthPage: React.FC = () => {
           className="rounded-[2rem] border border-slate-200/80 bg-white/88 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.10)] backdrop-blur md:p-7"
         >
           <div className="mt-6">
-            <div className="text-2xl font-black tracking-tight text-slate-900">歡迎回來</div>
-            <p className="mt-2 text-sm text-slate-500">選擇你的身份，進入專屬學習空間。</p>
+            <div className="text-2xl font-black tracking-tight text-slate-900">{uiText("歡迎回來")}</div>
+            <p className="mt-2 text-sm text-slate-500">{uiText("選擇你的身份，進入專屬學習空間。")}</p>
           </div>
 
           <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
             <div>
-              <span className="mb-2 block text-sm font-semibold text-slate-700">登入方式</span>
-              <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1.5" role="group" aria-label="登入方式">
+              <span className="mb-2 block text-sm font-semibold text-slate-700">{uiText("登入方式")}</span>
+              <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1.5" role="group" aria-label={uiText("登入方式")}>
                 {(["teacher", "student"] as const).map((role) => {
                   const selected = loginRole === role;
                   return (
@@ -139,7 +136,7 @@ export const AuthPage: React.FC = () => {
                           : "text-slate-500 hover:text-slate-800"
                       }`}
                     >
-                      {role === "teacher" ? "教師登入" : "學生登入"}
+                      {role === "teacher" ? uiText("教師登入") : uiText("學生登入")}
                     </button>
                   );
                 })}
@@ -147,7 +144,7 @@ export const AuthPage: React.FC = () => {
             </div>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-slate-700">電郵</span>
+              <span className="mb-2 block text-sm font-semibold text-slate-700">{uiText("電郵")}</span>
               <input
                 type="email"
                 placeholder="hello@chopreality.com"
@@ -158,7 +155,7 @@ export const AuthPage: React.FC = () => {
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-slate-700">密碼</span>
+              <span className="mb-2 block text-sm font-semibold text-slate-700">{uiText("密碼")}</span>
               <input
                 type="password"
                 placeholder="••••••••"
@@ -176,7 +173,7 @@ export const AuthPage: React.FC = () => {
                   onChange={(event) => setRememberMe(event.target.checked)}
                   className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                 />
-                <span>記住我</span>
+                <span>{uiText("記住我")}</span>
               </label>
             </div>
 
@@ -188,7 +185,7 @@ export const AuthPage: React.FC = () => {
                     : "border-emerald-200 bg-emerald-50 text-emerald-700"
                 }`}
               >
-                {errorMessage || successMessage}
+                {uiText(errorMessage) || successMessage}
               </div>
             )}
 
@@ -197,7 +194,7 @@ export const AuthPage: React.FC = () => {
               disabled={loading}
               className="mt-2 inline-flex w-full items-center justify-center rounded-2xl bg-indigo-600 px-5 py-3.5 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-400"
             >
-              {loading ? "提交中..." : loginRole === "student" ? "進入學生平台" : "進入教師工作台"}
+              {loading ? uiText("提交中...") : loginRole === "student" ? uiText("進入學生平台") : uiText("進入教師工作台")}
             </button>
           </form>
         </motion.section>

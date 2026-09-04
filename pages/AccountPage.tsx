@@ -1,3 +1,4 @@
+import { uiText, uiError } from '../utils/uiI18n';
 import React, { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Icons } from "../components/icons";
@@ -253,21 +254,19 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
       <div className="rounded-[32px] border border-[var(--border-soft)] bg-[var(--bg-card)] p-6 shadow-sm md:p-8">
         <div className="flex flex-col gap-3 border-b border-[var(--border)] pb-6 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="mt-2 text-3xl font-black tracking-tight text-[var(--text-main)]">帳戶中心</h1>
-            <p className="mt-2 text-sm leading-6 text-[var(--text-muted)]">{isStudent ? "更新你的頭像、用戶名和帳戶基本資料。" : "更新你的頭像、名字和帳戶基本資料。"}</p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-[var(--text-main)]">{uiText("帳戶中心")}</h1>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-muted)]">{isStudent ? uiText("更新你的頭像、用戶名和帳戶基本資料。") : uiText("更新你的頭像、名字和帳戶基本資料。")}</p>
           </div>
           <a href="/" className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] px-4 py-2 text-sm font-semibold text-[var(--text-body)] hover:bg-[var(--bg-subtle)]">
-            <Icons.back className="h-4 w-4" />
-            返回工作台
-          </a>
+            <Icons.back className="h-4 w-4" />{uiText("返回工作台")}</a>
           {!isStudent && (
-            <a href="/pro" className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">PRO 方案説明</a>
+            <a href="/pro" className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">{uiText("PRO 方案説明")}</a>
           )}
         </div>
 
         <form className="mt-8 grid gap-8 lg:grid-cols-[320px_minmax(0,1fr)]" onSubmit={handleSave}>
           <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-subtle)] p-5">
-            <div className="text-sm font-bold text-[var(--text-body)]">頭像</div>
+            <div className="text-sm font-bold text-[var(--text-body)]">{uiText("頭像")}</div>
             <div className="mt-5 flex flex-col items-center gap-4">
               <img
                 src={avatarUrl || defaultAvatars[0]}
@@ -280,7 +279,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
                   onClick={() => fileInputRef.current?.click()}
                   className="rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-bold text-white hover:bg-[var(--accent)]"
                 >
-                  {uploading ? "上傳中..." : "上傳照片"}
+                  {uploading ? uiText("上傳中...") : uiText("上傳照片")}
                 </button>
                 <input
                   ref={fileInputRef}
@@ -295,7 +294,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
                 />
               </div>
               <div className="w-full">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-faint)]">默認頭像</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-faint)]">{uiText("默認頭像")}</div>
                 <div className="mt-3 grid grid-cols-3 gap-3">
                   {defaultAvatars.map((preset) => (
                     <button
@@ -317,7 +316,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
           <section className="space-y-5">
             <div className="grid gap-5 md:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-[var(--text-body)]">{isStudent ? "用戶名" : "名字"}</span>
+                <span className="mb-2 block text-sm font-semibold text-[var(--text-body)]">{isStudent ? uiText("用戶名") : uiText("名字")}</span>
                 <input
                   type="text"
                   value={fullName}
@@ -326,7 +325,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
                 />
               </label>
               <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-[var(--text-body)]">電郵</span>
+                <span className="mb-2 block text-sm font-semibold text-[var(--text-body)]">{uiText("電郵")}</span>
                 <input
                   type="email"
                   value={currentUser.email}
@@ -338,11 +337,11 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
 
             <div className="grid gap-5 md:grid-cols-2">
               <div className="rounded-3xl border border-[var(--border)] bg-[var(--bg-subtle)] p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-faint)]">角色</div>
-                <div className="mt-2 text-lg font-bold text-[var(--text-main)]">{roleLabel}</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-faint)]">{uiText("角色")}</div>
+                <div className="mt-2 text-lg font-bold text-[var(--text-main)]">{uiText(roleLabel)}</div>
               </div>
               <div className="rounded-3xl border border-[var(--border)] bg-[var(--bg-subtle)] p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-faint)]">套餐</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-faint)]">{uiText("套餐")}</div>
                 <div className="mt-2 text-lg font-bold text-[var(--text-main)]">{currentUser.plan || "starter"}</div>
               </div>
             </div>
@@ -355,7 +354,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
                   error ? "border-rose-200 bg-rose-50 text-rose-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"
                 }`}
               >
-                {error || message}
+                {uiError(error) || uiText(message)}
               </motion.div>
             )}
 
@@ -368,7 +367,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
                     disabled={resettingUsage}
                     className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-3 text-sm font-bold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {resettingUsage ? "重置中..." : "重置使用次數"}
+                    {resettingUsage ? uiText("重置中...") : uiText("重置使用次數")}
                   </button>
                 )}
                 <button
@@ -376,7 +375,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
                   disabled={saving || uploading}
                   className="rounded-2xl bg-[var(--accent)] px-6 py-3 text-sm font-bold text-white hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:bg-indigo-400"
                 >
-                  {saving ? "儲存中..." : "儲存帳戶資料"}
+                  {saving ? uiText("儲存中...") : uiText("儲存帳戶資料")}
                 </button>
               </div>
             </div>
@@ -385,76 +384,76 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
 
         {/* ---- 安全設定 ---- */}
         <section className="mt-8 border-t border-[var(--border)] pt-8">
-          <h2 className="text-2xl font-black tracking-tight text-[var(--text-main)]">安全設定</h2>
+          <h2 className="text-2xl font-black tracking-tight text-[var(--text-main)]">{uiText("安全設定")}</h2>
 
           <form onSubmit={handleChangePassword} className="mt-5 rounded-[28px] border border-[var(--border)] bg-[var(--bg-subtle)] p-5">
-            <div className="text-sm font-bold text-[var(--text-body)]">修改密碼</div>
+            <div className="text-sm font-bold text-[var(--text-body)]">{uiText("修改密碼")}</div>
             <div className="mt-4 grid gap-4 md:grid-cols-3">
               <input
                 type="password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                placeholder="目前密碼"
+                placeholder={uiText("目前密碼")}
                 className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3 text-sm text-[var(--text-main)] outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--accent-soft)]"
               />
               <input
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="新密碼（至少 8 個字元）"
+                placeholder={uiText("新密碼（至少 8 個字元）")}
                 className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3 text-sm text-[var(--text-main)] outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--accent-soft)]"
               />
               <input
                 type="password"
                 value={confirmNewPassword}
                 onChange={(e) => setConfirmNewPassword(e.target.value)}
-                placeholder="確認新密碼"
+                placeholder={uiText("確認新密碼")}
                 className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3 text-sm text-[var(--text-main)] outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--accent-soft)]"
               />
             </div>
             <div className="mt-4 flex items-center justify-between gap-3">
-              <p className="text-xs text-[var(--text-muted)]">新密碼至少 8 個字元。</p>
+              <p className="text-xs text-[var(--text-muted)]">{uiText("新密碼至少 8 個字元。")}</p>
               <button type="submit" disabled={pwSaving} className="rounded-2xl bg-[var(--accent)] px-6 py-2.5 text-sm font-bold text-white transition hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60">
-                {pwSaving ? "更新中..." : "更新密碼"}
+                {pwSaving ? uiText("更新中...") : uiText("更新密碼")}
               </button>
             </div>
-            {pwError && <p className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-700">{pwError}</p>}
-            {pwMessage && <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">{pwMessage}</p>}
+            {pwError && <p className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-700">{uiError(pwError)}</p>}
+            {pwMessage && <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">{uiText(pwMessage)}</p>}
           </form>
 
           <form onSubmit={handleChangeEmail} className="mt-5 rounded-[28px] border border-[var(--border)] bg-[var(--bg-subtle)] p-5">
-            <div className="text-sm font-bold text-[var(--text-body)]">更改郵箱</div>
+            <div className="text-sm font-bold text-[var(--text-body)]">{uiText("更改郵箱")}</div>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <input
                 type="email"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
-                placeholder="新電郵地址"
+                placeholder={uiText("新電郵地址")}
                 className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3 text-sm text-[var(--text-main)] outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--accent-soft)]"
               />
               <input
                 type="password"
                 value={emailPassword}
                 onChange={(e) => setEmailPassword(e.target.value)}
-                placeholder="目前密碼"
+                placeholder={uiText("目前密碼")}
                 className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3 text-sm text-[var(--text-main)] outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--accent-soft)]"
               />
             </div>
             <div className="mt-4 flex items-center justify-between gap-3">
-              <p className="text-xs text-[var(--text-muted)]">更改郵箱需要輸入目前密碼確認。</p>
+              <p className="text-xs text-[var(--text-muted)]">{uiText("更改郵箱需要輸入目前密碼確認。")}</p>
               <button type="submit" disabled={emailSaving} className="rounded-2xl bg-[var(--accent)] px-6 py-2.5 text-sm font-bold text-white transition hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60">
-                {emailSaving ? "更新中..." : "更新電郵"}
+                {emailSaving ? uiText("更新中...") : uiText("更新電郵")}
               </button>
             </div>
-            {emailError && <p className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-700">{emailError}</p>}
-            {emailMessage && <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">{emailMessage}</p>}
+            {emailError && <p className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-700">{uiError(emailError)}</p>}
+            {emailMessage && <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">{uiText(emailMessage)}</p>}
           </form>
         </section>
 
         {/* ---- 外觀 ---- */}
         <section className="mt-8 border-t border-[var(--border)] pt-8">
-          <h2 className="text-2xl font-black tracking-tight text-[var(--text-main)]">外觀</h2>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">選擇工作台的主題模式。</p>
+          <h2 className="text-2xl font-black tracking-tight text-[var(--text-main)]">{uiText("外觀")}</h2>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">{uiText("選擇工作台的主題模式。")}</p>
           <div className="mt-4 flex max-w-xs gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg-subtle-2)] p-1">
             {(["light", "midnight"] as const).map((mode) => {
               const selected = (preferences.appearance.themeMode === "midnight") === (mode === "midnight");
@@ -468,7 +467,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
                     selected ? "bg-[var(--accent)] text-white shadow-sm" : "text-[var(--text-muted)] hover:text-[var(--text-main)]"
                   }`}
                 >
-                  {mode === "light" ? "明亮" : "深色"}
+                  {mode === "light" ? uiText("明亮") : uiText("深色")}
                 </button>
               );
             })}
@@ -483,10 +482,8 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
       )}
 
       <div className="mt-6 rounded-[28px] border border-[var(--border)] bg-[var(--bg-card)] p-6 shadow-sm">
-        <h2 className="mt-2 text-2xl font-black tracking-tight text-[var(--text-main)]">聯絡我們</h2>
-        <p className="mt-3 text-sm leading-7 text-[var(--text-body)]">
-          如果你希望提供產品意見、瞭解付費方案，或購買我們的機器人創建服務，可以直接聯絡我們。
-        </p>
+        <h2 className="mt-2 text-2xl font-black tracking-tight text-[var(--text-main)]">{uiText("聯絡我們")}</h2>
+        <p className="mt-3 text-sm leading-7 text-[var(--text-body)]">{uiText("如果你希望提供產品意見、瞭解付費方案，或購買我們的機器人創建服務，可以直接聯絡我們。")}</p>
         <div className="mt-5">
           <div className="rounded-3xl border border-[var(--border)] bg-[var(--bg-subtle)] p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-faint)]">Email</div>

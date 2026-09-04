@@ -1,3 +1,4 @@
+import { uiText, uiTemplate, uiLocale } from '../../utils/uiI18n';
 import React from "react";
 import { Check, MoreHorizontal, Trash2, Pencil } from "lucide-react";
 import type { ConversationSummary } from "../../types/chat";
@@ -5,7 +6,7 @@ import type { ConversationSummary } from "../../types/chat";
 function formatUpdatedTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString("zh-HK", {
+  return date.toLocaleTimeString(uiLocale(), {
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -54,7 +55,7 @@ export const ConversationListItem: React.FC<ConversationListItemProps> = ({
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold text-slate-800">{conversation.title}</div>
             <div className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
-              {conversation.lastMessagePreview || "尚未開始對話"}
+              {conversation.lastMessagePreview || uiText("尚未開始對話")}
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -74,7 +75,7 @@ export const ConversationListItem: React.FC<ConversationListItemProps> = ({
               <span
                 role="button"
                 tabIndex={0}
-                aria-label={`開啟「${conversation.title}」選單`}
+                aria-label={uiTemplate("開啟「{0}」選單", conversation.title)}
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
@@ -102,17 +103,13 @@ export const ConversationListItem: React.FC<ConversationListItemProps> = ({
             onClick={onRename}
             className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-[#F7EEDC]"
           >
-            <Pencil size={14} />
-            重新命名
-          </button>
+            <Pencil size={14} />{uiText("重新命名")}</button>
           <button
             type="button"
             onClick={onDelete}
             className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-red-500 transition hover:bg-[#FFF1EB]"
           >
-            <Trash2 size={14} />
-            刪除
-          </button>
+            <Trash2 size={14} />{uiText("刪除")}</button>
         </div>
       ) : null}
     </div>

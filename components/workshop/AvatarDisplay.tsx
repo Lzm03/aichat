@@ -1,4 +1,6 @@
 'use client';
+
+import { uiError } from '../../utils/uiI18n';
 import React, { useEffect, useRef, useState } from 'react';
 import { SelfieSegmentation } from '@mediapipe/selfie_segmentation';
 
@@ -160,7 +162,7 @@ export const AvatarDisplay: React.FC<AvatarDisplayProps> = ({
       {error && (
         <div className="absolute inset-0 flex items-center justify-center">
           <p className="text-xs text-red-500 p-2 bg-red-100 rounded-lg border">
-            {error}
+            {uiError(error)}
           </p>
         </div>
       )}

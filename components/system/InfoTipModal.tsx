@@ -1,3 +1,4 @@
+import { uiText } from '../../utils/uiI18n';
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
@@ -32,22 +33,20 @@ export const InfoTipModal: React.FC<InfoTipModalProps> = ({ open, title, body, o
         >
           <button
             type="button"
-            aria-label="關閉"
+            aria-label={uiText("關閉")}
             onClick={onClose}
             className="absolute right-4 top-4 flex h-[26px] w-[26px] items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200"
           >
             <X className="h-3.5 w-3.5" />
           </button>
           <div className="mb-3.5 h-1 w-9 rounded-full bg-indigo-500" />
-          <h4 id="info-tip-title" className="text-[17px] font-extrabold text-slate-950">{title}</h4>
-          <p className="mt-2.5 whitespace-pre-line text-sm leading-[1.8] text-slate-600">{body}</p>
+          <h4 id="info-tip-title" className="text-[17px] font-extrabold text-slate-950">{uiText(title)}</h4>
+          <p className="mt-2.5 whitespace-pre-line text-sm leading-[1.8] text-slate-600">{uiText(body)}</p>
           <button
             type="button"
             onClick={onClose}
             className="mt-[18px] w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-indigo-700"
-          >
-            瞭解
-          </button>
+          >{uiText("瞭解")}</button>
         </motion.div>
       </motion.div>
     ) : null}

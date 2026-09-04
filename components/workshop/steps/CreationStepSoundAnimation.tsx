@@ -1,4 +1,7 @@
 "use client";
+
+import { uiText, uiTemplate } from '../../../utils/uiI18n';
+import { useTeacherLang } from '../../../utils/teacherI18n';
 import React, { useMemo, useState, useEffect } from "react";
 import { Icons } from "../../icons";
 import VideoStudioModal from "../VideoStudioModal";
@@ -11,7 +14,7 @@ import { PlatformDialog } from "../../system/PlatformDialog";
 // ============ Section Wrapper ============
 const Section = ({ title, children }: any) => (
   <div className="pt-6">
-    <h4 className="text-md font-bold text-[#1E293B] mb-3">{title}</h4>
+    <h4 className="text-md font-bold text-[#1E293B] mb-3">{uiText(title)}</h4>
     {children}
   </div>
 );
@@ -126,6 +129,12 @@ const localizeVoiceName = (name: string) => {
 
 // ============ 聲線選擇組件 ============
 const VoiceSelect = ({ voices, selected, onSelect }: any) => {
+  const lang = useTeacherLang();
+  const displayVoice = (voice: any) => {
+    if (lang !== 'en') return voice.displayName;
+    const translated = uiText(voice.voice_name || voice.displayName);
+    return /[\u3400-\u9fff]/.test(translated) ? `Voice ${voice.voice_id}` : translated;
+  };
   const [keyword, setKeyword] = useState("");
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
   const [ageFilter, setAgeFilter] = useState<
@@ -222,7 +231,7 @@ const VoiceSelect = ({ voices, selected, onSelect }: any) => {
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
     const base = normalized.filter((v: any) => {
-      if (!v.searchText.includes(kw)) return false;
+      if (!v.searchText.includes(kw) && !displayVoice(v).toLowerCase().includes(kw)) return false;
       if (ageFilter === "all") return true;
       return v.ageGroup === ageFilter;
     });
@@ -259,7 +268,7 @@ const VoiceSelect = ({ voices, selected, onSelect }: any) => {
       other: sortByDiverseTag(other),
       usedSeniorFallback: false,
     };
-  }, [normalized, genderFilter, keyword, ageFilter]);
+  }, [normalized, genderFilter, keyword, ageFilter, lang]);
 
   const selectedVoice = normalized.find((v: any) => v.voice_id === selected);
 
@@ -272,40 +281,32 @@ const VoiceSelect = ({ voices, selected, onSelect }: any) => {
           className={`py-2 text-sm rounded-lg font-semibold ${
             genderFilter === "all" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-600"
           }`}
-        >
-          全部
-        </button>
+        >{uiText("全部")}</button>
         <button
           type="button"
           onClick={() => setGenderFilter("male")}
           className={`py-2 text-sm rounded-lg font-semibold ${
             genderFilter === "male" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-600"
           }`}
-        >
-          男聲
-        </button>
+        >{uiText("男聲")}</button>
         <button
           type="button"
           onClick={() => setGenderFilter("female")}
           className={`py-2 text-sm rounded-lg font-semibold ${
             genderFilter === "female" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-600"
           }`}
-        >
-          女聲
-        </button>
+        >{uiText("女聲")}</button>
       </div>
 
       {ageFilter === "senior" && (
-        <p className="text-xs text-slate-500">
-          建議先使用「全部」查看長者音色，之後再用關鍵字細篩。
-        </p>
+        <p className="text-xs text-slate-500">{uiText("建議先使用「全部」查看長者音色，之後再用關鍵字細篩。")}</p>
       )}
 
       <input
         type="text"
         value={keyword}
         onChange={(e) => setKeyword(e.target.value)}
-        placeholder="搜尋聲線（名稱或關鍵字）"
+        placeholder={uiText("搜尋聲線（名稱或關鍵字）")}
         className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-300"
       />
 
@@ -329,24 +330,22 @@ const VoiceSelect = ({ voices, selected, onSelect }: any) => {
                 : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
             }`}
           >
-            {item.label}
+            {uiText(item.label)}
           </button>
         ))}
       </div>
 
       <div className="border rounded-xl bg-white max-h-60 overflow-y-auto">
         {filtered.usedSeniorFallback && (
-          <div className="px-3 py-2 text-xs text-amber-700 bg-amber-50 border-b border-amber-100">
-            目前供應商未提供明確「長者」標記聲線，已自動顯示較成熟的替代音色。
-          </div>
+          <div className="px-3 py-2 text-xs text-amber-700 bg-amber-50 border-b border-amber-100">{uiText("目前供應商未提供明確「長者」標記聲線，已自動顯示較成熟的替代音色。")}</div>
         )}
         {filtered.male.length === 0 && filtered.female.length === 0 && filtered.other.length === 0 ? (
-          <div className="p-4 text-sm text-slate-500">找不到符合的聲線，請換個關鍵字。</div>
+          <div className="p-4 text-sm text-slate-500">{uiText("找不到符合的聲線，請換個關鍵字。")}</div>
         ) : (
           <div className="p-2 space-y-3">
             {filtered.male.length > 0 && (
               <div>
-                <div className="px-2 py-1 text-xs font-semibold text-slate-500">男聲</div>
+                <div className="px-2 py-1 text-xs font-semibold text-slate-500">{uiText("男聲")}</div>
                 <div className="space-y-1">
                   {filtered.male.map((v: any) => {
                     const active = selected === v.voice_id;
@@ -361,9 +360,9 @@ const VoiceSelect = ({ voices, selected, onSelect }: any) => {
                             : "bg-white border-transparent hover:bg-slate-50"
                         }`}
                       >
-                        <div className="text-sm font-medium">{v.displayName}</div>
+                        <div className="text-sm font-medium">{displayVoice(v)}</div>
                         <div className="text-[11px] text-slate-500 mt-0.5">
-                          {ageLabelMap[v.ageGroup as keyof typeof ageLabelMap] || "成人"}
+                          {uiText(ageLabelMap[v.ageGroup as keyof typeof ageLabelMap]) || uiText("成人")}
                         </div>
                       </button>
                     );
@@ -374,7 +373,7 @@ const VoiceSelect = ({ voices, selected, onSelect }: any) => {
 
             {filtered.female.length > 0 && (
               <div>
-                <div className="px-2 py-1 text-xs font-semibold text-slate-500">女聲</div>
+                <div className="px-2 py-1 text-xs font-semibold text-slate-500">{uiText("女聲")}</div>
                 <div className="space-y-1">
                   {filtered.female.map((v: any) => {
                     const active = selected === v.voice_id;
@@ -389,9 +388,9 @@ const VoiceSelect = ({ voices, selected, onSelect }: any) => {
                             : "bg-white border-transparent hover:bg-slate-50"
                         }`}
                       >
-                        <div className="text-sm font-medium">{v.displayName}</div>
+                        <div className="text-sm font-medium">{displayVoice(v)}</div>
                         <div className="text-[11px] text-slate-500 mt-0.5">
-                          {ageLabelMap[v.ageGroup as keyof typeof ageLabelMap] || "成人"}
+                          {uiText(ageLabelMap[v.ageGroup as keyof typeof ageLabelMap]) || uiText("成人")}
                         </div>
                       </button>
                     );
@@ -402,7 +401,7 @@ const VoiceSelect = ({ voices, selected, onSelect }: any) => {
 
             {genderFilter === "all" && filtered.other.length > 0 && (
               <div>
-                <div className="px-2 py-1 text-xs font-semibold text-slate-500">其他聲線</div>
+                <div className="px-2 py-1 text-xs font-semibold text-slate-500">{uiText("其他聲線")}</div>
                 <div className="space-y-1">
                   {filtered.other.map((v: any) => {
                     const active = selected === v.voice_id;
@@ -417,9 +416,9 @@ const VoiceSelect = ({ voices, selected, onSelect }: any) => {
                             : "bg-white border-transparent hover:bg-slate-50"
                         }`}
                       >
-                        <div className="text-sm font-medium">{v.displayName}</div>
+                        <div className="text-sm font-medium">{displayVoice(v)}</div>
                         <div className="text-[11px] text-slate-500 mt-0.5">
-                          {ageLabelMap[v.ageGroup as keyof typeof ageLabelMap] || "成人"}
+                          {uiText(ageLabelMap[v.ageGroup as keyof typeof ageLabelMap]) || uiText("成人")}
                         </div>
                       </button>
                     );
@@ -431,8 +430,7 @@ const VoiceSelect = ({ voices, selected, onSelect }: any) => {
         )}
       </div>
 
-      <div className="text-xs text-slate-500">
-        已選擇：{selectedVoice ? selectedVoice.displayName : "未選擇聲線"}
+      <div className="text-xs text-slate-500">{uiText("已選擇：")}{selectedVoice ? displayVoice(selectedVoice) : uiText("未選擇聲線")}
       </div>
     </div>
   );
@@ -601,7 +599,7 @@ export const CreationStepSoundAnimation = ({
     <div className="space-y-6 animate-fade-in">
 
       {/* ================== 聲音 ================== */}
-      <Section title="聲音製作">
+      <Section title={uiText("聲音製作")}>
         <VoiceSelect
           voices={voiceList}
           selected={selectedVoice}
@@ -619,12 +617,12 @@ export const CreationStepSoundAnimation = ({
               : "bg-white"
           }`}
         >
-          {isAuditioning ? "試聽中…" : "試聽"}
+          {isAuditioning ? uiText("試聽中…") : uiText("試聽")}
         </button>
       </Section>
 
       {/* ================== 動畫 ================== */}
-      <Section title="動畫設定">
+      <Section title={uiText("動畫設定")}>
         <button
           onClick={() => {
             if (videoStudioFeature?.locked) {
@@ -644,21 +642,19 @@ export const CreationStepSoundAnimation = ({
               ? "bg-slate-200 text-slate-500"
               : "bg-blue-600 text-white hover:bg-blue-700"
           }`}
-        >
-          開啟 AI 影片工作室
-        </button>
+        >{uiText("開啟 AI 影片工作室")}</button>
         {videoStudioFeature && (
           <p className={`mt-2 text-xs ${videoStudioFeature.locked ? "text-rose-600" : "text-slate-500"}`}>
             {videoStudioFeature.unlimited
-              ? `${videoStudioFeature.label} 無限制`
+              ? uiTemplate("{0} 無限制", videoStudioFeature.label)
               : `${videoStudioFeature.label} ${videoStudioFeature.used}/${videoStudioFeature.limit}`}
           </p>
         )}
         {videoStudioTask && videoStudioTask.status !== "ready" && (
           <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
             {videoStudioTask.status === "failed"
-              ? "影片工作室任務失敗，重新打開後可再試一次。"
-              : "影片正在背景生成中，你可以先繼續後面的步驟，稍後再回來查看進度。"}
+              ? uiText("影片工作室任務失敗，重新打開後可再試一次。")
+              : uiText("影片正在背景生成中，你可以先繼續後面的步驟，稍後再回來查看進度。")}
           </div>
         )}
 
@@ -673,31 +669,23 @@ export const CreationStepSoundAnimation = ({
               className="rounded-3xl border border-slate-200 bg-gradient-to-b from-white to-slate-50/80 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.06)] transition hover:shadow-[0_14px_30px_rgba(15,23,42,0.12)]"
             >
               <div className="mb-3 flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-800">{item.label}</span>
+                <span className="text-xs font-semibold text-slate-800">{uiText(item.label)}</span>
 
                 {/* 狀態小點點 */}
                 {uploadState[item.key].loading ? (
                   <span className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600">
-                    <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
-                    上傳中
-                  </span>
+                    <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>{uiText("上傳中")}</span>
                 ) : item.value ? (
                   <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-600">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
-                    已完成
-                  </span>
+                    <span className="h-2 w-2 rounded-full bg-emerald-500"></span>{uiText("已完成")}</span>
                 ) : (
                   <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-500">
-                    <span className="h-2 w-2 rounded-full bg-slate-300"></span>
-                    未上傳
-                  </span>
+                    <span className="h-2 w-2 rounded-full bg-slate-300"></span>{uiText("未上傳")}</span>
                 )}
               </div>
 
               {/* 上傳按鈕 */}
-              <label className="mb-3 flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50/60 hover:text-indigo-700">
-                上傳影片
-                <input
+              <label className="mb-3 flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50/60 hover:text-indigo-700">{uiText("上傳影片")}<input
                   type="file"
                   accept="video/*"
                   onChange={(e) => handleUpload(e, item.key)}
@@ -705,14 +693,14 @@ export const CreationStepSoundAnimation = ({
                 />
               </label>
               <div className="mb-3 truncate text-[11px] text-slate-500">
-                {item.value ? "已選擇影片" : "尚未選擇檔案"}
+                {item.value ? uiText("已選擇影片") : uiText("尚未選擇檔案")}
               </div>
 
               {/* Loading */}
               {uploadState[item.key].loading ? (
                 <div className="mt-1 flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
                   <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
-                  <span>正在上傳影片…</span>
+                  <span>{uiText("正在上傳影片…")}</span>
                 </div>
               ) : (
                 item.value && (

@@ -1,4 +1,6 @@
 "use client";
+
+import { uiText } from '../../../utils/uiI18n';
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Icons } from "../../icons";
 import { motion } from "framer-motion";
@@ -586,10 +588,8 @@ JSON 必須符合以下結構：
           className="flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-2xl bg-slate-50"
         >
           <Icons.upload className="w-12 h-12 mb-4 text-slate-400" />
-          <p className="font-semibold text-slate-600">拖拽文件到此處</p>
-          <label className="mt-2 px-4 py-2 border rounded-lg bg-white cursor-pointer">
-            選擇文件
-            <input
+          <p className="font-semibold text-slate-600">{uiText("拖拽文件到此處")}</p>
+          <label className="mt-2 px-4 py-2 border rounded-lg bg-white cursor-pointer">{uiText("選擇文件")}<input
               type="file"
               accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               multiple
@@ -597,10 +597,10 @@ JSON 必須符合以下結構：
               onChange={(e) => handleFileDrop(e.target.files)}
             />
           </label>
-          <p className="mt-3 text-xs text-slate-500">支援 PDF、DOC、DOCX，可一次上傳多個文件</p>
+          <p className="mt-3 text-xs text-slate-500">{uiText("支援 PDF、DOC、DOCX，可一次上傳多個文件")}</p>
           {files.length > 0 ? (
             <div className="mt-4 w-full max-w-xl rounded-xl bg-white/70 p-3 text-sm text-slate-600">
-              <p className="font-semibold text-slate-700">已選擇 {files.length} 個文件</p>
+              <p className="font-semibold text-slate-700">{uiText("已選擇 ")}{files.length}{uiText(" 個文件")}</p>
               <p className="mt-1 break-words">{files.map((file) => file.name).join("、")}</p>
             </div>
           ) : null}
@@ -621,9 +621,7 @@ JSON 必須符合以下結構：
           <button
             onClick={handleProcess}
             className="px-4 py-2 rounded-lg bg-indigo-600 text-white"
-          >
-            解析
-          </button>
+          >{uiText("解析")}</button>
         </div>
       );
     }
@@ -634,15 +632,13 @@ JSON 必須符合以下結構：
           rows={5}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
-          placeholder="貼上需要解析的內容…"
+          placeholder={uiText("貼上需要解析的內容…")}
           className="w-full p-4 border rounded-lg"
         />
         <button
           onClick={handleProcess}
           className="w-full py-2 rounded-lg bg-indigo-600 text-white"
-        >
-          解析
-        </button>
+        >{uiText("解析")}</button>
       </div>
     );
   };
@@ -662,13 +658,11 @@ JSON 必須符合以下結構：
       return (
         <div className="space-y-4">
           <div className="rounded-2xl border bg-gradient-to-br from-slate-50 to-blue-50 p-5">
-            <h4 className="text-lg font-bold text-slate-800 mb-4">
-              正在為您提取知識庫內容...
-            </h4>
+            <h4 className="text-lg font-bold text-slate-800 mb-4">{uiText("正在為您提取知識庫內容...")}</h4>
             <div className="grid gap-4 md:grid-cols-[1fr_260px]">
               <div className="rounded-xl bg-white p-4 border shadow-sm">
                 <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-semibold text-slate-700">系統處理進度</p>
+                  <p className="text-sm font-semibold text-slate-700">{uiText("系統處理進度")}</p>
                   <span className="text-sm font-bold text-blue-600">{progress}%</span>
                 </div>
                 <div className="h-2.5 w-full rounded-full bg-slate-100 overflow-hidden">
@@ -683,21 +677,21 @@ JSON 必須符合以下結構：
                   {steps.map((s) => (
                     <div key={s.label} className="flex items-center justify-between text-sm">
                       <span className={`${isDone(s.pct) ? "text-emerald-700" : "text-slate-600"}`}>
-                        {isDone(s.pct) ? "✓" : "•"} {s.label}
+                        {isDone(s.pct) ? "✓" : "•"} {uiText(s.label)}
                       </span>
                       <span className={`${isDone(s.pct) ? "text-emerald-700" : "text-slate-400"}`}>
-                        {isDone(s.pct) ? "已完成" : "處理中"}
+                        {isDone(s.pct) ? uiText("已完成") : uiText("處理中")}
                       </span>
                     </div>
                   ))}
                 </div>
               </div>
               <div className="rounded-xl bg-white p-4 border shadow-sm">
-                <p className="text-sm font-semibold text-slate-700 mb-2">實時處理日誌</p>
+                <p className="text-sm font-semibold text-slate-700 mb-2">{uiText("實時處理日誌")}</p>
                 <div className="space-y-1.5 text-xs text-slate-500">
-                  <p>• 內容載入中...</p>
-                  <p>• 正在解析段落結構...</p>
-                  <p>• 正在抽取知識重點...</p>
+                  <p>{uiText("• 內容載入中...")}</p>
+                  <p>{uiText("• 正在解析段落結構...")}</p>
+                  <p>{uiText("• 正在抽取知識重點...")}</p>
                   <p>• 1-2 mins remaining</p>
                 </div>
               </div>
@@ -741,34 +735,31 @@ JSON 必須符合以下結構：
               <div className="flex items-start gap-4">
                 <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">02</span>
                 <div>
-                  <h2 className="text-xl font-black tracking-tight text-slate-950">知識內容</h2>
-                  <p className="mt-1 text-sm leading-6 text-slate-500">確認角色背景與摘要，再從關聯圖檢查知識結構。</p>
+                  <h2 className="text-xl font-black tracking-tight text-slate-950">{uiText("知識內容")}</h2>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">{uiText("確認角色背景與摘要，再從關聯圖檢查知識結構。")}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2 sm:justify-end">
                 <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  已完成提取
-                </span>
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />{uiText("已完成提取")}</span>
                 <button
                   type="button"
                   onClick={resetState}
                   className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
-                  aria-label="清除並重新提取知識"
-                  title="重新提取"
+                  aria-label={uiText("清除並重新提取知識")}
+                  title={uiText("重新提取")}
                 >
                   <Icons.delete className="h-4 w-4" />
                 </button>
               </div>
             </div>
 
-            <p className="mt-5 border-l-2 border-emerald-400 pl-3 text-xs font-semibold text-slate-500">
-              來源：{sourceLabel || "未知來源"}
+            <p className="mt-5 border-l-2 border-emerald-400 pl-3 text-xs font-semibold text-slate-500">{uiText("來源：")}{sourceLabel || uiText("未知來源")}
             </p>
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
             <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-              <h3 className="mb-3 text-sm font-black text-slate-800">人物背景設定</h3>
+              <h3 className="mb-3 text-sm font-black text-slate-800">{uiText("人物背景設定")}</h3>
               <textarea
                 readOnly
                 rows={6}
@@ -777,7 +768,7 @@ JSON 必須符合以下結構：
               />
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-              <h3 className="mb-3 text-sm font-black text-slate-800">知識庫摘要</h3>
+              <h3 className="mb-3 text-sm font-black text-slate-800">{uiText("知識庫摘要")}</h3>
               <textarea
                 readOnly
                 rows={6}
@@ -790,8 +781,8 @@ JSON 必須符合以下結構：
           <div className="mt-8 border-t border-slate-200 pt-8">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h3 className="text-lg font-black tracking-tight text-slate-950">知識庫架構</h3>
-                <p className="mt-1 text-xs leading-5 text-slate-500">切換視圖檢查知識點分類；列表視圖可調整層級或刪除項目。</p>
+                <h3 className="text-lg font-black tracking-tight text-slate-950">{uiText("知識庫架構")}</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{uiText("切換視圖檢查知識點分類；列表視圖可調整層級或刪除項目。")}</p>
               </div>
               <div className="flex items-center rounded-xl bg-slate-100 p-1 text-sm font-semibold">
                 <button
@@ -799,17 +790,13 @@ JSON 必須符合以下結構：
                   onClick={() => setViewMode("graph")}
                   className={`flex items-center gap-2 rounded-lg px-3 py-2 transition ${viewMode === "graph" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
                 >
-                  <Icons.task className="h-4 w-4" />
-                  關聯圖
-                </button>
+                  <Icons.task className="h-4 w-4" />{uiText("關聯圖")}</button>
                 <button
                   type="button"
                   onClick={() => setViewMode("list")}
                   className={`flex items-center gap-2 rounded-lg px-3 py-2 transition ${viewMode === "list" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
                 >
-                  <Icons.clipboardList className="h-4 w-4" />
-                  列表視圖
-                </button>
+                  <Icons.clipboardList className="h-4 w-4" />{uiText("列表視圖")}</button>
               </div>
             </div>
             <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-slate-50/70 p-3 md:p-4">
@@ -894,9 +881,9 @@ JSON 必須符合以下結構：
 
                   <div className="absolute left-1/2 top-1/2 flex h-[112px] w-[126px] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-[24px] border-2 border-indigo-300 bg-white px-3 text-center shadow-[0_12px_24px_rgba(99,102,241,0.14)]">
                     <Icons.brain className="h-7 w-7 text-indigo-500" />
-                    <p className="mt-2 text-[9px] font-semibold tracking-[0.22em] text-slate-400">中心節點</p>
-                    <p className="mt-1 text-[13px] font-black leading-4 text-slate-900">{nameMatch?.[1] || "人物"}</p>
-                    <p className="text-[11px] font-bold text-slate-700">（人物知識庫）</p>
+                    <p className="mt-2 text-[9px] font-semibold tracking-[0.22em] text-slate-400">{uiText("中心節點")}</p>
+                    <p className="mt-1 text-[13px] font-black leading-4 text-slate-900">{nameMatch?.[1] || uiText("人物")}</p>
+                    <p className="text-[11px] font-bold text-slate-700">{uiText("（人物知識庫）")}</p>
                   </div>
 
                   {deepPoints.slice(0, 5).map((point, index) => (
@@ -921,7 +908,7 @@ JSON 必須符合以下結構：
                       className={`flex h-9 w-9 items-center justify-center rounded-full transition ${
                         graphMode === "select" ? "bg-indigo-100 text-indigo-600" : "text-slate-500 hover:bg-slate-100"
                       }`}
-                      aria-label="選取模式"
+                      aria-label={uiText("選取模式")}
                     >
                       <Icons.pointer className="h-5 w-5" />
                     </button>
@@ -931,7 +918,7 @@ JSON 必須符合以下結構：
                       className={`flex h-9 w-9 items-center justify-center rounded-full transition ${
                         graphMode === "pan" ? "bg-indigo-100 text-indigo-600" : "text-slate-500 hover:bg-slate-100"
                       }`}
-                      aria-label="拖動畫布"
+                      aria-label={uiText("拖動畫布")}
                     >
                       <Icons.hand className="h-5 w-5" />
                     </button>
@@ -940,8 +927,8 @@ JSON 必須符合以下結構：
                     type="button"
                     onClick={() => setGraphPan({ x: 0, y: 0 })}
                     className="absolute bottom-4 right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-slate-50 hover:text-indigo-600"
-                    aria-label="回正圖譜"
-                    title="回正圖譜"
+                    aria-label={uiText("回正圖譜")}
+                    title={uiText("回正圖譜")}
                   >
                     <Icons.rotate className="h-5 w-5" />
                   </button>
@@ -950,12 +937,12 @@ JSON 必須符合以下結構：
 
               <div className="space-y-3 md:hidden">
                 <div className="rounded-[22px] border-2 border-indigo-200 bg-white px-4 py-4 text-center shadow-sm">
-                  <p className="text-[11px] font-semibold tracking-[0.18em] text-slate-400">中心節點</p>
-                  <p className="mt-2 text-lg font-black text-slate-900">{nameMatch?.[1] || "人物"}</p>
-                  <p className="text-sm font-semibold text-slate-600">人物知識庫</p>
+                  <p className="text-[11px] font-semibold tracking-[0.18em] text-slate-400">{uiText("中心節點")}</p>
+                  <p className="mt-2 text-lg font-black text-slate-900">{nameMatch?.[1] || uiText("人物")}</p>
+                  <p className="text-sm font-semibold text-slate-600">{uiText("人物知識庫")}</p>
                 </div>
                 <div className="rounded-[20px] border border-blue-100 bg-blue-50/70 p-4">
-                  <p className="text-sm font-black text-blue-900">基礎事實</p>
+                  <p className="text-sm font-black text-blue-900">{uiText("基礎事實")}</p>
                   <div className="mt-3 space-y-2">
                     {basicFacts.map((point) => (
                       <div key={point.id} className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm">
@@ -965,7 +952,7 @@ JSON 必須符合以下結構：
                   </div>
                 </div>
                 <div className="rounded-[20px] border border-violet-100 bg-violet-50/70 p-4">
-                  <p className="text-sm font-black text-violet-900">深度理解</p>
+                  <p className="text-sm font-black text-violet-900">{uiText("深度理解")}</p>
                   <div className="mt-3 space-y-2">
                     {deepPoints.map((point) => (
                       <div key={point.id} className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm">
@@ -981,12 +968,12 @@ JSON 必須符合以下結構：
                   <div>
                     <div className="mb-3 flex items-center gap-2">
                       <span className="h-3 w-3 rounded-full bg-blue-500" />
-                      <h5 className="text-base font-black tracking-tight text-slate-900">基礎事實 ({basicFacts.length}個)</h5>
+                      <h5 className="text-base font-black tracking-tight text-slate-900">{uiText("基礎事實 (")}{basicFacts.length}{uiText("個)")}</h5>
                     </div>
                     <div className="space-y-2.5">
                       {basicFacts.map((point) => (
                         <div key={point.id} className="relative rounded-[18px] border border-slate-200 bg-white px-4 py-3 pr-28 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
-                          <span className="absolute right-4 top-3 rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">基礎事實</span>
+                          <span className="absolute right-4 top-3 rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">{uiText("基礎事實")}</span>
                           <div className="flex items-start gap-3">
                             <div className="flex pt-1 text-slate-300">
                               <Icons.grip className="h-3.5 w-3.5" />
@@ -995,12 +982,12 @@ JSON 必須符合以下結構：
                               <div>
                                 <div>
                                   <p className="text-[15px] font-black tracking-tight text-slate-900">{point.title}</p>
-                                  <p className="mt-0.5 text-[13px] text-slate-500">{point.content || point.assessmentCriteria || point.keywords.join("、") || "尚未補充説明"}</p>
+                                  <p className="mt-0.5 text-[13px] text-slate-500">{point.content || point.assessmentCriteria || point.keywords.join("、") || uiText("尚未補充説明")}</p>
                                 </div>
                               </div>
                               <div className="mt-3 flex flex-wrap gap-2">
-                                <button type="button" onClick={() => toggleKnowledgeTier(point.id)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700">切換為深度理解</button>
-                                <button type="button" onClick={() => removeKnowledgePoint(point.id)} className="rounded-lg bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600">刪除</button>
+                                <button type="button" onClick={() => toggleKnowledgeTier(point.id)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700">{uiText("切換為深度理解")}</button>
+                                <button type="button" onClick={() => removeKnowledgePoint(point.id)} className="rounded-lg bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600">{uiText("刪除")}</button>
                               </div>
                             </div>
                           </div>
@@ -1011,12 +998,12 @@ JSON 必須符合以下結構：
                   <div>
                     <div className="mb-3 flex items-center gap-2">
                       <span className="h-3 w-3 rounded-full bg-violet-400" />
-                      <h5 className="text-base font-black tracking-tight text-slate-900">深度理解 ({deepPoints.length}個)</h5>
+                      <h5 className="text-base font-black tracking-tight text-slate-900">{uiText("深度理解 (")}{deepPoints.length}{uiText("個)")}</h5>
                     </div>
                     <div className="space-y-2.5">
                       {deepPoints.map((point) => (
                         <div key={point.id} className="relative rounded-[18px] border border-violet-200 bg-white px-4 py-3 pr-28 shadow-[0_8px_20px_rgba(167,139,250,0.06)]">
-                          <span className="absolute right-4 top-3 rounded-lg bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-600">深度理解</span>
+                          <span className="absolute right-4 top-3 rounded-lg bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-600">{uiText("深度理解")}</span>
                           <div className="flex items-start gap-3">
                             <div className="flex pt-1 text-violet-300">
                               <Icons.grip className="h-3.5 w-3.5" />
@@ -1028,12 +1015,12 @@ JSON 必須符合以下結構：
                                     <p className="text-[15px] font-black tracking-tight text-slate-900">{point.title}</p>
                                     <Icons.helpCircle className="h-3.5 w-3.5 text-violet-400" />
                                   </div>
-                                  <p className="mt-0.5 text-[13px] text-slate-500">{point.content || point.assessmentCriteria || point.keywords.join("、") || "尚未補充説明"}</p>
+                                  <p className="mt-0.5 text-[13px] text-slate-500">{point.content || point.assessmentCriteria || point.keywords.join("、") || uiText("尚未補充説明")}</p>
                                 </div>
                               </div>
                               <div className="mt-3 flex flex-wrap gap-2">
-                                <button type="button" onClick={() => toggleKnowledgeTier(point.id)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700">切換為基礎知識</button>
-                                <button type="button" onClick={() => removeKnowledgePoint(point.id)} className="rounded-lg bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600">刪除</button>
+                                <button type="button" onClick={() => toggleKnowledgeTier(point.id)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700">{uiText("切換為基礎知識")}</button>
+                                <button type="button" onClick={() => removeKnowledgePoint(point.id)} className="rounded-lg bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600">{uiText("刪除")}</button>
                               </div>
                             </div>
                           </div>
@@ -1051,22 +1038,22 @@ JSON 必須符合以下結構：
             <div className="flex items-start gap-4">
               <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">03</span>
               <div>
-                <h2 className="text-xl font-black tracking-tight text-slate-950">新增知識點</h2>
-                <p className="mt-1 text-sm leading-6 text-slate-500">直接補充單一知識；新增後會立即出現在上方知識架構。</p>
+                <h2 className="text-xl font-black tracking-tight text-slate-950">{uiText("新增知識點")}</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-500">{uiText("直接補充單一知識；新增後會立即出現在上方知識架構。")}</p>
               </div>
             </div>
             <div className="mt-6 grid gap-5 rounded-2xl bg-slate-50/80 p-4 sm:p-5 md:grid-cols-12">
               <label className="block md:col-span-8">
-                <span className="text-xs font-bold text-slate-700">知識主題</span>
+                <span className="text-xs font-bold text-slate-700">{uiText("知識主題")}</span>
                 <input
                   value={newPointTitle}
                   onChange={(e) => setNewPointTitle(e.target.value)}
-                  placeholder="例如：人物背景"
+                  placeholder={uiText("例如：人物背景")}
                   className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
                 />
               </label>
               <fieldset className="md:col-span-4">
-                <legend className="text-xs font-bold text-slate-700">知識層級</legend>
+                <legend className="text-xs font-bold text-slate-700">{uiText("知識層級")}</legend>
                 <div className="mt-2 flex min-h-11 gap-2">
                 {([
                   { value: "basic_fact", label: "基礎事實" },
@@ -1078,24 +1065,22 @@ JSON 必須符合以下結構：
                     onClick={() => setNewPointTier(option.value)}
                     className={`flex-1 rounded-xl px-3 py-2 text-xs font-semibold transition ${newPointTier === option.value ? "bg-slate-900 text-white" : "border border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
                   >
-                    {option.label}
+                    {uiText(option.label)}
                   </button>
                 ))}
                 </div>
               </fieldset>
               <label className="block md:col-span-12">
-                <span className="text-xs font-bold text-slate-700">知識內容</span>
+                <span className="text-xs font-bold text-slate-700">{uiText("知識內容")}</span>
                 <textarea
                   value={newPointContent}
                   onChange={(e) => setNewPointContent(e.target.value)}
                   rows={4}
-                  placeholder="輸入完整説明，讓角色能準確理解並回答。"
+                  placeholder={uiText("輸入完整説明，讓角色能準確理解並回答。")}
                   className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-white p-3.5 text-sm leading-6 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
                 />
               </label>
-              <button type="button" onClick={handleAddKnowledgePoint} className="min-h-11 rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white transition hover:bg-indigo-700 md:col-start-10 md:col-span-3">
-                新增知識點
-              </button>
+              <button type="button" onClick={handleAddKnowledgePoint} className="min-h-11 rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white transition hover:bg-indigo-700 md:col-start-10 md:col-span-3">{uiText("新增知識點")}</button>
             </div>
           </section>
 
@@ -1117,14 +1102,13 @@ JSON 必須符合以下結構：
         <div className="flex items-start gap-4">
           <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">01</span>
           <div>
-            <h2 className="text-xl font-black tracking-tight text-slate-950">角色基礎</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-500">這些設定會套用到所有主題，維持角色個性與回答方式一致。</p>
+            <h2 className="text-xl font-black tracking-tight text-slate-950">{uiText("角色基礎")}</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-500">{uiText("這些設定會套用到所有主題，維持角色個性與回答方式一致。")}</p>
           </div>
         </div>
         <div className="mt-6 border-t border-slate-200 pt-6">
           {/* 學科分類（必選 enum）：對接文件「學科分類建議」層 1 */}
-          <p className="mb-3 text-xs font-bold text-slate-700">
-            學科分類 <span className="ml-1 rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-600">必選</span>
+          <p className="mb-3 text-xs font-bold text-slate-700">{uiText("學科分類 ")}<span className="ml-1 rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-600">{uiText("必選")}</span>
           </p>
           <div className="flex flex-wrap gap-2">
             {SUBJECT_OPTIONS.map((option) => {
@@ -1145,16 +1129,16 @@ JSON 必須符合以下結構：
                     // 用 background（而非 backgroundColor）以支援漸變色
                     style={active ? undefined : { background: option.color }}
                   />
-                  {option.label}
+                  {uiText(option.label)}
                 </button>
               );
             })}
           </div>
           {!subject && (
-            <p className="mt-2 text-xs font-semibold text-amber-600">請選擇學科分類，未選擇將無法完成設定</p>
+            <p className="mt-2 text-xs font-semibold text-amber-600">{uiText("請選擇學科分類，未選擇將無法完成設定")}</p>
           )}
 
-          <p className="mb-3 mt-6 text-xs font-bold text-slate-700">角色性格（可多選）</p>
+          <p className="mb-3 mt-6 text-xs font-bold text-slate-700">{uiText("角色性格（可多選）")}</p>
           <div className="flex flex-wrap gap-2">
             {["耐心", "嚴謹", "幽默", "温柔", "直接", "理性", "熱情", "活潑"].map((trait) => (
               <button
@@ -1171,13 +1155,13 @@ JSON 必須符合以下結構：
                     : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
                 }`}
               >
-                {trait}
+                {uiText(trait)}
               </button>
             ))}
           </div>
         <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
           <div>
-            <p className="mb-3 text-xs font-bold text-slate-700">説話風格</p>
+            <p className="mb-3 text-xs font-bold text-slate-700">{uiText("説話風格")}</p>
             <div className="flex flex-wrap gap-2">
               {["文言文", "西洋", "口語", "引導式", "正式", "親切對話", "簡潔"].map((style) => (
                 <button
@@ -1190,13 +1174,13 @@ JSON 必須符合以下結構：
                       : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
                   }`}
                 >
-                  {style}
+                  {uiText(style)}
                 </button>
               ))}
             </div>
           </div>
           <div>
-            <p className="mb-3 text-xs font-bold text-slate-700">回答模式</p>
+            <p className="mb-3 text-xs font-bold text-slate-700">{uiText("回答模式")}</p>
             <div className="flex flex-wrap gap-2">
               {["直接給答案", "引導後再回答", "不直接給答案"].map((mode) => (
                 <button
@@ -1209,7 +1193,7 @@ JSON 必須符合以下結構：
                       : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
                   }`}
                 >
-                  {mode}
+                  {uiText(mode)}
                 </button>
               ))}
             </div>
@@ -1221,8 +1205,8 @@ JSON 必須符合以下結構：
       {status === "idle" && (
         <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4">
           <div>
-            <p className="text-sm font-bold text-slate-800">知識提取模型</p>
-            <p className="mt-1 text-xs text-slate-500">提取前可先選擇要使用的模型</p>
+            <p className="text-sm font-bold text-slate-800">{uiText("知識提取模型")}</p>
+            <p className="mt-1 text-xs text-slate-500">{uiText("提取前可先選擇要使用的模型")}</p>
           </div>
           <div className="relative" data-model-menu-root="knowledge-feed">
             <button
@@ -1270,7 +1254,7 @@ JSON 必須符合以下結構：
                 uploadMethod === m ? "bg-white shadow text-indigo-600" : "text-slate-500"
               }`}
             >
-              {m === "file" ? "上傳文件" : m === "url" ? "導入網址" : "貼上文字"}
+              {m === "file" ? uiText("上傳文件") : m === "url" ? uiText("導入網址") : uiText("貼上文字")}
             </button>
           ))}
         </div>

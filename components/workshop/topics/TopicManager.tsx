@@ -1,3 +1,4 @@
+import { uiText, uiError } from '../../../utils/uiI18n';
 import React, { useEffect, useState } from "react";
 import { BookOpen, Check, Loader2, Pencil, Plus, Star, Trash2 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -222,17 +223,15 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
         <div className="flex items-start gap-4">
           <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">04</span>
           <div>
-            <h2 className="text-xl font-black tracking-tight text-slate-950">主題版本</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-500">發布角色後，可為不同教學情境建立獨立主題。</p>
+            <h2 className="text-xl font-black tracking-tight text-slate-950">{uiText("主題版本")}</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-500">{uiText("發布角色後，可為不同教學情境建立獨立主題。")}</p>
           </div>
         </div>
         <div className="mt-6 flex items-start gap-3 rounded-2xl bg-indigo-50 px-4 py-4 text-indigo-900">
           <BookOpen className="mt-0.5 h-5 w-5 shrink-0" />
           <div>
-            <h3 className="text-sm font-bold">主題版本會在角色首次發布後啟用</h3>
-            <p className="mt-1 text-xs leading-5 text-indigo-700">
-              目前先完成角色的基礎知識；發布後再次編輯，即可新增最多四個獨立主題。
-            </p>
+            <h3 className="text-sm font-bold">{uiText("主題版本會在角色首次發布後啟用")}</h3>
+            <p className="mt-1 text-xs leading-5 text-indigo-700">{uiText("目前先完成角色的基礎知識；發布後再次編輯，即可新增最多四個獨立主題。")}</p>
           </div>
         </div>
       </section>
@@ -249,10 +248,8 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
         <div className="flex items-start gap-4">
           <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">04</span>
           <div>
-            <h2 className="text-xl font-black tracking-tight text-slate-950">主題版本</h2>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
-              身份與説話風格保持一致；每個主題擁有獨立提示與背景知識。
-            </p>
+            <h2 className="text-xl font-black tracking-tight text-slate-950">{uiText("主題版本")}</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">{uiText("身份與説話風格保持一致；每個主題擁有獨立提示與背景知識。")}</p>
           </div>
         </div>
         <div className="flex items-center gap-3 sm:justify-end">
@@ -263,32 +260,29 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
             disabled={limitReached || loading || saving}
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
           >
-            <Plus className="h-4 w-4" />
-            建立新主題
-          </button>
+            <Plus className="h-4 w-4" />{uiText("建立新主題")}</button>
         </div>
       </div>
 
-      {limitReached ? <p className="mt-3 text-right text-xs font-semibold text-amber-600">每個角色最多可建立 4 個主題。</p> : null}
+      {limitReached ? <p className="mt-3 text-right text-xs font-semibold text-amber-600">{uiText("每個角色最多可建立 4 個主題。")}</p> : null}
 
       {error ? (
         <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
-          {error}
+          {uiError(error)}
         </div>
       ) : null}
       {savedNotice ? (
         <div className="mt-4 flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-          <Check className="h-4 w-4" /> {savedNotice}
+          <Check className="h-4 w-4" /> {uiText(savedNotice)}
         </div>
       ) : null}
 
       {loading ? (
         <div className="flex min-h-44 items-center justify-center text-sm text-slate-500">
-          <Loader2 className="mr-2 h-5 w-5 animate-spin" /> 正在載入主題…
-        </div>
+          <Loader2 className="mr-2 h-5 w-5 animate-spin" />{uiText(" 正在載入主題…")}</div>
       ) : (
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(220px,0.72fr)_minmax(0,1.6fr)]">
-          <div className="space-y-2" aria-label="角色主題列表">
+          <div className="space-y-2" aria-label={uiText("角色主題列表")}>
             {topics.map((topic) => {
               const selected = topic.id === selectedTopicId && !isCreating;
               return (
@@ -310,11 +304,11 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="truncate text-sm font-black text-slate-900">{topic.name}</h3>
                         {topic.isDefault ? (
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-700">預設</span>
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-700">{uiText("預設")}</span>
                         ) : null}
                       </div>
                       <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
-                        {topic.description || "尚未加入主題説明"}
+                        {topic.description || uiText("尚未加入主題説明")}
                       </p>
                     </div>
                   </div>
@@ -331,8 +325,7 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
                           : "text-slate-600 hover:bg-white hover:text-indigo-600"
                       }`}
                     >
-                      <Pencil className="h-3.5 w-3.5" /> 編輯
-                    </button>
+                      <Pencil className="h-3.5 w-3.5" />{uiText(" 編輯")}</button>
                     <button
                       type="button"
                       onClick={(event) => {
@@ -341,11 +334,9 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
                       }}
                       disabled={topics.length <= 1 || deletingId === topic.id}
                       className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-bold text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-35"
-                      title={topics.length <= 1 ? "至少需要保留一個主題" : "刪除主題"}
+                      title={topics.length <= 1 ? uiText("至少需要保留一個主題") : uiText("刪除主題")}
                     >
-                      {deletingId === topic.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                      刪除
-                    </button>
+                      {deletingId === topic.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}{uiText("刪除")}</button>
                   </div>
                 </motion.div>
               );
@@ -366,10 +357,10 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-xs font-bold text-slate-400">
-                    {isCreating ? "新增主題" : activeSummary?.isDefault ? "預設主題" : "主題設定"}
+                    {isCreating ? uiText("新增主題") : activeSummary?.isDefault ? uiText("預設主題") : uiText("主題設定")}
                   </div>
                   <h3 className="mt-1 text-lg font-black text-slate-900">
-                    {isCreating ? "建立主題" : activeSummary?.name || "主題設定"}
+                    {isCreating ? uiText("建立主題") : activeSummary?.name || uiText("主題設定")}
                   </h3>
                 </div>
                 <div className="flex items-center gap-2">
@@ -377,7 +368,7 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
                     <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
                       isEditing ? "bg-indigo-100 text-indigo-700" : "bg-slate-200 text-slate-500"
                     }`}>
-                      {isEditing ? "編輯中" : "僅供檢視"}
+                      {isEditing ? uiText("編輯中") : uiText("僅供檢視")}
                     </span>
                   ) : null}
                   {detailLoading ? <Loader2 className="h-5 w-5 animate-spin text-indigo-500" /> : null}
@@ -386,45 +377,45 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
 
               <fieldset disabled={detailLoading || saving || !topicIsEditable} className="mt-5 space-y-4">
                 <label className="block">
-                  <span className="text-xs font-black text-slate-700">主題名稱 <span className="text-rose-500">*</span></span>
+                  <span className="text-xs font-black text-slate-700">{uiText("主題名稱 ")}<span className="text-rose-500">*</span></span>
                   <input
                     value={form.name}
                     onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                     maxLength={80}
-                    placeholder="例如：閱讀理解"
+                    placeholder={uiText("例如：閱讀理解")}
                     className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-200/70 disabled:text-slate-500"
                   />
                 </label>
                 <label className="block">
-                  <span className="text-xs font-black text-slate-700">主題説明</span>
+                  <span className="text-xs font-black text-slate-700">{uiText("主題説明")}</span>
                   <textarea
                     value={form.description}
                     onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                     maxLength={500}
                     rows={2}
-                    placeholder="簡短説明這個主題能協助學生什麼。"
+                    placeholder={uiText("簡短説明這個主題能協助學生什麼。")}
                     className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:resize-none disabled:border-slate-200 disabled:bg-slate-200/70 disabled:text-slate-500"
                   />
                 </label>
                 <label className="block">
-                  <span className="text-xs font-black text-slate-700">主題專屬提示</span>
+                  <span className="text-xs font-black text-slate-700">{uiText("主題專屬提示")}</span>
                   <textarea
                     value={form.systemPrompt}
                     onChange={(event) => setForm((current) => ({ ...current, systemPrompt: event.target.value }))}
                     maxLength={12000}
                     rows={5}
-                    placeholder="描述此主題的教學目標、回答策略與限制。角色身份與基本風格會由系統保留。"
+                    placeholder={uiText("描述此主題的教學目標、回答策略與限制。角色身份與基本風格會由系統保留。")}
                     className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-white px-3.5 py-3 font-mono text-xs leading-6 text-slate-800 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:resize-none disabled:border-slate-200 disabled:bg-slate-200/70 disabled:text-slate-500"
                   />
                 </label>
                 <label className="block">
-                  <span className="text-xs font-black text-slate-700">主題背景知識</span>
+                  <span className="text-xs font-black text-slate-700">{uiText("主題背景知識")}</span>
                   <textarea
                     value={form.knowledgeContent}
                     onChange={(event) => setForm((current) => ({ ...current, knowledgeContent: event.target.value }))}
                     maxLength={100000}
                     rows={8}
-                    placeholder="貼上只屬於這個主題的知識內容；切換主題後，其他主題的內容不會同時注入。"
+                    placeholder={uiText("貼上只屬於這個主題的知識內容；切換主題後，其他主題的內容不會同時注入。")}
                     className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:resize-none disabled:border-slate-200 disabled:bg-slate-200/70 disabled:text-slate-500"
                   />
                 </label>
@@ -432,8 +423,8 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
                   topicIsEditable ? "cursor-pointer bg-white" : "cursor-not-allowed bg-slate-200/70"
                 }`}>
                   <span>
-                    <span className="block text-sm font-bold text-slate-800">設為預設主題</span>
-                    <span className="block text-xs text-slate-500">新對話未指定主題時會自動使用</span>
+                    <span className="block text-sm font-bold text-slate-800">{uiText("設為預設主題")}</span>
+                    <span className="block text-xs text-slate-500">{uiText("新對話未指定主題時會自動使用")}</span>
                   </span>
                   <input
                     type="checkbox"
@@ -457,9 +448,7 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
                       void cancelEditing();
                     }}
                     className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-600 hover:bg-slate-50"
-                  >
-                    取消
-                  </button>
+                  >{uiText("取消")}</button>
                   <button
                     type="button"
                     onClick={() => void saveTopic()}
@@ -467,13 +456,11 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
                     className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
                     {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                    {isCreating ? "建立主題" : "儲存變更"}
+                    {isCreating ? uiText("建立主題") : uiText("儲存變更")}
                   </button>
                 </div>
               ) : (
-                <p className="mt-5 border-t border-slate-200 pt-4 text-right text-xs font-semibold text-slate-400">
-                  點擊左側「編輯」後即可修改此主題。
-                </p>
+                <p className="mt-5 border-t border-slate-200 pt-4 text-right text-xs font-semibold text-slate-400">{uiText("點擊左側「編輯」後即可修改此主題。")}</p>
               )}
             </motion.div>
           </AnimatePresence>

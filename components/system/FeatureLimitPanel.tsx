@@ -1,3 +1,4 @@
+import { uiText } from '../../utils/uiI18n';
 import React from "react";
 import type { FeatureEntitlement } from "../../hooks/useFeatureEntitlements";
 import { useTeacherLang, type TeacherLang } from "../../utils/teacherI18n";
@@ -51,7 +52,7 @@ export const FeatureLimitPanel: React.FC<{
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-sm font-bold text-slate-800">{PRIMARY_FEATURE_DISPLAY[feature.key]?.label[lang] ?? feature.label}</div>
+                <div className="text-sm font-bold text-slate-800">{PRIMARY_FEATURE_DISPLAY[feature.key]?.label[lang] ?? uiText(feature.label)}</div>
                 <div className="mt-1 text-xs leading-5 text-slate-500">{PRIMARY_FEATURE_DISPLAY[feature.key]?.description[lang] ?? feature.description}</div>
               </div>
               <div className={`rounded-full px-2 py-1 text-xs font-bold ${feature.locked ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700"}`}>
@@ -65,7 +66,7 @@ export const FeatureLimitPanel: React.FC<{
               />
             </div>
             <div className="mt-2 text-xs font-medium text-slate-600">
-              {feature.unlimited ? pt.accountUnlimited : `${pt.used} ${feature.used} / ${feature.limit} ${feature.countUnit}`}
+              {feature.unlimited ? pt.accountUnlimited : `${pt.used} ${feature.used} / ${feature.limit} ${uiText(feature.countUnit)}`}
             </div>
           </div>
         ))}

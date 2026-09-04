@@ -1,3 +1,4 @@
+import { uiText } from '../../utils/uiI18n';
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from '../icons';
@@ -73,7 +74,7 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen
                     aria-disabled={item.disabled}
                   >
                     <item.icon className="w-5 h-5" />
-                    <span className="text-sm">{item.label}</span>
+                    <span className="text-sm">{uiText(item.label)}</span>
                   </button>
                 ))}
               </nav>
@@ -83,14 +84,14 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen
                   className="flex w-full items-center gap-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-semibold text-[#1b365d]"
                 >
                   <Icons.clipboardList className="h-5 w-5" />
-                  <span>客製化申請</span>
+                  <span>{uiText("客製化申請")}</span>
                 </button>
                 {showRequestAdmin ? <button
                   onClick={() => { window.location.href = "/admin/avatar-requests"; }}
                   className={`mt-2 flex w-full items-center gap-4 rounded-2xl px-4 py-3 text-sm font-semibold ${requestAdminActive ? 'bg-[#1b365d] text-white' : 'border border-slate-200 bg-white text-slate-600'}`}
                 >
                   <Icons.inbox className="h-5 w-5" />
-                  <span>申請管理</span>
+                  <span>{uiText("申請管理")}</span>
                 </button> : null}
               </div>
               
@@ -103,11 +104,11 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen
                   className="mb-2 flex items-center gap-3 text-sm text-slate-500 hover:text-indigo-600 w-full p-2 rounded-lg hover:bg-slate-50"
                 >
                   <Icons.settings className="w-5 h-5" />
-                  <span>設定</span>
+                  <span>{uiText("設定")}</span>
                 </button>
                 <button className="flex items-center gap-3 text-sm text-slate-500 hover:text-indigo-600 w-full p-2 rounded-lg hover:bg-slate-50">
                   <Icons.languages className="w-5 h-5" />
-                  <span>繁體中文 / EN</span>
+                  <span>{uiText("繁體中文 / EN")}</span>
                 </button>
               </div>
             </motion.div>

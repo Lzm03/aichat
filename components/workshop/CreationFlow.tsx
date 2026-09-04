@@ -1,3 +1,4 @@
+import { uiText, uiError } from '../../utils/uiI18n';
 import React, { useMemo, useState, useEffect } from 'react';
 import { Stepper } from './Stepper';
 import { Icons } from '../icons';
@@ -657,7 +658,7 @@ const handleDeleteBot = async () => {
       <div className="mx-auto flex min-h-[520px] max-w-7xl items-center justify-center px-6">
         <div className="max-w-md rounded-[24px] border border-rose-200 bg-white p-7 text-center shadow-sm">
           <h2 className="text-lg font-extrabold text-slate-900">{t("editErrorTitle")}</h2>
-          <p className="mt-2 text-sm leading-6 text-rose-600">{botLoadError}</p>
+          <p className="mt-2 text-sm leading-6 text-rose-600">{uiError(botLoadError)}</p>
           <button type="button" onClick={onBack} className="mt-5 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white">{t("backToLibrary")}</button>
         </div>
       </div>
@@ -797,7 +798,7 @@ const handleDeleteBot = async () => {
               {t("next")}
             </button>
             {!canProceed && (
-              <p className="text-xs text-amber-600">{currentStepRule?.reason}</p>
+              <p className="text-xs text-amber-600">{uiText(currentStepRule?.reason)}</p>
             )}
           </div>
         ) : (
@@ -838,7 +839,7 @@ const handleDeleteBot = async () => {
         )}
       </div>
       {actionError && (
-        <p className="mt-3 text-sm text-rose-600">{actionError}</p>
+        <p className="mt-3 text-sm text-rose-600">{uiError(actionError)}</p>
       )}
       <PlatformDialog
         open={dialog.open}

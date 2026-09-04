@@ -1,3 +1,5 @@
+import { uiText, uiLocale } from './uiI18n';
+
 type AssessmentAnswer = {
   questionIndex?: number;
   type?: string;
@@ -50,45 +52,45 @@ export function downloadAssessmentResultsCsv(data: AssessmentExport | null | und
     '題號', '題型', '布魯姆層級', '題目', '學生答案', '正確答案',
     'AI 分數', '教師最終分數', '題目滿分', '是否正確', 'AI 評語', '異常標記',
   ];
-  const quizTitle = String(data?.quiz?.title || '未命名測驗');
+  const quizTitle = String(data?.quiz?.title || uiText('未命名測驗'));
   const rows = students.flatMap((student) => {
     const answers = Array.isArray(student.answers) && student.answers.length ? student.answers : [{}];
     const totalPoints = Number(student.totalPoints || 0);
     const score = Number(student.score || 0);
     const percent = totalPoints > 0 ? Number(((score / totalPoints) * 100).toFixed(1)) : 0;
     const submittedAt = student.submittedAt
-      ? new Date(student.submittedAt).toLocaleString('zh-HK', { hour12: false })
+      ? new Date(student.submittedAt).toLocaleString(uiLocale(), { hour12: false })
       : '';
 
     return answers.map((answer, index) => [
       quizTitle,
-      student.name || '學生',
+      student.name || uiText('學生'),
       submittedAt,
-      STATUS_LABELS[String(student.status || '')] || student.status || '',
+      uiText(STATUS_LABELS[String(student.status || '')] || student.status || ''),
       score,
       totalPoints,
       percent,
       Number(answer.questionIndex ?? index) + 1,
-      answer.type || '',
-      answer.cognitiveLevel || '',
+      uiText(answer.type || ''),
+      uiText(answer.cognitiveLevel || ''),
       answer.question || '',
       answer.studentAnswer || '',
       answer.correctAnswer || '',
       Number(answer.aiScore || 0),
       Number(answer.score || 0),
       Number(answer.maxScore || 0),
-      answer.isCorrect ? '是' : '否',
+      uiText(answer.isCorrect ? '是' : '否'),
       answer.feedback || '',
       Array.isArray(student.anomalyFlags) ? student.anomalyFlags.join('、') : '',
     ]);
   });
 
-  const csv = `\uFEFF${[headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n')}`;
+  const csv = `\uFEFF${[headers.map(uiText), ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n')}`;
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `${safeFilename(quizTitle)}-批改成果.csv`;
+  link.download = `${safeFilename(quizTitle)}-${uiText('批改成果')}.csv`;
   document.body.appendChild(link);
   link.click();
   link.remove();

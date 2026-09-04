@@ -1,3 +1,4 @@
+import { uiText } from '../../utils/uiI18n';
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from '../icons';
@@ -43,28 +44,20 @@ export const AbilityTrackingReport = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <h3 className="text-lg font-bold text-[#1E293B] flex items-center shrink-0">
-          <Target className="w-5 h-5 mr-2 text-indigo-500" />
-          能力追蹤報告
-        </h3>
+          <Target className="w-5 h-5 mr-2 text-indigo-500" />{uiText("能力追蹤報告")}</h3>
         <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
           <div className="bg-slate-100 p-1 rounded-full flex items-center text-xs font-semibold w-full sm:w-auto">
             <button 
               onClick={() => setTimePeriod('7d')} 
               className={`w-1/2 sm:w-auto px-4 py-1.5 rounded-full transition-all ${timePeriod === '7d' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              過去 7 日
-            </button>
+            >{uiText("過去 7 日")}</button>
             <button 
               onClick={() => setTimePeriod('30d')} 
               className={`w-1/2 sm:w-auto px-4 py-1.5 rounded-full transition-all ${timePeriod === '30d' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              過去一個月
-            </button>
+            >{uiText("過去一個月")}</button>
           </div>
           <button className="w-full sm:w-auto px-4 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-full hover:bg-indigo-700 transition-colors flex items-center justify-center gap-1 shadow-sm">
-            <Icons.download className="w-3 h-3" />
-            一鍵生成詳細報告
-          </button>
+            <Icons.download className="w-3 h-3" />{uiText("一鍵生成詳細報告")}</button>
         </div>
       </div>
 
@@ -76,18 +69,14 @@ export const AbilityTrackingReport = () => {
             viewMode === 'class' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
           }`}
         >
-          <Users className="w-4 h-4" />
-          班級視圖
-        </button>
+          <Users className="w-4 h-4" />{uiText("班級視圖")}</button>
         <button
           onClick={() => setViewMode('student')}
           className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-bold rounded-lg transition-all ${
             viewMode === 'student' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
           }`}
         >
-          <User className="w-4 h-4" />
-          學生視圖
-        </button>
+          <User className="w-4 h-4" />{uiText("學生視圖")}</button>
       </div>
 
       {/* Content Area */}
@@ -105,7 +94,7 @@ export const AbilityTrackingReport = () => {
               <div className="grid grid-cols-1 gap-4">
                 {bloomData.map((item) => (
                   <div key={item.level} className="flex items-center gap-4">
-                    <div className="w-12 text-sm font-bold text-slate-700 text-right shrink-0">{item.level}</div>
+                    <div className="w-12 text-sm font-bold text-slate-700 text-right shrink-0">{uiText(item.level)}</div>
                     <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
                       <motion.div 
                         initial={{ width: 0 }}
@@ -157,10 +146,10 @@ export const AbilityTrackingReport = () => {
               
               {/* Radar Chart */}
               <div className="flex-1 bg-slate-50 rounded-2xl p-4 flex flex-col items-center justify-center min-h-[250px]">
-                <h4 className="text-sm font-bold text-slate-700 mb-2">{selectedStudent.name} - 能力輪廓</h4>
+                <h4 className="text-sm font-bold text-slate-700 mb-2">{selectedStudent.name}{uiText(" - 能力輪廓")}</h4>
                 <div className="flex items-center gap-4 mb-4 text-xs font-medium">
-                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-indigo-500/80"></div>近期表現</div>
-                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-slate-300/80"></div>過往平均</div>
+                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-indigo-500/80"></div>{uiText("近期表現")}</div>
+                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-slate-300/80"></div>{uiText("過往平均")}</div>
                 </div>
                 <div className="w-full h-[250px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -187,10 +176,8 @@ export const AbilityTrackingReport = () => {
         <div className="flex items-start gap-3">
           <div className="text-xl">💡</div>
           <div>
-            <p className="text-sm font-bold text-purple-900 mb-1">AI 洞察</p>
-            <p className="text-sm text-purple-700 leading-relaxed">
-              全班在「評價」與「創造」層級得分率均低於 40%，建議近期課堂增加開放討論環節。
-            </p>
+            <p className="text-sm font-bold text-purple-900 mb-1">{uiText("AI 洞察")}</p>
+            <p className="text-sm text-purple-700 leading-relaxed">{uiText("全班在「評價」與「創造」層級得分率均低於 40%，建議近期課堂增加開放討論環節。")}</p>
           </div>
         </div>
       </button>

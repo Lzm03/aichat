@@ -13,6 +13,8 @@ dist/
 /tests/load/users.csv
 /tests/load/results/
 /tests/load/tmp/
-/tests
+/tests/*
+!/tests/ui-i18n.test.mjs
+!/tests/ui-i18n.browser.cjs
 .playwright-cli/
 output/playwright/

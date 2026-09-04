@@ -1,4 +1,6 @@
 "use client";
+
+import { uiText } from '../../utils/uiI18n';
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import axios from "axios";
 import { createPortal } from "react-dom";
@@ -875,7 +877,7 @@ export default function VideoStudioModal({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="flex items-center gap-3">
-                  <h2 className="text-[24px] font-black tracking-[-0.04em] text-[#1E293B] sm:text-[28px]">影片工作室</h2>
+                  <h2 className="text-[24px] font-black tracking-[-0.04em] text-[#1E293B] sm:text-[28px]">{uiText("影片工作室")}</h2>
                   <button
                     ref={hintButtonRef}
                     type="button"
@@ -899,14 +901,14 @@ export default function VideoStudioModal({
 
             <div className="mt-5 rounded-[24px] border border-[#E2E8F0] bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.06)] sm:mt-6 sm:rounded-[28px] sm:p-4">
               <div className="flex items-center justify-between gap-3">
-                <label className="text-sm font-semibold tracking-[0.01em] text-[#334155]">生成照片</label>
+                <label className="text-sm font-semibold tracking-[0.01em] text-[#334155]">{uiText("生成照片")}</label>
               </div>
               <div className="mt-4 rounded-[24px] bg-[#F8FBFF] p-3">
                 {videoSourceImage ? (
                   <div className="relative overflow-hidden rounded-[20px] bg-[#EEF4FB]">
                     <img
                       src={videoSourceImage}
-                      alt="生成照片預覽"
+                      alt={uiText("生成照片預覽")}
                       className="h-[150px] w-full object-contain bg-[#EAF1F8] sm:h-[220px]"
                     />
                     <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-[#F8FBFF] via-[#F8FBFF]/92 to-transparent px-4 py-4">
@@ -914,10 +916,8 @@ export default function VideoStudioModal({
                   </div>
                 ) : (
                   <div className="flex h-[150px] w-full flex-col items-center justify-center rounded-[20px] border border-dashed border-[#CBD5E1] bg-white px-6 text-center sm:h-[220px]">
-                    <div className="text-lg font-bold tracking-[-0.03em] text-[#1E293B]">尚未設定 Avatar</div>
-                    <div className="mt-2 text-sm leading-6 text-[#64748B]">
-                      請先回到第一步設定角色頭像，影片工作室會直接使用那張照片。
-                    </div>
+                    <div className="text-lg font-bold tracking-[-0.03em] text-[#1E293B]">{uiText("尚未設定 Avatar")}</div>
+                    <div className="mt-2 text-sm leading-6 text-[#64748B]">{uiText("請先回到第一步設定角色頭像，影片工作室會直接使用那張照片。")}</div>
                   </div>
                 )}
               </div>
@@ -933,9 +933,7 @@ export default function VideoStudioModal({
                   ? "bg-slate-200 text-slate-500"
                   : "bg-[#2563EB] text-white shadow-[0_14px_28px_rgba(37,99,235,0.2)] hover:bg-[#1D4ED8]"
               }`}
-            >
-            生成三種動畫
-            </button>
+            >{uiText("生成三種動畫")}</button>
             {/* <button
               onClick={() => generateAll(true)}
               disabled={loading || !videoSourceImage}
@@ -948,9 +946,7 @@ export default function VideoStudioModal({
               測試後台生成（不扣 token）
             </button> */}
             {!videoSourceImage && (
-              <div className="mt-2 text-xs leading-5 text-[#64748B]">
-                請先在上方上傳一張專門用來生成影片的人物照片。
-              </div>
+              <div className="mt-2 text-xs leading-5 text-[#64748B]">{uiText("請先在上方上傳一張專門用來生成影片的人物照片。")}</div>
             )}
 
             <button
@@ -961,7 +957,7 @@ export default function VideoStudioModal({
                   : "border"
               }`}
             >
-              {canSave ? "保存並返回" : loading ? "先關閉，去做別的步驟" : "關閉"}
+              {canSave ? uiText("保存並返回") : loading ? uiText("先關閉，去做別的步驟") : uiText("關閉")}
             </button>
           </div>
         </aside>
@@ -973,14 +969,11 @@ export default function VideoStudioModal({
               {loading && (
                 <div className="flex flex-col gap-3 rounded-2xl border border-[#DBEAFE] bg-white px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-5">
                   <div>
-                    <div className="text-sm font-semibold text-[#1E293B]">
-                      生成中 {Math.max(1, Math.min(100, Math.round(progress)))}%
+                    <div className="text-sm font-semibold text-[#1E293B]">{uiText("生成中 ")}{Math.max(1, Math.min(100, Math.round(progress)))}%
                     </div>
-                    <div className="mt-1 text-xs text-[#64748B]">{loadingText}</div>
+                    <div className="mt-1 text-xs text-[#64748B]">{uiText(loadingText)}</div>
                   </div>
-                  <div className="rounded-full border border-[#E2E8F0] px-4 py-2 text-sm font-semibold text-[#475569]">
-                    可先關閉，背景繼續生成
-                  </div>
+                  <div className="rounded-full border border-[#E2E8F0] px-4 py-2 text-sm font-semibold text-[#475569]">{uiText("可先關閉，背景繼續生成")}</div>
                 </div>
               )}
 
@@ -1005,7 +998,7 @@ export default function VideoStudioModal({
                       className="overflow-hidden rounded-[24px] border border-[#E2E8F0] bg-white shadow-[0_10px_28px_rgba(15,23,42,0.05)]"
                     >
                       <div className="flex items-center justify-between border-b border-[#F1F5F9] px-4 py-3">
-                        <h3 className="text-sm font-semibold text-[#334155]">{item.title}</h3>
+                        <h3 className="text-sm font-semibold text-[#334155]">{uiText(item.title)}</h3>
                         <span
                           className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
                             status === "ready" || status === "remove_bg_done"
@@ -1015,7 +1008,7 @@ export default function VideoStudioModal({
                               : "bg-blue-50 text-blue-600"
                           }`}
                         >
-                          {statusText}
+                          {uiText(statusText)}
                         </span>
                       </div>
                       <div className="p-3">
@@ -1065,7 +1058,7 @@ export default function VideoStudioModal({
                               <div className="flex items-center gap-3 rounded-full bg-[linear-gradient(180deg,rgba(115,87,72,0.82),rgba(95,72,60,0.86))] px-4 py-2 text-white shadow-[0_18px_36px_rgba(115,87,72,0.2)] backdrop-blur-md">
                                 <span className="text-[12px] font-semibold tracking-[0.01em]">
                                   {status === "waiting"
-                                    ? "等待中"
+                                    ? uiText("等待中")
                                     : `${status === "generating" ? "生成中" : "處理中"} ${Math.max(
                                         12,
                                         Math.min(96, Math.round(progress))
@@ -1073,7 +1066,7 @@ export default function VideoStudioModal({
                                 </span>
                                 <span className="h-4 w-px bg-white/28" />
                                 <span className="text-[11px] font-medium text-white/78">
-                                  {status === "waiting" ? "待命" : "取消"}
+                                  {status === "waiting" ? uiText("待命") : uiText("取消")}
                                 </span>
                               </div>
                             </div>
@@ -1091,8 +1084,8 @@ export default function VideoStudioModal({
           {!hasPreviewStage && (
             <div className="text-gray-500 text-center mt-12 sm:mt-20">
               <div className="text-4xl mb-3">🎬</div>
-              <div className="font-semibold text-lg">影片準備開始</div>
-              <div>設定左側參數後開始生成</div>
+              <div className="font-semibold text-lg">{uiText("影片準備開始")}</div>
+              <div>{uiText("設定左側參數後開始生成")}</div>
             </div>
           )}
         </main>
@@ -1132,10 +1125,8 @@ export default function VideoStudioModal({
                 left: hintPosition.left,
               }}
             >
-              <div className="text-xs font-bold text-[#1E293B]">效果預覽</div>
-              <p className="mt-2">
-                影片將根據這裡上傳的照片生成，以下為三種動作效果示意。
-              </p>
+              <div className="text-xs font-bold text-[#1E293B]">{uiText("效果預覽")}</div>
+              <p className="mt-2">{uiText("影片將根據這裡上傳的照片生成，以下為三種動作效果示意。")}</p>
               <div className="mt-2 grid grid-cols-3 gap-2">
                 {[
                   {
@@ -1155,7 +1146,7 @@ export default function VideoStudioModal({
                   },
                 ].map((item) => (
                   <div key={item.label}>
-                    <div className="mb-1 text-[11px] font-semibold text-[#64748B]">{item.label}</div>
+                    <div className="mb-1 text-[11px] font-semibold text-[#64748B]">{uiText(item.label)}</div>
                     <div className="flex h-28 items-end justify-center overflow-hidden rounded-xl bg-black">
                       {item.videoSrc ? (
                         <video
@@ -1170,7 +1161,7 @@ export default function VideoStudioModal({
                       ) : (
                         <img
                           src={avatarUrl}
-                          alt={item.label}
+                          alt={uiText(item.label)}
                           className={`h-full w-auto object-contain ${item.className}`}
                         />
                       )}

@@ -1,5 +1,7 @@
 'use client';
 
+import { uiText } from '../../utils/uiI18n';
+
 import React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { readAuthSession } from '../../utils/auth';
@@ -31,16 +33,14 @@ export function DemoNotice() {
         >
           <div className="mb-5 flex items-start justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
             <div>
-              <p className="text-sm font-bold text-amber-700">測試版 / Demo 版</p>
-              <p className="mt-1 text-xs leading-5 text-amber-800/80">
-                目前為功能測試階段，內容與體驗可能隨時調整，感謝你的試用與回饋。
-              </p>
+              <p className="text-sm font-bold text-amber-700">{uiText("測試版 / Demo 版")}</p>
+              <p className="mt-1 text-xs leading-5 text-amber-800/80">{uiText("目前為功能測試階段，內容與體驗可能隨時調整，感謝你的試用與回饋。")}</p>
             </div>
             <button
               type="button"
               onClick={close}
               className="shrink-0 text-base leading-none text-amber-400 transition hover:text-amber-700"
-              aria-label="關閉提示"
+              aria-label={uiText("關閉提示")}
             >
               ×
             </button>

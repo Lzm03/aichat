@@ -1,3 +1,4 @@
+import { uiText, uiError } from '../../utils/uiI18n';
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -169,7 +170,7 @@ export const ConversationHistoryDrawer: React.FC<ConversationHistoryDrawerProps>
             <div className="flex items-center justify-between border-b border-[#EEDFC7] px-5 py-4">
               <div className="flex items-center gap-2 text-slate-800">
                 <MessageCircleMore size={18} />
-                <span className="text-base font-semibold">對話紀錄</span>
+                <span className="text-base font-semibold">{uiText("對話紀錄")}</span>
               </div>
               <div className="flex items-center gap-1">
                 {conversations.length > 0 && !error ? (
@@ -183,7 +184,7 @@ export const ConversationHistoryDrawer: React.FC<ConversationHistoryDrawerProps>
                     }`}
                   >
                     <ListChecks size={15} />
-                    {localSelectionMode ? "完成" : "管理"}
+                    {localSelectionMode ? uiText("完成") : uiText("管理")}
                   </button>
                 ) : null}
                 {!localSelectionMode ? (
@@ -191,7 +192,7 @@ export const ConversationHistoryDrawer: React.FC<ConversationHistoryDrawerProps>
                     type="button"
                     onClick={onRefresh}
                     className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-white/80 hover:text-slate-800"
-                    title="重新整理對話紀錄"
+                    title={uiText("重新整理對話紀錄")}
                   >
                     {refreshing ? <LoaderCircle size={17} className="animate-spin" /> : <RefreshCw size={17} />}
                   </button>
@@ -200,7 +201,7 @@ export const ConversationHistoryDrawer: React.FC<ConversationHistoryDrawerProps>
                   type="button"
                   onClick={onClose}
                   className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-white/80 hover:text-slate-800"
-                  title="關閉對話紀錄"
+                  title={uiText("關閉對話紀錄")}
                 >
                   <X size={18} />
                 </button>
@@ -231,20 +232,18 @@ export const ConversationHistoryDrawer: React.FC<ConversationHistoryDrawerProps>
                       >
                         <Check size={12} strokeWidth={3} />
                       </span>
-                      {allSelected ? "取消全選" : "全選"}
+                      {allSelected ? uiText("取消全選") : uiText("全選")}
                     </button>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400">已選 {localSelectedConversationIds.length} 項</span>
+                      <span className="text-xs text-slate-400">{uiText("已選 ")}{localSelectedConversationIds.length}{uiText(" 項")}</span>
                       <button
                         type="button"
                         onClick={onDeleteSelectedConversations}
                         disabled={localSelectedConversationIds.length === 0 || !canDeleteSelected}
-                        title={canDeleteSelected ? undefined : "管理功能正在更新，請重新開啟對話紀錄"}
+                        title={canDeleteSelected ? undefined : uiText("管理功能正在更新，請重新開啟對話紀錄")}
                         className="flex min-h-9 items-center gap-1.5 rounded-xl bg-rose-50 px-3 text-sm font-semibold text-rose-600 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        <Trash2 size={14} />
-                        刪除
-                      </button>
+                        <Trash2 size={14} />{uiText("刪除")}</button>
                     </div>
                   </motion.div>
                 ) : (
@@ -257,9 +256,7 @@ export const ConversationHistoryDrawer: React.FC<ConversationHistoryDrawerProps>
                     onClick={onCreateConversation}
                     className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#F59E0B] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(245,158,11,0.3)] transition hover:bg-[#E89009]"
                   >
-                    <Plus size={16} />
-                    新增對話
-                  </motion.button>
+                    <Plus size={16} />{uiText("新增對話")}</motion.button>
                 )}
               </AnimatePresence>
 
@@ -268,23 +265,23 @@ export const ConversationHistoryDrawer: React.FC<ConversationHistoryDrawerProps>
                 <input
                   value={search}
                   onChange={(event) => onSearchChange(event.target.value)}
-                  placeholder="搜尋對話"
+                  placeholder={uiText("搜尋對話")}
                   className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
                 />
               </div>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
-              {loading ? <div className="pt-4 text-sm text-slate-500">正在載入對話...</div> : null}
-              {!loading && error ? <div className="pt-4 text-sm text-red-500">{error}</div> : null}
+              {loading ? <div className="pt-4 text-sm text-slate-500">{uiText("正在載入對話...")}</div> : null}
+              {!loading && error ? <div className="pt-4 text-sm text-red-500">{uiError(error)}</div> : null}
               {!loading && !error && conversations.length === 0 ? (
-                <div className="pt-4 text-sm text-slate-500">目前沒有聊天紀錄</div>
+                <div className="pt-4 text-sm text-slate-500">{uiText("目前沒有聊天紀錄")}</div>
               ) : null}
               {!loading && !error ? (
                 <div className="space-y-5">
                   {groups.map((group) => (
                     <div key={group.label}>
-                      <div className="mb-2 text-xs font-semibold tracking-[0.18em] text-slate-400">{group.label}</div>
+                      <div className="mb-2 text-xs font-semibold tracking-[0.18em] text-slate-400">{uiText(group.label)}</div>
                       <div className="space-y-2">
                         {group.items.map((conversation) => (
                           <ConversationListItem

@@ -1,3 +1,4 @@
+import { uiText } from '../../utils/uiI18n';
 import React from 'react';
 import { Icons } from '../icons';
 
@@ -36,7 +37,7 @@ export const Stepper: React.FC<StepperProps> = ({
                   }`}>
                     {isCompleted ? <Icons.success className="h-5 w-5 text-white" /> : <span className={`text-sm font-bold ${isActive ? 'text-white' : 'text-slate-400'}`}>{stepNumber}</span>}
                   </div>
-                  <p className={`mt-2 hidden w-20 text-[11px] font-semibold transition-colors sm:block ${isActive ? 'text-indigo-600' : isCompleted ? 'text-slate-700' : 'text-slate-400'}`}>{step}</p>
+                  <p className={`mt-2 hidden w-20 text-[11px] font-semibold transition-colors sm:block ${isActive ? 'text-indigo-600' : isCompleted ? 'text-slate-700' : 'text-slate-400'}`}>{uiText(step)}</p>
                 </button>
               </div>
               {index < steps.length - 1 && (

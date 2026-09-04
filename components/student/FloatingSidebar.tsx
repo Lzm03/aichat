@@ -1,4 +1,6 @@
 'use client';
+
+import { uiText } from '../../utils/uiI18n';
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -19,7 +21,7 @@ export const FloatingSidebar = () => {
         {navItems.map(item => {
           const isActive = pathname === item.href;
           return (
-            <Link href={item.href} key={item.href} title={item.label} className="group relative">
+            <Link href={item.href} key={item.href} title={uiText(item.label)} className="group relative">
               <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 ${
                   isActive ? 'bg-indigo-600 text-white shadow-md' : 'bg-white/50 hover:bg-white'
               }`}>

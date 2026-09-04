@@ -1,3 +1,4 @@
+import { uiText } from '../../utils/uiI18n';
 import React, { useEffect, useMemo, useState } from "react";
 import { HelpCircle } from "lucide-react";
 import { BotCard } from "./BotCard";
@@ -222,7 +223,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       <section className="mb-6 overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
         <div className="grid min-h-[220px] md:grid-cols-2">
           <div className="min-h-[200px] overflow-hidden bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600">
-            <img src="/ui-update/library-hero.webp" alt="Tomato Robot AI 夥伴" className="h-full w-full object-cover" loading="lazy" />
+            <img src="/ui-update/library-hero.webp" alt={uiText("Tomato Robot AI 夥伴")} className="h-full w-full object-cover" loading="lazy" />
           </div>
           <div className="flex flex-col justify-center gap-3 p-7 sm:p-8">
             {isPro ? <span className="w-fit rounded-full bg-amber-100 px-3 py-1 text-[11px] font-extrabold tracking-wide text-amber-800">{t("proBadge")}</span> : null}
@@ -267,7 +268,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           <div className="flex min-h-[340px] flex-col justify-center rounded-[28px] border border-slate-100 bg-white p-8 md:col-span-1 xl:col-span-2">
             <h3 className="text-[17px] font-extrabold text-slate-950">{t("noBotsTitle")}</h3>
             <p className="mt-1 text-[13px] text-slate-400">{t("noBotsSub")}</p>
-            <div className="mt-[18px] space-y-3">{[t("stepAppearance"), t("stepKnowledge"), t("stepPublish")].map((label, index) => <div key={label} className="flex items-center gap-3 text-[13px] text-slate-700"><span className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-extrabold text-indigo-600">{index + 1}</span>{label}</div>)}</div>
+            <div className="mt-[18px] space-y-3">{[t("stepAppearance"), t("stepKnowledge"), t("stepPublish")].map((label, index) => <div key={label} className="flex items-center gap-3 text-[13px] text-slate-700"><span className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-extrabold text-indigo-600">{index + 1}</span>{uiText(label)}</div>)}</div>
           </div>
         ) : null}
 

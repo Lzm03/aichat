@@ -1,3 +1,4 @@
+import { uiText } from '../../utils/uiI18n';
 import React from 'react';
 import { Icons } from '../icons';
 import type { Page } from '../../App';
@@ -27,11 +28,11 @@ const NavItem: React.FC<NavItemProps> = ({ icon: Icon, label, active = false, di
           ? 'bg-indigo-50 text-indigo-600 font-bold shadow-sm'
           : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
       }`}
-      title={label}
+      title={uiText(label)}
       aria-disabled={disabled}
     >
       <Icon className={`w-6 h-6 mb-1 ${disabled ? 'text-slate-400' : active ? 'text-indigo-500' : ''}`} />
-      <span className="text-[10px] text-center leading-tight">{label}</span>
+      <span className="text-[10px] text-center leading-tight">{uiText(label)}</span>
     </a>
   </li>
 );
@@ -66,7 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, for
               <NavItem
                 key={item.id}
                 icon={item.icon}
-                label={item.label}
+                label={uiText(item.label)}
                 active={activePage === item.id}
                 disabled={item.disabled}
                 onClick={() => setActivePage(item.id)}
@@ -75,12 +76,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, for
           </ul>
         </nav>
         <div className="mt-4 border-t border-slate-100 pt-4">
-          <NavItem icon={Icons.clipboardList} label="客製化申請" onClick={() => { window.location.href = "/school-avatar-request"; }} />
-          {showRequestAdmin ? <NavItem icon={Icons.inbox} label="申請管理" active={requestAdminActive} onClick={() => { window.location.href = "/admin/avatar-requests"; }} /> : null}
+          <NavItem icon={Icons.clipboardList} label={uiText("客製化申請")} onClick={() => { window.location.href = "/school-avatar-request"; }} />
+          {showRequestAdmin ? <NavItem icon={Icons.inbox} label={uiText("申請管理")} active={requestAdminActive} onClick={() => { window.location.href = "/admin/avatar-requests"; }} /> : null}
         </div>
       </div>
       <div className="p-2 mb-4">
-        <NavItem icon={Icons.settings} label="設定" onClick={() => { window.location.href = "/settings"; }} />
+        <NavItem icon={Icons.settings} label={uiText("設定")} onClick={() => { window.location.href = "/settings"; }} />
       </div>
     </aside>
   );

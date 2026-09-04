@@ -1,3 +1,4 @@
+import { uiText, uiError } from '../utils/uiI18n';
 import React, { useEffect, useState } from "react";
 import { PublishSuccessModal } from "../components/workshop/PublishSuccessModal";
 
@@ -52,7 +53,7 @@ export const SharedBotChatPage: React.FC<SharedBotChatPageProps> = ({ botId }) =
       <div className="w-screen min-h-screen bg-slate-900 flex items-center justify-center text-slate-100">
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-4 border-slate-500 border-t-white rounded-full animate-spin" />
-          <div className="text-sm">正在載入聊天...</div>
+          <div className="text-sm">{uiText("正在載入聊天...")}</div>
         </div>
       </div>
     );
@@ -61,7 +62,7 @@ export const SharedBotChatPage: React.FC<SharedBotChatPageProps> = ({ botId }) =
   if (error || !botConfig) {
     return (
       <div className="w-screen min-h-screen bg-slate-900 flex items-center justify-center text-slate-100 p-6">
-        <div className="text-sm">無法打開此聊天：{error || "機器人不存在"}</div>
+        <div className="text-sm">{uiText("無法打開此聊天：")}{uiError(error) || uiText("機器人不存在")}</div>
       </div>
     );
   }
@@ -70,8 +71,8 @@ export const SharedBotChatPage: React.FC<SharedBotChatPageProps> = ({ botId }) =
     return (
       <div className="w-screen min-h-screen bg-slate-900 flex items-center justify-center text-slate-100 p-6">
         <div className="rounded-3xl border border-slate-700 bg-slate-800/80 px-6 py-5 text-center shadow-2xl">
-          <div className="text-lg font-semibold">聊天視窗已關閉</div>
-          <div className="mt-2 text-sm text-slate-300">重新整理頁面即可再次打開這個分享聊天。</div>
+          <div className="text-lg font-semibold">{uiText("聊天視窗已關閉")}</div>
+          <div className="mt-2 text-sm text-slate-300">{uiText("重新整理頁面即可再次打開這個分享聊天。")}</div>
         </div>
       </div>
     );

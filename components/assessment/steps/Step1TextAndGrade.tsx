@@ -1,3 +1,4 @@
+import { uiText, uiLocale, uiError } from '../../../utils/uiI18n';
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UploadCloud, FileText, Settings2, Lightbulb, ArrowRight, BookOpen, X, Bot, LoaderCircle, FolderOpen } from 'lucide-react';
@@ -303,9 +304,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
         <div className="lg:col-span-2 bg-white rounded-[24px] p-6 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] flex flex-col">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 shrink-0">
-              <FileText className="w-5 h-5 text-indigo-500" />
-              文本材料
-            </h2>
+              <FileText className="w-5 h-5 text-indigo-500" />{uiText("文本材料")}</h2>
             <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               <button
                 type="button"
@@ -313,8 +312,8 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
                 className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-bold text-amber-700 bg-amber-50 px-4 py-2 rounded-full hover:bg-amber-100 transition-colors"
               >
                 <FolderOpen className="w-4 h-4" />
-                <span className="hidden sm:inline">從草稿導入</span>
-                <span className="sm:hidden">草稿</span>
+                <span className="hidden sm:inline">{uiText("從草稿導入")}</span>
+                <span className="sm:hidden">{uiText("草稿")}</span>
               </button>
               <button 
                 type="button"
@@ -322,8 +321,8 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
                 className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-bold text-indigo-600 bg-indigo-50 px-4 py-2 rounded-full hover:bg-indigo-100 transition-colors"
               >
                 <BookOpen className="w-4 h-4" />
-                <span className="hidden sm:inline">從歷史題庫導入</span>
-                <span className="sm:hidden">題庫導入</span>
+                <span className="hidden sm:inline">{uiText("從歷史題庫導入")}</span>
+                <span className="sm:hidden">{uiText("題庫導入")}</span>
               </button>
               <button
                 type="button"
@@ -332,8 +331,8 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
                 className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-medium text-slate-600 bg-slate-50 px-4 py-2 rounded-full hover:bg-slate-100 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <UploadCloud className="w-4 h-4" />
-                <span className="hidden sm:inline">{isUploadingDocument ? '文檔解析中...' : '上傳文檔'}</span>
-                <span className="sm:hidden">{isUploadingDocument ? '解析中' : '上傳'}</span>
+                <span className="hidden sm:inline">{isUploadingDocument ? uiText('文檔解析中...') : uiText('上傳文檔')}</span>
+                <span className="sm:hidden">{isUploadingDocument ? uiText('解析中') : uiText('上傳')}</span>
               </button>
               <input
                 ref={fileInputRef}
@@ -356,7 +355,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
               setText(e.target.value);
               clearImportedDraft();
             }}
-            placeholder="請在此貼上文章內容，或點擊右上角上傳文檔 (支援 PDF, DOCX, TXT)..."
+            placeholder={uiText("請在此貼上文章內容，或點擊右上角上傳文檔 (支援 PDF, DOCX, TXT)...")}
             className="flex-1 min-h-[400px] w-full bg-slate-50 rounded-2xl p-6 text-slate-700 placeholder:text-slate-400 resize-none outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
           />
         </div>
@@ -365,12 +364,12 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
         <div className="lg:col-span-1 bg-white rounded-[24px] p-6 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] flex flex-col space-y-8">
           <div className="flex items-center gap-2 mb-2 border-b border-slate-100 pb-4">
             <Settings2 className="w-5 h-5 text-indigo-500" />
-            <h2 className="text-lg font-bold text-slate-800">測驗設定</h2>
+            <h2 className="text-lg font-bold text-slate-800">{uiText("測驗設定")}</h2>
           </div>
 
           {/* 區塊 A：發佈 Bot */}
           <div className="space-y-3">
-            <label className="block text-sm font-bold text-slate-700">發佈到 Bot</label>
+            <label className="block text-sm font-bold text-slate-700">{uiText("發佈到 Bot")}</label>
             <div className="relative">
               <select
                 value={selectedBotId}
@@ -381,11 +380,11 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
                 className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 rounded-xl px-4 py-3 pr-10 outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-medium disabled:opacity-60"
                 disabled={loadingBots || publishBots.length === 0}
               >
-                {loadingBots && <option value="">載入 Bot 中...</option>}
-                {!loadingBots && publishBots.length === 0 && <option value="">暫無可用 Bot</option>}
+                {loadingBots && <option value="">{uiText("載入 Bot 中...")}</option>}
+                {!loadingBots && publishBots.length === 0 && <option value="">{uiText("暫無可用 Bot")}</option>}
                 {publishBots.map((bot) => (
                   <option key={bot.id} value={bot.id}>
-                    {bot.name}{bot.subject ? ` · ${bot.subject}` : ''}{bot.isVisible ? ' · 已分享' : ''}
+                    {bot.name}{bot.subject ? ` · ${bot.subject}` : ''}{bot.isVisible ? uiText(' · 已分享') : ''}
                   </option>
                 ))}
               </select>
@@ -400,15 +399,13 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
               className="bg-violet-50 text-violet-700 text-sm p-4 rounded-xl flex items-start gap-2 leading-relaxed"
             >
               <span className="shrink-0 mt-0.5"><Bot className="w-4 h-4 text-violet-500" /></span>
-              <span>
-                這裡只顯示目前帳戶已分享的 Bot，並可選擇本次測驗要發佈到哪個教學角色。
-              </span>
+              <span>{uiText("這裡只顯示目前帳戶已分享的 Bot，並可選擇本次測驗要發佈到哪個教學角色。")}</span>
             </motion.div>
           </div>
 
           {/* 區塊 B：目標年級 */}
           <div className="space-y-3">
-            <label className="block text-sm font-bold text-slate-700">目標年級</label>
+            <label className="block text-sm font-bold text-slate-700">{uiText("目標年級")}</label>
             <div className="relative">
               <select 
                 value={grade}
@@ -420,10 +417,10 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
                 }}
                 className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 rounded-xl px-4 py-3 pr-10 outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-medium"
               >
-                <option value="P1-P3">小一至小三 (P1-P3)</option>
-                <option value="P4-P6">小四至小六 (P4-P6)</option>
-                <option value="S1-S3">中一至中三 (S1-S3)</option>
-                <option value="S4-S6">中四至中六 (S4-S6)</option>
+                <option value="P1-P3">{uiText("小一至小三 (P1-P3)")}</option>
+                <option value="P4-P6">{uiText("小四至小六 (P4-P6)")}</option>
+                <option value="S1-S3">{uiText("中一至中三 (S1-S3)")}</option>
+                <option value="S4-S6">{uiText("中四至中六 (S4-S6)")}</option>
               </select>
               <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-400">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
@@ -438,17 +435,16 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
               className="bg-sky-50 text-sky-700 text-sm p-4 rounded-xl flex items-start gap-2 leading-relaxed"
             >
               <span className="shrink-0 mt-0.5"><Lightbulb className="w-4 h-4 text-sky-500" /></span>
-              <span>{getAiGuide(grade)}</span>
+              <span>{uiText(getAiGuide(grade))}</span>
             </motion.div>
           </div>
 
           {/* 區塊 C：題目數量 */}
           <div className="space-y-4 pt-4 border-t border-slate-100">
             <div className="flex items-center justify-between">
-              <label className="block text-sm font-bold text-slate-700">題目數量</label>
+              <label className="block text-sm font-bold text-slate-700">{uiText("題目數量")}</label>
               <div className="bg-indigo-50 text-indigo-700 font-bold px-3 py-1 rounded-lg text-sm">
-                {questionCount} 題
-              </div>
+                {questionCount}{uiText(" 題")}</div>
             </div>
             <div className="flex items-center gap-4">
               <input 
@@ -467,9 +463,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
               <span>1</span>
               <span>15</span>
             </div>
-            <div className="rounded-xl bg-slate-50 px-4 py-3 text-xs font-medium leading-6 text-slate-500">
-              這裡控制的是整份測驗的總題數。下一步後，AI 會根據目標年級與題目數量自動分配最適合的題型與內容。
-            </div>
+            <div className="rounded-xl bg-slate-50 px-4 py-3 text-xs font-medium leading-6 text-slate-500">{uiText("這裡控制的是整份測驗的總題數。下一步後，AI 會根據目標年級與題目數量自動分配最適合的題型與內容。")}</div>
           </div>
 
         </div>
@@ -477,14 +471,12 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
 
       {errorMessage ? (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
-          {errorMessage}
+          {uiText(errorMessage)}
         </div>
       ) : null}
 
       {importedDraft ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-          已導入草稿「{importedDraft.quiz.title}」。確認內容後，請按下一步繼續編輯題目。
-        </div>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">{uiText("已導入草稿「")}{importedDraft.quiz.title}{uiText("」。確認內容後，請按下一步繼續編輯題目。")}</div>
       ) : null}
 
       {/* 底部導航 */}
@@ -496,12 +488,10 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
         >
           {isGenerating ? (
             <>
-              <LoaderCircle className="w-5 h-5 animate-spin" />
-              正在生成題目...
-            </>
+              <LoaderCircle className="w-5 h-5 animate-spin" />{uiText("正在生成題目...")}</>
           ) : (
             <>
-              {importedDraft ? '下一步：預覽與儲存' : '下一步：預覽與發佈'}
+              {importedDraft ? uiText('下一步：預覽與儲存') : uiText('下一步：預覽與發佈')}
               <ArrowRight className="w-5 h-5" />
             </>
           )}
@@ -525,9 +515,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
             >
               <div className="flex items-center justify-between p-6 border-b border-slate-100">
                 <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                  <BookOpen className="w-5 h-5 text-indigo-500" />
-                  從歷史題庫導入
-                </h3>
+                  <BookOpen className="w-5 h-5 text-indigo-500" />{uiText("從歷史題庫導入")}</h3>
                 <button 
                   onClick={() => setIsHistoryModalOpen(false)}
                   className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-full hover:bg-slate-100"
@@ -536,7 +524,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
                 </button>
               </div>
               <div className="p-6 space-y-3">
-                <p className="text-sm text-slate-500 mb-4">請選擇您最近使用過的文本材料：</p>
+                <p className="text-sm text-slate-500 mb-4">{uiText("請選擇您最近使用過的文本材料：")}</p>
                 {mockHistoryTexts.map((item) => (
                   <button
                     key={item.id}
@@ -571,10 +559,8 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
               <div className="flex items-center justify-between p-6 border-b border-slate-100">
                 <div>
                   <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    <FolderOpen className="w-5 h-5 text-amber-500" />
-                    從草稿導入
-                  </h3>
-                  <p className="mt-1 text-xs text-slate-500">選擇草稿後會載入完整題目，繼續預覽與編輯。</p>
+                    <FolderOpen className="w-5 h-5 text-amber-500" />{uiText("從草稿導入")}</h3>
+                  <p className="mt-1 text-xs text-slate-500">{uiText("選擇草稿後會載入完整題目，繼續預覽與編輯。")}</p>
                 </div>
                 <button
                   type="button"
@@ -587,15 +573,13 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
               <div className="max-h-[60vh] overflow-y-auto p-6 space-y-3">
                 {loadingDrafts ? (
                   <div className="flex items-center justify-center gap-2 rounded-xl bg-slate-50 p-8 text-sm font-semibold text-slate-500">
-                    <LoaderCircle className="h-5 w-5 animate-spin" />
-                    正在載入草稿...
-                  </div>
+                    <LoaderCircle className="h-5 w-5 animate-spin" />{uiText("正在載入草稿...")}</div>
                 ) : null}
                 {!loadingDrafts && draftError ? (
-                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">{draftError}</div>
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">{uiError(draftError)}</div>
                 ) : null}
                 {!loadingDrafts && !draftError && drafts.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm font-semibold text-slate-400">目前沒有可導入的草稿</div>
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm font-semibold text-slate-400">{uiText("目前沒有可導入的草稿")}</div>
                 ) : null}
                 {!loadingDrafts && drafts.map((draft) => (
                   <button
@@ -609,8 +593,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
                       <div className="min-w-0">
                         <h4 className="truncate font-bold text-slate-700">{draft.title}</h4>
                         <p className="mt-1 text-xs text-slate-500">
-                          {draft.targetGrade || '未設定年級'} · {draft.questionCount} 題
-                          {draft.updatedAt ? ` · ${new Date(draft.updatedAt).toLocaleDateString('zh-HK')}` : ''}
+                          {draft.targetGrade || uiText('未設定年級')} · {draft.questionCount}{uiText(" 題")}{draft.updatedAt ? ` · ${new Date(draft.updatedAt).toLocaleDateString(uiLocale())}` : ''}
                         </p>
                       </div>
                       {importingDraftId === draft.id ? <LoaderCircle className="h-5 w-5 shrink-0 animate-spin text-amber-600" /> : <ArrowRight className="h-5 w-5 shrink-0 text-slate-300" />}

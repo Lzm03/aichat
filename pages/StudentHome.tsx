@@ -1,3 +1,4 @@
+import { uiText, uiTemplate } from '../utils/uiI18n';
 import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { BookOpen, Bot, ClipboardList, HelpCircle, Medal, Sparkles } from "lucide-react";
@@ -8,7 +9,7 @@ import { PublishSuccessModal } from "../components/workshop/PublishSuccessModal"
 import { InfoTipModal } from "../components/system/InfoTipModal";
 import { SequencePngPlayer } from "../components/workshop/SequencePngPlayer";
 import { UserMenu } from "../components/layout/UserMenu";
-import { TEACHER_LANG_CHANGED_EVENT } from "../utils/teacherI18n";
+import { useTeacherLang, setTeacherLang } from "../utils/teacherI18n";
 
 type StudentHomeProps = {
   currentUser: StoredAuthUser;
@@ -146,7 +147,7 @@ const StudentBotCard: React.FC<{
               fps={idleSequence.fps}
               active
               startWhenBuffered
-              aria-label={`${companion.name} 待機動畫`}
+              aria-label={uiTemplate("{0} 待機動畫", companion.name)}
               className="absolute inset-0 h-full w-full rounded-full bg-white object-contain"
             />
           ) : null}
@@ -160,7 +161,7 @@ const StudentBotCard: React.FC<{
               playsInline
               preload="metadata"
               poster={companion.avatarUrl || undefined}
-              aria-label={`${companion.name} 待機動畫`}
+              aria-label={uiTemplate("{0} 待機動畫", companion.name)}
               onError={() => setIdleVideoFailed(true)}
               onEnded={(event) => {
                 if (!isPreviewingIdle) return;
@@ -172,12 +173,12 @@ const StudentBotCard: React.FC<{
           ) : null}
         </div>
         {companion.hasPendingQuiz ? (
-          <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-1 text-[9px] font-bold text-amber-600 sm:px-2 sm:text-[10px]">測試題</span>
+          <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-1 text-[9px] font-bold text-amber-600 sm:px-2 sm:text-[10px]">{uiText("測試題")}</span>
         ) : null}
       </div>
       <h2 className="mt-4 truncate text-lg font-extrabold text-slate-950">{companion.name}</h2>
-      <span className="mt-2 inline-block rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-500">{companion.subject || "未分類"}</span>
-      <div className="mt-auto border-t border-slate-100 pt-4 text-[13px] text-slate-400">今日互動 {companion.interactions || 0} 次</div>
+      <span className="mt-2 inline-block rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-500">{uiText(companion.subject) || uiText("未分類")}</span>
+      <div className="mt-auto border-t border-slate-100 pt-4 text-[13px] text-slate-400">{uiText("今日互動 ")}{companion.interactions || 0}{uiText(" 次")}</div>
     </motion.button>
   );
 };
@@ -252,19 +253,9 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
   const [activeTip, setActiveTip] = useState<"companions" | null>(null);
 
   // 語言狀態：優先 localStorage 記住的上次選擇，其次用戶偏好，預設繁中
-  const [lang, setLang] = useState<"zh-HK" | "en">(() => {
-    const saved = localStorage.getItem("chopreality_ui_lang");
-    if (saved === "en" || saved === "zh-HK") return saved;
-    return currentUser.preferences?.experience?.language === "en" ? "en" : "zh-HK";
-  });
+  const lang = useTeacherLang();
   const t = <K extends keyof StudentHomeStrings>(key: K): StudentHomeStrings[K] => T[lang][key];
-  const switchLang = (next: "zh-HK" | "en") => {
-    setLang(next);
-    localStorage.setItem("chopreality_ui_lang", next);
-    document.documentElement.lang = next === "en" ? "en" : "zh-Hant";
-    // 同頁通知教師端元件（Header/工作坊等）即時更新語言
-    window.dispatchEvent(new CustomEvent(TEACHER_LANG_CHANGED_EVENT));
-  };
+  const switchLang = setTeacherLang;
 
   useEffect(() => {
     fetch(`${API_BASE}/api/bots/shared/with-me`)
@@ -333,7 +324,7 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
         <div className="flex shrink-0 items-center gap-2">
           {/* 語言切換：繁中 / English */}
           <div className="flex shrink-0 items-center rounded-full border border-[var(--border)] bg-[var(--bg-subtle-2)] p-1">
-            <button type="button" onClick={() => switchLang("zh-HK")} className={`h-8 rounded-full px-3 text-xs font-bold transition ${lang === "zh-HK" ? "bg-[var(--accent)] text-white shadow-sm" : "text-[var(--text-muted)] hover:text-[var(--text-main)]"}`}>中</button>
+            <button type="button" onClick={() => switchLang("zh-HK")} className={`h-8 rounded-full px-3 text-xs font-bold transition ${lang === "zh-HK" ? "bg-[var(--accent)] text-white shadow-sm" : "text-[var(--text-muted)] hover:text-[var(--text-main)]"}`}>{uiText("中")}</button>
             <button type="button" onClick={() => switchLang("en")} className={`h-8 rounded-full px-3 text-xs font-bold transition ${lang === "en" ? "bg-[var(--accent)] text-white shadow-sm" : "text-[var(--text-muted)] hover:text-[var(--text-main)]"}`}>EN</button>
           </div>
           <div className="relative" ref={userMenuRef}>

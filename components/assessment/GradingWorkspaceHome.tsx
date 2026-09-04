@@ -1,3 +1,4 @@
+import { uiText, uiTemplate } from '../../utils/uiI18n';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { AlertCircle, ArrowRight, BarChart2, HelpCircle, Trash2 } from 'lucide-react';
@@ -113,35 +114,33 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
       <div className="flex items-center justify-between">
         <div>
           <button onClick={onBack} className="flex items-center text-sm font-medium text-slate-600 hover:text-indigo-600 mb-2 transition-colors">
-            <Icons.back className="w-4 h-4 mr-2" />
-            返回智能評測
-          </button>
-          <h1 className="text-2xl font-bold text-slate-800">智能批改工作台</h1>
+            <Icons.back className="w-4 h-4 mr-2" />{uiText("返回智能評測")}</button>
+          <h1 className="text-2xl font-bold text-slate-800">{uiText("智能批改工作台")}</h1>
         </div>
-        <button type="button" aria-label="AI 批改説明" onClick={() => setShowHelp(true)} className="text-indigo-500"><HelpCircle className="h-5 w-5" /></button>
+        <button type="button" aria-label={uiText("AI 批改説明")} onClick={() => setShowHelp(true)} className="text-indigo-500"><HelpCircle className="h-5 w-5" /></button>
       </div>
 
       {sortedQuizzes.length > 0 ? <div className="bg-rose-50 border border-rose-100 text-rose-800 p-4 rounded-2xl flex items-center gap-3 shadow-sm">
         <div className="w-8 h-8 bg-rose-100 rounded-full flex items-center justify-center shrink-0">
           <AlertCircle className="w-4 h-4 text-rose-600" />
         </div>
-        <span className="font-bold">{activeQuizzesCount} 份測驗待處理 · 共 {totalPendingStudents} 份學生作答</span>
+        <span className="font-bold">{activeQuizzesCount}{uiText(" 份測驗待處理 · 共 ")}{totalPendingStudents}{uiText(" 份學生作答")}</span>
       </div> : null}
 
       <div className="grid grid-cols-1 gap-4">
         {loading ? (
-          <div className="rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">正在載入批改資料...</div>
+          <div className="rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">{uiText("正在載入批改資料...")}</div>
         ) : null}
 
         {!loading && !sortedQuizzes.length ? (
           <div className="mx-auto mt-8 w-full max-w-[720px] rounded-[28px] border border-slate-100 bg-white p-8 shadow-[0_10px_30px_rgba(15,23,42,0.05)] sm:p-10">
-            <h2 className="text-xl font-extrabold text-slate-950">還沒有測驗，兩步驟就能開始批改</h2>
-            <p className="mt-1.5 text-[13px] text-slate-400">完成後，學生作答會自動出現在這裡讓你確認分數</p>
+            <h2 className="text-xl font-extrabold text-slate-950">{uiText("還沒有測驗，兩步驟就能開始批改")}</h2>
+            <p className="mt-1.5 text-[13px] text-slate-400">{uiText("完成後，學生作答會自動出現在這裡讓你確認分數")}</p>
             <div className="mt-6 space-y-[18px]">
-              <div className="flex items-start gap-3.5"><span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-indigo-50 text-[13px] font-extrabold text-indigo-600">1</span><div><div className="text-sm font-bold text-slate-800">到「機器人角色」幫角色加上題目</div><div className="mt-1 text-[13px] leading-6 text-slate-400">上傳課文或題目，AI 會自動整理成測驗，不用自己一題一題輸入。</div></div></div>
-              <div className="flex items-start gap-3.5"><span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-indigo-50 text-[13px] font-extrabold text-indigo-600">2</span><div><div className="text-sm font-bold text-slate-800">發布給班級，等學生作答</div><div className="mt-1 text-[13px] leading-6 text-slate-400">學生答完後會自動送到這裡，AI 先批改一次，你只需要確認或調整分數即可。</div></div></div>
+              <div className="flex items-start gap-3.5"><span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-indigo-50 text-[13px] font-extrabold text-indigo-600">1</span><div><div className="text-sm font-bold text-slate-800">{uiText("到「機器人角色」幫角色加上題目")}</div><div className="mt-1 text-[13px] leading-6 text-slate-400">{uiText("上傳課文或題目，AI 會自動整理成測驗，不用自己一題一題輸入。")}</div></div></div>
+              <div className="flex items-start gap-3.5"><span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-indigo-50 text-[13px] font-extrabold text-indigo-600">2</span><div><div className="text-sm font-bold text-slate-800">{uiText("發布給班級，等學生作答")}</div><div className="mt-1 text-[13px] leading-6 text-slate-400">{uiText("學生答完後會自動送到這裡，AI 先批改一次，你只需要確認或調整分數即可。")}</div></div></div>
             </div>
-            <button type="button" onClick={onGoToWorkshop} className="mt-7 rounded-[14px] bg-indigo-600 px-[22px] py-3 text-sm font-bold text-white transition hover:bg-indigo-700">前往機器人角色設定題目</button>
+            <button type="button" onClick={onGoToWorkshop} className="mt-7 rounded-[14px] bg-indigo-600 px-[22px] py-3 text-sm font-bold text-white transition hover:bg-indigo-700">{uiText("前往機器人角色設定題目")}</button>
           </div>
         ) : null}
 
@@ -159,7 +158,7 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md">{quiz.subject}</span>
+                    <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md">{uiText(quiz.subject)}</span>
                     <span className="text-xs text-slate-400">{quiz.date ? new Date(quiz.date).toISOString().slice(0, 10) : ''}</span>
                   </div>
                   <h3 className="text-lg font-bold text-slate-800">{quiz.title}</h3>
@@ -168,15 +167,15 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
                 <div className="flex items-center gap-2 md:gap-4 flex-wrap">
                   <div className="flex flex-col items-center justify-center p-3 rounded-xl bg-slate-50 min-w-[80px]">
                     <span className="text-xl font-bold text-slate-500">{quiz.pendingGrading}</span>
-                    <span className="text-xs font-medium text-slate-400 mt-1">待批改</span>
+                    <span className="text-xs font-medium text-slate-400 mt-1">{uiText("待批改")}</span>
                   </div>
                   <div className={`flex flex-col items-center justify-center p-3 rounded-xl min-w-[80px] ${quiz.pendingConfirm > 0 ? 'bg-purple-50 ring-1 ring-purple-100' : 'bg-slate-50'}`}>
                     <span className={`text-xl font-bold ${quiz.pendingConfirm > 0 ? 'text-purple-600' : 'text-slate-500'}`}>{quiz.pendingConfirm}</span>
-                    <span className={`text-xs font-medium mt-1 ${quiz.pendingConfirm > 0 ? 'text-purple-500' : 'text-slate-400'}`}>待確認</span>
+                    <span className={`text-xs font-medium mt-1 ${quiz.pendingConfirm > 0 ? 'text-purple-500' : 'text-slate-400'}`}>{uiText("待確認")}</span>
                   </div>
                   <div className="flex flex-col items-center justify-center p-3 rounded-xl bg-emerald-50 min-w-[80px]">
                     <span className="text-xl font-bold text-emerald-600">{quiz.completed}</span>
-                    <span className="text-xs font-medium text-emerald-500 mt-1">已完成</span>
+                    <span className="text-xs font-medium text-emerald-500 mt-1">{uiText("已完成")}</span>
                   </div>
                 </div>
 
@@ -184,7 +183,7 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
                   <button
                     onClick={() => requestDeleteQuiz(quiz)}
                     disabled={deletingQuizId === quiz.id}
-                    aria-label={`刪除測驗 ${quiz.title}`}
+                    aria-label={uiTemplate("刪除測驗 {0}", quiz.title)}
                     className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition-colors hover:text-rose-600 disabled:opacity-50"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -200,7 +199,7 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
                     }`}
                   >
                     {isCompleted ? <BarChart2 className="w-4 h-4" /> : null}
-                    {isCompleted ? '查看報告' : quiz.pendingConfirm > 0 ? '去確認' : '開始批改'}
+                    {isCompleted ? uiText('查看報告') : quiz.pendingConfirm > 0 ? uiText('去確認') : uiText('開始批改')}
                     {!isCompleted ? <ArrowRight className="w-4 h-4" /> : null}
                   </button>
                 </div>
@@ -208,7 +207,7 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
             );
           })}
       </div>
-      <InfoTipModal open={showHelp} title="AI 批改怎麼運作" body="學生作答後，AI 會先自動評分並給出建議分數，例如選擇題直接判對錯、簡答題會給參考理由。你可以直接採用，也能手動調整後再確認送出。" onClose={() => setShowHelp(false)} />
+      <InfoTipModal open={showHelp} title={uiText("AI 批改怎麼運作")} body="學生作答後，AI 會先自動評分並給出建議分數，例如選擇題直接判對錯、簡答題會給參考理由。你可以直接採用，也能手動調整後再確認送出。" onClose={() => setShowHelp(false)} />
       <PlatformDialog
         open={dialog.open}
         title={dialog.title}

@@ -1,3 +1,4 @@
+import { uiText, uiTemplate, uiError } from '../../utils/uiI18n';
 import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -3544,7 +3545,7 @@ const unlockAudioAndMic = async () => {
                       ? "bg-white/22 ring-2 ring-white/65 shadow-[0_8px_24px_rgba(245,158,11,0.24)]"
                       : "bg-black/45 hover:bg-black/60"
                   }`}
-                  title={arControlsOpen ? "收起 AR 控制" : "打開 AR 控制"}
+                  title={arControlsOpen ? uiText("收起 AR 控制") : uiText("打開 AR 控制")}
                 >
                   <Camera size={16} />
                   <span>AR</span>
@@ -3561,9 +3562,7 @@ const unlockAudioAndMic = async () => {
                     className={`h-9 rounded-xl px-3 transition ${
                       stageViewMode === "full" ? "bg-white text-slate-900 shadow-sm" : "text-white/80 hover:bg-white/10 hover:text-white"
                     }`}
-                  >
-                    全身
-                  </button>
+                  >{uiText("全身")}</button>
                   <button
                     type="button"
                     aria-pressed={stageViewMode === "upper"}
@@ -3571,9 +3570,7 @@ const unlockAudioAndMic = async () => {
                     className={`h-9 rounded-xl px-3 transition ${
                       stageViewMode === "upper" ? "bg-white text-slate-900 shadow-sm" : "text-white/80 hover:bg-white/10 hover:text-white"
                     }`}
-                  >
-                    上半身
-                  </button>
+                  >{uiText("上半身")}</button>
                 </div>
               </div>
               <div className="absolute right-4 top-5 z-30 flex flex-col items-center gap-2 md:right-6 md:top-6 md:flex-row md:gap-3">
@@ -3584,7 +3581,7 @@ const unlockAudioAndMic = async () => {
                       : "bg-black/45 hover:bg-black/60"
                   }`}
                   onClick={handleChatPanelToggle}
-                  title={chatPanelOpen ? "隱藏聊天框" : "顯示聊天框"}
+                  title={chatPanelOpen ? uiText("隱藏聊天框") : uiText("顯示聊天框")}
                 >
                   <MessageCircle size={20} />
                 </button>
@@ -3596,10 +3593,10 @@ const unlockAudioAndMic = async () => {
                         : "bg-black/45 hover:bg-black/60"
                     }`}
                     onClick={handleHistoryButtonClick}
-                    title={historyDrawerOpen ? "關閉對話紀錄" : "打開對話紀錄"}
+                    title={historyDrawerOpen ? uiText("關閉對話紀錄") : uiText("打開對話紀錄")}
                   >
                     <MessagesSquare size={20} />
-                    <span className="hidden text-xs font-semibold md:inline">對話紀錄</span>
+                    <span className="hidden text-xs font-semibold md:inline">{uiText("對話紀錄")}</span>
                   </button>
                 ) : null}
                 {!isSharedView && (
@@ -3607,7 +3604,7 @@ const unlockAudioAndMic = async () => {
                     <button
                       className="flex h-11 w-11 items-center justify-center rounded-2xl bg-black/45 text-white shadow-lg backdrop-blur transition-all duration-200 hover:bg-black/60"
                       onClick={() => setShowTopMenu((prev) => !prev)}
-                      title="更多操作"
+                      title={uiText("更多操作")}
                     >
                       <MoreHorizontal size={18} />
                     </button>
@@ -3619,27 +3616,21 @@ const unlockAudioAndMic = async () => {
                             setShowTopMenu(false);
                             onEdit();
                           }}
-                        >
-                          編輯機器人
-                        </button>
+                        >{uiText("編輯機器人")}</button>
                         <button
                           className="flex w-full items-center rounded-xl px-3 py-2.5 text-left transition hover:bg-white/10"
                           onClick={() => {
                             setShowTopMenu(false);
                             void handleCopyShareLink();
                           }}
-                        >
-                          複製共享連結
-                        </button>
+                        >{uiText("複製共享連結")}</button>
                         <button
                           className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-red-300 transition hover:bg-red-500/10"
                           onClick={() => {
                             setShowTopMenu(false);
                             setShowDeleteConfirm(true);
                           }}
-                        >
-                          刪除機器人
-                        </button>
+                        >{uiText("刪除機器人")}</button>
                       </div>
                     ) : null}
                   </div>
@@ -3683,7 +3674,7 @@ const unlockAudioAndMic = async () => {
                       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/58">
                         AR BACKGROUND
                       </div>
-                      <div className="mt-0.5 text-sm font-semibold">相機背景</div>
+                      <div className="mt-0.5 text-sm font-semibold">{uiText("相機背景")}</div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span
@@ -3695,13 +3686,13 @@ const unlockAudioAndMic = async () => {
                             : "bg-white/10 text-white/72 ring-1 ring-white/14"
                         }`}
                       >
-                        {cameraBackgroundReady ? "已連接" : cameraBackgroundLoading ? "啟動中" : "未啟用"}
+                        {cameraBackgroundReady ? uiText("已連接") : cameraBackgroundLoading ? uiText("啟動中") : uiText("未啟用")}
                       </span>
                       <button
                         type="button"
                         onClick={() => setArControlsOpen(false)}
                         className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 text-white/78 ring-1 ring-white/12 transition hover:bg-white/16"
-                        title="收起 AR 控制"
+                        title={uiText("收起 AR 控制")}
                       >
                         <ChevronDown size={16} className="rotate-90" />
                       </button>
@@ -3711,14 +3702,14 @@ const unlockAudioAndMic = async () => {
                   <div className="space-y-3 px-4 py-3.5">
                     <p className="text-xs leading-5 text-white/74">
                       {cameraBackgroundError
-                        ? `相機未啟用：${cameraBackgroundError}`
+                        ? uiTemplate("相機未啟用：{0}", cameraBackgroundError)
                         : cameraBackgroundReady
                         ? isMobileClient
-                          ? "可拖動角色位置，雙指捏合調整大小。"
-                          : "可拖動角色位置，並用下方工具調整角色大小。"
+                          ? uiText("可拖動角色位置，雙指捏合調整大小。")
+                          : uiText("可拖動角色位置，並用下方工具調整角色大小。")
                         : cameraBackgroundLoading
-                        ? "正在請求相機權限..."
-                        : "啟用後會以電腦相機畫面取代目前背景。"}
+                        ? uiText("正在請求相機權限...")
+                        : uiText("啟用後會以電腦相機畫面取代目前背景。")}
                     </p>
 
                     <div className="grid grid-cols-2 gap-2">
@@ -3731,12 +3722,12 @@ const unlockAudioAndMic = async () => {
                       >
                         <Camera size={15} />
                         {cameraBackgroundLoading
-                          ? "啟動中..."
+                          ? uiText("啟動中...")
                           : cameraBackgroundReady
-                          ? "重新連接"
+                          ? uiText("重新連接")
                           : isMobileClient
-                          ? "開啟手機相機"
-                          : "開啟相機"}
+                          ? uiText("開啟手機相機")
+                          : uiText("開啟相機")}
                       </button>
                       <button
                         onClick={() => {
@@ -3749,7 +3740,7 @@ const unlockAudioAndMic = async () => {
                         }`}
                       >
                         <Square size={14} />
-                        {isRecordingScreen ? "結束並下載" : "開始錄製"}
+                        {isRecordingScreen ? uiText("結束並下載") : uiText("開始錄製")}
                       </button>
                     </div>
 
@@ -3759,15 +3750,11 @@ const unlockAudioAndMic = async () => {
                           <button
                             onClick={stopCameraBackground}
                             className="h-9 rounded-xl bg-white/10 px-3 text-xs font-semibold text-white ring-1 ring-white/12 transition hover:bg-white/16"
-                          >
-                            關閉 AR
-                          </button>
+                          >{uiText("關閉 AR")}</button>
                           <button
                             onClick={resetArCharacterPose}
                             className="h-9 rounded-xl bg-white/10 px-3 text-xs font-semibold text-white ring-1 ring-white/12 transition hover:bg-white/16"
-                          >
-                            重置位置
-                          </button>
+                          >{uiText("重置位置")}</button>
                         </div>
 
                         {!isMobileClient && (
@@ -3775,26 +3762,21 @@ const unlockAudioAndMic = async () => {
                             <button
                               onClick={() => nudgeCharacterScale(-0.08)}
                               className="h-9 rounded-xl bg-white/10 px-3 text-xs font-semibold text-white ring-1 ring-white/12 transition hover:bg-white/16"
-                            >
-                              縮小
-                            </button>
+                            >{uiText("縮小")}</button>
                             <div className="min-w-[72px] rounded-xl bg-black/20 px-3 py-2 text-center text-[11px] font-semibold text-white/82 ring-1 ring-white/10">
                               {Math.round(characterScale * 100)}%
                             </div>
                             <button
                               onClick={() => nudgeCharacterScale(0.08)}
                               className="h-9 rounded-xl bg-white/10 px-3 text-xs font-semibold text-white ring-1 ring-white/12 transition hover:bg-white/16"
-                            >
-                              放大
-                            </button>
+                            >{uiText("放大")}</button>
                           </div>
                         )}
                       </div>
                     )}
 
                     {recordingError ? (
-                      <div className="rounded-xl bg-red-500/14 px-3 py-2 text-[11px] leading-5 text-red-50 ring-1 ring-red-300/18">
-                        錄製未啟用：{recordingError}
+                      <div className="rounded-xl bg-red-500/14 px-3 py-2 text-[11px] leading-5 text-red-50 ring-1 ring-red-300/18">{uiText("錄製未啟用：")}{uiError(recordingError)}
                       </div>
                     ) : null}
                   </div>
@@ -3843,7 +3825,7 @@ const unlockAudioAndMic = async () => {
               {historyDrawerOpen && chatPanelOpen ? (
                 <button
                   type="button"
-                  aria-label="關閉對話紀錄"
+                  aria-label={uiText("關閉對話紀錄")}
                   className="absolute inset-0 z-[35] cursor-default bg-transparent"
                   onClick={closeHistoryDrawer}
                 />
@@ -4100,7 +4082,7 @@ const unlockAudioAndMic = async () => {
                       ? "bg-white/14 border-white/35 shadow-[0_10px_30px_rgba(255,255,255,0.14)]"
                       : "bg-black/45 border-white/15 hover:bg-black/60"
                   } disabled:opacity-40`}
-                  title={isListening ? "點擊停止語音輸入" : "語音輸入（廣東話）"}
+                  title={isListening ? uiText("點擊停止語音輸入") : uiText("語音輸入（廣東話）")}
                 >
                   <Mic size={18} />
                 </button>
@@ -4150,7 +4132,7 @@ const unlockAudioAndMic = async () => {
                       ? "cursor-not-allowed bg-white/70 opacity-70"
                       : "bg-white hover:bg-slate-100"
                   }`}
-                  title={isCapturingStagePhoto ? "圖片保存中..." : "拍攝當前舞台"}
+                  title={isCapturingStagePhoto ? uiText("圖片保存中...") : uiText("拍攝當前舞台")}
                 >
                   <Camera size={18} />
                 </button>
@@ -4158,7 +4140,7 @@ const unlockAudioAndMic = async () => {
                   <button
                     onClick={stopAllSpeech}
                     className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[22px] bg-black/45 text-white backdrop-blur-md hover:bg-black/60"
-                    title="停止回覆與語音"
+                    title={uiText("停止回覆與語音")}
                   >
                     <ChevronDown size={18} />
                   </button>
@@ -4166,7 +4148,7 @@ const unlockAudioAndMic = async () => {
               </div>
               {stagePhotoError ? (
                 <div className="pointer-events-auto mt-2 text-center text-xs text-red-200">
-                  {stagePhotoError}
+                  {uiError(stagePhotoError)}
                 </div>
               ) : null}
             </div>
@@ -4186,9 +4168,7 @@ const unlockAudioAndMic = async () => {
                   <div className="truncate text-base font-bold leading-tight text-[#241b12]">{botName}</div>
                   <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-2">
                     <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600">
-                      <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                      已發佈上線
-                    </div>
+                      <span className="h-2 w-2 rounded-full bg-emerald-400" />{uiText("已發佈上線")}</div>
                     {availableTopics.length > 0 ? (
                       <div
                         ref={topicSelectorRef}
@@ -4202,10 +4182,10 @@ const unlockAudioAndMic = async () => {
                           className="flex min-h-8 max-w-[11.5rem] items-center gap-1.5 rounded-lg border border-[#d9c8ae] bg-white/80 px-2.5 text-[11px] font-black text-[#6c4b22] shadow-sm transition hover:bg-white disabled:cursor-wait disabled:opacity-65"
                           aria-haspopup="listbox"
                           aria-expanded={isTopicSelectorOpen}
-                          title={selectedTopic?.name || "選擇主題"}
+                          title={selectedTopic?.name || uiText("選擇主題")}
                         >
                           <BookOpen className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate">{selectedTopic?.name || "選擇主題"}</span>
+                          <span className="truncate">{selectedTopic?.name || uiText("選擇主題")}</span>
                           {isSwitchingTopic ? (
                             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
                           ) : (
@@ -4222,11 +4202,11 @@ const unlockAudioAndMic = async () => {
                               transition={{ duration: 0.14 }}
                               className="absolute left-0 top-full z-[70] mt-2 w-72 max-w-[calc(100vw-3rem)] overflow-hidden rounded-2xl border border-[#ddcfba] bg-[#fffdf8] shadow-[0_20px_50px_rgba(69,52,31,0.24)]"
                               role="listbox"
-                              aria-label="選擇對話主題"
+                              aria-label={uiText("選擇對話主題")}
                             >
                               <div className="border-b border-[#eee3d3] px-3.5 py-3">
-                                <div className="text-xs font-black text-[#2f251a]">選擇主題</div>
-                                <div className="mt-0.5 text-[10px] leading-4 text-[#8b7a64]">切換後，下一則回覆會使用新提示與知識。</div>
+                                <div className="text-xs font-black text-[#2f251a]">{uiText("選擇主題")}</div>
+                                <div className="mt-0.5 text-[10px] leading-4 text-[#8b7a64]">{uiText("切換後，下一則回覆會使用新提示與知識。")}</div>
                               </div>
                               <div className="custom-scroll max-h-64 overflow-y-auto p-1.5">
                                 {availableTopics.map((topic) => {
@@ -4249,10 +4229,10 @@ const unlockAudioAndMic = async () => {
                                       <span className="min-w-0 flex-1">
                                         <span className="flex items-center gap-1.5 text-xs font-black text-[#30261b]">
                                           <span className="truncate">{topic.name}</span>
-                                          {topic.isDefault ? <span className="shrink-0 text-[9px] font-black text-amber-700">預設</span> : null}
+                                          {topic.isDefault ? <span className="shrink-0 text-[9px] font-black text-amber-700">{uiText("預設")}</span> : null}
                                         </span>
                                         <span className="mt-0.5 line-clamp-2 block text-[10px] leading-4 text-[#7e6d58]">
-                                          {topic.description || "此主題尚未加入説明"}
+                                          {topic.description || uiText("此主題尚未加入説明")}
                                         </span>
                                       </span>
                                     </button>
@@ -4265,17 +4245,16 @@ const unlockAudioAndMic = async () => {
                       </div>
                     ) : topicsLoading ? (
                       <span className="flex items-center gap-1 text-[10px] font-semibold text-[#8b7a64]">
-                        <Loader2 className="h-3 w-3 animate-spin" /> 載入主題
-                      </span>
+                        <Loader2 className="h-3 w-3 animate-spin" />{uiText(" 載入主題")}</span>
                     ) : null}
                   </div>
-                  {topicError ? <div className="mt-1 truncate text-[10px] font-semibold text-rose-600">{topicError}</div> : null}
+                  {topicError ? <div className="mt-1 truncate text-[10px] font-semibold text-rose-600">{uiError(topicError)}</div> : null}
                 </div>
 
                 <div
                   className="flex shrink-0 rounded-xl bg-[#eadfce]/80 p-1"
                   role="radiogroup"
-                  aria-label="AI 回覆語言"
+                  aria-label={uiText("AI 回覆語言")}
                 >
                   {REPLY_LANGUAGE_OPTIONS.map((option) => (
                     <button
@@ -4289,9 +4268,9 @@ const unlockAudioAndMic = async () => {
                           ? "bg-white text-[#7c4d18] shadow-sm"
                           : "text-[#786851] hover:text-[#3f3325]"
                       }`}
-                      title={`切換 AI 回覆至${option.label}`}
+                      title={uiTemplate("切換 AI 回覆至{0}", uiText(option.label))}
                     >
-                      {option.label}
+                      {uiText(option.label)}
                     </button>
                   ))}
                 </div>
@@ -4312,15 +4291,13 @@ const unlockAudioAndMic = async () => {
                   <div className="flex min-h-[40px] items-center justify-between gap-3 bg-[linear-gradient(90deg,#4f46e5_0%,#5b43ea_42%,#5638e7_100%)] px-4 py-1.5 text-white shadow-[0_10px_22px_rgba(79,70,229,0.18)]">
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="text-[21px] leading-none text-[#ffd84d]">⚡</span>
-                      <div className="truncate text-[12px] font-black tracking-[0.01em]">你有一個待完成的知識測試</div>
+                      <div className="truncate text-[12px] font-black tracking-[0.01em]">{uiText("你有一個待完成的知識測試")}</div>
                     </div>
                     <button
                       type="button"
                       onClick={openQuizPrompt}
                       className="shrink-0 rounded-full bg-white/18 px-3.5 py-1.5 text-[11px] font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ring-1 ring-white/10 backdrop-blur transition hover:bg-white/24"
-                    >
-                      點擊開展測試 →
-                    </button>
+                    >{uiText("點擊開展測試 →")}</button>
                   </div>
                 </div>
               ) : null}
@@ -4341,7 +4318,7 @@ const unlockAudioAndMic = async () => {
                   >
                     {m.role === "event" ? (
                       <div className="max-w-[92%] rounded-full border border-[#dfd1bc] bg-[#f2e8d9]/85 px-3 py-1.5 text-center text-[10px] font-bold text-[#806d54]">
-                        {m.content}
+                        {uiText(m.content)}
                       </div>
                     ) : m.role === "bot" && m.guidedTitle ? (
                       <div className="max-w-[88%]">
@@ -4398,10 +4375,10 @@ const unlockAudioAndMic = async () => {
                           <span className="text-lg">⚡</span>
                           <span className="text-base font-black">{activeQuiz.title}</span>
                         </div>
-                        <p className="mt-2 text-sm font-semibold leading-7 text-indigo-900">我們現在開始測試。準備好了嗎？請回答我接下來的問題！</p>
+                        <p className="mt-2 text-sm font-semibold leading-7 text-indigo-900">{uiText("我們現在開始測試。準備好了嗎？請回答我接下來的問題！")}</p>
                         <div className="mt-4 flex flex-wrap gap-2.5">
-                          <button type="button" onClick={() => void startQuiz()} disabled={quizStarting || quizSubmitting} className="rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-black text-white shadow-[0_8px_18px_rgba(79,70,229,0.22)] transition hover:bg-indigo-700 disabled:opacity-60">{quizStarting ? "載入題目..." : "準備答題"}</button>
-                          <button type="button" onClick={() => void deferQuiz()} disabled={quizStarting || quizSubmitting} className="rounded-full border border-slate-200 bg-white px-6 py-2.5 text-sm font-black text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:opacity-60">稍後作答</button>
+                          <button type="button" onClick={() => void startQuiz()} disabled={quizStarting || quizSubmitting} className="rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-black text-white shadow-[0_8px_18px_rgba(79,70,229,0.22)] transition hover:bg-indigo-700 disabled:opacity-60">{quizStarting ? uiText("載入題目...") : uiText("準備答題")}</button>
+                          <button type="button" onClick={() => void deferQuiz()} disabled={quizStarting || quizSubmitting} className="rounded-full border border-slate-200 bg-white px-6 py-2.5 text-sm font-black text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:opacity-60">{uiText("稍後作答")}</button>
                         </div>
                       </div>
                     ) : null}
@@ -4414,8 +4391,8 @@ const unlockAudioAndMic = async () => {
                         <div className="rounded-[16px] border border-indigo-100 bg-[#EEF2FF] p-3.5">
                           <div className="flex flex-wrap items-center gap-2">
                             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 text-lg font-black text-white">{quizCurrentIndex + 1}</div>
-                            <span className={`rounded-full px-3 py-1 text-[11px] font-bold ${quizQuestion.levelColor}`}>{quizQuestion.cognitiveLevel}</span>
-                            <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-500">{quizQuestion.type}</span>
+                            <span className={`rounded-full px-3 py-1 text-[11px] font-bold ${quizQuestion.levelColor}`}>{uiText(quizQuestion.cognitiveLevel)}</span>
+                            <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-500">{uiText(quizQuestion.type)}</span>
                           </div>
                           <div className="mt-3 text-[15px] font-black leading-8 text-slate-800">{quizQuestion.content}</div>
                         </div>
@@ -4454,17 +4431,15 @@ const unlockAudioAndMic = async () => {
                             <textarea
                               value={quizTextAnswer}
                               onChange={(event) => setQuizTextAnswer(event.target.value)}
-                              placeholder="請輸入你的答案..."
+                              placeholder={uiText("請輸入你的答案...")}
                               className="min-h-[160px] w-full resize-none rounded-[18px] border border-slate-200 bg-white px-5 py-4 text-sm font-medium leading-7 text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100/60"
                             />
                           )}
                         </div>
                         <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
-                          <button type="button" onClick={goToPreviousQuizQuestion} disabled={quizCurrentIndex === 0} className="rounded-full px-5 py-2 text-sm font-black text-slate-500 transition hover:bg-slate-50 disabled:text-slate-300">
-                            上一題
-                          </button>
+                          <button type="button" onClick={goToPreviousQuizQuestion} disabled={quizCurrentIndex === 0} className="rounded-full px-5 py-2 text-sm font-black text-slate-500 transition hover:bg-slate-50 disabled:text-slate-300">{uiText("上一題")}</button>
                           <button type="button" onClick={() => void submitQuizAnswer()} disabled={(!(quizQuestion.options || []).length ? !quizTextAnswer.trim() : !quizSelectedAnswer) || quizSubmitting} className="rounded-full bg-indigo-600 px-7 py-2.5 text-sm font-black text-white shadow-[0_8px_20px_rgba(79,70,229,0.20)] transition hover:bg-indigo-700 disabled:opacity-50">
-                            {quizSubmitting && quizCurrentIndex + 1 >= quizTotalQuestions ? "計分中..." : quizCurrentIndex + 1 >= quizTotalQuestions ? "完成作答" : "下一題"}
+                            {quizSubmitting && quizCurrentIndex + 1 >= quizTotalQuestions ? uiText("計分中...") : quizCurrentIndex + 1 >= quizTotalQuestions ? uiText("完成作答") : uiText("下一題")}
                           </button>
                         </div>
                       </div>
@@ -4475,37 +4450,35 @@ const unlockAudioAndMic = async () => {
                         <div className="inline-flex max-w-[80%] items-start gap-2.5 rounded-[22px] border border-indigo-100 bg-[#EEF2FF] px-5 py-4 shadow-sm">
                           <span className="mt-0.5 text-lg">⚡</span>
                           <div>
-                            <div className="text-base font-black text-indigo-900">{quizResult.title || activeQuiz.title}</div>
-                            <div className="mt-1.5 text-[16px] font-black leading-7 text-indigo-900">測驗已結束。以下是你的結算報告。</div>
+                            <div className="text-base font-black text-indigo-900">{quizResult.title ? uiText(quizResult.title) : activeQuiz.title}</div>
+                            <div className="mt-1.5 text-[16px] font-black leading-7 text-indigo-900">{uiText("測驗已結束。以下是你的結算報告。")}</div>
                           </div>
                         </div>
                         <div className="rounded-[22px] border border-slate-200 bg-white p-4 text-slate-900 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
                           <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
                             <div>
-                              <div className="text-sm font-black text-slate-500">測驗結果結算</div>
-                              <div className="mt-1 line-clamp-1 text-lg font-black text-slate-900">{quizResult.title}</div>
+                              <div className="text-sm font-black text-slate-500">{uiText("測驗結果結算")}</div>
+                              <div className="mt-1 line-clamp-1 text-lg font-black text-slate-900">{uiText(quizResult.title)}</div>
                             </div>
                             <div className="flex items-end gap-1 text-indigo-600">
                               <div className="text-5xl font-black leading-none">{quizResult.score}</div>
-                              <div className="mb-1 text-base font-black">分</div>
+                              <div className="mb-1 text-base font-black">{uiText("分")}</div>
                             </div>
                           </div>
                           <div className="mt-4 flex items-center gap-4">
                             <div className="relative flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-[28px] bg-[linear-gradient(180deg,rgba(226,233,244,0.92),rgba(204,214,230,0.72))] text-[46px] font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_16px_28px_rgba(148,163,184,0.18)] ring-1 ring-white/60">
                               <div className="absolute inset-0 rounded-[28px] border border-white/40" />
                               {quizResult.grade}
-                              <span className="absolute -bottom-1.5 right-[-4px] flex h-[30px] min-w-[50px] items-center justify-center rounded-full bg-white px-2.5 text-[12px] font-black text-slate-700 shadow-[0_10px_20px_rgba(148,163,184,0.22)] ring-1 ring-slate-200/80">
-                                等級
-                              </span>
+                              <span className="absolute -bottom-1.5 right-[-4px] flex h-[30px] min-w-[50px] items-center justify-center rounded-full bg-white px-2.5 text-[12px] font-black text-slate-700 shadow-[0_10px_20px_rgba(148,163,184,0.22)] ring-1 ring-slate-200/80">{uiText("等級")}</span>
                             </div>
                             <div className="min-w-0">
-                              <div className="text-xl font-black leading-tight text-slate-900">{quizResult.grade === "A" ? "表現出色" : quizResult.grade === "B" ? "掌握不錯" : quizResult.grade === "C" ? "持續前進" : "打穩基礎"}</div>
-                              <div className="mt-1.5 text-sm font-semibold leading-6 text-slate-500">{quizResult.message}</div>
+                              <div className="text-xl font-black leading-tight text-slate-900">{quizResult.grade === "A" ? uiText("表現出色") : quizResult.grade === "B" ? uiText("掌握不錯") : quizResult.grade === "C" ? uiText("持續前進") : uiText("打穩基礎")}</div>
+                              <div className="mt-1.5 text-sm font-semibold leading-6 text-slate-500">{uiText(quizResult.message)}</div>
                             </div>
                           </div>
                           <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4">
-                            <button type="button" onClick={() => { if (typeof window !== "undefined") { window.dispatchEvent(new CustomEvent("quiz-pending-changed", { detail: { botId: botConfig.id, hasPendingQuiz: true } })); } void retryQuiz(); }} disabled={quizSubmitting} className="rounded-full border border-slate-200 bg-white px-5 py-2 text-sm font-black text-slate-600 transition hover:bg-slate-50 disabled:opacity-60">再測一次</button>
-                            <button type="button" onClick={() => { if (typeof window !== "undefined") { window.dispatchEvent(new CustomEvent("quiz-pending-changed", { detail: { botId: botConfig.id, hasPendingQuiz: false } })); } void dismissQuizResult(); }} className="rounded-full bg-indigo-600 px-5 py-2 text-sm font-black text-white transition hover:bg-indigo-700">完成結算</button>
+                            <button type="button" onClick={() => { if (typeof window !== "undefined") { window.dispatchEvent(new CustomEvent("quiz-pending-changed", { detail: { botId: botConfig.id, hasPendingQuiz: true } })); } void retryQuiz(); }} disabled={quizSubmitting} className="rounded-full border border-slate-200 bg-white px-5 py-2 text-sm font-black text-slate-600 transition hover:bg-slate-50 disabled:opacity-60">{uiText("再測一次")}</button>
+                            <button type="button" onClick={() => { if (typeof window !== "undefined") { window.dispatchEvent(new CustomEvent("quiz-pending-changed", { detail: { botId: botConfig.id, hasPendingQuiz: false } })); } void dismissQuizResult(); }} className="rounded-full bg-indigo-600 px-5 py-2 text-sm font-black text-white transition hover:bg-indigo-700">{uiText("完成結算")}</button>
                           </div>
                         </div>
                       </div>
@@ -4536,16 +4509,12 @@ const unlockAudioAndMic = async () => {
                   <div className="mb-1.5 rounded-[20px] border border-[#ecdba8] bg-[#fffaf1]/96 px-1.5 py-1.5 shadow-[0_6px_14px_rgba(218,184,100,0.07)]">
                     <div className="mb-1.5 flex items-center justify-between gap-1.5 px-1">
                       <div className="flex items-center gap-1 text-[10px] font-black text-[#C77B09]">
-                        <span className="h-1.5 w-1.5 rounded-full bg-[#F6B51E]" />
-                        引導模式進行中
-                      </div>
+                        <span className="h-1.5 w-1.5 rounded-full bg-[#F6B51E]" />{uiText("引導模式進行中")}</div>
                       <button
                         type="button"
                         onClick={clearSuggestedReplies}
                         className="rounded-full border border-rose-100 bg-white/92 px-2 py-0.5 text-[9px] font-black text-rose-500 shadow-sm transition hover:bg-rose-50"
-                      >
-                        退出引導
-                      </button>
+                      >{uiText("退出引導")}</button>
                     </div>
                     <div className="space-y-1">
                       {suggestedReplies.map((reply) => {
@@ -4559,7 +4528,7 @@ const unlockAudioAndMic = async () => {
                             className={`flex min-h-[34px] w-full items-center gap-1.5 rounded-full border px-3 py-1 text-left text-[10px] font-black shadow-[0_2px_6px_rgba(148,163,184,0.06)] transition active:scale-[0.99] ${meta.className}`}
                           >
                             <Icon className="h-3.5 w-3.5 shrink-0" />
-                            <span className="shrink-0">{reply.label}</span>
+                            <span className="shrink-0">{uiText(reply.label)}</span>
                             <span className="min-w-0 truncate text-[10px] font-bold text-[#475569]">{reply.text}</span>
                           </button>
                         );
@@ -4568,25 +4537,22 @@ const unlockAudioAndMic = async () => {
                   </div>
                 ) : guidedMode ? (
                   <div className="mb-2 rounded-2xl border border-amber-200 bg-amber-50/80 p-2">
-                    <div className="mb-2 text-xs text-amber-800">
-                      引導模式進行中 {guidedStepIndex > 0 && guidedTotalSteps > 0 ? `(Step ${guidedStepIndex}/${guidedTotalSteps})` : ""}
+                    <div className="mb-2 text-xs text-amber-800">{uiText("引導模式進行中 ")}{guidedStepIndex > 0 && guidedTotalSteps > 0 ? `(Step ${guidedStepIndex}/${guidedTotalSteps})` : ""}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <button onClick={() => void sendMessage("下一步", undefined, "guided_action")} className="rounded-lg bg-white px-3 py-1 text-xs text-amber-800 border border-amber-200">下一步</button>
-                      <button onClick={() => void sendMessage("重複這一步", undefined, "guided_action")} className="rounded-lg bg-white px-3 py-1 text-xs text-amber-800 border border-amber-200">重複這一步</button>
-                      <button onClick={() => void sendMessage("給我示例", undefined, "guided_action")} className="rounded-lg bg-white px-3 py-1 text-xs text-amber-800 border border-amber-200">給我示例</button>
-                      <button onClick={() => void sendMessage("退出引導", undefined, "guided_action")} className="rounded-lg bg-white px-3 py-1 text-xs text-rose-700 border border-rose-200">退出引導</button>
+                      <button onClick={() => void sendMessage("下一步", undefined, "guided_action")} className="rounded-lg bg-white px-3 py-1 text-xs text-amber-800 border border-amber-200">{uiText("下一步")}</button>
+                      <button onClick={() => void sendMessage("重複這一步", undefined, "guided_action")} className="rounded-lg bg-white px-3 py-1 text-xs text-amber-800 border border-amber-200">{uiText("重複這一步")}</button>
+                      <button onClick={() => void sendMessage("給我示例", undefined, "guided_action")} className="rounded-lg bg-white px-3 py-1 text-xs text-amber-800 border border-amber-200">{uiText("給我示例")}</button>
+                      <button onClick={() => void sendMessage("退出引導", undefined, "guided_action")} className="rounded-lg bg-white px-3 py-1 text-xs text-rose-700 border border-rose-200">{uiText("退出引導")}</button>
                     </div>
                   </div>
                 ) : null}
                 {awaitingAudioGesture && (
-                  <div className="mb-2 text-xs text-amber-600">
-                    已收到回覆語音，請點一下畫面以恢復播放。
-                  </div>
+                  <div className="mb-2 text-xs text-amber-600">{uiText("已收到回覆語音，請點一下畫面以恢復播放。")}</div>
                 )}
                 {voiceLimitMessage && (
                   <div className="mb-2 text-xs text-amber-700">
-                    {voiceLimitMessage}
+                    {uiText(voiceLimitMessage)}
                   </div>
                 )}
                 <div className="mb-2 flex items-center">
@@ -4667,7 +4633,7 @@ const unlockAudioAndMic = async () => {
                         onClick={() => chatImageInputRef.current?.click()}
                         disabled={shouldDisableRegularChat || chatImages.length >= 4}
                         className="mr-2 flex h-10 w-10 items-center justify-center rounded-full border border-[#e1d4bf] bg-white text-lg leading-none text-[#6f604c] hover:bg-[#fffaf1] disabled:opacity-40"
-                        title="上傳圖片"
+                        title={uiText("上傳圖片")}
                       >
                         +
                       </button>
@@ -4681,7 +4647,7 @@ const unlockAudioAndMic = async () => {
                         ? "bg-red-50 border-red-300 text-red-600"
                         : "bg-white border-[#e1d4bf] text-[#6f604c] hover:bg-[#fffaf1]"
                     } disabled:opacity-40`}
-                    title={isListening ? "點擊停止語音輸入" : "語音輸入（廣東話）"}
+                    title={isListening ? uiText("點擊停止語音輸入") : uiText("語音輸入（廣東話）")}
                   >
                     <Mic size={16} />
                   </button>
@@ -4699,7 +4665,7 @@ const unlockAudioAndMic = async () => {
                       }
                     }}
                     disabled={shouldDisableRegularChat}
-                    placeholder="輸入訊息，或按麥克風説話..."
+                    placeholder={uiText("輸入訊息，或按麥克風説話...")}
                     rows={1}
                     style={{ height: "40px" }}
                     onDragOver={(event) => {
@@ -4723,7 +4689,7 @@ const unlockAudioAndMic = async () => {
                     onClick={stopAllSpeech}
                     disabled={!isStopAvailable || shouldDisableRegularChat}
                     className="p-3 mr-2 text-[#6f604c] bg-white rounded-full hover:bg-[#fffaf1] disabled:opacity-40 disabled:cursor-not-allowed"
-                    title="停止回覆與語音"
+                    title={uiText("停止回覆與語音")}
                   >
                     <Square size={16} />
                   </button>
@@ -4746,16 +4712,14 @@ const unlockAudioAndMic = async () => {
               <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-slate-950/10 backdrop-blur-[1px]">
                 <div className="flex items-center gap-3 rounded-2xl bg-white/92 px-5 py-3.5 shadow-xl ring-1 ring-slate-200/80 backdrop-blur">
                   <div className="h-6 w-6 rounded-full border-2 border-slate-200 border-t-indigo-600 animate-spin" />
-                  <div className="text-sm font-semibold text-slate-700">正在載入聊天與語音...</div>
+                  <div className="text-sm font-semibold text-slate-700">{uiText("正在載入聊天與語音...")}</div>
                 </div>
               </div>
             )}
             {!shouldShowBooting && shouldRequirePermission && !permissionReady && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-white/95 px-6 text-center">
-                <div className="text-xl font-semibold text-slate-800">開始體驗前需要一次授權</div>
-                <div className="text-sm text-slate-600">
-                  點一次即可啟用麥克風與語音播放，之後同一會話可自動語音回覆。
-                </div>
+                <div className="text-xl font-semibold text-slate-800">{uiText("開始體驗前需要一次授權")}</div>
+                <div className="text-sm text-slate-600">{uiText("點一次即可啟用麥克風與語音播放，之後同一會話可自動語音回覆。")}</div>
                 <button
                   onClick={() => {
                     void unlockAudioAndMic();
@@ -4763,10 +4727,10 @@ const unlockAudioAndMic = async () => {
                   disabled={isUnlocking}
                   className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-medium text-white hover:bg-indigo-700"
                 >
-                  {isUnlocking ? "授權中..." : "開始體驗並授權"}
+                  {isUnlocking ? uiText("授權中...") : uiText("開始體驗並授權")}
                 </button>
                 {permissionError && (
-                  <div className="max-w-md text-xs text-red-600">{permissionError}</div>
+                  <div className="max-w-md text-xs text-red-600">{uiError(permissionError)}</div>
                 )}
               </div>
             )}
@@ -4794,23 +4758,17 @@ const unlockAudioAndMic = async () => {
           {showDeleteConfirm && (
             <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/45">
               <div className="w-[92%] max-w-sm rounded-2xl bg-white p-5 shadow-xl">
-                <div className="text-base font-semibold text-slate-800">確認刪除這個聊天？</div>
-                <div className="mt-2 text-sm text-slate-500">
-                  刪除後將無法復原，分享連結也會失效。
-                </div>
+                <div className="text-base font-semibold text-slate-800">{uiText("確認刪除這個聊天？")}</div>
+                <div className="mt-2 text-sm text-slate-500">{uiText("刪除後將無法復原，分享連結也會失效。")}</div>
                 <div className="mt-5 flex justify-end gap-2">
                   <button
                     className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
                     onClick={() => setShowDeleteConfirm(false)}
-                  >
-                    取消
-                  </button>
+                  >{uiText("取消")}</button>
                   <button
                     className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700"
                     onClick={handleConfirmDelete}
-                  >
-                    確認刪除
-                  </button>
+                  >{uiText("確認刪除")}</button>
                 </div>
               </div>
             </div>

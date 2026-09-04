@@ -1,4 +1,6 @@
 "use client";
+
+import { uiText } from '../../utils/uiI18n';
 import React, { useState, useEffect, useRef } from "react";
 import { Icons } from "../icons";
 import { API_BASE } from "../../utils/api";
@@ -238,7 +240,7 @@ function renderFormattedMessage(text: string) {
         {currentStep === 1 && (
           <div className="flex-1 flex flex-col items-center justify-center text-slate-700">
             <Icons.bot className="w-12 h-12 opacity-70 mb-3 text-slate-500" />
-            <p className="text-base font-medium">角色構建中…</p>
+            <p className="text-base font-medium">{uiText("角色構建中…")}</p>
           </div>
         )}
 
@@ -385,7 +387,7 @@ function renderFormattedMessage(text: string) {
                   <input
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
-                    placeholder="輸入訊息測試..."
+                    placeholder={uiText("輸入訊息測試...")}
                     className={`w-full flex-1 rounded-xl border p-3 text-sm bg-white/90 ${
                       isChatDragActive ? "border-indigo-400 bg-indigo-50 ring-2 ring-indigo-200" : "border-slate-300 focus:ring-2 focus:ring-indigo-300"
                     }`}

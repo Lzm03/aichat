@@ -1,3 +1,4 @@
+import { uiText } from '../../../utils/uiI18n';
 import React, { useState } from 'react';
 import { Icons } from '../../icons';
 import { ImageCropper } from './ImageCropper';
@@ -77,11 +78,9 @@ export const BackgroundEditor: React.FC<BackgroundEditorProps> = ({ onApply, onC
                 return (
                     <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-2xl bg-slate-50 h-full">
                         <Icons.upload className="w-12 h-12 mb-4 text-slate-400" />
-                        <p className="font-semibold text-slate-600">拖拽文件到此處</p>
-                        <p className="text-sm text-slate-500 mt-1">或</p>
-                        <label className="mt-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-100 cursor-pointer">
-                            選擇文件
-                            <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+                        <p className="font-semibold text-slate-600">{uiText("拖拽文件到此處")}</p>
+                        <p className="text-sm text-slate-500 mt-1">{uiText("或")}</p>
+                        <label className="mt-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-100 cursor-pointer">{uiText("選擇文件")}<input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
                         </label>
                     </div>
                 );
@@ -94,7 +93,7 @@ export const BackgroundEditor: React.FC<BackgroundEditorProps> = ({ onApply, onC
                            {isGenerating && (
                             <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm flex flex-col items-center justify-center rounded-xl transition-all duration-300">
                                 <Icons.loading className="w-8 h-8 text-white animate-spin" />
-                                <p className="text-white text-sm mt-2">風格重塑中，請稍候...</p>
+                                <p className="text-white text-sm mt-2">{uiText("風格重塑中，請稍候...")}</p>
                                 <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-500/50">
                                     <div className="h-1 bg-indigo-400 animate-pulse w-full"></div>
                                 </div>
@@ -103,8 +102,8 @@ export const BackgroundEditor: React.FC<BackgroundEditorProps> = ({ onApply, onC
                         </div>
                         {uploadedImage.isRealistic && workflowStage === 'detect' && (
                            <div className="w-full p-4 bg-[#FFFBEB] border border-[#F59E0B] rounded-xl space-y-3 animate-fade-in">
-                               <p className="text-sm text-amber-800 font-medium">已上傳圖片，確認後可直接使用。</p>
-                               <button onClick={() => handleImageSelect(uploadedImage.url)} className="w-full py-2 text-sm font-semibold bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50">使用原圖</button>
+                               <p className="text-sm text-amber-800 font-medium">{uiText("已上傳圖片，確認後可直接使用。")}</p>
+                               <button onClick={() => handleImageSelect(uploadedImage.url)} className="w-full py-2 text-sm font-semibold bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50">{uiText("使用原圖")}</button>
                            </div>
                         )}
                     </div>
@@ -118,7 +117,7 @@ export const BackgroundEditor: React.FC<BackgroundEditorProps> = ({ onApply, onC
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
             <div className="bg-white w-full max-w-3xl rounded-3xl shadow-lg flex flex-col h-[70vh]">
                 <div className="flex justify-between items-center p-4 border-b border-slate-200">
-                    <h3 className="text-lg font-bold text-[#1E293B]">編輯背景圖</h3>
+                    <h3 className="text-lg font-bold text-[#1E293B]">{uiText("編輯背景圖")}</h3>
                     <button onClick={onCancel} className="p-2 rounded-full hover:bg-slate-100">
                         <Icons.close className="w-5 h-5 text-slate-500" />
                     </button>
@@ -127,14 +126,10 @@ export const BackgroundEditor: React.FC<BackgroundEditorProps> = ({ onApply, onC
                     <div className="mb-4 bg-slate-100 p-1 rounded-xl flex items-center max-w-xs mx-auto">
                         <button 
                             onClick={() => { setActiveTab('templates'); setWorkflowStage('select'); setUploadedImage(null); }}
-                            className={`w-full py-2 px-4 rounded-lg text-sm font-semibold transition-all ${activeTab === 'templates' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:bg-slate-200'}`}>
-                            模板
-                        </button>
+                            className={`w-full py-2 px-4 rounded-lg text-sm font-semibold transition-all ${activeTab === 'templates' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:bg-slate-200'}`}>{uiText("模板")}</button>
                         <button 
                             onClick={() => setActiveTab('upload')}
-                            className={`w-full py-2 px-4 rounded-lg text-sm font-semibold transition-all ${activeTab === 'upload' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:bg-slate-200'}`}>
-                            上傳
-                        </button>
+                            className={`w-full py-2 px-4 rounded-lg text-sm font-semibold transition-all ${activeTab === 'upload' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:bg-slate-200'}`}>{uiText("上傳")}</button>
                     </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6">

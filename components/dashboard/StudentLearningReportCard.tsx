@@ -1,3 +1,4 @@
+import { uiText, uiLocale } from '../../utils/uiI18n';
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from '../icons';
@@ -377,7 +378,7 @@ export const StudentLearningReportCard = () => {
     if (!value) return '尚無時間';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '尚無時間';
-    return new Intl.DateTimeFormat('zh-HK', {
+    return new Intl.DateTimeFormat(uiLocale(), {
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
@@ -402,9 +403,7 @@ export const StudentLearningReportCard = () => {
           >
             <div className="flex items-center justify-between mb-3 md:mb-4">
               <h3 className="flex items-center shrink-0 text-sm font-bold text-[#1E293B] md:text-base">
-                <Target className="w-5 h-5 mr-2 text-indigo-500" />
-                能力追蹤報告
-              </h3>
+                <Target className="w-5 h-5 mr-2 text-indigo-500" />{uiText("能力追蹤報告")}</h3>
             </div>
             <div className="space-y-2 flex-1">
               {sharedBots.length ? sharedBots.map((bot) => {
@@ -425,20 +424,18 @@ export const StudentLearningReportCard = () => {
                       </div>
                       <div className="min-w-0">
                         <h4 className="truncate text-sm font-black text-slate-900">{bot.name}</h4>
-                        <p className="mt-0.5 text-[10px] text-slate-500">查看由實際對話累積的學習分析</p>
+                        <p className="mt-0.5 text-[10px] text-slate-500">{uiText("查看由實際對話累積的學習分析")}</p>
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
-                      <span className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-2 text-[11px] font-black text-indigo-600">
-                        查看報告
-                        <ChevronRight className="h-4 w-4" />
+                      <span className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-2 text-[11px] font-black text-indigo-600">{uiText("查看報告")}<ChevronRight className="h-4 w-4" />
                       </span>
                     </div>
                   </button>
                 );
               }) : (
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-[11px] text-slate-500">
-                  {assessmentLoading ? '正在同步能力追蹤資料…' : assessmentError ? '暫時無法載入能力追蹤資料，請稍後再試。' : '尚未分享 AI 夥伴給學生；分享後會在此累積真實互動資料。'}
+                  {assessmentLoading ? uiText('正在同步能力追蹤資料…') : assessmentError ? uiText('暫時無法載入能力追蹤資料，請稍後再試。') : uiText('尚未分享 AI 夥伴給學生；分享後會在此累積真實互動資料。')}
                 </div>
               )}
             </div>
@@ -459,19 +456,17 @@ export const StudentLearningReportCard = () => {
                 onClick={() => setViewLevel('overview')}
                 className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-indigo-600 transition-colors sm:text-sm"
               >
-                <ArrowLeft className="w-4 h-4" />
-                返回
-              </button>
+                <ArrowLeft className="w-4 h-4" />{uiText("返回")}</button>
               <div className="flex items-center gap-2">
                 <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-indigo-50">
                   <img
                     src={selectedBot?.avatarUrl || botAvatarFallback}
-                    alt={selectedBot?.name || '共享 Bot'}
+                    alt={selectedBot?.name || uiText('共享 Bot')}
                     className="h-full w-full object-cover"
                   />
                 </div>
                 <div className="rounded-full bg-slate-100 px-2.5 py-1.5 text-[10px] font-black text-slate-600 sm:text-[11px]">
-                  {selectedBot?.name || '共享 Bot'}
+                  {selectedBot?.name || uiText('共享 Bot')}
                 </div>
               </div>
             </div>
@@ -483,18 +478,17 @@ export const StudentLearningReportCard = () => {
                     <BarChart3 className="h-4 w-4" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-black text-slate-900">班級思維自主指數</h4>
+                    <h4 className="text-sm font-black text-slate-900">{uiText("班級思維自主指數")}</h4>
                   </div>
                 </div>
                 <div className="mt-3.5 h-3 w-full rounded-full bg-slate-200">
                   <div className="h-3 rounded-full bg-emerald-500" style={{ width: `${inputRate}%` }} />
                 </div>
                 <div className="mt-2.5 flex flex-col gap-1 text-[11px] font-black sm:flex-row sm:items-center sm:justify-between">
-                  <span className="text-emerald-700">主動輸入 (Independent): {inputRate}%</span>
-                  <span className="text-slate-500">系統引導 (Assisted): {assistedRate}%</span>
+                  <span className="text-emerald-700">{uiText("主動輸入 (Independent): ")}{inputRate}%</span>
+                  <span className="text-slate-500">{uiText("系統引導 (Assisted): ")}{assistedRate}%</span>
                 </div>
-                <button type="button" onClick={() => setIsRankingOpen(true)} className="mt-3 flex w-full items-center justify-center rounded-2xl bg-slate-50 px-4 py-2.5 text-center text-[11px] font-black text-slate-700">
-                  學生排行榜 <ChevronRight className="ml-2 inline h-4 w-4" />
+                <button type="button" onClick={() => setIsRankingOpen(true)} className="mt-3 flex w-full items-center justify-center rounded-2xl bg-slate-50 px-4 py-2.5 text-center text-[11px] font-black text-slate-700">{uiText("學生排行榜 ")}<ChevronRight className="ml-2 inline h-4 w-4" />
                 </button>
               </div>
 
@@ -504,8 +498,8 @@ export const StudentLearningReportCard = () => {
                     <BookOpen className="h-4 w-4" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-black text-slate-900">班級知識覆蓋地圖</h4>
-                    <p className="mt-0.5 text-[10px] font-semibold text-slate-400">展示全班各知識點的集體解鎖進度</p>
+                    <h4 className="text-sm font-black text-slate-900">{uiText("班級知識覆蓋地圖")}</h4>
+                    <p className="mt-0.5 text-[10px] font-semibold text-slate-400">{uiText("展示全班各知識點的集體解鎖進度")}</p>
                   </div>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
@@ -514,7 +508,7 @@ export const StudentLearningReportCard = () => {
                       <div className={`flex h-12 w-12 items-center justify-center rounded-full text-sm font-black ${item.completed ? 'bg-indigo-500 text-white' : 'bg-amber-100 text-amber-700'}`}>
                         {item.completed ? '✓' : '!'}
                       </div>
-                      <div className="mt-2 text-[10px] font-black text-slate-700">{item.label}</div>
+                      <div className="mt-2 text-[10px] font-black text-slate-700">{uiText(item.label)}</div>
                       <div className="mt-1 text-xs font-black text-indigo-500">{item.score}%</div>
                     </div>
                   ))}
@@ -527,14 +521,12 @@ export const StudentLearningReportCard = () => {
                     <Target className="h-4 w-4" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-black text-slate-900">學習狀態分佈矩陣</h4>
+                    <h4 className="text-sm font-black text-slate-900">{uiText("學習狀態分佈矩陣")}</h4>
                   </div>
                 </div>
                 <div className="mt-3 grid grid-cols-[2rem_minmax(0,1fr)] gap-2">
                   <div className="relative">
-                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap text-[11px] font-black text-slate-400">
-                      總掌握度 (0-100%)
-                    </div>
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap text-[11px] font-black text-slate-400">{uiText("總掌握度 (0-100%)")}</div>
                   </div>
                   <div>
                     <div className="rounded-2xl border-2 border-dashed border-slate-100 bg-white p-2">
@@ -546,10 +538,10 @@ export const StudentLearningReportCard = () => {
                           <div className="bg-rose-50/35" />
                         </div>
                         <div className="absolute inset-0 bg-[linear-gradient(to_right,transparent_0,transparent_49.8%,rgba(203,213,225,0.7)_49.8%,rgba(203,213,225,0.7)_50.2%,transparent_50.2%),linear-gradient(to_bottom,transparent_0,transparent_49.8%,rgba(203,213,225,0.7)_49.8%,rgba(203,213,225,0.7)_50.2%,transparent_50.2%)]" />
-                        <div className="absolute left-2 top-2 z-10 text-[11px] font-black text-slate-400">高效學握區</div>
-                        <div className="absolute right-2 top-2 z-10 text-[11px] font-black text-emerald-500">已完成</div>
-                        <div className="absolute left-2 bottom-2 z-10 text-[11px] font-black text-slate-400">基礎/淺層參與區</div>
-                        <div className="absolute right-2 bottom-2 z-10 text-[11px] font-black text-rose-400">無效卡關</div>
+                        <div className="absolute left-2 top-2 z-10 text-[11px] font-black text-slate-400">{uiText("高效學握區")}</div>
+                        <div className="absolute right-2 top-2 z-10 text-[11px] font-black text-emerald-500">{uiText("已完成")}</div>
+                        <div className="absolute left-2 bottom-2 z-10 text-[11px] font-black text-slate-400">{uiText("基礎/淺層參與區")}</div>
+                        <div className="absolute right-2 bottom-2 z-10 text-[11px] font-black text-rose-400">{uiText("無效卡關")}</div>
                         <div className="absolute inset-x-4 top-1/2 z-0 h-px -translate-y-1/2 bg-slate-200/90" />
                         <div className="absolute inset-y-4 left-1/2 z-0 w-px -translate-x-1/2 bg-slate-200/90" />
                         <div className="absolute left-8 top-8 bottom-8 right-3">
@@ -574,9 +566,9 @@ export const StudentLearningReportCard = () => {
                         </div>
                       </div>
                       <div className="mt-2 flex items-center justify-between px-2 text-[11px] font-black text-slate-400">
-                        <span>低輪次</span>
-                        <span className="text-slate-500">互動輪次</span>
-                        <span>高輪次</span>
+                        <span>{uiText("低輪次")}</span>
+                        <span className="text-slate-500">{uiText("互動輪次")}</span>
+                        <span>{uiText("高輪次")}</span>
                       </div>
                     </div>
                   </div>
@@ -584,8 +576,7 @@ export const StudentLearningReportCard = () => {
                 <button
                   onClick={openClassDetail}
                   className="mt-3.5 flex w-full items-center justify-center rounded-2xl bg-slate-50 px-4 py-2.5 text-center text-[11px] font-black text-slate-700"
-                >
-                  查看全班評估明細 <ChevronRight className="ml-2 inline h-4 w-4" />
+                >{uiText("查看全班評估明細 ")}<ChevronRight className="ml-2 inline h-4 w-4" />
                 </button>
               </div>
 
@@ -599,10 +590,8 @@ export const StudentLearningReportCard = () => {
                     <MessageCircle className="h-4.5 w-4.5" />
                   </span>
                   <span className="min-w-0">
-                    <span className="block text-xs font-black text-slate-900">學生與{selectedBot?.name || 'Bot'}對話記錄</span>
-                    <span className="mt-0.5 block truncate text-[10px] font-semibold text-slate-500">
-                      查看 {chatRecords.length} 位學生與「{selectedBot?.name || '目前 Bot'}」的學習對話
-                    </span>
+                    <span className="block text-xs font-black text-slate-900">{uiText("學生與")}{selectedBot?.name || 'Bot'}{uiText("對話記錄")}</span>
+                    <span className="mt-0.5 block truncate text-[10px] font-semibold text-slate-500">{uiText("查看 ")}{chatRecords.length}{uiText(" 位學生與「")}{selectedBot?.name || uiText('目前 Bot')}{uiText("」的學習對話")}</span>
                   </span>
                 </span>
                 <ChevronRight className="h-4 w-4 shrink-0 text-indigo-400 transition-transform group-hover:translate-x-0.5" />
@@ -627,7 +616,7 @@ export const StudentLearningReportCard = () => {
               className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-[26px] bg-white shadow-2xl"
             >
               <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5 sm:px-5">
-                <h2 className="text-sm font-black text-slate-900 sm:text-base">學生與{selectedBot?.name || 'Bot'}對話記錄</h2>
+                <h2 className="text-sm font-black text-slate-900 sm:text-base">{uiText("學生與")}{selectedBot?.name || 'Bot'}{uiText("對話記錄")}</h2>
                 <button type="button" onClick={() => setIsChatRecordsOpen(false)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
                   <X className="h-5 w-5" />
                 </button>
@@ -641,7 +630,7 @@ export const StudentLearningReportCard = () => {
                       <input
                         value={chatSearch}
                         onChange={(event) => setChatSearch(event.target.value)}
-                        placeholder="搜尋學生或對話內容"
+                        placeholder={uiText("搜尋學生或對話內容")}
                         className="min-w-0 flex-1 bg-transparent text-xs font-semibold text-slate-700 outline-none placeholder:text-slate-400"
                       />
                     </label>
@@ -671,14 +660,14 @@ export const StudentLearningReportCard = () => {
                               <span className="shrink-0 text-[9px] font-bold text-slate-400">{formatChatTime(record.lastActiveAt)}</span>
                             </span>
                             <span className="mt-1 block truncate text-[10px] font-semibold text-slate-500">
-                              {record.messageCount} 則訊息 · {record.messages.at(-1)?.content || '尚無對話'}
+                              {record.messageCount}{uiText(" 則訊息 · ")}{record.messages.at(-1)?.content || uiText('尚無對話')}
                             </span>
                           </span>
                         </button>
                       );
                     })}
                     {!filteredChatRecords.length && (
-                      <div className="px-4 py-10 text-center text-[11px] font-semibold text-slate-400">找不到符合的對話記錄</div>
+                      <div className="px-4 py-10 text-center text-[11px] font-semibold text-slate-400">{uiText("找不到符合的對話記錄")}</div>
                     )}
                   </div>
                 </aside>
@@ -702,8 +691,7 @@ export const StudentLearningReportCard = () => {
                         </div>
                         <span className="flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black text-slate-500">
                           <Clock3 className="h-3 w-3" />
-                          {selectedChatRecord.messageCount} 則
-                        </span>
+                          {selectedChatRecord.messageCount}{uiText(" 則")}</span>
                       </div>
                       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50/50 px-4 py-5 sm:px-6">
                         {selectedChatRecord.messages.map((message, index) => {
@@ -730,8 +718,8 @@ export const StudentLearningReportCard = () => {
                   ) : (
                     <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
                       <MessageCircle className="h-8 w-8 text-slate-300" />
-                      <p className="mt-3 text-sm font-black text-slate-600">目前沒有可顯示的對話</p>
-                      <p className="mt-1 text-[11px] font-semibold text-slate-400">學生開始與這個 Bot 互動後，記錄會出現在這裡。</p>
+                      <p className="mt-3 text-sm font-black text-slate-600">{uiText("目前沒有可顯示的對話")}</p>
+                      <p className="mt-1 text-[11px] font-semibold text-slate-400">{uiText("學生開始與這個 Bot 互動後，記錄會出現在這裡。")}</p>
                     </div>
                   )}
                 </section>
@@ -757,7 +745,7 @@ export const StudentLearningReportCard = () => {
             >
               <div className="flex h-full flex-col">
                 <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5 sm:px-5 sm:py-4">
-                  <h2 className="text-sm font-black tracking-tight text-slate-900 sm:text-base">互動模式深度分析</h2>
+                  <h2 className="text-sm font-black tracking-tight text-slate-900 sm:text-base">{uiText("互動模式深度分析")}</h2>
                   <button
                     type="button"
                     onClick={() => setIsRankingOpen(false)}
@@ -773,16 +761,16 @@ export const StudentLearningReportCard = () => {
                       <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
                         <Sparkles className="h-4.5 w-4.5" />
                       </div>
-                      <h3 className="text-sm font-black text-slate-900 sm:text-base">AI 模式洞察</h3>
+                      <h3 className="text-sm font-black text-slate-900 sm:text-base">{uiText("AI 模式洞察")}</h3>
                     </div>
                     <div className="rounded-2xl border border-slate-100 bg-white p-3.5 shadow-sm">
                       <p className="text-[13px] font-semibold leading-relaxed text-slate-700 sm:text-sm">
-                        {aiModeInsight}
+                        {uiText(aiModeInsight)}
                       </p>
                     </div>
 
                     <div className="mt-4 sm:mt-5">
-                      <h4 className="mb-2 text-sm font-black text-slate-900 sm:text-sm">主動輸入/引導依賴佔比</h4>
+                      <h4 className="mb-2 text-sm font-black text-slate-900 sm:text-sm">{uiText("主動輸入/引導依賴佔比")}</h4>
                       <div className="relative h-6 w-full overflow-hidden rounded-full bg-slate-200">
                         {inputRate > 0 ? (
                           <div
@@ -802,26 +790,26 @@ export const StudentLearningReportCard = () => {
                         ) : null}
                       </div>
                       <div className="mt-2 flex items-center justify-between text-[11px] font-black sm:text-xs">
-                        <span className="text-emerald-700">主動輸入</span>
-                        <span className="text-slate-500">系統引導</span>
+                        <span className="text-emerald-700">{uiText("主動輸入")}</span>
+                        <span className="text-slate-500">{uiText("系統引導")}</span>
                       </div>
                     </div>
 
                     <div className="mt-4 grid grid-cols-1 gap-3 sm:mt-5 sm:grid-cols-2">
                       <div className="rounded-2xl border border-slate-100 bg-white p-3 sm:p-3.5">
-                        <p className="text-[11px] font-black text-slate-500 sm:text-xs">平均自由輸入長度</p>
-                        <p className="mt-2 text-xl font-black text-slate-900 sm:text-2xl">{interactionSummary.averageFreeInputLength || 0} <span className="text-xs font-bold text-slate-400 sm:text-sm">字</span></p>
+                        <p className="text-[11px] font-black text-slate-500 sm:text-xs">{uiText("平均自由輸入長度")}</p>
+                        <p className="mt-2 text-xl font-black text-slate-900 sm:text-2xl">{interactionSummary.averageFreeInputLength || 0} <span className="text-xs font-bold text-slate-400 sm:text-sm">{uiText("字")}</span></p>
                       </div>
                       <div className="rounded-2xl border border-slate-100 bg-white p-3 sm:p-3.5">
-                        <p className="text-[11px] font-black text-slate-500 sm:text-xs">平均氣泡依賴次數</p>
-                        <p className="mt-2 text-xl font-black text-slate-900 sm:text-2xl">{interactionSummary.averageBubbleDependency.toFixed(1)} <span className="text-xs font-bold text-slate-400 sm:text-sm">次/人</span></p>
+                        <p className="text-[11px] font-black text-slate-500 sm:text-xs">{uiText("平均氣泡依賴次數")}</p>
+                        <p className="mt-2 text-xl font-black text-slate-900 sm:text-2xl">{interactionSummary.averageBubbleDependency.toFixed(1)} <span className="text-xs font-bold text-slate-400 sm:text-sm">{uiText("次/人")}</span></p>
                       </div>
                     </div>
                   </div>
 
                   <div className="flex min-h-0 flex-col">
                     <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 sm:px-5">
-                      <h3 className="text-sm font-black text-slate-900 sm:text-base">主動輸入/引導依賴佔比排行榜</h3>
+                      <h3 className="text-sm font-black text-slate-900 sm:text-base">{uiText("主動輸入/引導依賴佔比排行榜")}</h3>
                       <button
                         type="button"
                         onClick={toggleRankingPriority}
@@ -832,7 +820,7 @@ export const StudentLearningReportCard = () => {
                         }`}
                       >
                         <span className="text-[12px] leading-none sm:text-[13px]">☰</span>
-                        {rankingPriority === 'active' ? '主動優先' : '被動優先'}
+                        {rankingPriority === 'active' ? uiText('主動優先') : uiText('被動優先')}
                       </button>
                     </div>
                     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -858,7 +846,7 @@ export const StudentLearningReportCard = () => {
                               </div>
                             </div>
                             <div className={`shrink-0 text-right text-[11px] font-bold sm:text-xs ${rankingPriority === 'active' ? 'text-emerald-700' : 'text-rose-700'}`}>
-                              {displayRate}% {modeLabel}
+                              {displayRate}% {uiText(modeLabel)}
                             </div>
                           </div>
                         );
@@ -893,8 +881,8 @@ export const StudentLearningReportCard = () => {
                   <div className="sticky top-0 z-10 border-b border-slate-100 bg-white/95 px-4 py-3.5 backdrop-blur sm:px-5 sm:py-4">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
-                        <h2 className="text-sm font-black tracking-tight text-slate-900 sm:text-base">全班評估明細表</h2>
-                        <p className="mt-1 text-[11px] font-medium text-slate-500 sm:text-xs">深度檢視學生的知識點交互狀態與品質</p>
+                        <h2 className="text-sm font-black tracking-tight text-slate-900 sm:text-base">{uiText("全班評估明細表")}</h2>
+                        <p className="mt-1 text-[11px] font-medium text-slate-500 sm:text-xs">{uiText("深度檢視學生的知識點交互狀態與品質")}</p>
                       </div>
                       {!selectedDetailStudent && (
                         <button
@@ -912,25 +900,21 @@ export const StudentLearningReportCard = () => {
                     <div className="grid gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-3.5 sm:p-4 lg:grid-cols-2">
                       <div>
                         <div className="flex items-center gap-2 text-xs font-black text-slate-800 sm:text-sm">
-                          <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
-                          輸出品質評級説明
-                        </div>
-                        <p className="mt-1.5 text-[11px] text-slate-500 sm:text-xs">依學生與 Bot 的聊天內容和角色知識庫匹配結果評估。</p>
+                          <Sparkles className="h-3.5 w-3.5 text-indigo-500" />{uiText("輸出品質評級説明")}</div>
+                        <p className="mt-1.5 text-[11px] text-slate-500 sm:text-xs">{uiText("依學生與 Bot 的聊天內容和角色知識庫匹配結果評估。")}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {['L0: 偏離主題', 'L1: 基礎事實', 'L2: 事實關聯', 'L3: 深度理解'].map((item) => (
-                            <span key={item} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-slate-700 sm:text-[11px]">{item}</span>
+                            <span key={item} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-slate-700 sm:text-[11px]">{uiText(item)}</span>
                           ))}
                         </div>
                       </div>
                       <div className="border-t border-slate-200 pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
                         <div className="flex items-center gap-2 text-xs font-black text-slate-800 sm:text-sm">
-                          <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
-                          互動深度説明
-                        </div>
-                        <p className="mt-1.5 text-[11px] text-slate-500 sm:text-xs">反映學生在本次學習中主動探索與持續參與的程度。</p>
+                          <AlertCircle className="h-3.5 w-3.5 text-amber-500" />{uiText("互動深度説明")}</div>
+                        <p className="mt-1.5 text-[11px] text-slate-500 sm:text-xs">{uiText("反映學生在本次學習中主動探索與持續參與的程度。")}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {['Y1: 初步參與', 'Y2: 持續互動', 'Y3: 深入探索', 'Y4: 高度投入'].map((item) => (
-                            <span key={item} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-slate-700 sm:text-[11px]">{item}</span>
+                            <span key={item} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-slate-700 sm:text-[11px]">{uiText(item)}</span>
                           ))}
                         </div>
                       </div>
@@ -953,7 +937,7 @@ export const StudentLearningReportCard = () => {
                               : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
                           }`}
                         >
-                          {item.label}
+                          {uiText(item.label)}
                         </button>
                       ))}
                     </div>
@@ -964,25 +948,25 @@ export const StudentLearningReportCard = () => {
                           ? 'border-amber-200 bg-amber-50 text-amber-800'
                           : 'border-indigo-100 bg-indigo-50 text-indigo-700'
                       }`}>
-                        {assessmentError ? '資料暫時無法載入，目前不顯示推測或示例數值。' : '正在同步學生聊天與知識庫分析...'}
+                        {assessmentError ? uiText('資料暫時無法載入，目前不顯示推測或示例數值。') : uiText('正在同步學生聊天與知識庫分析...')}
                       </div>
                     )}
 
                     <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
                       <div className="hidden grid-cols-[1.2fr_0.75fr_1fr_1.05fr_0.95fr_0.9fr] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[11px] font-black text-slate-500 md:grid">
-                        <span>學生</span>
+                        <span>{uiText("學生")}</span>
                         <button
                           type="button"
                           onClick={toggleAssessmentSort}
                           className="flex items-center gap-1 text-left transition hover:text-slate-900"
                         >
-                          <span>總掌握度</span>
+                          <span>{uiText("總掌握度")}</span>
                           <span>{assessmentSortDirection === 'desc' ? '▼' : '▲'}</span>
                         </button>
-                        <span>輸出品質</span>
-                        <span>互動深度</span>
-                        <span>參與模式</span>
-                        <span>狀態</span>
+                        <span>{uiText("輸出品質")}</span>
+                        <span>{uiText("互動深度")}</span>
+                        <span>{uiText("參與模式")}</span>
+                        <span>{uiText("狀態")}</span>
                       </div>
                       <div className="divide-y divide-slate-100">
                         {sortedAssessmentRows.map((row) => (
@@ -996,17 +980,15 @@ export const StudentLearningReportCard = () => {
                               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-50 text-[10px] font-black text-indigo-600">{row.id}</span>
                               <span className="text-sm font-bold text-slate-800 sm:text-[15px]">{row.name}</span>
                             </span>
-                            <span className="text-sm font-black text-slate-800 md:text-sm"><span className="mr-1 text-[10px] text-slate-400 md:hidden">掌握</span>{row.mastery}%</span>
-                            <span className="text-[11px] font-semibold text-slate-700 sm:text-xs"><b className="mr-2 rounded-md bg-emerald-50 px-2 py-0.5 text-emerald-700">{row.output}</b>{row.outputText}</span>
-                            <span className="text-[11px] font-semibold text-slate-700 sm:text-xs">{row.interaction}<br /><small className="font-medium text-slate-400">({row.rounds}輪{typeof row.interactionDepth === 'number' ? ` · ${row.interactionDepth}` : ''})</small></span>
-                            <span className="w-fit rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-black text-emerald-700">{row.mode}</span>
-                            <span className={`text-[11px] font-black sm:text-xs ${row.status === 'warning' ? 'text-rose-600' : row.status === 'knowledge' ? 'text-emerald-600' : 'text-slate-500'}`}>{row.statusText}</span>
+                            <span className="text-sm font-black text-slate-800 md:text-sm"><span className="mr-1 text-[10px] text-slate-400 md:hidden">{uiText("掌握")}</span>{row.mastery}%</span>
+                            <span className="text-[11px] font-semibold text-slate-700 sm:text-xs"><b className="mr-2 rounded-md bg-emerald-50 px-2 py-0.5 text-emerald-700">{row.output}</b>{uiText(row.outputText)}</span>
+                            <span className="text-[11px] font-semibold text-slate-700 sm:text-xs">{row.interaction}<br /><small className="font-medium text-slate-400">({row.rounds}{uiText("輪")}{typeof row.interactionDepth === 'number' ? ` · ${row.interactionDepth}` : ''})</small></span>
+                            <span className="w-fit rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-black text-emerald-700">{uiText(row.mode)}</span>
+                            <span className={`text-[11px] font-black sm:text-xs ${row.status === 'warning' ? 'text-rose-600' : row.status === 'knowledge' ? 'text-emerald-600' : 'text-slate-500'}`}>{uiText(row.statusText)}</span>
                           </button>
                         ))}
                         {!assessmentLoading && !assessmentError && !sortedAssessmentRows.length ? (
-                          <div className="px-4 py-10 text-center text-sm font-semibold text-slate-500">
-                            尚未累積足夠的學生互動資料；學生開始對話後，能力追蹤會自動更新。
-                          </div>
+                          <div className="px-4 py-10 text-center text-sm font-semibold text-slate-500">{uiText("尚未累積足夠的學生互動資料；學生開始對話後，能力追蹤會自動更新。")}</div>
                         ) : null}
                       </div>
                     </div>
@@ -1041,10 +1023,10 @@ export const StudentLearningReportCard = () => {
                             <div className="flex items-start justify-between border-b border-slate-100 px-4 py-4 sm:px-5 sm:py-5">
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <h3 className="truncate text-xs font-black text-slate-900 sm:text-sm">{selectedDetailStudent.name} — 知識掌握追蹤</h3>
-                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${tone.soft}`}>{tone.label}</span>
+                                  <h3 className="truncate text-xs font-black text-slate-900 sm:text-sm">{selectedDetailStudent.name}{uiText(" — 知識掌握追蹤")}</h3>
+                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${tone.soft}`}>{uiText(tone.label)}</span>
                                 </div>
-                                <p className="mt-1 text-[10px] font-semibold text-slate-500 sm:text-[11px]">總掌握度 {mastery}%</p>
+                                <p className="mt-1 text-[10px] font-semibold text-slate-500 sm:text-[11px]">{uiText("總掌握度 ")}{mastery}%</p>
                               </div>
                               <button type="button" onClick={() => setSelectedDetailStudent(null)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
                                 <X className="h-4.5 w-4.5" />
@@ -1054,11 +1036,11 @@ export const StudentLearningReportCard = () => {
                               <div className={`rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50 to-white p-4 shadow-sm ring-1 ${tone.ring}`}>
                                 <div className="flex items-center justify-between gap-3">
                                   <div>
-                                    <p className="text-[11px] font-black text-slate-500">整體狀態</p>
-                                    <p className="mt-1 text-sm font-bold text-slate-900">{selectedDetailStudent.output} · {selectedDetailStudent.outputText}</p>
+                                    <p className="text-[11px] font-black text-slate-500">{uiText("整體狀態")}</p>
+                                    <p className="mt-1 text-sm font-bold text-slate-900">{selectedDetailStudent.output} · {uiText(selectedDetailStudent.outputText)}</p>
                                   </div>
                                   <div className={`rounded-2xl px-3 py-2 text-right ${tone.soft}`}>
-                                    <div className="text-[10px] font-black uppercase tracking-wide">掌握度</div>
+                                    <div className="text-[10px] font-black uppercase tracking-wide">{uiText("掌握度")}</div>
                                     <div className="text-lg font-black leading-none">{mastery}%</div>
                                   </div>
                                 </div>
@@ -1066,17 +1048,17 @@ export const StudentLearningReportCard = () => {
                                   <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${mastery}%` }} />
                                 </div>
                                 <div className="mt-3 flex flex-wrap gap-2">
-                                  <span className="rounded-full bg-white px-3 py-1 text-[11px] font-black text-slate-700 shadow-sm">互動 {selectedDetailStudent.interaction}</span>
-                                  <span className="rounded-full bg-white px-3 py-1 text-[11px] font-black text-slate-700 shadow-sm">{selectedDetailStudent.rounds} 輪對話</span>
-                                  <span className="rounded-full bg-white px-3 py-1 text-[11px] font-black text-slate-700 shadow-sm">{selectedDetailStudent.mode}</span>
+                                  <span className="rounded-full bg-white px-3 py-1 text-[11px] font-black text-slate-700 shadow-sm">{uiText("互動 ")}{selectedDetailStudent.interaction}</span>
+                                  <span className="rounded-full bg-white px-3 py-1 text-[11px] font-black text-slate-700 shadow-sm">{selectedDetailStudent.rounds}{uiText(" 輪對話")}</span>
+                                  <span className="rounded-full bg-white px-3 py-1 text-[11px] font-black text-slate-700 shadow-sm">{uiText(selectedDetailStudent.mode)}</span>
                                 </div>
                               </div>
 
                               <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
                                 <div className="flex items-center justify-between">
                                   <div>
-                                    <h4 className="text-[11px] font-black text-slate-900">知識掌握分層</h4>
-                                    <p className="mt-1 text-[10px] font-medium text-slate-500">依據目前角色「{selectedBotKnowledge.roleName}」的知識庫內容自動整理。</p>
+                                    <h4 className="text-[11px] font-black text-slate-900">{uiText("知識掌握分層")}</h4>
+                                    <p className="mt-1 text-[10px] font-medium text-slate-500">{uiText("依據目前角色「")}{selectedBotKnowledge.roleName}{uiText("」的知識庫內容自動整理。")}</p>
                                   </div>
                                   <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-slate-500 shadow-sm">L1 → L3</span>
                                 </div>
@@ -1087,11 +1069,11 @@ export const StudentLearningReportCard = () => {
                                 <div key={item.level} className={`rounded-2xl border bg-white p-4 shadow-sm ${trackingToneConfig[item.tone].border}`}>
                                   <div className="flex items-start justify-between gap-3">
                                     <div>
-                                      <h4 className="text-[11px] font-black text-slate-900">【{item.level}】</h4>
-                                      <p className="mt-1 text-[10px] font-medium text-slate-500">{item.note}</p>
+                                      <h4 className="text-[11px] font-black text-slate-900">【{uiText(item.level)}】</h4>
+                                      <p className="mt-1 text-[10px] font-medium text-slate-500">{uiText(item.note)}</p>
                                     </div>
                                     <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${trackingToneConfig[item.tone].badge}`}>
-                                      {item.state}
+                                      {uiText(item.state)}
                                     </span>
                                   </div>
                                   <div className="mt-3 flex items-start gap-2.5">

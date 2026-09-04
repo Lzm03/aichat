@@ -1,3 +1,4 @@
+import { uiText } from '../utils/uiI18n';
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Icons } from '../components/icons';
@@ -100,10 +101,8 @@ export const AssessmentPage: React.FC<{ onNavigateToWorkshop?: () => void }> = (
         <div className="flex items-center justify-between">
           <div>
             <button onClick={() => setView('dashboard')} className="flex items-center text-sm font-medium text-slate-600 hover:text-indigo-600 mb-2 transition-colors">
-              <Icons.back className="w-4 h-4 mr-2" />
-              返回智能評測
-            </button>
-            <h1 className="text-2xl font-bold text-slate-800">多維度 AI 異常警示展示</h1>
+              <Icons.back className="w-4 h-4 mr-2" />{uiText("返回智能評測")}</button>
+            <h1 className="text-2xl font-bold text-slate-800">{uiText("多維度 AI 異常警示展示")}</h1>
           </div>
         </div>
         <AiAlertPlayground />
@@ -116,16 +115,14 @@ export const AssessmentPage: React.FC<{ onNavigateToWorkshop?: () => void }> = (
       {/* Header */}
       <div className="mb-2 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 mb-2">智能評測</h1>
-          <p className="text-slate-500">運用 AI 技術快速生成測驗，並自動批改與分析學生表現。</p>
+          <h1 className="text-2xl font-bold text-slate-800 mb-2">{uiText("智能評測")}</h1>
+          <p className="text-slate-500">{uiText("運用 AI 技術快速生成測驗，並自動批改與分析學生表現。")}</p>
         </div>
         <button 
           onClick={() => setView('alerts')}
           className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
         >
-          <ShieldAlert className="w-4 h-4" />
-          AI 警示展示
-        </button>
+          <ShieldAlert className="w-4 h-4" />{uiText("AI 警示展示")}</button>
       </div>
 
       {/* Bento Grid 2x2 */}
@@ -143,16 +140,12 @@ export const AssessmentPage: React.FC<{ onNavigateToWorkshop?: () => void }> = (
             <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-6 backdrop-blur-sm">
               <Icons.sparkles className="w-6 h-6 text-white" />
             </div>
-            <h2 className="text-2xl font-bold mb-2">AI 智能出題</h2>
-            <p className="text-indigo-100 text-sm leading-relaxed mb-8">
-              上傳教材或輸入主題，AI 將自動為您生成選擇題、填充題與問答題，大幅節省備課時間。
-            </p>
+            <h2 className="text-2xl font-bold mb-2">{uiText("AI 智能出題")}</h2>
+            <p className="text-indigo-100 text-sm leading-relaxed mb-8">{uiText("上傳教材或輸入主題，AI 將自動為您生成選擇題、填充題與問答題，大幅節省備課時間。")}</p>
           </div>
           
           <button className="relative z-10 w-full py-4 bg-white text-indigo-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-50 transition-colors shadow-sm">
-            <Icons.add className="w-5 h-5" />
-            創建新測驗
-          </button>
+            <Icons.add className="w-5 h-5" />{uiText("創建新測驗")}</button>
         </motion.div>
 
         {/* Top Right: 智能批改工作台 */}
@@ -169,19 +162,13 @@ export const AssessmentPage: React.FC<{ onNavigateToWorkshop?: () => void }> = (
                 <PenTool className="w-6 h-6 text-white" />
               </div>
               <div className="bg-amber-400 text-amber-900 font-bold px-3 py-1.5 rounded-full text-sm flex items-center gap-1.5 shadow-sm">
-                <AlertCircle className="w-4 h-4" />
-                12 份待批改
-              </div>
+                <AlertCircle className="w-4 h-4" />{uiText("12 份待批改")}</div>
             </div>
-            <h2 className="text-2xl font-bold mb-2">智能批改工作台</h2>
-            <p className="text-rose-100 text-sm leading-relaxed mb-8">
-              AI 輔助批改主觀題與作文，自動生成評語與得分建議，大幅提升批改效率。
-            </p>
+            <h2 className="text-2xl font-bold mb-2">{uiText("智能批改工作台")}</h2>
+            <p className="text-rose-100 text-sm leading-relaxed mb-8">{uiText("AI 輔助批改主觀題與作文，自動生成評語與得分建議，大幅提升批改效率。")}</p>
           </div>
           
-          <button className="relative z-10 w-full py-4 bg-white text-rose-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-rose-50 transition-colors shadow-sm">
-            進入批改
-            <ArrowRight className="w-5 h-5" />
+          <button className="relative z-10 w-full py-4 bg-white text-rose-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-rose-50 transition-colors shadow-sm">{uiText("進入批改")}<ArrowRight className="w-5 h-5" />
           </button>
         </motion.div>
 
@@ -189,17 +176,14 @@ export const AssessmentPage: React.FC<{ onNavigateToWorkshop?: () => void }> = (
         <div className="bg-white rounded-[24px] p-6 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] flex flex-col min-h-[280px]">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <FileText className="w-5 h-5 text-slate-400" />
-              草稿箱
-            </h2>
+              <FileText className="w-5 h-5 text-slate-400" />{uiText("草稿箱")}</h2>
             <span className="text-xs font-medium bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full">
-              {drafts.length} 份
-            </span>
+              {drafts.length}{uiText(" 份")}</span>
           </div>
           
           <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
             {draftsLoading ? (
-              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm font-semibold text-slate-400">正在載入草稿...</div>
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm font-semibold text-slate-400">{uiText("正在載入草稿...")}</div>
             ) : drafts.length ? drafts.slice(0, 4).map(draft => (
               <div
                 key={draft.id}
@@ -211,13 +195,11 @@ export const AssessmentPage: React.FC<{ onNavigateToWorkshop?: () => void }> = (
               >
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-700">
-                      草稿
-                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-700">{uiText("草稿")}</span>
                     <span className="text-xs text-slate-400">{draft.date}</span>
                   </div>
                   <h3 className="font-semibold text-slate-700 group-hover:text-indigo-700 transition-colors">{draft.title}</h3>
-                  <p className="mt-1 text-xs text-slate-400">{draft.questionCount} 題</p>
+                  <p className="mt-1 text-xs text-slate-400">{draft.questionCount}{uiText(" 題")}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button type="button" className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-white group-hover:text-indigo-600 group-hover:shadow-sm transition-all">
@@ -237,7 +219,7 @@ export const AssessmentPage: React.FC<{ onNavigateToWorkshop?: () => void }> = (
                 </div>
               </div>
             )) : (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm font-semibold text-slate-400">還沒有草稿</div>
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm font-semibold text-slate-400">{uiText("還沒有草稿")}</div>
             )}
           </div>
         </div>
@@ -246,22 +228,16 @@ export const AssessmentPage: React.FC<{ onNavigateToWorkshop?: () => void }> = (
         <div className="bg-white rounded-[24px] p-6 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] flex flex-col min-h-[280px]">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <Icons.task className="w-5 h-5 text-slate-400" />
-              歷史題庫
-            </h2>
+              <Icons.task className="w-5 h-5 text-slate-400" />{uiText("歷史題庫")}</h2>
             <button 
               onClick={() => setView('library')}
               className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
-            >
-              查看全部
-            </button>
+            >{uiText("查看全部")}</button>
           </div>
           
           <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
             {questionBanksLoading ? (
-              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm font-semibold text-slate-400">
-                正在載入題庫...
-              </div>
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm font-semibold text-slate-400">{uiText("正在載入題庫...")}</div>
             ) : visibleQuestionBanks.length ? visibleQuestionBanks.map(item => (
               <div 
                 key={item.id} 
@@ -270,26 +246,22 @@ export const AssessmentPage: React.FC<{ onNavigateToWorkshop?: () => void }> = (
               >
                 <div className="flex items-start justify-between mb-2">
                   <h3 className="font-semibold text-slate-700">{item.title}</h3>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0 ml-2 bg-indigo-100 text-indigo-700">
-                    題庫
-                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0 ml-2 bg-indigo-100 text-indigo-700">{uiText("題庫")}</span>
                 </div>
                 
                 <div className="flex items-center gap-4 mt-3">
                   <div className="flex items-center gap-1.5 text-xs text-slate-500">
                     <Users className="w-3.5 h-3.5" />
-                    <span>{item.questionCount} 題已收錄</span>
+                    <span>{item.questionCount}{uiText(" 題已收錄")}</span>
                   </div>
                   <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>{item.updatedAt ? new Date(item.updatedAt).toISOString().slice(0, 10) : '剛剛更新'}</span>
+                    <span>{item.updatedAt ? new Date(item.updatedAt).toISOString().slice(0, 10) : uiText('剛剛更新')}</span>
                   </div>
                 </div>
               </div>
             )) : (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm font-semibold text-slate-400">
-                還沒有題庫，先到測驗預覽把題目加入題庫吧。
-              </div>
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm font-semibold text-slate-400">{uiText("還沒有題庫，先到測驗預覽把題目加入題庫吧。")}</div>
             )}
           </div>
         </div>

@@ -1,3 +1,4 @@
+import { uiText } from '../../utils/uiI18n';
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from '../icons';
@@ -31,10 +32,10 @@ const QuestionCard = ({ q, index }: { q: LibraryQuestion; index: number }) => (
   <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
     <div className="flex gap-2 mb-4">
       <span className={`px-3 py-1 rounded-full text-xs font-bold ${q.levelColor || 'bg-slate-100 text-slate-700'}`}>
-        {q.cognitiveLevel}
+        {uiText(q.cognitiveLevel)}
       </span>
       <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
-        {q.type}
+        {uiText(q.type)}
       </span>
     </div>
 
@@ -54,7 +55,7 @@ const QuestionCard = ({ q, index }: { q: LibraryQuestion; index: number }) => (
     ) : null}
 
     <div className="bg-slate-50 p-4 rounded-xl text-sm text-slate-600 border border-slate-100">
-      <span className="font-bold text-slate-700 mr-2">參考答案：</span>
+      <span className="font-bold text-slate-700 mr-2">{uiText("參考答案：")}</span>
       {q.answer}
     </div>
   </div>
@@ -119,17 +120,15 @@ export const AssessmentLibrary: React.FC<AssessmentLibraryProps> = ({ onBack }) 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <button onClick={onBack} className="flex items-center text-sm font-medium text-slate-600 hover:text-indigo-600 mb-2 transition-colors">
-            <Icons.back className="w-4 h-4 mr-2" />
-            返回指揮艙
-          </button>
-          <h1 className="text-2xl font-bold text-slate-800">歷史題庫</h1>
+            <Icons.back className="w-4 h-4 mr-2" />{uiText("返回指揮艙")}</button>
+          <h1 className="text-2xl font-bold text-slate-800">{uiText("歷史題庫")}</h1>
         </div>
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="搜尋題庫名稱..."
+            placeholder={uiText("搜尋題庫名稱...")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 w-full md:w-64"
@@ -139,9 +138,7 @@ export const AssessmentLibrary: React.FC<AssessmentLibraryProps> = ({ onBack }) 
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {loadingBanks ? (
-          <div className="col-span-full rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">
-            正在載入題庫...
-          </div>
+          <div className="col-span-full rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">{uiText("正在載入題庫...")}</div>
         ) : filteredBanks.length ? (
           filteredBanks.map((item) => (
             <motion.div
@@ -155,9 +152,7 @@ export const AssessmentLibrary: React.FC<AssessmentLibraryProps> = ({ onBack }) 
                   <BookOpen className="w-5 h-5" />
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="px-3 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full">
-                    題庫
-                  </span>
+                  <span className="px-3 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full">{uiText("題庫")}</span>
                   <button
                     type="button"
                     onClick={(event) => {
@@ -174,26 +169,22 @@ export const AssessmentLibrary: React.FC<AssessmentLibraryProps> = ({ onBack }) 
 
               <div className="mb-6 flex-1">
                 <h3 className="text-lg font-bold text-slate-800 line-clamp-2">{item.title}</h3>
-                <p className="mt-2 text-sm text-slate-400">
-                  最近更新 {item.updatedAt ? new Date(item.updatedAt).toISOString().slice(0, 10) : '--'}
+                <p className="mt-2 text-sm text-slate-400">{uiText("最近更新 ")}{item.updatedAt ? new Date(item.updatedAt).toISOString().slice(0, 10) : '--'}
                 </p>
               </div>
 
               <div className="flex items-center justify-between pt-4 border-t border-slate-100 mt-auto">
                 <div className="flex flex-col">
-                  <span className="text-xs text-slate-400 font-medium">共 {item.questionCount} 題</span>
+                  <span className="text-xs text-slate-400 font-medium">{uiText("共 ")}{item.questionCount}{uiText(" 題")}</span>
                   <span className="text-xs text-slate-400">{item.createdAt ? new Date(item.createdAt).toISOString().slice(0, 10) : ''}</span>
                 </div>
-                <span className="text-sm font-bold text-indigo-600 flex items-center gap-1 transition-transform">
-                  查看完整題目 <ChevronRight className="w-4 h-4" />
+                <span className="text-sm font-bold text-indigo-600 flex items-center gap-1 transition-transform">{uiText("查看完整題目 ")}<ChevronRight className="w-4 h-4" />
                 </span>
               </div>
             </motion.div>
           ))
         ) : (
-          <div className="col-span-full rounded-[24px] border border-dashed border-slate-200 bg-white p-10 text-center text-sm font-semibold text-slate-400">
-            還沒有題庫，先從測驗預覽把題目加入題庫吧。
-          </div>
+          <div className="col-span-full rounded-[24px] border border-dashed border-slate-200 bg-white p-10 text-center text-sm font-semibold text-slate-400">{uiText("還沒有題庫，先從測驗預覽把題目加入題庫吧。")}</div>
         )}
       </div>
 
@@ -215,29 +206,23 @@ export const AssessmentLibrary: React.FC<AssessmentLibraryProps> = ({ onBack }) 
                 <div>
                   <h2 className="text-xl font-bold text-slate-800">{selectedBank.title}</h2>
                   <div className="flex items-center gap-2 mt-1 text-sm text-slate-500">
-                    <span>題庫</span>
+                    <span>{uiText("題庫")}</span>
                     <span>•</span>
-                    <span>共 {selectedBank.questionCount} 題</span>
+                    <span>{uiText("共 ")}{selectedBank.questionCount}{uiText(" 題")}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors shadow-sm">
-                    <Download className="w-4 h-4" />
-                    下載 PDF
-                  </button>
+                    <Download className="w-4 h-4" />{uiText("下載 PDF")}</button>
                   <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 rounded-xl text-sm font-bold text-white hover:bg-indigo-700 transition-colors shadow-sm">
-                    <Share2 className="w-4 h-4" />
-                    分享題庫
-                  </button>
+                    <Share2 className="w-4 h-4" />{uiText("分享題庫")}</button>
                   <button
                     type="button"
                     onClick={() => selectedBank && void handleDeleteBank(selectedBank.id)}
                     disabled={deletingBankId === selectedBank.id}
                     className="flex items-center gap-2 px-4 py-2 bg-rose-50 rounded-xl text-sm font-bold text-rose-600 hover:bg-rose-100 transition-colors shadow-sm disabled:opacity-50"
                   >
-                    <Trash2 className="w-4 h-4" />
-                    刪除題庫
-                  </button>
+                    <Trash2 className="w-4 h-4" />{uiText("刪除題庫")}</button>
                   <button
                     onClick={() => setSelectedBank(null)}
                     className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors ml-2"
@@ -255,7 +240,7 @@ export const AssessmentLibrary: React.FC<AssessmentLibraryProps> = ({ onBack }) 
                 ) : (
                   <div className="h-full flex flex-col items-center justify-center text-slate-400">
                     <BookOpen className="w-12 h-12 mb-4 opacity-20" />
-                    <p>此題庫暫無題目</p>
+                    <p>{uiText("此題庫暫無題目")}</p>
                   </div>
                 )}
               </div>

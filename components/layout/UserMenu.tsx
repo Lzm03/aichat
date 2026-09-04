@@ -1,3 +1,4 @@
+import { uiText } from '../../utils/uiI18n';
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Icons } from '../icons';
@@ -46,7 +47,7 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon: Icon, label, onClick, href, i
     return (
       <a href={href} className={className}>
         <Icon className={`w-5 h-5 ${isDanger ? 'text-rose-500' : 'text-[var(--text-faint)]'}`} />
-        <span>{label}</span>
+        <span>{uiText(label)}</span>
       </a>
     );
   }
@@ -54,7 +55,7 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon: Icon, label, onClick, href, i
   return (
     <button onClick={onClick} className={className}>
       <Icon className={`w-5 h-5 ${isDanger ? 'text-rose-500' : 'text-[var(--text-faint)]'}`} />
-      <span>{label}</span>
+      <span>{uiText(label)}</span>
     </button>
   );
 };

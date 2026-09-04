@@ -1,5 +1,7 @@
 'use client';
 
+import { uiText } from './utils/uiI18n';
+
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
@@ -31,7 +33,7 @@ import {
 } from './utils/auth';
 import { DEFAULT_USER_PREFERENCES, getAppShellThemeClasses, normalizeUserPreferences, syncDarkClass } from './utils/userPreferences';
 import { useFeatureEntitlements } from './hooks/useFeatureEntitlements';
-import { useTeacherLang, type TeacherLang } from './utils/teacherI18n';
+import { setTeacherLang, useTeacherLang, type TeacherLang } from './utils/teacherI18n';
 
 export type Page = 'dashboard' | 'assessment' | 'workshop' | 'sharing';
 
@@ -46,7 +48,7 @@ const LandingPage: React.FC = () => {
   return (
     <iframe
       src="/homepage/index.html"
-      title="ChopReality 首頁"
+      title={uiText("ChopReality 首頁")}
       className="block h-screen w-full border-0 bg-white"
     />
   );
@@ -96,7 +98,11 @@ const App: React.FC = () => {
   useEffect(() => {
     installAuthTransportBridge();
     const syncSession = () => {
-      setCurrentUser(readAuthSession()?.user || null);
+      const user = readAuthSession()?.user || null;
+      if (!window.localStorage.getItem('chopreality_ui_lang') && user?.preferences?.experience?.language) {
+        setTeacherLang(user.preferences.experience.language === 'en' ? 'en' : 'zh-HK');
+      }
+      setCurrentUser(user);
       setIsSessionReady(true);
     };
     syncSession();
@@ -234,8 +240,8 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[9999] bg-white/95 backdrop-blur-sm flex items-center justify-center">
           <div className="text-center">
             <div className="mx-auto h-12 w-12 rounded-full border-4 border-slate-200 border-t-indigo-600 animate-spin" />
-            <p className="mt-4 text-lg font-semibold text-slate-800">系統更新中</p>
-            <p className="mt-1 text-sm text-slate-500">新版本部署完成後將自動恢復</p>
+            <p className="mt-4 text-lg font-semibold text-slate-800">{uiText("系統更新中")}</p>
+            <p className="mt-1 text-sm text-slate-500">{uiText("新版本部署完成後將自動恢復")}</p>
           </div>
         </div>
       ) : null}
@@ -243,14 +249,12 @@ const App: React.FC = () => {
         <div className="fixed right-4 top-4 z-[90] flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50/95 px-4 py-2 shadow-lg backdrop-blur">
           <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
           <p className="text-xs font-bold text-amber-700">
-            {teacherLang === "en" ? "Network unstable, reconnecting…" : "網路連線不穩，正在重新連線…"}
+            {teacherLang === "en" ? "Network unstable, reconnecting…" : uiText("網路連線不穩，正在重新連線…")}
           </p>
         </div>
       ) : null}
       {!isSessionReady ? (
-        <div className="flex min-h-screen items-center justify-center bg-white text-sm font-semibold text-slate-500">
-          正在載入…
-        </div>
+        <div className="flex min-h-screen items-center justify-center bg-white text-sm font-semibold text-slate-500">{uiText("正在載入…")}</div>
       ) : isSchoolAvatarRequestRoute ? (
         <SchoolAvatarRequestPage />
       ) : stageBotId ? (
@@ -308,7 +312,7 @@ const App: React.FC = () => {
             <main className="flex-1 p-6 lg:p-8 overflow-y-auto">
               {isAvatarRequestsAdminRoute ? (
                 canManageAvatarRequests ? <SchoolAvatarRequestsAdminPage /> : (
-                  <div className="flex min-h-[50vh] items-center justify-center text-sm font-bold text-slate-500">你沒有權限查看此頁面。</div>
+                  <div className="flex min-h-[50vh] items-center justify-center text-sm font-bold text-slate-500">{uiText("你沒有權限查看此頁面。")}</div>
                 )
               ) : renderCurrentPage()}
             </main>

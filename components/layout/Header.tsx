@@ -1,3 +1,4 @@
+import { uiText, uiTemplate } from '../../utils/uiI18n';
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check } from 'lucide-react';
@@ -107,7 +108,7 @@ export const Header: React.FC<HeaderProps> = ({
           <Icons.menu className="w-6 h-6" />
         </button>
         <div className="hidden min-w-0 lg:block">
-          <h2 className="truncate text-xs leading-snug text-slate-500 sm:text-sm">{getTimeGreeting(new Date(), lang)}, {currentUser?.fullName || '老師'}</h2>
+          <h2 className="truncate text-xs leading-snug text-slate-500 sm:text-sm">{getTimeGreeting(new Date(), lang)}, {currentUser?.fullName || uiText('老師')}</h2>
           <p className="truncate text-2xl font-bold leading-tight text-[#1E293B]">{pageTitle}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
@@ -121,7 +122,7 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden xl:inline">{th.planUsage}</span>
               {lockedCount > 0 && (
                 <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-rose-700 sm:px-2">
-                  {lang === "en" ? "Limit reached" : `${lockedCount} 已用完`}
+                  {lang === "en" ? "Limit reached" : uiTemplate("{0} 已用完", lockedCount)}
                 </span>
               )}
               <Icons.down className={`h-4 w-4 transition-transform ${isFeatureMenuOpen ? "rotate-180" : ""}`} />
@@ -189,7 +190,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="flex h-10 items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3.5 text-xs font-bold text-slate-600 transition hover:border-indigo-300 hover:text-indigo-600"
           >
             <Icons.language className="h-4 w-4 text-slate-400" />
-            {lang === "en" ? "EN" : "中"}
+            {lang === "en" ? "EN" : uiText("中")}
             <Icons.down className={`h-3.5 w-3.5 text-slate-400 transition-transform ${isLangMenuOpen ? "rotate-180" : ""}`} />
           </button>
           <AnimatePresence>
@@ -215,7 +216,7 @@ export const Header: React.FC<HeaderProps> = ({
                         active ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-100"
                       }`}
                     >
-                      {label}
+                      {uiText(label)}
                       {active && <Check className="h-4 w-4" />}
                     </button>
                   );
@@ -244,7 +245,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
       </div>
       <div className="min-w-0 pl-10 lg:hidden">
-        <h2 className="truncate whitespace-nowrap text-xs leading-snug text-slate-500 sm:text-sm">{getTimeGreeting(new Date(), lang)}, {currentUser?.fullName || '老師'}</h2>
+        <h2 className="truncate whitespace-nowrap text-xs leading-snug text-slate-500 sm:text-sm">{getTimeGreeting(new Date(), lang)}, {currentUser?.fullName || uiText('老師')}</h2>
         <p className="truncate whitespace-nowrap text-2xl font-black leading-tight text-[#1E293B] sm:text-3xl">{pageTitle}</p>
       </div>
     </header>

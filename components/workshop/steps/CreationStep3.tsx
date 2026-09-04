@@ -1,3 +1,4 @@
+import { uiText, uiTemplate } from '../../../utils/uiI18n';
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Icons } from "../../icons";
@@ -104,8 +105,8 @@ const AvatarUploader: React.FC<{ onImageUploaded: (url: string) => void }> = ({
     ) : (
       <label className="w-full h-48 p-4 bg-slate-50 border-2 border-dashed border-slate-300 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100">
         <Icons.upload className="w-8 h-8 text-slate-400" />
-        <span className="text-sm text-slate-600">點擊或拖曳圖片上傳</span>
-        <span className="mt-1 text-xs text-slate-500 text-center">建議使用 3D 全身角色圖片，效果會更自然。</span>
+        <span className="text-sm text-slate-600">{uiText("點擊或拖曳圖片上傳")}</span>
+        <span className="mt-1 text-xs text-slate-500 text-center">{uiText("建議使用 3D 全身角色圖片，效果會更自然。")}</span>
         <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
       </label>
     );
@@ -133,10 +134,8 @@ export const CreationStep3: React.FC<CreationStep3Props> = ({
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-xl font-bold text-[#1E293B]">2. 形象與背景</h3>
-        <p className="text-sm text-slate-500">
-          設定 AI 機器人的外觀和聊天背景，讓互動更具吸引力。
-        </p>
+        <h3 className="text-xl font-bold text-[#1E293B]">{uiText("2. 形象與背景")}</h3>
+        <p className="text-sm text-slate-500">{uiText("設定 AI 機器人的外觀和聊天背景，讓互動更具吸引力。")}</p>
       </div>
 
       {/* Tabs */}
@@ -151,7 +150,7 @@ export const CreationStep3: React.FC<CreationStep3Props> = ({
                 : "text-slate-500"
             }`}
           >
-            {tab.label}
+            {uiText(tab.label)}
           </button>
         ))}
       </div>
@@ -197,7 +196,7 @@ export const CreationStep3: React.FC<CreationStep3Props> = ({
 
       {/* 背景設定 */}
       <div className="pt-6">
-        <h4 className="text-md font-bold text-[#1E293B] mb-3">背景設定</h4>
+        <h4 className="text-md font-bold text-[#1E293B] mb-3">{uiText("背景設定")}</h4>
 
         <div
           className="relative group cursor-pointer"
@@ -219,14 +218,14 @@ export const CreationStep3: React.FC<CreationStep3Props> = ({
 
           <div className={`absolute inset-0 flex items-center justify-center rounded-2xl ${backgroundAiFeature?.locked ? "bg-black/45" : "bg-black/30 group-hover:bg-black/50"}`}>
             <div className={`px-4 py-2 backdrop-blur-sm rounded-xl text-sm ${backgroundAiFeature?.locked ? "bg-white/25 text-white" : "bg-white/20 text-white"}`}>
-              {backgroundAiFeature?.locked ? "背景生成已用完" : "編輯背景"}
+              {backgroundAiFeature?.locked ? uiText("背景生成已用完") : uiText("編輯背景")}
             </div>
           </div>
         </div>
         {backgroundAiFeature && (
           <p className={`mt-2 text-xs ${backgroundAiFeature.locked ? "text-rose-600" : "text-slate-500"}`}>
             {backgroundAiFeature.unlimited
-              ? `${backgroundAiFeature.label} 無限制`
+              ? uiTemplate("{0} 無限制", backgroundAiFeature.label)
               : `${backgroundAiFeature.label} ${backgroundAiFeature.used}/${backgroundAiFeature.limit}`}
           </p>
         )}
