@@ -50,7 +50,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, for
     { id: 'dashboard', label: '教學總覽', icon: Icons.dashboard },
     { id: 'workshop', label: 'AI工作坊', icon: Icons.bot },
     { id: 'assessment', label: '智能評測', icon: Icons.assessment },
-    { id: 'sharing', label: '學生與分享', icon: Icons.classes },
+    { id: 'students', label: '學生管理', icon: Icons.classes },
   ];
 
   return (

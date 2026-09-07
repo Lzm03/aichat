@@ -13,7 +13,7 @@ import { AuthPage } from './pages/AuthPage';
 import { AccountPage } from './pages/AccountPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { StudentHome } from './pages/StudentHome';
-import { TeacherSharingPage } from './pages/TeacherSharingPage';
+import { StudentManagementPage } from './pages/StudentManagementPage';
 import { CharacterStagePage } from './pages/CharacterStagePage';
 import { ProPlanPage } from './pages/ProPlanPage';
 import { HelpCenterPage } from './pages/HelpCenterPage';
@@ -35,13 +35,13 @@ import { DEFAULT_USER_PREFERENCES, getAppShellThemeClasses, normalizeUserPrefere
 import { useFeatureEntitlements } from './hooks/useFeatureEntitlements';
 import { setTeacherLang, useTeacherLang, type TeacherLang } from './utils/teacherI18n';
 
-export type Page = 'dashboard' | 'assessment' | 'workshop' | 'sharing';
+export type Page = 'dashboard' | 'workshop' | 'assessment' | 'students';
 
 const PAGE_TITLES: Record<Page, Record<TeacherLang, string>> = {
   dashboard: { "zh-HK": '教學總覽', en: 'Teaching Overview' },
-  assessment: { "zh-HK": '智能評測', en: 'Smart Assessment' },
   workshop: { "zh-HK": 'AI 機器人工作坊', en: 'AI Bot Workshop' },
-  sharing: { "zh-HK": '學生與 Bot 分享', en: 'Share with Students' },
+  assessment: { "zh-HK": '智能評測', en: 'Smart Assessment' },
+  students: { "zh-HK": '學生管理', en: 'Student Management' },
 };
 
 const LandingPage: React.FC = () => {
@@ -72,6 +72,7 @@ const App: React.FC = () => {
   const [workshopInitialBotId, setWorkshopInitialBotId] = useState<string | null>(null);
   const [workshopInitialView, setWorkshopInitialView] = useState<'library' | 'creation'>('library');
   const [assessmentInitialView, setAssessmentInitialView] = useState<'dashboard' | 'wizard'>('dashboard');
+  const [studentManagementRedirect, setStudentManagementRedirect] = useState(false);
   const [currentUser, setCurrentUser] = useState<StoredAuthUser | null>(null);
   const [isSessionReady, setIsSessionReady] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -91,8 +92,8 @@ const App: React.FC = () => {
         return <AssessmentPage onNavigateToWorkshop={() => setActivePage('workshop')} initialView={assessmentInitialView} />;
       case 'workshop':
         return <AiBotWorkshopPage searchQuery={botSearchQuery} initialEditingBotId={workshopInitialBotId} initialView={workshopInitialView} />;
-      case 'sharing':
-        return <TeacherSharingPage />;
+      case 'students':
+        return <StudentManagementPage />;
       default:
         return (
           <Dashboard
@@ -110,7 +111,7 @@ const App: React.FC = () => {
               setAssessmentInitialView('wizard');
               setActivePage('assessment');
             }}
-            onOpenSharing={() => setActivePage('sharing')}
+            onOpenSharing={() => setActivePage('students')}
           />
         );
     }
@@ -173,6 +174,7 @@ const App: React.FC = () => {
       setWorkshopInitialView('library');
     }
     if (activePage !== 'assessment') setAssessmentInitialView('dashboard');
+    if (activePage !== 'students') setStudentManagementRedirect(false);
   }, [activePage]);
 
   useEffect(() => {

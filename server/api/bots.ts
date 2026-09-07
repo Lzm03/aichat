@@ -595,9 +595,8 @@ router.get("/shared/with-me", requireAuth, async (req, res) => {
          q.id AS active_quiz_id,
          q.title AS active_quiz_title,
          qa.status AS active_quiz_attempt_status
-       FROM bot_student_shares s
-       JOIN bots b ON b.id = s.bot_id
-       JOIN users u ON u.id = s.teacher_id
+       FROM bots b
+       JOIN users u ON u.id = b.owner_id
        LEFT JOIN LATERAL (
          SELECT id, title
          FROM quizzes
@@ -612,8 +611,25 @@ router.get("/shared/with-me", requireAuth, async (req, res) => {
          ORDER BY updated_at DESC, created_at DESC
          LIMIT 1
        ) qa ON TRUE
-       WHERE s.student_id=$1
-       ORDER BY s.created_at DESC`,
+       WHERE (
+         EXISTS (
+           SELECT 1
+           FROM bot_student_shares s
+           WHERE s.bot_id = b.id AND s.student_id = $1
+         )
+         OR EXISTS (
+           SELECT 1
+           FROM bot_group_shares bg
+           JOIN student_group_members gm ON gm.group_id = bg.group_id
+           WHERE bg.bot_id = b.id AND gm.student_id = $1
+             AND NOT EXISTS (
+               SELECT 1
+               FROM bot_student_exclusions ex
+               WHERE ex.bot_id = b.id AND ex.student_id = $1
+             )
+         )
+       )
+       ORDER BY b.updated_at DESC`,
       [user?.id]
     );
     return res.json(result.rows.map((row) => ({

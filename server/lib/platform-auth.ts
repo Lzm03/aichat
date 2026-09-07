@@ -287,6 +287,24 @@ export async function ensurePlatformTables() {
         );
       `);
       await pool.query(`
+        CREATE TABLE IF NOT EXISTS student_groups (
+          id TEXT PRIMARY KEY,
+          teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          type TEXT NOT NULL CHECK (type IN ('class', 'activity')),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS student_group_members (
+          group_id TEXT NOT NULL REFERENCES student_groups(id) ON DELETE CASCADE,
+          student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (group_id, student_id)
+        );
+      `);
+      await pool.query(`
         CREATE TABLE IF NOT EXISTS bot_student_shares (
           bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
           teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -295,7 +313,29 @@ export async function ensurePlatformTables() {
           PRIMARY KEY (bot_id, student_id)
         );
       `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS bot_group_shares (
+          bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+          teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          group_id TEXT NOT NULL REFERENCES student_groups(id) ON DELETE CASCADE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (bot_id, group_id)
+        );
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS bot_student_exclusions (
+          bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+          teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (bot_id, student_id)
+        );
+      `);
       await pool.query(`CREATE INDEX IF NOT EXISTS bot_student_shares_student_id_idx ON bot_student_shares(student_id);`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS student_groups_teacher_id_idx ON student_groups(teacher_id, updated_at DESC);`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS student_group_members_student_id_idx ON student_group_members(student_id);`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS bot_group_shares_bot_id_idx ON bot_group_shares(bot_id);`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS bot_student_exclusions_bot_id_idx ON bot_student_exclusions(bot_id);`);
       await pool.query(`
         CREATE TABLE IF NOT EXISTS bot_interaction_events (
           id TEXT PRIMARY KEY,
