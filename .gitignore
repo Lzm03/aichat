@@ -18,3 +18,9 @@ dist/
 !/tests/ui-i18n.browser.cjs
 .playwright-cli/
 output/playwright/
+
+# Local Codex work files (not for PR)
+AGENTS.md
+MEMORY.md
+memory/
+progress/
