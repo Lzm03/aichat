@@ -47,9 +47,9 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, forceHidden = false, showRequestAdmin = false, requestAdminActive = false }) => {
   const navItems: { id: Page; label: string; icon: React.ElementType; disabled?: boolean }[] = [
-    { id: 'dashboard', label: '指揮倉', icon: Icons.dashboard },
-    { id: 'assessment', label: '智能評測', icon: Icons.assessment },
+    { id: 'dashboard', label: '教學總覽', icon: Icons.dashboard },
     { id: 'workshop', label: 'AI工作坊', icon: Icons.bot },
+    { id: 'assessment', label: '智能評測', icon: Icons.assessment },
     { id: 'sharing', label: '學生與分享', icon: Icons.classes },
   ];
 

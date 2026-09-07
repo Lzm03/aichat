@@ -8,6 +8,8 @@ export interface AiBot {
   subjectColor: 'indigo' | 'emerald' | 'amber';
   interactions: number;
   accuracy: number;
+  createdAt?: string;
+  updatedAt?: string;
   isVisible: boolean;
   openingMessage?: string;
   knowledgeBase?: string;

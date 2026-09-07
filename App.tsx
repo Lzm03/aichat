@@ -38,7 +38,7 @@ import { setTeacherLang, useTeacherLang, type TeacherLang } from './utils/teache
 export type Page = 'dashboard' | 'assessment' | 'workshop' | 'sharing';
 
 const PAGE_TITLES: Record<Page, Record<TeacherLang, string>> = {
-  dashboard: { "zh-HK": '教學指揮艙', en: 'Command Center' },
+  dashboard: { "zh-HK": '教學總覽', en: 'Teaching Overview' },
   assessment: { "zh-HK": '智能評測', en: 'Smart Assessment' },
   workshop: { "zh-HK": 'AI 機器人工作坊', en: 'AI Bot Workshop' },
   sharing: { "zh-HK": '學生與 Bot 分享', en: 'Share with Students' },
@@ -69,6 +69,9 @@ const App: React.FC = () => {
   const [isTasksRoute, setIsTasksRoute] = useState(false);
   const [isSchoolAvatarRequestRoute, setIsSchoolAvatarRequestRoute] = useState(false);
   const [isAvatarRequestsAdminRoute, setIsAvatarRequestsAdminRoute] = useState(false);
+  const [workshopInitialBotId, setWorkshopInitialBotId] = useState<string | null>(null);
+  const [workshopInitialView, setWorkshopInitialView] = useState<'library' | 'creation'>('library');
+  const [assessmentInitialView, setAssessmentInitialView] = useState<'dashboard' | 'wizard'>('dashboard');
   const [currentUser, setCurrentUser] = useState<StoredAuthUser | null>(null);
   const [isSessionReady, setIsSessionReady] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -85,13 +88,31 @@ const App: React.FC = () => {
   const renderCurrentPage = () => {
     switch (activePage) {
       case 'assessment':
-        return <AssessmentPage onNavigateToWorkshop={() => setActivePage('workshop')} />;
+        return <AssessmentPage onNavigateToWorkshop={() => setActivePage('workshop')} initialView={assessmentInitialView} />;
       case 'workshop':
-        return <AiBotWorkshopPage searchQuery={botSearchQuery} />;
+        return <AiBotWorkshopPage searchQuery={botSearchQuery} initialEditingBotId={workshopInitialBotId} initialView={workshopInitialView} />;
       case 'sharing':
         return <TeacherSharingPage />;
       default:
-        return <Dashboard />;
+        return (
+          <Dashboard
+            onEditRecentBot={(botId) => {
+              setWorkshopInitialBotId(botId);
+              setWorkshopInitialView('creation');
+              setActivePage('workshop');
+            }}
+            onCreateBot={() => {
+              setWorkshopInitialBotId(null);
+              setWorkshopInitialView('creation');
+              setActivePage('workshop');
+            }}
+            onCreateQuiz={() => {
+              setAssessmentInitialView('wizard');
+              setActivePage('assessment');
+            }}
+            onOpenSharing={() => setActivePage('sharing')}
+          />
+        );
     }
   };
 
@@ -145,6 +166,14 @@ const App: React.FC = () => {
       setBotSearchQuery('');
     }
   }, [activePage, botSearchQuery]);
+
+  useEffect(() => {
+    if (activePage !== 'workshop') {
+      setWorkshopInitialBotId(null);
+      setWorkshopInitialView('library');
+    }
+    if (activePage !== 'assessment') setAssessmentInitialView('dashboard');
+  }, [activePage]);
 
   useEffect(() => {
     let cancelled = false;

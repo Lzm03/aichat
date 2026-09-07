@@ -47,5 +47,7 @@ export function toClient(raw) {
     interactions: raw.interactions,
     accuracy: raw.accuracy,
     isVisible: raw.is_visible,
+    createdAt: raw.created_at || raw.createdAt || "",
+    updatedAt: raw.updated_at || raw.updatedAt || "",
   };
 }

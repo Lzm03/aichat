@@ -17,8 +17,13 @@ type QuestionBankSummary = {
   updatedAt?: string;
 };
 
-export const AssessmentPage: React.FC<{ onNavigateToWorkshop?: () => void }> = ({ onNavigateToWorkshop }) => {
-  const [view, setView] = useState<'dashboard' | 'wizard' | 'library' | 'grading' | 'alerts'>('dashboard');
+type AssessmentPageProps = {
+  onNavigateToWorkshop?: () => void;
+  initialView?: 'dashboard' | 'wizard';
+};
+
+export const AssessmentPage: React.FC<AssessmentPageProps> = ({ onNavigateToWorkshop, initialView = 'dashboard' }) => {
+  const [view, setView] = useState<'dashboard' | 'wizard' | 'library' | 'grading' | 'alerts'>(initialView);
   const [drafts, setDrafts] = useState<Array<{ id: string; title: string; date: string; questionCount: number }>>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);

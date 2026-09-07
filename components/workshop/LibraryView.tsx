@@ -115,6 +115,7 @@ function normalizeBots(data: any[]): AiBot[] {
     voiceId: raw.voiceId || "", openingMessage: raw.openingMessage || "",
     videoIdle: raw.videoIdle || "", videoThinking: raw.videoThinking || "", videoTalking: raw.videoTalking || "",
     interactions: raw.interactions, accuracy: raw.accuracy, isVisible: raw.isVisible,
+    createdAt: raw.createdAt || "", updatedAt: raw.updatedAt || "",
     hasPublishedQuiz: Boolean(raw.hasPublishedQuiz), hasPendingQuiz: Boolean(raw.hasPendingQuiz),
     activeQuizId: raw.activeQuizId || "", activeQuizTitle: raw.activeQuizTitle || "",
   }));

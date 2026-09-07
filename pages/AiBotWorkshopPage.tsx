@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import { LibraryView } from '../components/workshop/LibraryView';
 import { CreationFlow } from '../components/workshop/CreationFlow';
 import { useFeatureEntitlements } from '../hooks/useFeatureEntitlements';
@@ -17,14 +17,17 @@ const WORKSHOP_T: Record<TeacherLang, Record<string, string>> = {
 
 type AiBotWorkshopPageProps = {
   searchQuery?: string;
+  initialEditingBotId?: string | null;
+  initialView?: 'library' | 'creation';
 };
 
-export const AiBotWorkshopPage: React.FC<AiBotWorkshopPageProps> = ({ searchQuery = '' }) => {
+export const AiBotWorkshopPage: React.FC<AiBotWorkshopPageProps> = ({ searchQuery = '', initialEditingBotId = null, initialView = 'library' }) => {
   const { features, loading, initialized, refresh, consume } = useFeatureEntitlements();
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
   const wt = WORKSHOP_T[useTeacherLang()];
-  const [view, setView] = useState<'library' | 'creation'>('library');
-  const [editingBotId, setEditingBotId] = useState<string | null>(null);
+  const [view, setView] = useState<'library' | 'creation'>(initialView);
+  const [editingBotId, setEditingBotId] = useState<string | null>(initialEditingBotId);
+  const [initialEditApplied, setInitialEditApplied] = useState(false);
   const botPublishFeature = features.find((item) => item.key === 'bot_publish');
   const chatMessagesFeature = features.find((item) => item.key === 'chat_messages');
   const trialEndedDialogShownRef = useRef(false);
@@ -74,6 +77,13 @@ export const AiBotWorkshopPage: React.FC<AiBotWorkshopPageProps> = ({ searchQuer
     setView('creation');
   };
 
+  useEffect(() => {
+    if (initialEditingBotId && !initialEditApplied) {
+      setEditingBotId(initialEditingBotId);
+      setView('creation');
+      setInitialEditApplied(true);
+    }
+  }, [initialEditingBotId, initialEditApplied]);
   const handleBackToLibrary = () => {
     setView('library');
     setEditingBotId(null);
