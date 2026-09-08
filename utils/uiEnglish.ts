@@ -1648,6 +1648,8 @@ export const englishUi: Record<string, string> = {
   "或點擊選擇檔案": "or click to choose a file",
   "格式說明": "Format Notes",
   "每行格式": "Each line",
+  "姓名, email": "Name, email",
+  ", tab 空格": ", tab space",
   "可接受": "Separators accepted",
   "貼上名單": "Paste a List",
   "每行一個學生，格式：姓名，電郵": "One student per line. Format: Name, Email",
