@@ -291,7 +291,7 @@ export async function ensurePlatformTables() {
           id TEXT PRIMARY KEY,
           teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           name TEXT NOT NULL,
-          type TEXT NOT NULL CHECK (type IN ('class', 'activity')),
+          type TEXT NOT NULL CHECK (type IN ('class')),
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );

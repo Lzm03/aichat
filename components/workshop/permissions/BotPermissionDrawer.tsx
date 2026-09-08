@@ -16,7 +16,7 @@ export type PermissionStudent = {
 export type PermissionGroup = {
   id: string;
   name: string;
-  type: "class" | "activity";
+  type: "class";
   studentIds: string[];
 };
 
@@ -213,7 +213,7 @@ export const BotPermissionDrawer: React.FC<Props> = ({
                         <UsersRound className="h-4 w-4" />
                       </span>
                       <span>
-                        <span className="block text-sm font-black text-slate-900">{uiText("特定羣組")}</span>
+                        <span className="block text-sm font-black text-slate-900">{uiText("特定班級")}</span>
                         <span className="mt-0.5 block text-xs text-slate-500">{uiText("僅限指定名單成員存取")}</span>
                       </span>
                       <Check className={`ml-auto h-4 w-4 ${mode === "group" ? "text-indigo-600" : "text-transparent"}`} />
@@ -247,7 +247,7 @@ export const BotPermissionDrawer: React.FC<Props> = ({
                 {mode === "group" && (
                   <div className="mt-7">
                     <div className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
-                      {uiText("班級／群組")}
+                      {uiText("班級")}
                     </div>
 
                     {groups.length > 0 ? (
@@ -269,7 +269,7 @@ export const BotPermissionDrawer: React.FC<Props> = ({
                                   <span className="min-w-0">
                                     <span className="block truncate text-sm font-black text-slate-900">{group.name}</span>
                                     <span className="mt-0.5 block text-xs text-slate-500">
-                                      {group.type === "class" ? uiText("班級") : uiText("活動群組")} · {group.studentIds.length}{uiText(" 位學生")}
+                                      {uiText("班級")} · {group.studentIds.length}{uiText(" 位學生")}
                                     </span>
                                   </span>
                                 </button>
@@ -299,7 +299,7 @@ export const BotPermissionDrawer: React.FC<Props> = ({
                                       ))}
                                     </div>
                                   ) : (
-                                    <p className="py-2 text-sm text-slate-400">{uiText("呢個群組未有學生")}</p>
+                                    <p className="py-2 text-sm text-slate-400">{uiText("呢個班級未有學生")}</p>
                                   )}
                                 </div>
                               ) : null}
@@ -309,7 +309,7 @@ export const BotPermissionDrawer: React.FC<Props> = ({
                       </div>
                     ) : (
                       <div className="mt-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-4">
-                        <p className="text-sm font-semibold text-slate-600">{uiText("暫時未有班級或群組")}</p>
+                        <p className="text-sm font-semibold text-slate-600">{uiText("暫時未有班級")}</p>
                         <a href="/student-management" className="mt-3 inline-flex items-center gap-1.5 text-xs font-black text-indigo-600 hover:underline">
                           {uiText("先到學生管理加入學生與建立班級")}
                           <ChevronRight className="h-3.5 w-3.5" />
