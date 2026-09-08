@@ -1577,12 +1577,16 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     setMediaReady(false);
+    const controller = new AbortController();
+    setSeqIdle(null);
+    setSeqThinking(null);
+    setSeqTalking(null);
     const loadManifest = async (url: string, setter: (v: any) => void) => {
       try {
-        const res = await fetch(url);
+        const res = await fetch(url, { signal: controller.signal });
         if (!res.ok) return;
         const json = await res.json();
-        setter(json);
+        if (!controller.signal.aborted) setter(json);
       } catch {
         // ignore
       }
@@ -1590,6 +1594,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     if (isSeqManifest(safeVideoIdle)) void loadManifest(safeVideoIdle!, setSeqIdle);
     if (isSeqManifest(safeVideoThinking)) void loadManifest(safeVideoThinking!, setSeqThinking);
     if (isSeqManifest(safeVideoTalking)) void loadManifest(safeVideoTalking!, setSeqTalking);
+    return () => controller.abort();
   }, [isOpen, safeVideoIdle, safeVideoThinking, safeVideoTalking]);
 
   useEffect(() => {
@@ -1732,14 +1737,11 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
         }
         openingReady = true;
         ttsAudioMap.current.set(openingSeq, audio);
-        setMessages([
-          {
-            role: "bot",
-            content: openingMessage,
-          },
-        ]);
+        setMessages([{ role: "bot", content: "" }]);
+        speechRevealRef.current.set(openingSeq, createSpeechReveal(openingMessage, content => {
+          setMessages([{ role: "bot", content }]);
+        }));
         setIsStopAvailable(true);
-        setBotState("speaking");
         setIsBooting(false);
         setOpeningReady(true);
         tryPlayInOrder();
@@ -1776,6 +1778,9 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const ttsInflight = useRef(0);
   const ttsTextQueue = useRef<{ seq: number; text: string }[]>([]);
   const ttsAudioMap = useRef<Map<number, string>>(new Map());
+  const speechRevealRef = useRef(new Map<number, (progress: number) => void>());
+  const speechProgressRafRef = useRef<number | null>(null);
+  const failedSpeechRef = useRef(new Set<number>());
   const quizSubmitQueueRef = useRef<Promise<any>>(Promise.resolve());
   const maxTtsInflight = 3;
   const speechRecognitionRef = useRef<any>(null);
@@ -1866,30 +1871,79 @@ const requestTTSAudio = async (text: string, sessionId: number) => {
   }
 };
 
-const enqueueSpeak = (text: string) => {
-  if (!voicePlaybackEnabledRef.current || !voiceId || !text.trim()) return;
+const enqueueSpeak = (text: string, reveal?: (progress: number) => void) => {
+  if (!voicePlaybackEnabledRef.current || !voiceId || !text.trim()) {
+    reveal?.(1);
+    return;
+  }
   const seq = ttsSeq.current++;
+  if (reveal) speechRevealRef.current.set(seq, reveal);
   ttsTextQueue.current.push({ seq, text });
+  setBotState("thinking");
+  setIsStopAvailable(true);
   pumpTTSRequests();
   return seq;
 };
 
-const waitForAudioReady = (seq: number, timeoutMs = 1000) =>
-  new Promise<void>((resolve) => {
-    if (!voicePlaybackEnabledRef.current) {
-      resolve();
-      return;
-    }
-    const start = Date.now();
-    const timer = setInterval(() => {
-      const ready = ttsAudioMap.current.has(seq) || seq < nextPlaySeq.current;
-      const timeout = Date.now() - start > timeoutMs;
-      if (ready || timeout) {
-        clearInterval(timer);
-        resolve();
-      }
-    }, 20);
-  });
+// Use the media clock, so buffering and playback speed cannot drift from text.
+const createSpeechReveal = (text: string, update: (content: string) => void) => {
+  const characters = Array.from(text);
+  let visible = 0;
+  return (progress: number) => {
+    const count = Math.max(visible, Math.min(characters.length, Math.floor(characters.length * progress)));
+    if (count === visible) return;
+    visible = count;
+    update(characters.slice(0, count).join(""));
+  };
+};
+
+const stopSpeechProgress = () => {
+  if (speechProgressRafRef.current !== null) {
+    window.cancelAnimationFrame(speechProgressRafRef.current);
+    speechProgressRafRef.current = null;
+  }
+};
+
+const revealSpeech = (seq: number) => {
+  speechRevealRef.current.get(seq)?.(1);
+  speechRevealRef.current.delete(seq);
+};
+
+const fallbackSpeechText = () => {
+  for (const seq of [...speechRevealRef.current.keys()].sort((a, b) => a - b)) revealSpeech(seq);
+  stopAllSpeech();
+};
+
+const startSpeechProgress = (seq: number, sessionId: number, player: HTMLAudioElement) => {
+  stopSpeechProgress();
+  const update = () => {
+    if (sessionId !== ttsSessionRef.current || seq !== nextPlaySeq.current) return;
+    const progress = Number.isFinite(player.duration) && player.duration > 0
+      ? Math.min(1, player.currentTime / player.duration) : 0;
+    speechRevealRef.current.get(seq)?.(progress);
+    speechProgressRafRef.current = window.requestAnimationFrame(update);
+  };
+  update();
+};
+
+const presentSpokenReply = (text: string, generation: number, title?: string) => {
+  const segments = text.match(/[^。！？!?；;\n]+[。！？!?；;\n]*|[。！？!?；;\n]+/g) || [text];
+  let visible = "";
+  for (const segment of segments) {
+    const prefix = visible;
+    visible += segment;
+    if (!segment.trim()) continue;
+    enqueueSpeak(segment, createSpeechReveal(segment, partial => {
+      const content = prefix + partial;
+      if (generation !== generationIdRef.current) return;
+      setMessages(prev => {
+        const next = [...prev];
+        next[next.length - 1] = { role: "bot", content, guidedTitle: title, guidedBody: title ? content : undefined };
+        return next;
+      });
+    }));
+  }
+};
 
 const tryPlayInOrder = () => {
   if (shouldRequirePermission && !permissionReady) return;
@@ -1900,12 +1954,20 @@ const tryPlayInOrder = () => {
   }
   const player = ttsPlayerRef.current;
 
+  while (failedSpeechRef.current.delete(nextPlaySeq.current)) {
+    fallbackSpeechText();
+    return;
+  }
+  const sessionId = ttsSessionRef.current;
   const seq = nextPlaySeq.current;
   const audioUrl = ttsAudioMap.current.get(seq);
   if (!audioUrl) {
     if (ttsInflight.current === 0 && ttsAudioMap.current.size === 0) {
       setBotState("idle");
       setIsStopAvailable(false);
+    } else {
+      setBotState("thinking");
+      setIsStopAvailable(true);
     }
     return;
   }
@@ -1914,9 +1976,11 @@ const tryPlayInOrder = () => {
   activeAudioUrl.current = audioUrl;
   player.src = audioUrl;
   player.playbackRate = 1.12;
-  setBotState("speaking");
   void player.play()
     .then(() => {
+      if (sessionId !== ttsSessionRef.current) return;
+      setBotState("speaking");
+      startSpeechProgress(seq, sessionId, player);
       ttsAudioMap.current.delete(seq);
       setAwaitingAudioGesture(false);
       if (audioRetryTimerRef.current) {
@@ -1925,24 +1989,15 @@ const tryPlayInOrder = () => {
       }
     })
     .catch((e) => {
+      if (sessionId !== ttsSessionRef.current) return;
       console.error("Audio play blocked:", e);
-      playing.current = false;
-      activeAudioUrl.current = null;
-      setAwaitingAudioGesture(true);
-      setBotState("idle");
-      setIsStopAvailable(true);
-      if (
-        Date.now() - lastUserGestureRef.current < 5000 &&
-        !audioRetryTimerRef.current
-      ) {
-        audioRetryTimerRef.current = window.setTimeout(() => {
-          audioRetryTimerRef.current = null;
-          tryPlayInOrder();
-        }, 250);
-      }
+      fallbackSpeechText();
     });
 
   player.onended = () => {
+    if (sessionId !== ttsSessionRef.current) return;
+    stopSpeechProgress();
+    revealSpeech(seq);
     if (activeAudioUrl.current) {
       URL.revokeObjectURL(activeAudioUrl.current);
       activeAudioUrl.current = null;
@@ -1952,13 +2007,8 @@ const tryPlayInOrder = () => {
     tryPlayInOrder();
   };
   player.onerror = () => {
-    if (activeAudioUrl.current) {
-      URL.revokeObjectURL(activeAudioUrl.current);
-      activeAudioUrl.current = null;
-    }
-    playing.current = false;
-    nextPlaySeq.current += 1;
-    tryPlayInOrder();
+    if (sessionId !== ttsSessionRef.current) return;
+    fallbackSpeechText();
   };
 };
 
@@ -1991,17 +2041,19 @@ const pumpTTSRequests = () => {
 
     requestTTSAudio(item.text, sessionId)
       .then((audioUrl) => {
-        if (!audioUrl) return;
         if (sessionId !== ttsSessionRef.current) {
-          URL.revokeObjectURL(audioUrl);
+          if (audioUrl) URL.revokeObjectURL(audioUrl);
           return;
         }
-        ttsAudioMap.current.set(item.seq, audioUrl);
+        if (audioUrl) ttsAudioMap.current.set(item.seq, audioUrl);
+        else failedSpeechRef.current.add(item.seq);
         tryPlayInOrder();
       })
       .finally(() => {
+        if (sessionId !== ttsSessionRef.current) return;
         ttsInflight.current = Math.max(0, ttsInflight.current - 1);
         pumpTTSRequests();
+        tryPlayInOrder();
       });
   }
 };
@@ -2011,8 +2063,14 @@ const isSentenceEnd = (text: string) => {
 };
 
 const stopAllSpeech = () => {
+  stopSpeechProgress();
   generationIdRef.current += 1;
   ttsSessionRef.current += 1;
+  if (audioRetryTimerRef.current) {
+    window.clearTimeout(audioRetryTimerRef.current);
+    audioRetryTimerRef.current = null;
+  }
+  setAwaitingAudioGesture(false);
   if (guideActivationTimerRef.current) {
     window.clearTimeout(guideActivationTimerRef.current);
     guideActivationTimerRef.current = null;
@@ -2042,6 +2100,8 @@ const stopAllSpeech = () => {
   });
 
   ttsTextQueue.current = [];
+  speechRevealRef.current.clear();
+  failedSpeechRef.current.clear();
   ttsAudioMap.current.clear();
   ttsInflight.current = 0;
   playing.current = false;
@@ -2284,30 +2344,14 @@ const sendMessage = async (
       setMessages(prev => [...prev, { role: "bot", content: "", guidedTitle: guidedCard.title }]);
 
       const ttsSource = guidedCard.body || committedReply;
-      const segments = ttsSource
-        .split(/(?<=[。！？!?；;\n])/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      let progressiveReply = "";
-      for (const segment of segments) {
-        if (voicePlaybackEnabledRef.current) {
-          enqueueSpeak(segment);
-        }
-        if (currentGenId !== generationIdRef.current) return;
-        progressiveReply += (progressiveReply ? "\n" : "") + segment;
-        setMessages(prev => {
-          const newMessages = [...prev];
-          newMessages[newMessages.length - 1] = { role: "bot", content: progressiveReply, guidedTitle: guidedCard.title, guidedBody: progressiveReply };
-          return newMessages;
-        });
-      }
+      presentSpokenReply(ttsSource, currentGenId, guidedCard.title);
 
       if (currentGenId !== generationIdRef.current) return;
       if (guideActivationTimerRef.current) {
         window.clearTimeout(guideActivationTimerRef.current);
         guideActivationTimerRef.current = null;
       }
-      setBotState((current) => (current === "thinking" ? "idle" : current));
+      if (!playing.current && ttsInflight.current === 0 && ttsTextQueue.current.length === 0) setBotState("idle");
       return;
     }
 
@@ -2325,7 +2369,7 @@ const sendMessage = async (
     const decoder = new TextDecoder();
     let sseBuffer = "";
     let streamedReply = "";
-    let spokenReply = "";
+
 
     if (!reader) {
       const raw = await response.text();
@@ -2335,15 +2379,9 @@ const sendMessage = async (
         .map((line) => line.replace(/^data:/, ""))
         .join("")
         .trim() || raw.trim();
-      setMessages(prev => {
-        const newMessages = [...prev];
-        newMessages[newMessages.length - 1] = { role: "bot", content: fallbackReply };
-        return newMessages;
-      });
-      if (voicePlaybackEnabledRef.current && fallbackReply) {
-        enqueueSpeak(fallbackReply);
-      }
-      setBotState((current) => (current === "thinking" ? "idle" : current));
+      if (currentGenId !== generationIdRef.current) return;
+      presentSpokenReply(fallbackReply, currentGenId);
+      if (!playing.current && ttsInflight.current === 0 && ttsTextQueue.current.length === 0) setBotState("idle");
       return;
     }
 
@@ -2366,27 +2404,17 @@ const sendMessage = async (
         const displayedStreamedReply = replyLanguage === "mandarin"
           ? normalizeMandarinTraditional(streamedReply)
           : streamedReply;
-        setMessages(prev => {
-          const newMessages = [...prev];
-          newMessages[newMessages.length - 1] = { role: "bot", content: displayedStreamedReply };
-          return newMessages;
-        });
-
-        const completedSegments = streamedReply
-          .slice(spokenReply.length)
-          .split(/(?<=[。！？!?；;\n])/)
-          .map((part) => part.trim())
-          .filter(Boolean);
-        if (voicePlaybackEnabledRef.current && completedSegments.length > 0) {
-          const speakable = completedSegments.filter((part) => /[。！？!?；;\n]$/.test(part));
-          for (const segment of speakable) {
-            enqueueSpeak(segment);
-            spokenReply += segment;
-          }
+        if (!voicePlaybackEnabledRef.current || !voiceId) {
+          setMessages(prev => {
+            const next = [...prev];
+            next[next.length - 1] = { role: "bot", content: displayedStreamedReply };
+            return next;
+          });
         }
       }
     }
 
+    if (currentGenId !== generationIdRef.current) return;
     streamedReply += decoder.decode();
     const rawCommittedReply = trimReplyToSingleQuestion(streamedReply.trim());
     const committedReply = replyLanguage === "mandarin"
@@ -2423,17 +2451,8 @@ const sendMessage = async (
         ];
       });
     }
-    if (committedReply !== streamedReply.trim()) {
-      setMessages(prev => {
-        const newMessages = [...prev];
-        newMessages[newMessages.length - 1] = { role: "bot", content: committedReply };
-        return newMessages;
-      });
-    }
-    if (!spokenReply && voicePlaybackEnabledRef.current && committedReply) {
-      enqueueSpeak(committedReply);
-    }
-    setBotState((current) => (current === "thinking" ? "idle" : current));
+    presentSpokenReply(committedReply, currentGenId);
+    if (!playing.current && ttsInflight.current === 0 && ttsTextQueue.current.length === 0) setBotState("idle");
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") return;
     console.error(err);
@@ -4309,7 +4328,7 @@ const unlockAudioAndMic = async () => {
                       suggestedReplies.length > 0 || guidedMode ? "pb-44 md:pb-52" : "pb-3.5"
                     }`}
                   >
-                {messages.map((m, i) => (
+                {messages.map((m, i) => m.role === "bot" && !m.content ? null : (
                   <div
                     key={i}
                     className={`flex ${
@@ -4487,7 +4506,7 @@ const unlockAudioAndMic = async () => {
                 {/* thinking bubble */}
                 {botState === "thinking" && !voiceLimitMessage && (
                   <div className="flex">
-                    <div className="flex gap-1 rounded-2xl border border-[#e5d8c3] bg-white/88 p-3">
+                    <div role="status" aria-label="輸入中" className="flex items-center gap-1 rounded-2xl border border-[#e5d8c3] bg-white/88 p-3">
                       <span className="w-2 h-2 bg-amber-400 rounded-full animate-bounce"></span>
                       <span
                         className="w-2 h-2 bg-amber-400 rounded-full animate-bounce"
