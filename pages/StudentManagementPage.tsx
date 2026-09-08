@@ -67,6 +67,7 @@ export const StudentManagementPage: React.FC = () => {
   const [bulkText, setBulkText] = useState('');
   const [bulkRows, setBulkRows] = useState<ParsedStudent[]>([]);
   const [showBulkModal, setShowBulkModal] = useState(false);
+  const [showAllAssignedStudentsModal, setShowAllAssignedStudentsModal] = useState(false);
   const importFileRef = useRef<HTMLInputElement | null>(null);
   const { dialog, closeDialog, showAlert, showConfirm } = usePlatformDialog();
 
@@ -85,6 +86,10 @@ export const StudentManagementPage: React.FC = () => {
       ? assignedStudents.filter((student) => `${student.fullName} ${student.email}`.toLowerCase().includes(q))
       : assignedStudents;
   }, [assignedStudents, studentQuery]);
+
+  const assignedPreviewLimit = 5;
+  const assignedPreviewStudents = visibleAssignedStudents.slice(0, assignedPreviewLimit);
+  const assignedExtraStudentCount = Math.max(0, visibleAssignedStudents.length - assignedPreviewLimit);
 
   const studentById = (id: string) =>
     students.find((student) => student.id === id) || null;
@@ -392,7 +397,7 @@ export const StudentManagementPage: React.FC = () => {
           </div>
           <div className="mt-3 space-y-2">
             {visibleAssignedStudents.length > 0 ? (
-              visibleAssignedStudents.map((student) => {
+              assignedPreviewStudents.map((student) => {
                 const groupsNames = groups
                   .filter((group) => student.groupIds?.includes(group.id))
                   .map((group) => group.name);
@@ -430,6 +435,16 @@ export const StudentManagementPage: React.FC = () => {
                 {uiText('未有已分組學生。新加入嘅學生會先放到未分組學生。')}
               </p>
             )}
+            {assignedExtraStudentCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => setShowAllAssignedStudentsModal(true)}
+                className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/40 px-4 py-3 text-sm font-black text-indigo-600 transition hover:bg-indigo-50"
+              >
+                {uiTemplate('查看全部 {0} 位學生', visibleAssignedStudents.length)}
+                <ChevronDown className="h-4 w-4" />
+              </button>
+            ) : null}
           </div>
         </section>
       </div>
@@ -696,6 +711,73 @@ export const StudentManagementPage: React.FC = () => {
                 >
                   {uiText('加入未分組' )} {`(${bulkRows.length})`}
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        ) : null}
+        {showAllAssignedStudentsModal ? (
+          <div className="pointer-events-none fixed inset-0 z-[95] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 14, scale: 0.98 }}
+              transition={{ duration: 0.18 }}
+              className="pointer-events-auto relative max-h-[90vh] w-[min(720px,100%)] overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.22)]"
+            >
+              <div className="flex items-start justify-between border-b border-slate-100 px-6 py-5">
+                <div>
+                  <h3 className="text-xl font-black text-slate-900">{uiText('我的學生')}</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {uiTemplate('顯示 {0} 位已加入班級嘅學生', visibleAssignedStudents.length)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAllAssignedStudentsModal(false)}
+                  className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="max-h-[calc(90vh-132px)] space-y-2 overflow-y-auto px-6 py-5">
+                {visibleAssignedStudents.map((student) => {
+                  const groupsNames = groups
+                    .filter((group) => student.groupIds?.includes(group.id))
+                    .map((group) => group.name);
+                  return (
+                    <div
+                      key={student.id}
+                      onClick={() => {
+                        setShowAllAssignedStudentsModal(false);
+                        openAssignStudent(student.id);
+                      }}
+                      className="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/60 px-3 py-3 transition hover:border-indigo-200 hover:bg-indigo-50/40"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-black text-slate-900">{student.fullName}</div>
+                        <div className="mt-0.5 truncate text-xs text-slate-500">{student.email}</div>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {groupsNames.map((name) => (
+                            <span key={name} className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600">{name}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setShowAllAssignedStudentsModal(false);
+                          openAssignStudent(student.id);
+                        }}
+                        className="rounded-lg p-2 text-indigo-400 transition hover:bg-indigo-50 hover:text-indigo-700"
+                        title={uiText('編輯班級')}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </motion.div>
           </div>
