@@ -97,3 +97,76 @@ export function downloadAssessmentResultsCsv(data: AssessmentExport | null | und
   URL.revokeObjectURL(url);
   return true;
 }
+
+type AbilityExportLevel = {
+  key: string;
+  value: number;
+  answered: number;
+  correct: number;
+};
+
+type AbilityExportStudent = {
+  studentId: string;
+  name: string;
+  recent: Record<string, number>;
+  past: Record<string, number> | null;
+};
+
+type AbilityExport = {
+  period: '30d' | 'all';
+  classLevels?: AbilityExportLevel[];
+  students?: AbilityExportStudent[];
+};
+
+const BLOOM_CSV_LABELS = ['記憶', '理解', '應用', '分析', '評價', '創造'];
+const BLOOM_CSV_KEYS = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'];
+
+/** Export the Bloom ability report (class aggregate + per-student recent/past series). */
+export function downloadAbilityReportCsv(data: AbilityExport | null | undefined) {
+  const students = Array.isArray(data?.students) ? data.students : [];
+  const classLevels = Array.isArray(data?.classLevels) ? data.classLevels : [];
+  if (!students.length && !classLevels.length) return false;
+
+  const twoSeries = data?.period !== 'all';
+  const headers = ['學生', ...BLOOM_CSV_LABELS.flatMap((label) =>
+    twoSeries ? [`${label}（${uiText('近期表現')}）`, `${label}（${uiText('過往平均')}）`] : [label]
+  )];
+  const levelValue = (levels: Record<string, number>, key: string) => Number(levels?.[key] ?? 0);
+
+  const rows: (string | number)[][] = [];
+  if (classLevels.length) {
+    const classRow: (string | number)[] = [uiText('全班')];
+    for (const key of BLOOM_CSV_KEYS) {
+      const level = classLevels.find((item) => item.key === key);
+      if (twoSeries) {
+        classRow.push(Number(level?.value ?? 0), '');
+      } else {
+        classRow.push(Number(level?.value ?? 0));
+      }
+    }
+    rows.push(classRow);
+  }
+  for (const student of students) {
+    const row: (string | number)[] = [student.name || uiText('學生')];
+    for (const key of BLOOM_CSV_KEYS) {
+      if (twoSeries) {
+        row.push(levelValue(student.recent, key), student.past ? levelValue(student.past, key) : '');
+      } else {
+        row.push(levelValue(student.recent, key));
+      }
+    }
+    rows.push(row);
+  }
+
+  const csv = `﻿${[headers.map(uiText), ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n')}`;
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${uiText('能力追蹤報告')}-${twoSeries ? uiText('過去一個月') : uiText('全期')}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  return true;
+}

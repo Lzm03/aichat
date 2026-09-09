@@ -21,6 +21,7 @@ import { SchoolAvatarRequestPage } from './pages/SchoolAvatarRequestPage';
 import { SchoolAvatarRequestsAdminPage } from './pages/SchoolAvatarRequestsAdminPage';
 import { StudentAchievementsPage } from './pages/StudentAchievementsPage';
 import { StudentTasksPage } from './pages/StudentTasksPage';
+import { LearningReportPage } from './pages/LearningReportPage';
 import { MobileSidebarDrawer } from './components/layout/MobileSidebarDrawer';
 import { Icons } from './components/icons';
 import { API_BASE } from './utils/api';
@@ -35,12 +36,13 @@ import { DEFAULT_USER_PREFERENCES, getAppShellThemeClasses, normalizeUserPrefere
 import { useFeatureEntitlements } from './hooks/useFeatureEntitlements';
 import { setTeacherLang, useTeacherLang, type TeacherLang } from './utils/teacherI18n';
 
-export type Page = 'dashboard' | 'workshop' | 'assessment' | 'students';
+export type Page = 'dashboard' | 'workshop' | 'assessment' | 'learning' | 'students';
 
 const PAGE_TITLES: Record<Page, Record<TeacherLang, string>> = {
   dashboard: { "zh-HK": '教學總覽', en: 'Teaching Overview' },
   workshop: { "zh-HK": 'AI 機器人工作坊', en: 'AI Bot Workshop' },
   assessment: { "zh-HK": '智能評測', en: 'Smart Assessment' },
+  learning: { "zh-HK": '學習報告', en: 'Learning Report' },
   students: { "zh-HK": '學生管理', en: 'Student Management' },
 };
 
@@ -72,6 +74,9 @@ const App: React.FC = () => {
   const [workshopInitialBotId, setWorkshopInitialBotId] = useState<string | null>(null);
   const [workshopInitialView, setWorkshopInitialView] = useState<'library' | 'creation'>('library');
   const [assessmentInitialView, setAssessmentInitialView] = useState<'dashboard' | 'wizard'>('dashboard');
+  // Deep-link：由學習報告跳去智能評測，自動開指定測驗嘅 Drawer
+  const [assessmentInitialQuizId, setAssessmentInitialQuizId] = useState<string | null>(null);
+  const [assessmentInitialDrawerTab, setAssessmentInitialDrawerTab] = useState<'results' | 'quality'>('results');
   const [studentManagementRedirect, setStudentManagementRedirect] = useState(false);
   const [currentUser, setCurrentUser] = useState<StoredAuthUser | null>(null);
   const [isSessionReady, setIsSessionReady] = useState(false);
@@ -89,9 +94,39 @@ const App: React.FC = () => {
   const renderCurrentPage = () => {
     switch (activePage) {
       case 'assessment':
-        return <AssessmentPage onNavigateToWorkshop={() => setActivePage('workshop')} initialView={assessmentInitialView} />;
+        return (
+          <AssessmentPage
+            onNavigateToWorkshop={() => setActivePage('workshop')}
+            initialView={assessmentInitialView}
+            initialQuizId={assessmentInitialQuizId}
+            initialDrawerTab={assessmentInitialDrawerTab}
+            onQuizDeepLinkConsumed={() => setAssessmentInitialQuizId(null)}
+          />
+        );
       case 'workshop':
-        return <AiBotWorkshopPage searchQuery={botSearchQuery} initialEditingBotId={workshopInitialBotId} initialView={workshopInitialView} />;
+        return (
+          <AiBotWorkshopPage
+            searchQuery={botSearchQuery}
+            initialEditingBotId={workshopInitialBotId}
+            initialView={workshopInitialView}
+            onNavigateToStudents={() => setActivePage('students')}
+          />
+        );
+      case 'learning':
+        return (
+          <LearningReportPage
+            onOpenQuizQuality={(quizId) => {
+              setAssessmentInitialView('dashboard');
+              setAssessmentInitialDrawerTab('quality');
+              setAssessmentInitialQuizId(quizId);
+              setActivePage('assessment');
+            }}
+            onCreateQuiz={() => {
+              setAssessmentInitialView('wizard');
+              setActivePage('assessment');
+            }}
+          />
+        );
       case 'students':
         return <StudentManagementPage />;
       default:
@@ -112,6 +147,7 @@ const App: React.FC = () => {
               setActivePage('assessment');
             }}
             onOpenSharing={() => setActivePage('students')}
+            onOpenLearningReport={() => setActivePage('learning')}
           />
         );
     }
@@ -173,7 +209,10 @@ const App: React.FC = () => {
       setWorkshopInitialBotId(null);
       setWorkshopInitialView('library');
     }
-    if (activePage !== 'assessment') setAssessmentInitialView('dashboard');
+    if (activePage !== 'assessment') {
+      setAssessmentInitialView('dashboard');
+      setAssessmentInitialQuizId(null);
+    }
     if (activePage !== 'students') setStudentManagementRedirect(false);
   }, [activePage]);
 
