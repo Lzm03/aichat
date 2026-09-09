@@ -2,6 +2,7 @@ import { uiText } from '../../utils/uiI18n';
 import React, { useEffect, useMemo, useState } from "react";
 import { HelpCircle } from "lucide-react";
 import { BotCard } from "./BotCard";
+import { BotAssignmentOverview } from "./BotAssignmentOverview";
 import { PublishSuccessModal } from "./PublishSuccessModal";
 import { Icons } from "../icons";
 import type { AiBot } from "../../types";
@@ -115,6 +116,7 @@ function normalizeBots(data: any[]): AiBot[] {
     voiceId: raw.voiceId || "", openingMessage: raw.openingMessage || "",
     videoIdle: raw.videoIdle || "", videoThinking: raw.videoThinking || "", videoTalking: raw.videoTalking || "",
     interactions: raw.interactions, accuracy: raw.accuracy, isVisible: raw.isVisible,
+    createdAt: raw.createdAt || "", updatedAt: raw.updatedAt || "",
     hasPublishedQuiz: Boolean(raw.hasPublishedQuiz), hasPendingQuiz: Boolean(raw.hasPendingQuiz),
     activeQuizId: raw.activeQuizId || "", activeQuizTitle: raw.activeQuizTitle || "",
   }));
@@ -127,6 +129,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [bots, setBots] = useState<AiBot[]>([]);
   const [botsLoading, setBotsLoading] = useState(true);
   const [selectedBot, setSelectedBot] = useState<AiBot | null>(null);
+  const [viewMode, setViewMode] = useState<"bots" | "assignments">("bots");
   const [tip, setTip] = useState<TipKey>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
@@ -220,6 +223,39 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
   return (
     <div className="mx-auto max-w-[1080px] pb-14">
+      <div className="mb-5 flex w-fit rounded-2xl border border-slate-200 bg-slate-100 p-1">
+        <button
+          type="button"
+          onClick={() => setViewMode("bots")}
+          className={`rounded-xl px-4 py-2 text-sm font-black transition ${
+            viewMode === "bots"
+              ? "bg-white text-indigo-600 shadow-sm"
+              : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          {uiText("Bot 列表")}
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode("assignments")}
+          className={`rounded-xl px-4 py-2 text-sm font-black transition ${
+            viewMode === "assignments"
+              ? "bg-white text-indigo-600 shadow-sm"
+              : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          {uiText("班級分配")}
+        </button>
+      </div>
+
+      {viewMode === "assignments" ? (
+        <BotAssignmentOverview
+          bots={filteredBots}
+          classes={[]}
+          onManage={(botId) => onEditBot(botId)}
+        />
+      ) : (
+        <>
       <section className="mb-6 overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
         <div className="grid min-h-[220px] md:grid-cols-2">
           <div className="min-h-[200px] overflow-hidden bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600">
@@ -302,6 +338,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         onClose={() => setTip(null)}
       />
       <PlatformDialog open={dialog.open} title={dialog.title} message={dialog.message} confirmText={dialog.confirmText} cancelText={dialog.cancelText} tone={dialog.tone} onClose={closeDialog} onConfirm={dialog.onConfirm || undefined} />
+        </>
+      )}
     </div>
   );
 };

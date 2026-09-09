@@ -47,10 +47,10 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, forceHidden = false, showRequestAdmin = false, requestAdminActive = false }) => {
   const navItems: { id: Page; label: string; icon: React.ElementType; disabled?: boolean }[] = [
-    { id: 'dashboard', label: '指揮倉', icon: Icons.dashboard },
-    { id: 'assessment', label: '智能評測', icon: Icons.assessment },
+    { id: 'dashboard', label: '教學總覽', icon: Icons.dashboard },
     { id: 'workshop', label: 'AI工作坊', icon: Icons.bot },
-    { id: 'sharing', label: '學生與分享', icon: Icons.classes },
+    { id: 'assessment', label: '智能評測', icon: Icons.assessment },
+    { id: 'students', label: '學生管理', icon: Icons.classes },
   ];
 
   return (
@@ -75,8 +75,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, for
             ))}
           </ul>
         </nav>
-        <div className="mt-4 border-t border-slate-100 pt-4">
-          <NavItem icon={Icons.clipboardList} label={uiText("客製化申請")} onClick={() => { window.location.href = "/school-avatar-request"; }} />
+        <div className="mt-4 border-t border-slate-100 px-2 pt-4">
+          <li className="px-2">
+            <a
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                window.location.href = "/school-avatar-request";
+              }}
+              className="group relative flex flex-col items-center justify-center rounded-xl bg-gradient-to-br from-indigo-400 via-indigo-400 to-violet-500 px-2 py-4 text-white shadow-[0_8px_24px_rgba(99,102,241,0.22)] ring-1 ring-white/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(99,102,241,0.32)]"
+              title={uiText("客製化申請")}
+            >
+              <Icons.wand className="h-6 w-6 mb-1 text-white/95 transition-transform duration-200 group-hover:rotate-[-6deg]" />
+              <span className="text-[10px] text-center leading-tight text-white">
+                {uiText("客製化申請")}
+              </span>
+            </a>
+          </li>
           {showRequestAdmin ? <NavItem icon={Icons.inbox} label={uiText("申請管理")} active={requestAdminActive} onClick={() => { window.location.href = "/admin/avatar-requests"; }} /> : null}
         </div>
       </div>

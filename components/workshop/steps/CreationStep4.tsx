@@ -1,4 +1,4 @@
-import { uiText } from '../../../utils/uiI18n';
+import { uiText, uiTemplate } from '../../../utils/uiI18n';
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Icons } from '../../icons';
@@ -24,6 +24,18 @@ const Section: React.FC<{ title: string; children: React.ReactNode; subtitle?: s
 // Permission Card
 // -----------------------------
 type SharingMode = 'group' | 'link';
+
+type MockClass = {
+  id: string;
+  name: string;
+  studentCount: number;
+};
+
+const mockClasses: MockClass[] = [
+  { id: 'class-3a', name: '3A班', studentCount: 2 },
+  { id: 'class-5c', name: '5C班', studentCount: 2 },
+  { id: 'class-6b', name: '6B班', studentCount: 3 },
+];
 
 const PermissionCard: React.FC<{
   icon: React.ElementType;
@@ -94,6 +106,8 @@ export const CreationStep4: React.FC<{
   );
   const [customWords, setCustomWords] = useState(initialConfig?.customWords || '');
   const [isCopied, setIsCopied] = useState(false);
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+  const [confirmedClassIds, setConfirmedClassIds] = useState<string[]>([]);
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
 
   const shareableLink =
@@ -158,6 +172,7 @@ ${customWords
 
     base += `
 【共享模式】${sharingMode}
+【班級名單】${sharingMode === 'group' ? confirmedClassIds.join(',') : ''}
 【過濾等級】${filterLevel}
 【自定義詞】${customWords.trim()}
 `;
@@ -168,7 +183,19 @@ ${customWords
   // 回傳安全 prompt 給外層 CreationFlow
   useEffect(() => {
     if (onSecurityChange) onSecurityChange(buildSecurityPrompt());
-  }, [sharingMode, filterLevel, customWords]);
+  }, [sharingMode, filterLevel, customWords, confirmedClassIds]);
+
+  const confirmClassSelection = () => {
+    if (selectedClassIds.length === 0) {
+      showAlert({
+        title: uiText("尚未選擇班級"),
+        message: uiText("請至少選擇一個班級。"),
+        tone: "info",
+      });
+      return;
+    }
+    setConfirmedClassIds(selectedClassIds);
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -182,7 +209,7 @@ ${customWords
         <div className="space-y-3">
           <PermissionCard
             icon={Icons.classes}
-            title={uiText("特定羣組")}
+            title={uiText("特定班級")}
             description="僅限指定名單成員存取"
             isSelected={sharingMode === 'group'}
             onClick={() => setSharingMode('group')}
@@ -195,6 +222,75 @@ ${customWords
             onClick={() => setSharingMode('link')}
           />
         </div>
+
+        {sharingMode === 'group' && (
+          <motion.div
+            initial={{ opacity: 0, y: -5 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-4"
+          >
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-black text-slate-700">{uiText("選擇班級")}</div>
+                              <span className="text-xs font-bold text-indigo-600">
+                        {uiTemplate("已選 {0} / {1} 班", selectedClassIds.length, mockClasses.length)}
+                      </span>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {mockClasses.map((classItem) => {
+                const selected = selectedClassIds.includes(classItem.id);
+                return (
+                  <button
+                    key={classItem.id}
+                    type="button"
+                    onClick={() =>
+                      setSelectedClassIds((current) =>
+                        current.includes(classItem.id)
+                          ? current.filter((id) => id !== classItem.id)
+                          : [...current, classItem.id]
+                      )
+                    }
+                    className={`flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-all ${
+                      selected
+                        ? 'border-indigo-300 bg-indigo-50/60 shadow-[0_10px_28px_rgba(79,70,229,0.08)]'
+                        : 'border-slate-200 bg-white hover:border-indigo-200'
+                    }`}
+                  >
+                    <span
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border ${
+                        selected ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 text-transparent'
+                      }`}
+                    >
+                      {selected ? <Icons.success className="h-4 w-4" /> : null}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-black text-slate-900">{classItem.name}</span>
+                      <span className="mt-0.5 block text-xs text-slate-500">{classItem.studentCount}{uiText(" 位學生")}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+              <div className="mt-4 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={confirmClassSelection}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-700"
+                >
+                  <Icons.success className="h-4 w-4" />
+                  {uiText("確認班級")}
+                </button>
+                {confirmedClassIds.length > 0 ? (
+                  <span className="text-xs font-bold text-emerald-600">
+                    {uiTemplate("已確認 {0} 個班級", confirmedClassIds.length)}
+                  </span>
+                ) : (
+                  <span className="text-xs font-bold text-slate-400">{uiText("尚未確認任何班級")}</span>
+                )}
+              </div>
+          </motion.div>
+        )}
 
         {sharingMode === 'link' && (
           <motion.div
