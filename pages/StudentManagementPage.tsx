@@ -1,5 +1,5 @@
 ﻿import { uiText, uiTemplate } from '../utils/uiI18n';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Check,
@@ -17,6 +17,7 @@ import {
 import { usePlatformDialog } from '../hooks/usePlatformDialog';
 import { PlatformDialog } from '../components/system/PlatformDialog';
 import type { PermissionGroup, PermissionStudent } from '../components/workshop/permissions/BotPermissionDrawer';
+import { API_BASE } from '../utils/api';
 
 type StudentFormState = {
   fullName: string;
@@ -32,22 +33,6 @@ type AssignStudentState = {
   selectedGroupIds: string[];
 };
 
-const initialStudents: PermissionStudent[] = [
-  { id: 'student-1', fullName: '陳小明', email: 'student1@school.hk', groupIds: ['group-3a'] },
-  { id: 'student-2', fullName: '李美玲', email: 'student2@school.hk', groupIds: ['group-3a'] },
-  { id: 'student-3', fullName: '張俊傑', email: 'student3@school.hk', groupIds: ['group-5c'] },
-  { id: 'student-4', fullName: '黃思敏', email: 'student4@school.hk', groupIds: ['group-5c'] },
-  { id: 'student-5', fullName: '林志文', email: 'student5@school.hk', groupIds: [] },
-  { id: 'student-6', fullName: '周嘉怡', email: 'student6@school.hk', groupIds: ['group-3a'] },
-  { id: 'student-7', fullName: '鄭浩然', email: 'student7@school.hk', groupIds: [] },
-  { id: 'student-8', fullName: '梁曉彤', email: 'student8@school.hk', groupIds: ['group-5c'] },
-];
-
-const initialGroups: PermissionGroup[] = [
-  { id: 'group-3a', name: '3A班', type: 'class', studentIds: ['student-1', 'student-2'] },
-  { id: 'group-5c', name: '5C班', type: 'class', studentIds: ['student-3', 'student-4'] },
-];
-
 type ParsedStudent = {
   fullName: string;
   email: string;
@@ -55,9 +40,17 @@ type ParsedStudent = {
 
 const acceptedImportExtensions = ['.csv', '.tsv', '.txt', '.pdf'];
 
+async function readApiResponse(response: Response, fallbackMessage: string) {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(String(data?.error || fallbackMessage));
+  return data;
+}
+
 export const StudentManagementPage: React.FC = () => {
-  const [students, setStudents] = useState<PermissionStudent[]>(initialStudents);
-  const [groups, setGroups] = useState<PermissionGroup[]>(initialGroups);
+  const [students, setStudents] = useState<PermissionStudent[]>([]);
+  const [groups, setGroups] = useState<PermissionGroup[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [studentForm, setStudentForm] = useState<StudentFormState>({ fullName: '', email: '' });
   const [groupForm, setGroupForm] = useState<GroupFormState>({ name: '' });
   const [studentQuery, setStudentQuery] = useState('');
@@ -70,6 +63,26 @@ export const StudentManagementPage: React.FC = () => {
   const [showAllAssignedStudentsModal, setShowAllAssignedStudentsModal] = useState(false);
   const importFileRef = useRef<HTMLInputElement | null>(null);
   const { dialog, closeDialog, showAlert, showConfirm } = usePlatformDialog();
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadStudents = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/students`, { cache: 'no-store', signal: controller.signal });
+        const data = await readApiResponse(response, '無法載入學生資料');
+        setStudents(Array.isArray(data.students) ? data.students : []);
+        setGroups(Array.isArray(data.groups) ? data.groups : []);
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') {
+          showAlert({ title: uiText('載入失敗'), message: (error as Error).message, tone: 'danger' });
+        }
+      } finally {
+        if (!controller.signal.aborted) setIsLoading(false);
+      }
+    };
+    void loadStudents();
+    return () => controller.abort();
+  }, [showAlert]);
 
   const assignedStudents = useMemo(
     () => students.filter((student) => (student.groupIds || []).length > 0).sort((a, b) => a.fullName.localeCompare(b.fullName)),
@@ -94,19 +107,35 @@ export const StudentManagementPage: React.FC = () => {
   const studentById = (id: string) =>
     students.find((student) => student.id === id) || null;
 
-  const addStudent = () => {
+  const addStudent = async () => {
     if (!studentForm.fullName.trim() || !studentForm.email.trim()) {
       showAlert({ title: uiText('請輸入完整資料'), message: uiText('姓名和電郵都必須填寫。'), tone: 'info' });
       return;
     }
-    const nextStudent: PermissionStudent = {
-      id: `student-${Date.now()}`,
-      fullName: studentForm.fullName.trim(),
-      email: studentForm.email.trim().toLowerCase(),
-      groupIds: [],
-    };
-    setStudents((current) => [...current, nextStudent]);
-    setStudentForm({ fullName: '', email: '' });
+    setIsSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/students`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(studentForm),
+      });
+      const data = await readApiResponse(response, '無法建立學生帳戶');
+      setStudents((current) => current.some((student) => student.id === data.student.id)
+        ? current
+        : [...current, data.student]);
+      setStudentForm({ fullName: '', email: '' });
+      showAlert({
+        title: uiText(data.created ? '學生帳戶已建立' : '學生已加入'),
+        message: data.created
+          ? `${uiText('請將臨時密碼交給學生：')} ${data.temporaryPassword}`
+          : uiText('現有學生帳戶已加入你的學生名單。'),
+        tone: 'info',
+      });
+    } catch (error) {
+      showAlert({ title: uiText('建立失敗'), message: (error as Error).message, tone: 'danger' });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const removeStudent = (studentId: string) => {
@@ -117,28 +146,43 @@ export const StudentManagementPage: React.FC = () => {
       cancelText: uiText('取消'),
       tone: 'danger',
       onConfirm: () => {
-        setStudents((current) => current.filter((student) => student.id !== studentId));
-        setGroups((current) =>
-          current.map((group) => ({ ...group, studentIds: group.studentIds.filter((id) => id !== studentId) }))
-        );
+        void (async () => {
+          try {
+            const response = await fetch(`${API_BASE}/api/students/${encodeURIComponent(studentId)}`, { method: 'DELETE' });
+            await readApiResponse(response, '無法移除學生');
+            setStudents((current) => current.filter((student) => student.id !== studentId));
+            setGroups((current) =>
+              current.map((group) => ({ ...group, studentIds: group.studentIds.filter((id) => id !== studentId) }))
+            );
+          } catch (error) {
+            showAlert({ title: uiText('移除失敗'), message: (error as Error).message, tone: 'danger' });
+          }
+        })();
       },
     });
   };
 
-  const addGroup = () => {
+  const addGroup = async () => {
     if (!groupForm.name.trim()) {
       showAlert({ title: uiText('請輸入名稱'), message: uiText('請填寫班級名稱。'), tone: 'info' });
       return;
     }
-    const nextGroup: PermissionGroup = {
-      id: `group-${Date.now()}`,
-      name: groupForm.name.trim(),
-      type: 'class',
-      studentIds: [],
-    };
-    setGroups((current) => [...current, nextGroup]);
-    setGroupForm({ name: '' });
-    setShowGroupForm(false);
+    setIsSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/students/groups`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: groupForm.name.trim() }),
+      });
+      const data = await readApiResponse(response, '無法建立班級');
+      setGroups((current) => [...current, data.group]);
+      setGroupForm({ name: '' });
+      setShowGroupForm(false);
+    } catch (error) {
+      showAlert({ title: uiText('建立失敗'), message: (error as Error).message, tone: 'danger' });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const removeGroup = (groupId: string) => {
@@ -149,32 +193,49 @@ export const StudentManagementPage: React.FC = () => {
       cancelText: uiText('取消'),
       tone: 'danger',
       onConfirm: () => {
-        setGroups((current) => current.filter((group) => group.id !== groupId));
-        setStudents((current) =>
-          current.map((student) => ({
-            ...student,
-            groupIds: (student.groupIds || []).filter((id) => id !== groupId),
-          }))
-        );
+        void (async () => {
+          try {
+            const response = await fetch(`${API_BASE}/api/students/groups/${encodeURIComponent(groupId)}`, { method: 'DELETE' });
+            await readApiResponse(response, '無法刪除班級');
+            setGroups((current) => current.filter((group) => group.id !== groupId));
+            setStudents((current) =>
+              current.map((student) => ({
+                ...student,
+                groupIds: (student.groupIds || []).filter((id) => id !== groupId),
+              }))
+            );
+          } catch (error) {
+            showAlert({ title: uiText('刪除失敗'), message: (error as Error).message, tone: 'danger' });
+          }
+        })();
       },
     });
   };
 
-  const removeStudentFromGroup = (groupId: string, studentId: string) => {
-    setGroups((current) =>
-      current.map((group) =>
-        group.id === groupId
-          ? { ...group, studentIds: group.studentIds.filter((id) => id !== studentId) }
-          : group
-      )
-    );
+  const updateStudentGroups = async (studentId: string, groupIds: string[]) => {
+    const response = await fetch(`${API_BASE}/api/students/${encodeURIComponent(studentId)}/groups`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ groupIds }),
+    });
+    await readApiResponse(response, '無法更新學生班級');
     setStudents((current) =>
-      current.map((student) =>
-        student.id === studentId
-          ? { ...student, groupIds: (student.groupIds || []).filter((id) => id !== groupId) }
-          : student
-      )
+      current.map((student) => student.id === studentId ? { ...student, groupIds } : student)
     );
+    setGroups((current) => current.map((group) => ({
+      ...group,
+      studentIds: groupIds.includes(group.id)
+        ? Array.from(new Set([...group.studentIds, studentId]))
+        : group.studentIds.filter((id) => id !== studentId),
+    })));
+  };
+
+  const removeStudentFromGroup = (groupId: string, studentId: string) => {
+    const student = studentById(studentId);
+    if (!student) return;
+    void updateStudentGroups(studentId, (student.groupIds || []).filter((id) => id !== groupId)).catch((error) => {
+      showAlert({ title: uiText('更新失敗'), message: (error as Error).message, tone: 'danger' });
+    });
   };
 
   const toggleGroupExpand = (groupId: string) => {
@@ -200,24 +261,19 @@ export const StudentManagementPage: React.FC = () => {
     }));
   };
 
-  const saveAssignStudent = () => {
+  const saveAssignStudent = async () => {
     const targetId = assignStudent.studentId;
     if (!targetId) return;
     const nextGroupIds = assignStudent.selectedGroupIds;
-    setStudents((current) =>
-      current.map((student) => (student.id === targetId ? { ...student, groupIds: nextGroupIds } : student))
-    );
-    setGroups((current) =>
-      current.map((group) => ({
-        ...group,
-        studentIds: nextGroupIds.includes(group.id) && !group.studentIds.includes(targetId)
-          ? [...group.studentIds, targetId]
-          : !nextGroupIds.includes(group.id)
-            ? group.studentIds.filter((id) => id !== targetId)
-            : group.studentIds,
-      }))
-    );
-    setAssignStudent({ studentId: null, selectedGroupIds: [] });
+    setIsSaving(true);
+    try {
+      await updateStudentGroups(targetId, nextGroupIds);
+      setAssignStudent({ studentId: null, selectedGroupIds: [] });
+    } catch (error) {
+      showAlert({ title: uiText('更新失敗'), message: (error as Error).message, tone: 'danger' });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const parseBulkText = (text: string): ParsedStudent[] => {
@@ -276,17 +332,36 @@ export const StudentManagementPage: React.FC = () => {
     setBulkText(nextRows.map((row) => `${row.fullName}, ${row.email}`).join('\n'));
   };
 
-  const applyBulkStudents = () => {
-    const nextStudents = bulkRows.map((row, index) => ({
-      id: `student-bulk-${Date.now()}-${index}`,
-      fullName: row.fullName,
-      email: row.email,
-      groupIds: [],
-    }));
-    setStudents((current) => [...current, ...nextStudents]);
-    setBulkText('');
-    setBulkRows([]);
-    setShowBulkModal(false);
+  const applyBulkStudents = async () => {
+    setIsSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/students/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ students: bulkRows }),
+      });
+      const data = await readApiResponse(response, '無法匯入學生');
+      setStudents((current) => {
+        const byId = new Map(current.map((student) => [student.id, student]));
+        data.students.forEach((student: PermissionStudent) => byId.set(student.id, student));
+        return Array.from(byId.values());
+      });
+      setBulkText('');
+      setBulkRows([]);
+      setShowBulkModal(false);
+      const created = data.students.filter((student: any) => student.created && student.temporaryPassword);
+      showAlert({
+        title: uiText('匯入完成'),
+        message: created.length
+          ? `${uiText('已加入學生。新帳戶臨時密碼：')}\n${created.map((student: any) => `${student.email}: ${student.temporaryPassword}`).join('\n')}`
+          : uiText('所有學生帳戶已加入你的學生名單。'),
+        tone: 'info',
+      });
+    } catch (error) {
+      showAlert({ title: uiText('匯入失敗'), message: (error as Error).message, tone: 'danger' });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -297,6 +372,12 @@ export const StudentManagementPage: React.FC = () => {
           <p className="mt-2 text-sm text-slate-500">{uiText('管理學生帳戶與班級。')}</p>
         </div>
       </div>
+
+      {isLoading ? (
+        <div className="mt-6 rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm font-bold text-indigo-600">
+          {uiText('正在從資料庫載入學生與班級…')}
+        </div>
+      ) : null}
 
       <section className="mt-6 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-center gap-2 text-lg font-black text-slate-900">
@@ -324,8 +405,9 @@ export const StudentManagementPage: React.FC = () => {
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={addStudent}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white transition hover:bg-indigo-700"
+              disabled={isSaving}
+              onClick={() => void addStudent()}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               <Plus className="h-4 w-4" />
               {uiText('手動建立學生帳號')}
@@ -479,8 +561,9 @@ export const StudentManagementPage: React.FC = () => {
               />
               <button
                 type="button"
-                onClick={addGroup}
-                className="rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white transition hover:bg-indigo-700"
+                disabled={isSaving}
+                onClick={() => void addGroup()}
+                className="rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
                 {uiText('建立')}
               </button>
@@ -705,8 +788,8 @@ export const StudentManagementPage: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  disabled={bulkRows.length === 0}
-                  onClick={applyBulkStudents}
+                  disabled={bulkRows.length === 0 || isSaving}
+                  onClick={() => void applyBulkStudents()}
                   className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
                 >
                   {uiText('加入未分組' )} {`(${bulkRows.length})`}
@@ -852,8 +935,9 @@ export const StudentManagementPage: React.FC = () => {
                 <div className="border-t border-slate-100 px-5 py-4">
                   <button
                     type="button"
-                    onClick={saveAssignStudent}
-                    className="w-full rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-700"
+                    disabled={isSaving}
+                    onClick={() => void saveAssignStudent()}
+                    className="w-full rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
                     {uiText('儲存')}
                   </button>

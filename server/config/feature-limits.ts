@@ -4,6 +4,7 @@ export type FeatureLimitKey =
   | "background_ai_generate"
   | "voice_audition_preview"
   | "video_studio_generate"
+  | "quiz_publish"
   | "chat_messages"
   | "voice_messages";
 
@@ -55,6 +56,14 @@ export const FEATURE_LIMITS: Record<FeatureLimitKey, FeatureLimitDefinition> = {
     limit: 1,
     description: "AI 影片工作室生成可用 1 次。",
     upgradeMessage: "免費版影片工作室生成次數已用完，請升級到付費版。",
+    countUnit: "次",
+  },
+  quiz_publish: {
+    key: "quiz_publish",
+    label: "發佈測驗",
+    limit: 1,
+    description: "免費體驗版可發佈 1 份測驗。",
+    upgradeMessage: "免費體驗版的測驗發佈次數已用完，請升級到付費版。",
     countUnit: "次",
   },
   chat_messages: {

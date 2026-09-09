@@ -266,6 +266,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [activeQuiz, setActiveQuiz] = useState<ActiveQuizSummary | null>(null);
   const [activeQuizAttempt, setActiveQuizAttempt] = useState<ActiveQuizAttempt | null>(null);
   const [quizUiState, setQuizUiState] = useState<"hidden" | "banner" | "prompt" | "later" | "taking" | "result">("hidden");
+  const quizUiStateRef = useRef(quizUiState);
+  const isQuizGuidanceBlocked = quizUiState === "prompt" || quizUiState === "taking" || quizUiState === "result";
   const [quizQuestion, setQuizQuestion] = useState<QuizPreviewQuestion | null>(null);
   const [quizAllQuestions, setQuizAllQuestions] = useState<QuizPreviewQuestion[]>([]);
   const [quizPrefetchedQuestion, setQuizPrefetchedQuestion] = useState<QuizPreviewQuestion | null>(null);
@@ -761,13 +763,31 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   }, [suggestedReplies]);
 
   useEffect(() => {
+    quizUiStateRef.current = quizUiState;
+    if (!isQuizGuidanceBlocked) return;
+    if (guideActivationTimerRef.current) {
+      window.clearTimeout(guideActivationTimerRef.current);
+      guideActivationTimerRef.current = null;
+    }
+    if (idleGuideTimerRef.current) {
+      window.clearTimeout(idleGuideTimerRef.current);
+      idleGuideTimerRef.current = null;
+    }
+    setSuggestedReplies([]);
+    setGuideQuestion("");
+    setGuidedMode(false);
+    setGuidedStepIndex(0);
+    setGuidedTotalSteps(0);
+  }, [isQuizGuidanceBlocked, quizUiState]);
+
+  useEffect(() => {
     if (!inputText.trim() || !idleGuideTimerRef.current) return;
     window.clearTimeout(idleGuideTimerRef.current);
     idleGuideTimerRef.current = null;
   }, [inputText]);
 
   useEffect(() => {
-    if (!isOpen || guidedMode || suggestedReplies.length > 0) return;
+    if (!isOpen || isQuizGuidanceBlocked || guidedMode || suggestedReplies.length > 0) return;
     const lastMessage = messages[messages.length - 1];
     if (!lastMessage || lastMessage.role !== "bot") return;
     const reply = String(lastMessage.guidedBody || lastMessage.content || "").trim();
@@ -784,7 +804,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
         idleGuideTimerRef.current = null;
       }
     };
-  }, [isOpen, messages, guidedMode, suggestedReplies.length]);
+  }, [isOpen, isQuizGuidanceBlocked, messages, guidedMode, suggestedReplies.length]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2144,7 +2164,7 @@ const requestDialogueEnhancement = async ({
   idleTrigger?: boolean;
   displayDelayMs?: number;
 }) => {
-  if (!reply.trim()) return;
+  if (!reply.trim() || ["prompt", "taking", "result"].includes(quizUiStateRef.current)) return;
   try {
     const currentQuestion = extractQuestionFromReply(reply);
     const recentMessages = [...messages]
@@ -2201,6 +2221,7 @@ const requestDialogueEnhancement = async ({
     }
     guideActivationTimerRef.current = window.setTimeout(() => {
       if (currentGenId !== generationIdRef.current) return;
+      if (["prompt", "taking", "result"].includes(quizUiStateRef.current)) return;
       setGuideQuestion(followUpQuestion || extractQuestionFromReply(reply));
       setSuggestedReplies(nextSuggestedReplies);
       guideActivationTimerRef.current = null;
@@ -2219,6 +2240,7 @@ const scheduleIdleGuide = ({
   reply: string;
   currentGenId: number;
 }) => {
+  if (["prompt", "taking", "result"].includes(quizUiStateRef.current)) return;
   if (!extractQuestionFromReply(reply)) return;
   if (idleGuideTimerRef.current) {
     window.clearTimeout(idleGuideTimerRef.current);
@@ -2226,6 +2248,7 @@ const scheduleIdleGuide = ({
   }
   idleGuideTimerRef.current = window.setTimeout(() => {
     if (currentGenId !== generationIdRef.current) return;
+    if (["prompt", "taking", "result"].includes(quizUiStateRef.current)) return;
     if (inputTextRef.current.trim()) return;
     if (suggestedRepliesRef.current.length > 0) return;
     void requestDialogueEnhancement({
@@ -3256,6 +3279,7 @@ const unlockAudioAndMic = async () => {
 
   const openQuizPrompt = () => {
     if (!activeQuiz) return;
+    quizUiStateRef.current = "prompt";
     setQuizUiState("prompt");
   };
 
@@ -3643,13 +3667,15 @@ const unlockAudioAndMic = async () => {
                             void handleCopyShareLink();
                           }}
                         >{uiText("複製共享連結")}</button>
-                        <button
-                          className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-red-300 transition hover:bg-red-500/10"
-                          onClick={() => {
-                            setShowTopMenu(false);
-                            setShowDeleteConfirm(true);
-                          }}
-                        >{uiText("刪除機器人")}</button>
+                        {!botConfig.isDefault ? (
+                          <button
+                            className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-red-300 transition hover:bg-red-500/10"
+                            onClick={() => {
+                              setShowTopMenu(false);
+                              setShowDeleteConfirm(true);
+                            }}
+                          >{uiText("刪除機器人")}</button>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -4325,7 +4351,7 @@ const unlockAudioAndMic = async () => {
                   <div
                     ref={messagesRef}
                     className={`custom-scroll flex-1 space-y-3 overflow-y-auto bg-[linear-gradient(180deg,rgba(255,250,241,0.6),rgba(247,241,230,0.92))] p-3.5 ${
-                      suggestedReplies.length > 0 || guidedMode ? "pb-44 md:pb-52" : "pb-3.5"
+                      !isQuizGuidanceBlocked && (suggestedReplies.length > 0 || guidedMode) ? "pb-44 md:pb-52" : "pb-3.5"
                     }`}
                   >
                 {messages.map((m, i) => m.role === "bot" && !m.content ? null : (
@@ -4524,7 +4550,7 @@ const unlockAudioAndMic = async () => {
 
               {/* input */}
               <div className="border-t border-[#decfb9] bg-[#fffaf1] p-2">
-                {suggestedReplies.length > 0 ? (
+                {!isQuizGuidanceBlocked && suggestedReplies.length > 0 ? (
                   <div className="mb-1.5 rounded-[20px] border border-[#ecdba8] bg-[#fffaf1]/96 px-1.5 py-1.5 shadow-[0_6px_14px_rgba(218,184,100,0.07)]">
                     <div className="mb-1.5 flex items-center justify-between gap-1.5 px-1">
                       <div className="flex items-center gap-1 text-[10px] font-black text-[#C77B09]">
@@ -4554,7 +4580,7 @@ const unlockAudioAndMic = async () => {
                       })}
                     </div>
                   </div>
-                ) : guidedMode ? (
+                ) : !isQuizGuidanceBlocked && guidedMode ? (
                   <div className="mb-2 rounded-2xl border border-amber-200 bg-amber-50/80 p-2">
                     <div className="mb-2 text-xs text-amber-800">{uiText("引導模式進行中 ")}{guidedStepIndex > 0 && guidedTotalSteps > 0 ? `(Step ${guidedStepIndex}/${guidedTotalSteps})` : ""}
                     </div>

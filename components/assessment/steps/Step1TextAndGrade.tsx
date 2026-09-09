@@ -3,12 +3,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UploadCloud, FileText, Settings2, Lightbulb, ArrowRight, BookOpen, X, Bot, LoaderCircle, FolderOpen } from 'lucide-react';
 import { API_BASE } from '../../../utils/api';
+import { readAuthSession } from '../../../utils/auth';
 
 interface PublishBotOption {
   id: string;
   name: string;
   subject?: string;
   isVisible?: boolean;
+  isShared?: boolean;
 }
 
 type GeneratedQuestion = {
@@ -64,6 +66,7 @@ const DEFAULT_QUESTION_COUNT_BY_GRADE: Record<string, number> = {
 };
 
 export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerated, onDraftImported, onDraftModeChange }) => {
+  const maxQuestionCount = readAuthSession()?.user?.plan === 'starter' ? 10 : 15;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [text, setText] = useState('');
   const [grade, setGrade] = useState('P1-P3');
@@ -208,6 +211,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
                 name: String(item.name || '未命名 Bot'),
                 subject: item.subject ? String(item.subject) : '',
                 isVisible: true,
+                isShared: Boolean(item.isShared),
               }))
               .filter((item: PublishBotOption) => item.id)
           : [];
@@ -245,7 +249,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
       setErrorMessage('請先選擇目標年級。');
       return;
     }
-    if (!Number.isFinite(questionCount) || questionCount < 1 || questionCount > 15) {
+    if (!Number.isFinite(questionCount) || questionCount < 1 || questionCount > maxQuestionCount) {
       setErrorMessage('請選擇有效的題目數量。');
       return;
     }
@@ -384,7 +388,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
                 {!loadingBots && publishBots.length === 0 && <option value="">{uiText("暫無可用 Bot")}</option>}
                 {publishBots.map((bot) => (
                   <option key={bot.id} value={bot.id}>
-                    {bot.name}{bot.subject ? ` · ${bot.subject}` : ''}{bot.isVisible ? uiText(' · 已分享') : ''}
+                    {bot.name}{bot.subject ? ` · ${bot.subject}` : ''}{bot.isShared ? uiText(' · 已分享') : ''}
                   </option>
                 ))}
               </select>
@@ -399,7 +403,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
               className="bg-violet-50 text-violet-700 text-sm p-4 rounded-xl flex items-start gap-2 leading-relaxed"
             >
               <span className="shrink-0 mt-0.5"><Bot className="w-4 h-4 text-violet-500" /></span>
-              <span>{uiText("這裡只顯示目前帳戶已分享的 Bot，並可選擇本次測驗要發佈到哪個教學角色。")}</span>
+              <span>{uiText("這裡顯示目前帳戶的 Bot；測驗發布後，可再把 Bot 分享給學生作答。")}</span>
             </motion.div>
           </div>
 
@@ -450,7 +454,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
               <input 
                 type="range" 
                 min="1" 
-                max="15" 
+                max={maxQuestionCount}
                 value={questionCount}
                 onChange={(e) => {
                   setQuestionCount(Number(e.target.value));
@@ -461,7 +465,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
             </div>
             <div className="flex justify-between text-xs text-slate-400 font-medium px-1">
               <span>1</span>
-              <span>15</span>
+              <span>{maxQuestionCount}</span>
             </div>
             <div className="rounded-xl bg-slate-50 px-4 py-3 text-xs font-medium leading-6 text-slate-500">{uiText("這裡控制的是整份測驗的總題數。下一步後，AI 會根據目標年級與題目數量自動分配最適合的題型與內容。")}</div>
           </div>

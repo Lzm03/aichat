@@ -359,9 +359,13 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
 
   const parseSecurityConfig = (securityPrompt: string) => {
     const sharingMode = (securityPrompt.match(/【共享模式】([^\n]+)/)?.[1] || "link").trim();
+    const classIds = (securityPrompt.match(/【班級名單】([^\n]*)/)?.[1] || "")
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
     const filterLevel = (securityPrompt.match(/【過濾等級】([^\n]+)/)?.[1] || "standard").trim();
     const customWords = (securityPrompt.match(/【自定義詞】([^\n]*)/)?.[1] || "").trim();
-    return { sharingMode, filterLevel, customWords };
+    return { sharingMode, filterLevel, customWords, classIds };
   };
 
   useEffect(() => {
@@ -498,6 +502,19 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       }
 
       const savedBot = await response.json();
+      const accessConfig = parseSecurityConfig(newBot.securityPrompt);
+      const accessResponse = await fetch(`${baseUrl}/api/bots/${encodeURIComponent(savedBot?.id || newBot.id)}/access`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: accessConfig.sharingMode === 'group' ? 'group' : 'link',
+          groupIds: accessConfig.classIds,
+        }),
+      });
+      if (!accessResponse.ok) {
+        const accessPayload = await accessResponse.json().catch(() => null);
+        throw new Error(accessPayload?.error || t("publishFailed"));
+      }
       await refreshFeatureEntitlements();
       setBotConfig((prev) => ({
         ...prev,

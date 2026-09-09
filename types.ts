@@ -11,6 +11,8 @@ export interface AiBot {
   createdAt?: string;
   updatedAt?: string;
   isVisible: boolean;
+  isDefault?: boolean;
+  chatMessageLimit?: number | null;
   openingMessage?: string;
   knowledgeBase?: string;
   securityPrompt?: string;
