@@ -1,27 +1,23 @@
-﻿import { uiText, uiTemplate } from '../../utils/uiI18n';
+import { uiText } from '../../utils/uiI18n';
 import React from 'react';
 import type { AiBot } from '../../types';
 import { ChevronRight, UsersRound } from 'lucide-react';
 import type { PermissionGroup } from './permissions/BotPermissionDrawer';
 
+export type BotClassShare = {
+  groupIds: string[];
+  excludedStudentIds: string[];
+};
+
 type AssignmentViewProps = {
   bots: AiBot[];
   classes: PermissionGroup[];
+  botClassMap: Record<string, BotClassShare>;
   onManage: (botId: string) => void;
 };
 
-const mockClasses: PermissionGroup[] = [
-  { id: 'class-3a', name: '3A班', type: 'class', studentIds: ['s1', 's2'] },
-  { id: 'class-5c', name: '5C班', type: 'class', studentIds: ['s3', 's4'] },
-];
-
-const botClasses: Record<string, string[]> = {
-  'bot-1': ['class-3a'],
-  'bot-2': ['class-3a', 'class-5c'],
-};
-
-export const BotAssignmentOverview: React.FC<AssignmentViewProps> = ({ bots, classes, onManage }) => {
-  const classById = (id: string) => classes.find((item) => item.id === id) || mockClasses.find((item) => item.id === id);
+export const BotAssignmentOverview: React.FC<AssignmentViewProps> = ({ bots, classes, botClassMap, onManage }) => {
+  const classById = (id: string) => classes.find((item) => item.id === id);
 
   return (
     <div className="space-y-4">
@@ -42,7 +38,7 @@ export const BotAssignmentOverview: React.FC<AssignmentViewProps> = ({ bots, cla
             </div>
           ) : (
             bots.map((bot) => {
-              const assignedClassIds = botClasses[bot.id] || [];
+              const assignedClassIds = botClassMap[bot.id]?.groupIds || [];
               const assignedClasses = assignedClassIds
                 .map(classById)
                 .filter(Boolean) as PermissionGroup[];
@@ -81,7 +77,7 @@ export const BotAssignmentOverview: React.FC<AssignmentViewProps> = ({ bots, cla
                     onClick={() => onManage(bot.id)}
                     className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-bold text-indigo-600 transition hover:bg-indigo-50 hover:text-indigo-700"
                   >
-                    {uiText('管理班級')}
+                    {uiText('編輯班級')}
                     <ChevronRight className="h-4 w-4" />
                   </button>
                 </div>

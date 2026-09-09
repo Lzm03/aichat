@@ -1,8 +1,9 @@
-import { uiText } from '../../utils/uiI18n';
+import { uiText, uiTemplate } from '../../utils/uiI18n';
 import React, { useEffect, useMemo, useState } from "react";
 import { HelpCircle } from "lucide-react";
 import { BotCard } from "./BotCard";
-import { BotAssignmentOverview } from "./BotAssignmentOverview";
+import { BotAssignmentOverview, type BotClassShare } from "./BotAssignmentOverview";
+import { BotPermissionDrawer, type PermissionGroup, type PermissionStudent } from "./permissions/BotPermissionDrawer";
 import { PublishSuccessModal } from "./PublishSuccessModal";
 import { Icons } from "../icons";
 import type { AiBot } from "../../types";
@@ -19,6 +20,7 @@ interface LibraryViewProps {
   onStartCreation: () => void;
   onEditBot: (botId: string) => void;
   onDeleteBot: (botId: string) => void;
+  onNavigateToStudents?: () => void;
   createBotFeature?: FeatureEntitlement;
   chatMessagesFeature?: FeatureEntitlement;
   featureLoading?: boolean;
@@ -123,7 +125,7 @@ function normalizeBots(data: any[]): AiBot[] {
 }
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
-  onStartCreation, onEditBot, onDeleteBot, createBotFeature, chatMessagesFeature,
+  onStartCreation, onEditBot, onDeleteBot, onNavigateToStudents, createBotFeature, chatMessagesFeature,
   featureLoading = false, searchQuery = "",
 }) => {
   const [bots, setBots] = useState<AiBot[]>([]);
@@ -132,6 +134,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [viewMode, setViewMode] = useState<"bots" | "assignments">("bots");
   const [tip, setTip] = useState<TipKey>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  // 班級授權（班級分配總覽）
+  const [manageClassBotId, setManageClassBotId] = useState<string | null>(null);
+  const [botClassMap, setBotClassMap] = useState<Record<string, BotClassShare>>({});
+  const [drawerGroups, setDrawerGroups] = useState<PermissionGroup[]>([]);
+  const [drawerStudents, setDrawerStudents] = useState<PermissionStudent[]>([]);
+  const [savingClassShare, setSavingClassShare] = useState(false);
+  const [classShareError, setClassShareError] = useState('');
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
   const lang = useTeacherLang();
   const t = (key: string) => lt(key, lang);
@@ -203,6 +212,99 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     onEditBot(botId);
   };
 
+  // 班級與學生名單（「編輯班級」Drawer 用）
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [classesRes, studentsRes] = await Promise.all([
+          fetch(`${API_BASE}/api/bots/classes`),
+          fetch(`${API_BASE}/api/bots/sharing/students`),
+        ]);
+        const classesData = await classesRes.json().catch(() => ({}));
+        const studentsData = await studentsRes.json().catch(() => ({}));
+        if (cancelled) return;
+        setDrawerGroups((Array.isArray(classesData?.classes) ? classesData.classes : []).map((item: any) => ({
+          id: String(item.id),
+          name: String(item.name),
+          type: 'class' as const,
+          studentIds: Array.isArray(item.studentIds) ? item.studentIds.map(String) : [],
+        })));
+        setDrawerStudents((Array.isArray(studentsData?.students) ? studentsData.students : []).map((item: any) => ({
+          id: String(item.id),
+          fullName: String(item.fullName || ''),
+          email: String(item.email || ''),
+          groupIds: Array.isArray(item.groupIds) ? item.groupIds.map(String) : [],
+        })));
+      } catch {
+        // 保持空列表，Drawer 內有 empty state
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 每個 Bot 嘅班級授權（總覽 tag 資料源；進入班級分配 view 時拉取）
+  useEffect(() => {
+    if (viewMode !== 'assignments') return;
+    let cancelled = false;
+    const loadShares = async () => {
+      const next: Record<string, BotClassShare> = {};
+      await Promise.all(bots.map(async (bot) => {
+        try {
+          const res = await fetch(`${API_BASE}/api/bots/${bot.id}/group-shares`);
+          const data = await res.json().catch(() => ({}));
+          if (!cancelled) {
+            next[bot.id] = {
+              groupIds: Array.isArray(data?.groupIds) ? data.groupIds.map(String) : [],
+              excludedStudentIds: Array.isArray(data?.excludedStudentIds) ? data.excludedStudentIds.map(String) : [],
+            };
+          }
+        } catch {
+          // 保持未設定 → 總覽顯示「未分配班級」
+        }
+      }));
+      if (!cancelled) setBotClassMap((prev) => ({ ...prev, ...next }));
+    };
+    void loadShares();
+    return () => {
+      cancelled = true;
+    };
+  }, [bots, viewMode]);
+
+  const openClassManage = (botId: string) => {
+    setClassShareError('');
+    setManageClassBotId(botId);
+  };
+
+  const saveClassShare = async (botId: string, payload: { groupIds: string[]; excludedStudentIds: string[] }) => {
+    setSavingClassShare(true);
+    setClassShareError('');
+    try {
+      const response = await fetch(`${API_BASE}/api/bots/${botId}/group-shares`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(data?.error || '儲存失敗'));
+      setBotClassMap((prev) => ({ ...prev, [botId]: payload }));
+      const bot = bots.find((item) => item.id === botId);
+      setManageClassBotId(null);
+      showAlert({
+        title: uiText("已儲存班級授權"),
+        message: bot ? uiTemplate("「{0}」的班級授權已更新。", bot.name) : uiText("班級授權已更新。"),
+        confirmText: uiText("知道了"),
+      });
+    } catch {
+      setClassShareError(uiText("暫時無法儲存，請稍後再試。"));
+    } finally {
+      setSavingClassShare(false);
+    }
+  };
+
   const deleteBot = async (botId: string) => {
     try {
       const response = await fetch(`${API_BASE}/api/bots/${botId}`, { method: "DELETE" });
@@ -251,8 +353,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       {viewMode === "assignments" ? (
         <BotAssignmentOverview
           bots={filteredBots}
-          classes={[]}
-          onManage={(botId) => onEditBot(botId)}
+          classes={drawerGroups}
+          botClassMap={botClassMap}
+          onManage={openClassManage}
         />
       ) : (
         <>
@@ -340,6 +443,24 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       <PlatformDialog open={dialog.open} title={dialog.title} message={dialog.message} confirmText={dialog.confirmText} cancelText={dialog.cancelText} tone={dialog.tone} onClose={closeDialog} onConfirm={dialog.onConfirm || undefined} />
         </>
       )}
+      <BotPermissionDrawer
+        open={Boolean(manageClassBotId)}
+        onClose={() => {
+          if (!savingClassShare) setManageClassBotId(null);
+        }}
+        bots={filteredBots}
+        groups={drawerGroups}
+        students={drawerStudents}
+        singleBotId={manageClassBotId}
+        initialGroupIds={manageClassBotId ? botClassMap[manageClassBotId]?.groupIds || [] : []}
+        initialExcludedStudentIds={manageClassBotId ? botClassMap[manageClassBotId]?.excludedStudentIds || [] : []}
+        onSave={(payload) => {
+          if (manageClassBotId) void saveClassShare(manageClassBotId, payload);
+        }}
+        saving={savingClassShare}
+        saveError={classShareError}
+        onGoStudentManagement={onNavigateToStudents}
+      />
     </div>
   );
 };

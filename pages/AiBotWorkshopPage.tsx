@@ -19,9 +19,10 @@ type AiBotWorkshopPageProps = {
   searchQuery?: string;
   initialEditingBotId?: string | null;
   initialView?: 'library' | 'creation';
+  onNavigateToStudents?: () => void;
 };
 
-export const AiBotWorkshopPage: React.FC<AiBotWorkshopPageProps> = ({ searchQuery = '', initialEditingBotId = null, initialView = 'library' }) => {
+export const AiBotWorkshopPage: React.FC<AiBotWorkshopPageProps> = ({ searchQuery = '', initialEditingBotId = null, initialView = 'library', onNavigateToStudents }) => {
   const { features, loading, initialized, refresh, consume } = useFeatureEntitlements();
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
   const wt = WORKSHOP_T[useTeacherLang()];
@@ -104,6 +105,7 @@ export const AiBotWorkshopPage: React.FC<AiBotWorkshopPageProps> = ({ searchQuer
           onStartCreation={handleStartCreation}
           onEditBot={handleEditBot}
           onDeleteBot={() => {}}
+          onNavigateToStudents={onNavigateToStudents}
           createBotFeature={botPublishFeature}
           chatMessagesFeature={chatMessagesFeature}
           featureLoading={!initialized || loading || !botPublishFeature}
