@@ -167,6 +167,7 @@ async function initializeQuizTables() {
       preferred_question_types_json JSONB NOT NULL DEFAULT '[]'::jsonb,
       question_type_distribution_json JSONB NOT NULL DEFAULT '[]'::jsonb,
       status TEXT NOT NULL DEFAULT 'draft',
+      published_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -194,7 +195,8 @@ async function initializeQuizTables() {
   await pool.query(`
     ALTER TABLE quizzes
     ADD COLUMN IF NOT EXISTS preferred_question_types_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-    ADD COLUMN IF NOT EXISTS question_type_distribution_json JSONB NOT NULL DEFAULT '[]'::jsonb
+    ADD COLUMN IF NOT EXISTS question_type_distribution_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ
   `);
   await pool.query(`
     ALTER TABLE quiz_questions
@@ -1215,6 +1217,75 @@ router.get("/quizzes/drafts", requireAuth, async (req, res) => {
   }
 });
 
+// Must stay registered before GET /quizzes/:id so "published" is not captured as :id.
+router.get("/quizzes/published", requireAuth, async (req, res) => {
+  try {
+    await ensureQuizTables();
+    const user = getAuthUser(req);
+    if (!user || !["teacher", "admin"].includes(user.role)) {
+      return res.status(403).json({ error: "teacher account required" });
+    }
+    const result = await pool.query(
+      `SELECT
+         q.id, q.title, q.question_count, q.bot_id,
+         COALESCE(q.published_at, q.updated_at) AS published_at,
+         b.name AS bot_name, b.subject AS bot_subject,
+         COUNT(a.id) AS total_students,
+         COUNT(a.id) FILTER (WHERE a.status='completed') AS submitted,
+         COUNT(a.id) FILTER (WHERE a.teacher_status='completed') AS completed,
+         COUNT(a.id) FILTER (WHERE a.teacher_status='pending_confirm') AS pending_confirm,
+         COUNT(a.id) FILTER (WHERE a.teacher_status='pending_grading') AS pending_grading,
+         COALESCE(
+           ROUND(
+             AVG(
+               CASE
+                 WHEN a.status='completed' AND a.total_points > 0
+                 THEN (
+                   CASE WHEN a.published_at IS NOT NULL THEN a.teacher_score ELSE a.score END
+                 )::numeric / a.total_points * 100
+                 ELSE NULL
+               END
+             ),
+             1
+           ),
+           0
+         ) AS average_score
+       FROM quizzes q
+       LEFT JOIN bots b ON b.id=q.bot_id
+       LEFT JOIN quiz_attempts a ON a.quiz_id=q.id
+       WHERE q.teacher_id=$1 AND q.status='published'
+       GROUP BY q.id, b.name, b.subject
+       ORDER BY COALESCE(q.published_at, q.updated_at) DESC, q.created_at DESC`,
+      [user.id]
+    );
+    return res.json({
+      quizzes: result.rows.map((row) => {
+        const totalStudents = Number(row.total_students || 0);
+        const submitted = Number(row.submitted || 0);
+        return {
+          id: String(row.id),
+          title: String(row.title || "未命名測驗"),
+          questionCount: Number(row.question_count || 0),
+          botId: String(row.bot_id || ""),
+          botName: String(row.bot_name || "未命名 Bot"),
+          botSubject: String(row.bot_subject || ""),
+          publishedAt: row.published_at,
+          totalStudents,
+          submitted,
+          completed: Number(row.completed || 0),
+          pendingConfirm: Number(row.pending_confirm || 0),
+          pendingGrading: Number(row.pending_grading || 0),
+          averageScore: Number(row.average_score || 0),
+          progress: totalStudents > 0 ? submitted / totalStudents : 0,
+        };
+      }),
+    });
+  } catch (error) {
+    console.error("GET /quizzes/published Failed:", error);
+    return res.status(500).json({ error: "Failed to load published quizzes" });
+  }
+});
+
 router.get("/quizzes/question-banks", requireAuth, async (req, res) => {
   try {
     await ensureQuizTables();
@@ -1923,6 +1994,110 @@ router.delete("/quizzes/:id", requireAuth, async (req, res) => {
   }
 });
 
+router.post("/quizzes/:id/duplicate", requireAuth, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    await ensureQuizTables();
+    const user = getAuthUser(req);
+    if (!user || !["teacher", "admin"].includes(user.role)) {
+      return res.status(403).json({ error: "teacher account required" });
+    }
+
+    const quizId = String(req.params.id || "").trim();
+    if (!quizId) {
+      return res.status(400).json({ error: "缺少測驗 ID。" });
+    }
+
+    await client.query("BEGIN");
+
+    const original = await client.query(
+      `SELECT *
+       FROM quizzes
+       WHERE id=$1 AND teacher_id=$2
+       LIMIT 1
+       FOR UPDATE`,
+      [quizId, user.id]
+    );
+    if (!original.rowCount) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Quiz not found" });
+    }
+    const quiz = original.rows[0];
+
+    const newQuizId = crypto.randomUUID();
+    const newTitle = `${String(quiz.title || "未命名測驗")}（副本）`;
+
+    await client.query(
+      `INSERT INTO quizzes (
+         id, bot_id, teacher_id, title, source_text, target_grade, question_count,
+         question_type_mode, preferred_question_types_json, question_type_distribution_json,
+         status, published_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, 'draft', NULL)`,
+      [
+        newQuizId,
+        quiz.bot_id,
+        user.id,
+        newTitle,
+        quiz.source_text,
+        quiz.target_grade,
+        quiz.question_count,
+        quiz.question_type_mode,
+        JSON.stringify(Array.isArray(quiz.preferred_question_types_json) ? quiz.preferred_question_types_json : []),
+        JSON.stringify(Array.isArray(quiz.question_type_distribution_json) ? quiz.question_type_distribution_json : []),
+      ]
+    );
+
+    const questions = await client.query(
+      `SELECT question_type, cognitive_level, question_text, options_json, correct_answer,
+              explanation, points, difficulty, order_index, preview_payload_json
+       FROM quiz_questions
+       WHERE quiz_id=$1
+       ORDER BY order_index ASC, created_at ASC`,
+      [quizId]
+    );
+    for (const q of questions.rows) {
+      await client.query(
+        `INSERT INTO quiz_questions (
+           id, quiz_id, question_type, cognitive_level, question_text, options_json,
+           correct_answer, explanation, points, difficulty, order_index, preview_payload_json
+         ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12::jsonb)`,
+        [
+          crypto.randomUUID(),
+          newQuizId,
+          q.question_type,
+          q.cognitive_level,
+          q.question_text,
+          JSON.stringify(q.options_json || []),
+          q.correct_answer,
+          q.explanation,
+          Number(q.points || 1),
+          q.difficulty || "medium",
+          q.order_index,
+          JSON.stringify(q.preview_payload_json || {}),
+        ]
+      );
+    }
+
+    await client.query("COMMIT");
+    return res.json({
+      ok: true,
+      quiz: {
+        id: newQuizId,
+        title: newTitle,
+        questionCount: questions.rowCount,
+        status: "draft",
+      },
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => null);
+    console.error("POST /quizzes/:id/duplicate Failed:", error);
+    return res.status(500).json({ error: "複製草稿失敗，請稍後再試。" });
+  } finally {
+    client.release();
+  }
+});
+
 router.post("/quizzes/:id/publish", requireAuth, async (req, res) => {
   try {
     await ensureQuizTables();
@@ -1933,7 +2108,7 @@ router.post("/quizzes/:id/publish", requireAuth, async (req, res) => {
     const quizId = String(req.params.id || "").trim();
     const updated = await pool.query(
       `UPDATE quizzes
-       SET status='published', updated_at=NOW()
+       SET status='published', published_at=COALESCE(published_at, NOW()), updated_at=NOW()
        WHERE id=$1 AND teacher_id=$2
        RETURNING id, bot_id, title, status`,
       [quizId, user.id]
