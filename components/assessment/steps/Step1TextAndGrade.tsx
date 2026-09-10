@@ -53,11 +53,6 @@ interface Step1TextAndGradeProps {
   onDraftModeChange: (isDraftMode: boolean) => void;
 }
 
-const mockHistoryTexts = [
-  { id: 1, title: '中三古文練習 - 桃花源記', content: '晉太元中，武陵人捕魚為業。緣溪行，忘路之遠近。忽逢桃花林，夾岸數百步，中無雜樹，芳草鮮美，落英繽紛。漁人甚異之，復前行，欲窮其林。\n\n林盡水源，便得一山，山有小口，彷彿若有光。便捨船，從口入。初極狹，才通人。復行數十步，豁然開朗。土地平曠，屋舍儼然，有良田美池桑竹之屬。阡陌交通，雞犬相聞。其中往來種作，男女衣著，悉如外人。黃髮垂髫，並怡然自樂。' },
-  { id: 2, title: '現代文閱讀 - 故鄉', content: '我冒了嚴寒，回到相隔二千餘里，別了二十餘年的故鄉去。\n\n時候既然是深冬；漸近故鄉時，天氣又陰晦了，冷風吹進船艙中，嗚嗚的響，從篷隙向外一望，蒼黃的天底下，遠近橫著幾個蕭索的荒村，沒有一些活氣。我的心禁不住悲涼起來了。\n\n阿！這不是我二十年來時時記得的故鄉？' }
-];
-
 const DEFAULT_QUESTION_COUNT_BY_GRADE: Record<string, number> = {
   'P1-P3': 5,
   'P4-P6': 8,
@@ -77,6 +72,11 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
   const [loadingDrafts, setLoadingDrafts] = useState(false);
   const [importingDraftId, setImportingDraftId] = useState('');
   const [draftError, setDraftError] = useState('');
+  // 歷史文本導入 modal（列表同草稿，點擊只取 sourceText）
+  const [historyDrafts, setHistoryDrafts] = useState<DraftSummary[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [importingHistoryId, setImportingHistoryId] = useState('');
+  const [historyError, setHistoryError] = useState('');
   const [importedDraft, setImportedDraft] = useState<GeneratedQuizPayload | null>(null);
   const [publishBots, setPublishBots] = useState<PublishBotOption[]>([]);
   const [selectedBotId, setSelectedBotId] = useState('');
@@ -90,10 +90,21 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
     onDraftModeChange(false);
   };
 
-  const handleImportHistory = (content: string) => {
-    setText(content);
-    clearImportedDraft();
-    setIsHistoryModalOpen(false);
+  const fetchDrafts = async () => {
+    const response = await fetch(`${API_BASE}/api/quizzes/drafts`, { cache: 'no-store' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(String(data?.error || '載入草稿失敗，請稍後再試。'));
+    }
+    return (Array.isArray(data?.drafts) ? data.drafts : [])
+      .map((item: any) => ({
+        id: String(item.id || ''),
+        title: String(item.title || '未命名測驗'),
+        targetGrade: String(item.targetGrade || ''),
+        questionCount: Number(item.questionCount || 0),
+        updatedAt: String(item.updatedAt || ''),
+      }))
+      .filter((item: DraftSummary) => item.id);
   };
 
   const handleOpenDrafts = async () => {
@@ -101,26 +112,50 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
     setDraftError('');
     setLoadingDrafts(true);
     try {
-      const response = await fetch(`${API_BASE}/api/quizzes/drafts`, { cache: 'no-store' });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(String(data?.error || '載入草稿失敗，請稍後再試。'));
-      }
-      const nextDrafts = Array.isArray(data?.drafts)
-        ? data.drafts.map((item: any) => ({
-            id: String(item.id || ''),
-            title: String(item.title || '未命名測驗'),
-            targetGrade: String(item.targetGrade || ''),
-            questionCount: Number(item.questionCount || 0),
-            updatedAt: String(item.updatedAt || ''),
-          })).filter((item: DraftSummary) => item.id)
-        : [];
-      setDrafts(nextDrafts);
+      setDrafts(await fetchDrafts());
     } catch (error) {
       setDrafts([]);
       setDraftError(error instanceof Error ? error.message : '載入草稿失敗，請稍後再試。');
     } finally {
       setLoadingDrafts(false);
+    }
+  };
+
+  const handleOpenHistory = async () => {
+    setIsHistoryModalOpen(true);
+    setHistoryError('');
+    setLoadingHistory(true);
+    try {
+      setHistoryDrafts(await fetchDrafts());
+    } catch (error) {
+      setHistoryDrafts([]);
+      setHistoryError(error instanceof Error ? error.message : '載入草稿失敗，請稍後再試。');
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  // 歷史文本導入：只取草稿嘅 sourceText 填入文本區
+  const handleImportHistoryText = async (draftId: string) => {
+    setImportingHistoryId(draftId);
+    setHistoryError('');
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/${encodeURIComponent(draftId)}`, { cache: 'no-store' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.quiz) {
+        throw new Error(String(data?.error || '導入草稿失敗，請稍後再試。'));
+      }
+      const sourceText = String(data.quiz.sourceText || '').trim();
+      if (!sourceText) {
+        throw new Error('此草稿沒有文本材料，請改為「從草稿導入」。');
+      }
+      setText(sourceText);
+      clearImportedDraft();
+      setIsHistoryModalOpen(false);
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : '導入草稿失敗，請稍後再試。');
+    } finally {
+      setImportingHistoryId('');
     }
   };
 
@@ -319,9 +354,9 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
                 <span className="hidden sm:inline">{uiText("從草稿導入")}</span>
                 <span className="sm:hidden">{uiText("草稿")}</span>
               </button>
-              <button 
+              <button
                 type="button"
-                onClick={() => setIsHistoryModalOpen(true)}
+                onClick={() => void handleOpenHistory()}
                 className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-sm font-bold text-indigo-600 bg-indigo-50 px-4 py-2 rounded-full hover:bg-indigo-100 transition-colors"
               >
                 <BookOpen className="w-4 h-4" />
@@ -527,16 +562,35 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="p-6 space-y-3">
-                <p className="text-sm text-slate-500 mb-4">{uiText("請選擇您最近使用過的文本材料：")}</p>
-                {mockHistoryTexts.map((item) => (
+              <div className="max-h-[60vh] overflow-y-auto p-6 space-y-3">
+                <p className="text-sm text-slate-500">{uiText("選擇草稿後，會把當中的文本材料填入左側文字區：")}</p>
+                {loadingHistory ? (
+                  <div className="flex items-center justify-center gap-2 rounded-xl bg-slate-50 p-8 text-sm font-semibold text-slate-500">
+                    <LoaderCircle className="h-5 w-5 animate-spin" />{uiText("正在載入草稿...")}</div>
+                ) : null}
+                {!loadingHistory && historyError ? (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">{uiError(historyError)}</div>
+                ) : null}
+                {!loadingHistory && !historyError && historyDrafts.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm font-semibold text-slate-400">{uiText("目前沒有可導入的文本材料")}</div>
+                ) : null}
+                {!loadingHistory && historyDrafts.map((item) => (
                   <button
                     key={item.id}
-                    onClick={() => handleImportHistory(item.content)}
-                    className="w-full text-left p-4 rounded-xl border border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/50 transition-all group"
+                    type="button"
+                    onClick={() => void handleImportHistoryText(item.id)}
+                    disabled={Boolean(importingHistoryId)}
+                    className="w-full text-left p-4 rounded-xl border border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/50 transition-all group disabled:cursor-wait disabled:opacity-60"
                   >
-                    <h4 className="font-bold text-slate-700 group-hover:text-indigo-700 transition-colors mb-1">{item.title}</h4>
-                    <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">{item.content}</p>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <h4 className="truncate font-bold text-slate-700 group-hover:text-indigo-700 transition-colors">{item.title}</h4>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {item.targetGrade || uiText('未設定年級')} · {item.questionCount}{uiText(" 題")}{item.updatedAt ? ` · ${new Date(item.updatedAt).toLocaleDateString(uiLocale())}` : ''}
+                        </p>
+                      </div>
+                      {importingHistoryId === item.id ? <LoaderCircle className="h-5 w-5 shrink-0 animate-spin text-indigo-600" /> : <BookOpen className="h-5 w-5 shrink-0 text-slate-300 group-hover:text-indigo-400 transition-colors" />}
+                    </div>
                   </button>
                 ))}
               </div>
