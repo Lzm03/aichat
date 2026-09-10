@@ -414,6 +414,8 @@ export async function ensurePlatformTables() {
       await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS owner_id TEXT;`);
       await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS owner_email TEXT;`);
       await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS opening_message TEXT;`);
+      // 年級帶（P1 / P2-P3 / P4-P6 / S1-S3 / S4-S6）；NULL = 未設定，沿用預設回覆風格
+      await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS grade TEXT;`);
       await pool.query(`CREATE INDEX IF NOT EXISTS bots_owner_id_idx ON bots(owner_id, created_at DESC);`);
       await pool.query(`CREATE INDEX IF NOT EXISTS bots_owner_email_idx ON bots(owner_email);`);
       await pool.query(`UPDATE bots SET owner_id=NULL WHERE owner_id IS NOT NULL AND BTRIM(owner_id)=''`);

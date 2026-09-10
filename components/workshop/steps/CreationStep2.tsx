@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import { usePlatformDialog } from "../../../hooks/usePlatformDialog";
 import { PlatformDialog } from "../../system/PlatformDialog";
 import { SUBJECT_OPTIONS } from "../../../utils/subjects";
+import { GRADE_BANDS } from "../../../utils/grades";
 
 type UploadMethod = "file" | "url" | "text";
 type KnowledgeTier = "basic_fact" | "deep_understanding";
@@ -42,9 +43,12 @@ interface CreationStep2Props {
   /** 學科分類（角色基礎必選）；CreationFlow 的 botConfig.subject 驅動 */
   subject?: string;
   onSubjectChange?: (subject: string) => void;
+  /** 年級帶（選填）；留空 = 沿用預設回覆難度 */
+  grade?: string;
+  onGradeChange?: (grade: string) => void;
 }
 
-export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, afterKnowledgePointEditor, subject = "", onSubjectChange }) => {
+export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, afterKnowledgePointEditor, subject = "", onSubjectChange, grade = "", onGradeChange }) => {
   const [uploadMethod, setUploadMethod] = useState<UploadMethod>("file");
   const [modelProvider, setModelProvider] = useState<"deepseek" | "gemini">("deepseek");
   const [showModelMenu, setShowModelMenu] = useState(false);
@@ -1137,6 +1141,32 @@ JSON 必須符合以下結構：
           {!subject && (
             <p className="mt-2 text-xs font-semibold text-amber-600">{uiText("請選擇學科分類，未選擇將無法完成設定")}</p>
           )}
+
+          {/* 年級帶（選填）：只調難度（句長／詞彙／標點），不改變回覆語言 */}
+          <p className="mb-3 mt-6 text-xs font-bold text-slate-700">{uiText("年級")}<span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{uiText("選填")}</span>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {GRADE_BANDS.map((band) => {
+              const active = grade === band.value;
+              return (
+                <button
+                  key={band.value}
+                  type="button"
+                  onClick={() => onGradeChange?.(active ? "" : band.value)}
+                  className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
+                    active
+                      ? "border-indigo-600 bg-indigo-600 text-white shadow-sm"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                  }`}
+                >
+                  {uiText(band.label)}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            {uiText("設定年級後，AI 會自動調整句子長度與用字難度，適用於粵語、普通話及英語回覆。留空則保留預設回覆風格。")}
+          </p>
 
           <p className="mb-3 mt-6 text-xs font-bold text-slate-700">{uiText("角色性格（可多選）")}</p>
           <div className="flex flex-wrap gap-2">

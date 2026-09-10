@@ -1,3 +1,5 @@
+import { gradeBandOf } from "./grades";
+
 type KnowledgePoint = {
   id: string;
   tier: "basic_fact" | "deep_understanding";
@@ -11,6 +13,8 @@ type PromptCompilerInput = {
   roleName?: string;
   knowledgeBase?: string;
   securityPrompt?: string;
+  /** 年級帶（P1 / P2-P3 / P4-P6 / S1-S3 / S4-S6）；未設定則不加難度規則 */
+  gradeBand?: string | null;
 };
 
 export type ChatReplyLanguage = "cantonese" | "mandarin" | "english";
@@ -70,6 +74,27 @@ export function buildChatReplyLanguageRule(
     return "Reply only in natural Standard Mandarin written with Traditional Chinese characters. Never use Cantonese grammar, vocabulary, or particles. This rule applies to every sentence, question, and teaching hint.";
   }
   return "Reply in natural Hong Kong Cantonese written with Traditional Chinese characters and everyday Cantonese wording. Do not switch to Mandarin unless the user asks.";
+}
+
+/**
+ * 年級帶難度規則。只調「難度」（句長、詞彙深淺、標點），**不改變回覆語言** ——
+ * 粵語口語／普通話／英語三種語音輸出都要維持原本語域，只收窄句子長度與用詞。
+ * 回傳空字串代表未設定年級，呼叫方唔應該加入任何難度 section。
+ */
+export function buildGradeBandRule(gradeBand?: string | null) {
+  const band = gradeBandOf(gradeBand);
+  if (!band) return "";
+
+  return [
+    `學生程度：${band.label}（${band.stage}）。`,
+    "以下難度限制適用於所有回覆語言（粵語、普通話、英語），語言本身不變：",
+    `- 粵語口語回覆照用日常口語寫法、普通話回覆照用普通話口語、英語回覆照用英語，不要改成書面語或文言。`,
+    `- 每句最多 ${band.maxCharsPerSentence} 個中文字（英語回覆每句最多約 ${band.maxWordsPerSentence} 個詞）。`,
+    `- 每次回覆最多 ${band.maxSentences} 句，合共最多 ${band.maxReplyChars} 個中文字。`,
+    `- 標點：${band.punctuation}。`,
+    `- 用詞：${band.vocabulary}。`,
+    "學生表示不明白時，先降一級：縮短句子、換更淺白的詞語、每次只講一個意思；仍然不明白，就提供 2-3 個選項讓學生選擇。",
+  ].join("\n");
 }
 
 function matchSection(source: string, label: string, fallbackLabels: string[] = []) {
@@ -218,6 +243,8 @@ export function buildChatSystemPrompt(input: PromptCompilerInput) {
         }))
     : [];
 
+  const gradeBandRule = buildGradeBandRule(input.gradeBand);
+
   const compiled = `
 # Role & Persona
 You are now acting as the historical/academic character specified below. You must stay in character at all times and adhere to the linguistic and personality rules provided.
@@ -239,7 +266,7 @@ You are now acting as the historical/academic character specified below. You mus
 
 # Enforced Speaking Style
 ${compileSpeakingStyleRule(parsed.personaProfile) || "Maintain a clear, student-friendly speaking style."}
-
+${gradeBandRule ? `\n# Grade Band Difficulty Rules\n${gradeBandRule}\n` : ""}
 # Character Knowledge Base
 ${parsed.knowledgeSummary || "未提供知識摘要。"}
 

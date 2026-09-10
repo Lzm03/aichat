@@ -11,6 +11,7 @@ export function toDb(bot) {
 
     knowledge_base: bot.knowledgeBase,
     security_prompt: bot.securityPrompt,
+    grade: bot.grade || null,
 
     video_idle: bot.videoIdle,
     video_thinking: bot.videoThinking,
@@ -37,6 +38,7 @@ export function toClient(raw) {
 
     knowledgeBase: raw.knowledge_base,
     securityPrompt: raw.security_prompt,
+    grade: raw.grade || "",
 
     videoIdle: raw.video_idle,
     videoThinking: raw.video_thinking,

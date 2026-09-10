@@ -1810,6 +1810,8 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
 
     let activeTopic = null as Awaited<ReturnType<typeof resolveCharacterTopic>>;
     let effectiveSystemPrompt = String(systemPrompt || "");
+    // 年級帶（L1 prompt 難度規則）；null = 未設定，唔套用難度規則
+    let characterGradeBand: string | null = null;
     if (usageType === "chat_message" && normalizedBotId && normalizedBotId !== "default") {
       const character = await getAccessibleCharacter(normalizedBotId, authUser.id);
       if (!character) return res.status(404).json({ error: "Character not found" });
@@ -1825,10 +1827,12 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
           activeTopic.id
         );
       }
+      characterGradeBand = character.grade || null;
       const characterBasePrompt = buildChatSystemPrompt({
         roleName: character.name,
         knowledgeBase: character.knowledge_base || "",
         securityPrompt: character.security_prompt || "",
+        gradeBand: characterGradeBand,
       });
       const composedCharacterPrompt = composeCharacterTopicPrompt(
         characterBasePrompt,
