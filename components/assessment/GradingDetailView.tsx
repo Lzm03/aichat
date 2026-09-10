@@ -31,6 +31,9 @@ export const GradingDetailView: React.FC<GradingDetailViewProps> = ({ quizId, on
   const [initialMap, setInitialMap] = useState<Record<string, Record<number, { finalPoints: number; teacherComment: string }>>>({});
   const [saving, setSaving] = useState(false);
   const [saveState, setSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
+  // 警示 banner 就地處理：patchingFlagIdx = 正在 PATCH 的 flag 位置
+  const [patchingFlagIdx, setPatchingFlagIdx] = useState<number | null>(null);
+  const [anomalyError, setAnomalyError] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -151,9 +154,53 @@ export const GradingDetailView: React.FC<GradingDetailViewProps> = ({ quizId, on
       setSaving(false);
     }
   };
-  const firstFlag = currentStudent?.anomalyFlags?.[0];
-  const activeAnomalyKey = typeof firstFlag === 'string' ? firstFlag : firstFlag?.type;
-  const activeAnomaly = activeAnomalyKey ? anomalyConfig[activeAnomalyKey] : null;
+  // 就地處理警示（樂觀更新，同 AnomalyAlertCenter.patchFlag 模式）
+  const applyAnomalyFlags = (attemptId: string, flags: any[]) => {
+    setData((prev: any) => {
+      if (!prev || !Array.isArray(prev.students)) return prev;
+      const students = prev.students.map((student: any) =>
+        String(student.attemptId) === String(attemptId) ? { ...student, anomalyFlags: flags } : student
+      );
+      // 同步重算 open 計數，令 footer「異常標記」即時反映
+      const openCount = students.reduce(
+        (sum: number, student: any) =>
+          sum + (Array.isArray(student.anomalyFlags) ? student.anomalyFlags.filter((f: any) => f && typeof f === 'object' && f.status === 'open').length : 0),
+        0
+      );
+      return { ...prev, students, metrics: { ...prev.metrics, anomalyCount: openCount } };
+    });
+  };
+
+  const patchAnomalyFlag = async (flagIndex: number, status: 'resolved' | 'dismissed') => {
+    if (!currentStudent) return;
+    const original = Array.isArray(currentStudent.anomalyFlags) ? currentStudent.anomalyFlags : [];
+    setPatchingFlagIdx(flagIndex);
+    setAnomalyError('');
+    const optimistic = original.map((flag: any, index: number) =>
+      index === flagIndex ? { ...flag, status, resolvedAt: new Date().toISOString() } : flag
+    );
+    applyAnomalyFlags(String(currentStudent.attemptId), optimistic);
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/${quizId}/attempts/${currentStudent.attemptId}/anomalies/${flagIndex}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, teacherComment: '' }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(payload?.error || uiText("更新異常警示失敗，請稍後再試。")));
+      applyAnomalyFlags(String(currentStudent.attemptId), Array.isArray(payload.anomalyFlags) ? payload.anomalyFlags : optimistic);
+    } catch (error) {
+      applyAnomalyFlags(String(currentStudent.attemptId), original);
+      setAnomalyError(error instanceof Error ? error.message : uiText("更新異常警示失敗，請稍後再試。"));
+    } finally {
+      setPatchingFlagIdx(null);
+    }
+  };
+
+  // banner 只顯示 open 旗標（legacy string 保留顯示但冇處理掣）
+  const bannerFlags = (Array.isArray(currentStudent?.anomalyFlags) ? currentStudent.anomalyFlags : [])
+    .map((flag: any, flagIndex: number) => ({ flag, flagIndex }))
+    .filter(({ flag }) => typeof flag === 'string' || (flag && typeof flag === 'object' && flag.status === 'open'));
 
   const progress = useMemo(() => {
     const total = Math.max(1, Number(data?.metrics?.totalStudents || 0));
@@ -272,11 +319,43 @@ export const GradingDetailView: React.FC<GradingDetailViewProps> = ({ quizId, on
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {activeAnomaly ? (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-700">
-              <div className="flex items-center gap-2 text-xl font-black">{uiText(activeAnomaly.title)}</div>
-              <div className="mt-2 text-base font-medium leading-7">{uiText(activeAnomaly.message)}</div>
-            </div>
+          {bannerFlags.map(({ flag, flagIndex }) => {
+            const flagKey = typeof flag === 'string' ? flag : flag?.type;
+            const config = flagKey ? anomalyConfig[flagKey] : null;
+            if (!config) return null;
+            const isLegacy = typeof flag === 'string';
+            const isPatching = patchingFlagIdx === flagIndex;
+            return (
+              <div key={`${flagIndex}-${flagKey}`} className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-700">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-xl font-black">{uiText(config.title)}</div>
+                  {!isLegacy ? (
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={isPatching}
+                        onClick={() => void patchAnomalyFlag(flagIndex, 'resolved')}
+                        className="rounded-full bg-rose-600 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-rose-700 disabled:opacity-50"
+                      >
+                        {isPatching ? uiText("處理中") : uiText("已處理")}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isPatching}
+                        onClick={() => void patchAnomalyFlag(flagIndex, 'dismissed')}
+                        className="rounded-full border border-rose-300 bg-white px-4 py-1.5 text-xs font-bold text-rose-600 transition hover:bg-rose-100 disabled:opacity-50"
+                      >
+                        {uiText("忽略")}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="mt-2 text-base font-medium leading-7">{uiText(config.message)}</div>
+              </div>
+            );
+          })}
+          {anomalyError ? (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-3 text-sm font-bold text-rose-600">{anomalyError}</div>
           ) : null}
 
           {currentStudent?.status === 'pending_grading' ? (

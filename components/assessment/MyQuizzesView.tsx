@@ -15,6 +15,8 @@ type MyQuizzesViewProps = {
   initialQuizId?: string | null;
   initialDrawerTab?: 'results' | 'quality';
   onDeepLinkConsumed?: () => void;
+  /** 提供後，測驗 Drawer 成績結果 tab 有「前往批改」入口 */
+  onOpenGrading?: (quizId: string) => void;
 };
 
 type DraftSummary = {
@@ -39,6 +41,7 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
   initialQuizId = null,
   initialDrawerTab,
   onDeepLinkConsumed,
+  onOpenGrading,
 }) => {
   const [subTab, setSubTab] = useState<'drafts' | 'published'>(initialSubTab);
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
@@ -177,7 +180,14 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
                   <p className="mt-1 text-xs text-slate-400">{draft.questionCount}{uiText(" 題")}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <button type="button" className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-white group-hover:text-indigo-600 group-hover:shadow-sm transition-all">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onEditDraft(draft.id);
+                    }}
+                    className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-white group-hover:text-indigo-600 group-hover:shadow-sm transition-all"
+                  >
                     <Edit3 className="w-4 h-4" />
                   </button>
                   <button
@@ -270,6 +280,7 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
           if (detailQuiz) handleDuplicated(detailQuiz);
         }}
         initialTab={detailInitialTab}
+        onOpenGrading={onOpenGrading}
       />
       <PlatformDialog
         open={dialog.open}
