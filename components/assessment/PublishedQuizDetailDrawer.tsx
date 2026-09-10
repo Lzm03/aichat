@@ -5,6 +5,7 @@ import { Copy, X, CheckCircle2, XCircle, ShieldAlert, ChevronDown } from 'lucide
 import { API_BASE } from '../../utils/api';
 import { Icons } from '../icons';
 import { QuestionCard, type LibraryQuestion } from './QuestionCard';
+import { AnomalyAlertCenter, type AnomalyFlag } from './AnomalyAlertCenter';
 
 export type PublishedQuizSummary = {
   id: string;
@@ -14,6 +15,7 @@ export type PublishedQuizSummary = {
   botName: string;
   botSubject: string;
   publishedAt?: string;
+  gradingCompletedAt?: string | null;
   totalStudents: number;
   submitted: number;
   completed: number;
@@ -24,13 +26,16 @@ export type PublishedQuizSummary = {
 };
 
 export type DrawerTab = 'preview' | 'results' | 'quality';
+/** detail = 測驗管理語境（我的測驗，3 tabs）；alerts = 質量分析語境（純異常警示視圖，無 tab bar） */
+export type DrawerMode = 'detail' | 'alerts';
 
 type StudentRow = {
   id: string;
+  attemptId: string;
   name: string;
   submittedAt?: string;
   status: string;
-  anomalyFlags: string[];
+  anomalyFlags: AnomalyFlag[];
   score: number;
   totalPoints: number;
   answers: Array<{
@@ -66,6 +71,7 @@ type PublishedQuizDetailDrawerProps = {
   onClose: () => void;
   onDuplicated: () => void;
   initialTab?: DrawerTab;
+  mode?: DrawerMode;
 };
 
 const STATUS_PILL: Record<string, string> = {
@@ -94,7 +100,9 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
   onClose,
   onDuplicated,
   initialTab = 'preview',
+  mode = 'detail',
 }) => {
+  const isAlertsMode = mode === 'alerts';
   const [activeTab, setActiveTab] = useState<DrawerTab>('preview');
   const [questions, setQuestions] = useState<LibraryQuestion[]>([]);
   const [questionsLoading, setQuestionsLoading] = useState(false);
@@ -103,6 +111,7 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
   const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
   const [duplicating, setDuplicating] = useState(false);
   const [duplicateError, setDuplicateError] = useState('');
+  const [alertFocusStudentId, setAlertFocusStudentId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !quiz) return;
@@ -111,20 +120,25 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
     setDuplicateError('');
 
     let active = true;
-    setQuestionsLoading(true);
-    fetch(`${API_BASE}/api/quizzes/${quiz.id}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (!active) return;
-        setQuestions(Array.isArray(data?.questions) ? data.questions : []);
-      })
-      .catch(() => {
-        if (!active) return;
-        setQuestions([]);
-      })
-      .finally(() => {
-        if (active) setQuestionsLoading(false);
-      });
+    if (isAlertsMode) {
+      setQuestions([]);
+      setQuestionsLoading(false);
+    } else {
+      setQuestionsLoading(true);
+      fetch(`${API_BASE}/api/quizzes/${quiz.id}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!active) return;
+          setQuestions(Array.isArray(data?.questions) ? data.questions : []);
+        })
+        .catch(() => {
+          if (!active) return;
+          setQuestions([]);
+        })
+        .finally(() => {
+          if (active) setQuestionsLoading(false);
+        });
+    }
 
     setDetailLoading(true);
     fetch(`${API_BASE}/api/quizzes/${quiz.id}/grading-detail`)
@@ -166,6 +180,24 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
   const metrics = detail?.metrics;
   const students = detail?.students || [];
 
+  const openAnomalyCount = students.reduce(
+    (sum, student) => sum + (student.anomalyFlags || []).filter((flag) => flag.status === 'open').length,
+    0
+  );
+
+  const updateStudentFlags = (attemptId: string, flags: AnomalyFlag[]) => {
+    setDetail((prev) =>
+      prev
+        ? {
+            ...prev,
+            students: prev.students?.map((student) =>
+              String(student.attemptId) === attemptId ? { ...student, anomalyFlags: flags } : student
+            ),
+          }
+        : prev
+    );
+  };
+
   return (
     <AnimatePresence>
       {open && quiz ? (
@@ -200,22 +232,24 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
                 </button>
               </div>
 
-              {/* Tabs */}
-              <div className="flex gap-6 border-b border-slate-100 bg-white px-6 text-sm font-bold text-slate-400">
-                {DRAWER_TABS.map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveTab(tab.key)}
-                    className={`px-1 py-3 transition ${activeTab === tab.key ? 'border-b-2 border-indigo-600 text-indigo-600' : 'hover:text-slate-700'}`}
-                  >
-                    {uiText(tab.label)}
-                  </button>
-                ))}
-              </div>
+              {/* Tabs（alerts 模式唔顯示，純警示視圖） */}
+              {!isAlertsMode ? (
+                <div className="flex gap-6 border-b border-slate-100 bg-white px-6 text-sm font-bold text-slate-400">
+                  {DRAWER_TABS.map((tab) => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setActiveTab(tab.key)}
+                      className={`px-1 py-3 transition ${activeTab === tab.key ? 'border-b-2 border-indigo-600 text-indigo-600' : 'hover:text-slate-700'}`}
+                    >
+                      {uiText(tab.label)}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
 
               {/* Body */}
               <div className="flex-1 overflow-y-auto px-6 py-5 custom-scrollbar">
-                {activeTab === 'preview' && (
+                {!isAlertsMode && activeTab === 'preview' && (
                   <div className="space-y-4">
                     {questionsLoading ? (
                       <div className="rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">{uiText("正在載入題目...")}</div>
@@ -227,7 +261,7 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
                   </div>
                 )}
 
-                {activeTab === 'results' && (
+                {!isAlertsMode && activeTab === 'results' && (
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                       <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
@@ -254,7 +288,7 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
                       <div className="space-y-2">
                         {students.map((student) => {
                           const expanded = expandedStudentId === student.id;
-                          const flags = student.anomalyFlags?.length || 0;
+                          const flags = (student.anomalyFlags || []).filter((flag) => flag.status === 'open').length;
                           return (
                             <div key={student.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                               <button
@@ -269,7 +303,25 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
                                       {uiText(STATUS_LABEL[student.status] || student.status)}
                                     </span>
                                     {flags > 0 ? (
-                                      <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-500">
+                                      <span
+                                        role="button"
+                                        tabIndex={0}
+                                        title={uiText("查看異常警示")}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setAlertFocusStudentId(student.id);
+                                          setActiveTab('quality');
+                                        }}
+                                        onKeyDown={(event) => {
+                                          if (event.key === 'Enter' || event.key === ' ') {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            setAlertFocusStudentId(student.id);
+                                            setActiveTab('quality');
+                                          }
+                                        }}
+                                        className="inline-flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold text-rose-500 transition hover:bg-rose-50"
+                                      >
                                         <ShieldAlert className="h-3.5 w-3.5" />
                                         {flags}
                                       </span>
@@ -333,7 +385,7 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
                   </div>
                 )}
 
-                {activeTab === 'quality' && (
+                {(isAlertsMode || activeTab === 'quality') && (
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                       <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
@@ -341,9 +393,9 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
                         <div className="mt-1 text-2xl font-black text-slate-800">{metrics?.averageScore ?? '--'}</div>
                       </div>
                       <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
-                        <span className="text-xs font-bold text-slate-400">{uiText("異常標記")}</span>
+                        <span className="text-xs font-bold text-slate-400">{uiText("待處理異常")}</span>
                         <div className="mt-1 text-2xl font-black text-amber-500 flex items-center gap-1.5">
-                          {metrics?.anomalyCount ?? '--'}
+                          {detail ? openAnomalyCount : (metrics?.anomalyCount ?? '--')}
                           <ShieldAlert className="h-5 w-5" />
                         </div>
                       </div>
@@ -356,30 +408,42 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
                         <div className="mt-1 text-2xl font-black text-emerald-500">{metrics?.completed ?? '--'}</div>
                       </div>
                     </div>
-                    <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
-                      <p className="text-sm font-bold text-slate-700">{uiTemplate("完成進度：{0} / {1} 份作答", quiz.submitted, quiz.totalStudents)}</p>
-                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-                        <div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${Math.round(quiz.progress * 100)}%` }} />
+                    {!isAlertsMode ? (
+                      <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
+                        <p className="text-sm font-bold text-slate-700">{uiTemplate("完成進度：{0} / {1} 份作答", quiz.submitted, quiz.totalStudents)}</p>
+                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                          <div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${Math.round(quiz.progress * 100)}%` }} />
+                        </div>
                       </div>
-                    </div>
+                    ) : null}
+                    <AnomalyAlertCenter
+                      quizId={quiz.id}
+                      students={students}
+                      loading={detailLoading}
+                      focusStudentId={alertFocusStudentId}
+                      onFocusConsumed={() => setAlertFocusStudentId(null)}
+                      onFlagsUpdated={updateStudentFlags}
+                    />
                   </div>
                 )}
               </div>
 
-              {/* Footer */}
+              {/* Footer：複製為草稿係題目預覽語境嘅動作，成績結果／質量分析／alerts 模式唔顯示 */}
               <div className="flex items-center gap-3 border-t border-slate-100 bg-white px-6 py-4">
-                {duplicateError ? (
+                {!isAlertsMode && activeTab === 'preview' && duplicateError ? (
                   <p className="text-xs font-bold text-rose-500 mr-auto">{duplicateError}</p>
                 ) : <span className="mr-auto" />}
-                <button
-                  type="button"
-                  onClick={handleDuplicate}
-                  disabled={duplicating}
-                  className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-indigo-700 disabled:opacity-50"
-                >
-                  <Copy className="h-4 w-4" />
-                  {duplicating ? uiText("複製中...") : uiText("複製為草稿")}
-                </button>
+                {!isAlertsMode && activeTab === 'preview' ? (
+                  <button
+                    type="button"
+                    onClick={handleDuplicate}
+                    disabled={duplicating}
+                    className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    <Copy className="h-4 w-4" />
+                    {duplicating ? uiText("複製中...") : uiText("複製為草稿")}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={onClose}

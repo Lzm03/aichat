@@ -6,9 +6,10 @@ import { ArrowRight, CopyPlus, PenTool } from 'lucide-react';
 import { AssessmentWizard } from '../components/assessment/AssessmentWizard';
 import { AssessmentLibrary } from '../components/assessment/AssessmentLibrary';
 import { GradingWorkspaceHome } from '../components/assessment/GradingWorkspaceHome';
-import { AiAlertPlayground } from '../components/assessment/AiAlertPlayground';
 import { AssessmentQualityCard } from '../components/assessment/AssessmentQualityCard';
+import { AnomalyAlertsOverview } from '../components/assessment/AnomalyAlertsOverview';
 import { MyQuizzesView } from '../components/assessment/MyQuizzesView';
+import { PublishedQuizDetailDrawer, type PublishedQuizSummary } from '../components/assessment/PublishedQuizDetailDrawer';
 import { API_BASE } from '../utils/api';
 
 type TopTab = 'overview' | 'quizzes' | 'library' | 'grading' | 'quality';
@@ -38,6 +39,7 @@ const QUICK_LINKS: {
   icon: React.ComponentType<{ className?: string }>;
   chipClass: string;
   iconClass: string;
+  accent?: boolean;
   onClick: (handlers: {
     openWizard: () => void;
     goQuizzes: () => void;
@@ -52,8 +54,9 @@ const QUICK_LINKS: {
     label: '新建測驗',
     description: '建立 AI 評測並自動批改',
     icon: CopyPlus,
-    chipClass: 'bg-emerald-50 text-emerald-600',
-    iconClass: 'text-emerald-600',
+    accent: true,
+    chipClass: 'bg-white/20',
+    iconClass: 'text-white',
     onClick: (h) => h.openWizard(),
   },
   {
@@ -61,8 +64,8 @@ const QUICK_LINKS: {
     label: '我的測驗',
     description: '管理草稿與已發佈的測驗',
     icon: Icons.clipboardList,
-    chipClass: 'bg-indigo-50 text-indigo-600',
-    iconClass: 'text-indigo-600',
+    chipClass: 'bg-emerald-50 text-emerald-600',
+    iconClass: 'text-emerald-600',
     onClick: (h) => h.goQuizzes(),
   },
   {
@@ -108,6 +111,25 @@ const QUALITY_SUB_TABS: { key: QualitySubTab; label: string }[] = [
   { key: 'alerts', label: 'AI 異常警示' },
 ];
 
+/** grading-summary 物件 → Drawer 所需 shape（缺漏欄位補 fallback） */
+const toPublishedQuizSummary = (summary: any): PublishedQuizSummary => ({
+  id: String(summary.id),
+  title: String(summary.title || '未命名測驗'),
+  questionCount: Number(summary.questionCount || 0),
+  botId: String(summary.botId || ''),
+  botName: String(summary.botName || '--'),
+  botSubject: String(summary.subject || ''),
+  publishedAt: summary.publishedAt || summary.date,
+  gradingCompletedAt: summary.gradingCompletedAt,
+  totalStudents: Number(summary.totalStudents || 0),
+  submitted: Number(summary.submitted || 0),
+  completed: Number(summary.completed || 0),
+  pendingConfirm: Number(summary.pendingConfirm || 0),
+  pendingGrading: Number(summary.pendingGrading || 0),
+  averageScore: Number(summary.averageScore || 0),
+  progress: Number(summary.totalStudents) > 0 ? Number(summary.submitted || 0) / Number(summary.totalStudents) : 0,
+});
+
 export const AssessmentPage: React.FC<AssessmentPageProps> = ({
   onNavigateToWorkshop,
   initialView = 'dashboard',
@@ -120,6 +142,8 @@ export const AssessmentPage: React.FC<AssessmentPageProps> = ({
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
   const [qualitySubTab, setQualitySubTab] = useState<QualitySubTab>('performance');
   const [quizzesSubTab, setQuizzesSubTab] = useState<'drafts' | 'published'>('published');
+  // 質量分析入口開嘅已發佈測驗 Drawer（同 MyQuizzesView 嘅 Drawer 唔會同時開）
+  const [qualityDrawerQuiz, setQualityDrawerQuiz] = useState<PublishedQuizSummary | null>(null);
 
   // 總覽 KPI 數據
   const [draftCount, setDraftCount] = useState(0);
@@ -260,9 +284,11 @@ export const AssessmentPage: React.FC<AssessmentPageProps> = ({
             <h2 className="text-lg font-bold text-slate-800 mb-4">{uiText("快速入口")}</h2>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
               {QUICK_LINKS.map((link) => (
-                <button
+                <motion.button
                   key={link.key}
                   type="button"
+                  whileHover={link.accent ? { y: -4 } : undefined}
+                  whileTap={link.accent ? { scale: 0.97 } : undefined}
                   onClick={() =>
                     link.onClick({
                       openWizard,
@@ -273,17 +299,21 @@ export const AssessmentPage: React.FC<AssessmentPageProps> = ({
                       goWorkshop: () => onNavigateToWorkshop?.(),
                     })
                   }
-                  className="group relative flex min-h-[140px] items-center gap-5 overflow-hidden rounded-[28px] border border-slate-100 bg-white p-6 text-left shadow-[0_14px_32px_rgba(15,23,42,0.06)] transition hover:-translate-y-1 hover:shadow-xl"
+                  className={`group relative flex min-h-[140px] items-center gap-5 overflow-hidden rounded-[28px] border p-6 text-left ${
+                    link.accent
+                      ? 'border-[#4C71E0] bg-[#5681FF] shadow-[0_14px_32px_rgba(86,129,255,0.45)] transition-shadow hover:shadow-[0_24px_48px_-12px_rgba(86,129,255,0.65)]'
+                      : 'border-slate-100 bg-white shadow-[0_14px_32px_rgba(15,23,42,0.06)] transition hover:-translate-y-1 hover:shadow-xl'
+                  }`}
                 >
                   <span className={`relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${link.chipClass}`}>
                     <link.icon className={`h-7 w-7 ${link.iconClass}`} />
                   </span>
                   <span className="relative min-w-0">
-                    <span className="block text-lg font-black text-slate-900">{uiText(link.label)}</span>
-                    <span className="mt-1 block text-sm text-slate-500">{uiText(link.description)}</span>
+                    <span className={`block text-lg font-black ${link.accent ? 'text-white' : 'text-slate-900'}`}>{uiText(link.label)}</span>
+                    <span className={`mt-1 block text-sm ${link.accent ? 'text-white/85' : 'text-slate-500'}`}>{uiText(link.description)}</span>
                   </span>
-                  <ArrowRight className="relative ml-auto h-5 w-5 shrink-0 text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500" />
-                </button>
+                  <ArrowRight className={`relative ml-auto h-5 w-5 shrink-0 transition group-hover:translate-x-1 ${link.accent ? 'text-white/70 group-hover:text-white' : 'text-slate-300 group-hover:text-indigo-500'}`} />
+                </motion.button>
               ))}
             </div>
           </div>
@@ -325,9 +355,27 @@ export const AssessmentPage: React.FC<AssessmentPageProps> = ({
               </button>
             ))}
           </div>
-          {qualitySubTab === 'performance' ? <AssessmentQualityCard /> : <AiAlertPlayground />}
+          {qualitySubTab === 'performance' ? (
+            <AssessmentQualityCard onOpenQuizAlerts={(summary) => setQualityDrawerQuiz(toPublishedQuizSummary(summary))} />
+          ) : (
+            <AnomalyAlertsOverview onOpenQuiz={(summary) => setQualityDrawerQuiz(toPublishedQuizSummary(summary))} />
+          )}
         </div>
       )}
+
+      {/* 質量分析入口共用嘅已發佈測驗 Drawer（alerts 模式：純警示視圖，無 tab bar） */}
+      <PublishedQuizDetailDrawer
+        open={Boolean(qualityDrawerQuiz)}
+        quiz={qualityDrawerQuiz}
+        onClose={() => setQualityDrawerQuiz(null)}
+        onDuplicated={() => {
+          setQualityDrawerQuiz(null);
+          setQuizzesSubTab('drafts');
+          setTopTab('quizzes');
+        }}
+        initialTab="quality"
+        mode="alerts"
+      />
     </div>
   );
 };

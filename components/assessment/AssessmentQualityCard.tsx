@@ -6,7 +6,12 @@ import { API_BASE } from '../../utils/api';
 import { downloadAssessmentResultsCsv } from '../../utils/assessment-csv';
 import { Icons } from '../icons';
 
-export const AssessmentQualityCard = () => {
+type AssessmentQualityCardProps = {
+  /** 提供後，「異常作答標記」統計 tile 變可點擊：關閉本 modal 並開已發佈測驗 Drawer 嘅質量分析 tab */
+  onOpenQuizAlerts?: (summary: any) => void;
+};
+
+export const AssessmentQualityCard = ({ onOpenQuizAlerts }: AssessmentQualityCardProps = {}) => {
   const [summaries, setSummaries] = useState<any[]>([]);
   const [selectedAssessment, setSelectedAssessment] = useState<any | null>(null);
   const [details, setDetails] = useState<any | null>(null);
@@ -121,8 +126,21 @@ export const AssessmentQualityCard = () => {
                       {sortedRows.length ? `${Math.round((sortedRows.filter((row) => row.diff !== 0).length / sortedRows.length) * 100)}%` : '0%'}
                     </div>
                   </div>
-                  <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
-                    <span className="text-sm font-bold text-slate-500">{uiText("異常作答標記")}</span>
+                  <div
+                    onClick={() => {
+                      if (!onOpenQuizAlerts || !selectedAssessment || !details) return;
+                      setSelectedAssessment(null);
+                      setDetails(null);
+                      onOpenQuizAlerts(selectedAssessment);
+                    }}
+                    className={`bg-white p-5 rounded-2xl border border-slate-100 shadow-sm ${onOpenQuizAlerts ? 'cursor-pointer transition-all hover:border-amber-200 hover:shadow-md group' : ''}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold text-slate-500">{uiText("異常作答標記")}</span>
+                      {onOpenQuizAlerts ? (
+                        <ChevronRight className="w-4 h-4 text-slate-300 transition group-hover:text-amber-500" />
+                      ) : null}
+                    </div>
                     <div className="text-3xl font-black text-amber-500 mt-2 flex items-center gap-2">
                       {details?.metrics?.anomalyCount || 0} <Flag className="w-6 h-6" />
                     </div>

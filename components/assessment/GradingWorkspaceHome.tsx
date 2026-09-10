@@ -1,7 +1,7 @@
 import { uiText, uiTemplate } from '../../utils/uiI18n';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { AlertCircle, ArrowRight, BarChart2, HelpCircle, Trash2 } from 'lucide-react';
+import { AlertCircle, ArrowRight, BarChart2, ChevronDown, HelpCircle, Trash2 } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
 import { Icons } from '../icons';
 import { GradingDetailView } from './GradingDetailView';
@@ -23,6 +23,7 @@ type QuizSummary = {
   pendingGrading: number;
   pendingConfirm: number;
   completed: number;
+  gradingCompletedAt?: string | null;
 };
 
 export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBack, onGoToWorkshop }) => {
@@ -31,6 +32,7 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
   const [loading, setLoading] = useState(true);
   const [deletingQuizId, setDeletingQuizId] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [archivedExpanded, setArchivedExpanded] = useState(false);
   const { dialog, closeDialog, showAlert, showConfirm } = usePlatformDialog();
 
   const loadQuizzes = useCallback(() => {
@@ -71,7 +73,9 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
     [quizzes]
   );
 
-  const activeQuizzesCount = sortedQuizzes.filter((quiz) => quiz.pendingGrading > 0 || quiz.pendingConfirm > 0).length;
+  const activeQuizzes = sortedQuizzes.filter((quiz) => quiz.pendingGrading > 0 || quiz.pendingConfirm > 0);
+  const archivedQuizzes = sortedQuizzes.filter((quiz) => quiz.pendingGrading === 0 && quiz.pendingConfirm === 0);
+  const activeQuizzesCount = activeQuizzes.length;
   const totalPendingStudents = sortedQuizzes.reduce((sum, quiz) => sum + quiz.pendingGrading + quiz.pendingConfirm, 0);
 
   const handleDeleteQuiz = async (quizId: string) => {
@@ -109,6 +113,68 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
     return <GradingDetailView quizId={selectedQuizId} onBack={() => setSelectedQuizId(null)} />;
   }
 
+  const renderQuizCard = (quiz: QuizSummary, index: number, isArchived: boolean) => (
+    <motion.div
+      key={quiz.id}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: isArchived ? 0.7 : 1, y: 0 }}
+      transition={{ delay: index * 0.05 }}
+      whileHover={{ y: -2, opacity: 1, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)' }}
+      className={`bg-white rounded-[24px] p-6 border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-6 transition-all ${isArchived ? 'bg-slate-50/50' : 'shadow-sm'}`}
+    >
+      <div className="flex-1">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md">{uiText(quiz.subject)}</span>
+          <span className="text-xs text-slate-400">{quiz.date ? new Date(quiz.date).toISOString().slice(0, 10) : ''}</span>
+          {isArchived && quiz.gradingCompletedAt ? (
+            <span className="text-xs font-bold text-emerald-600">{uiText("完成批改")} {new Date(quiz.gradingCompletedAt).toISOString().slice(5, 10)}</span>
+          ) : null}
+        </div>
+        <h3 className="text-lg font-bold text-slate-800">{quiz.title}</h3>
+      </div>
+
+      <div className="flex items-center gap-2 md:gap-4 flex-wrap">
+        <div className="flex flex-col items-center justify-center p-3 rounded-xl bg-slate-50 min-w-[80px]">
+          <span className="text-xl font-bold text-slate-500">{quiz.pendingGrading}</span>
+          <span className="text-xs font-medium text-slate-400 mt-1">{uiText("待批改")}</span>
+        </div>
+        <div className={`flex flex-col items-center justify-center p-3 rounded-xl min-w-[80px] ${quiz.pendingConfirm > 0 ? 'bg-purple-50 ring-1 ring-purple-100' : 'bg-slate-50'}`}>
+          <span className={`text-xl font-bold ${quiz.pendingConfirm > 0 ? 'text-purple-600' : 'text-slate-500'}`}>{quiz.pendingConfirm}</span>
+          <span className={`text-xs font-medium mt-1 ${quiz.pendingConfirm > 0 ? 'text-purple-500' : 'text-slate-400'}`}>{uiText("待確認")}</span>
+        </div>
+        <div className="flex flex-col items-center justify-center p-3 rounded-xl bg-emerald-50 min-w-[80px]">
+          <span className="text-xl font-bold text-emerald-600">{quiz.completed}</span>
+          <span className="text-xs font-medium text-emerald-500 mt-1">{uiText("已完成")}</span>
+        </div>
+      </div>
+
+      <div className="shrink-0 w-full md:w-auto flex items-center justify-end gap-3">
+        <button
+          onClick={() => requestDeleteQuiz(quiz)}
+          disabled={deletingQuizId === quiz.id}
+          aria-label={uiTemplate("刪除測驗 {0}", quiz.title)}
+          className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition-colors hover:text-rose-600 disabled:opacity-50"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => setSelectedQuizId(quiz.id)}
+          className={`w-full md:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold transition-colors shadow-sm ${
+            isArchived
+              ? 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+              : quiz.pendingConfirm > 0
+              ? 'bg-purple-600 text-white hover:bg-purple-700'
+              : 'bg-indigo-600 text-white hover:bg-indigo-700'
+          }`}
+        >
+          {isArchived ? <BarChart2 className="w-4 h-4" /> : null}
+          {isArchived ? uiText('查看報告') : quiz.pendingConfirm > 0 ? uiText('去確認') : uiText('開始批改')}
+          {!isArchived ? <ArrowRight className="w-4 h-4" /> : null}
+        </button>
+      </div>
+    </motion.div>
+  );
+
   return (
     <div className="h-full flex flex-col space-y-6">
       <div className="flex items-center justify-between">
@@ -120,7 +186,7 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
         <button type="button" aria-label={uiText("AI 批改説明")} onClick={() => setShowHelp(true)} className="text-indigo-500"><HelpCircle className="h-5 w-5" /></button>
       </div>
 
-      {sortedQuizzes.length > 0 ? <div className="bg-rose-50 border border-rose-100 text-rose-800 p-4 rounded-2xl flex items-center gap-3 shadow-sm">
+      {activeQuizzesCount > 0 ? <div className="bg-rose-50 border border-rose-100 text-rose-800 p-4 rounded-2xl flex items-center gap-3 shadow-sm">
         <div className="w-8 h-8 bg-rose-100 rounded-full flex items-center justify-center shrink-0">
           <AlertCircle className="w-4 h-4 text-rose-600" />
         </div>
@@ -144,68 +210,32 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
           </div>
         ) : null}
 
-        {!loading &&
-          sortedQuizzes.map((quiz, index) => {
-            const isCompleted = quiz.pendingGrading === 0 && quiz.pendingConfirm === 0;
-            return (
-              <motion.div
-                key={quiz.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: isCompleted ? 0.7 : 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
-                whileHover={{ y: -2, opacity: 1, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)' }}
-                className={`bg-white rounded-[24px] p-6 border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-6 transition-all ${isCompleted ? 'bg-slate-50/50' : 'shadow-sm'}`}
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md">{uiText(quiz.subject)}</span>
-                    <span className="text-xs text-slate-400">{quiz.date ? new Date(quiz.date).toISOString().slice(0, 10) : ''}</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-800">{quiz.title}</h3>
-                </div>
+        {/* 待處理 */}
+        {!loading && activeQuizzes.length > 0 ? (
+          <div className="space-y-3">
+            <h2 className="flex items-center gap-2 text-sm font-bold text-slate-500">
+              <span className="h-4 w-1.5 rounded-full bg-indigo-500" />{uiText("待處理")}
+              <span className="text-slate-400">{activeQuizzes.length}</span>
+            </h2>
+            {activeQuizzes.map((quiz, index) => renderQuizCard(quiz, index, false))}
+          </div>
+        ) : null}
 
-                <div className="flex items-center gap-2 md:gap-4 flex-wrap">
-                  <div className="flex flex-col items-center justify-center p-3 rounded-xl bg-slate-50 min-w-[80px]">
-                    <span className="text-xl font-bold text-slate-500">{quiz.pendingGrading}</span>
-                    <span className="text-xs font-medium text-slate-400 mt-1">{uiText("待批改")}</span>
-                  </div>
-                  <div className={`flex flex-col items-center justify-center p-3 rounded-xl min-w-[80px] ${quiz.pendingConfirm > 0 ? 'bg-purple-50 ring-1 ring-purple-100' : 'bg-slate-50'}`}>
-                    <span className={`text-xl font-bold ${quiz.pendingConfirm > 0 ? 'text-purple-600' : 'text-slate-500'}`}>{quiz.pendingConfirm}</span>
-                    <span className={`text-xs font-medium mt-1 ${quiz.pendingConfirm > 0 ? 'text-purple-500' : 'text-slate-400'}`}>{uiText("待確認")}</span>
-                  </div>
-                  <div className="flex flex-col items-center justify-center p-3 rounded-xl bg-emerald-50 min-w-[80px]">
-                    <span className="text-xl font-bold text-emerald-600">{quiz.completed}</span>
-                    <span className="text-xs font-medium text-emerald-500 mt-1">{uiText("已完成")}</span>
-                  </div>
-                </div>
-
-                <div className="shrink-0 w-full md:w-auto flex items-center justify-end gap-3">
-                  <button
-                    onClick={() => requestDeleteQuiz(quiz)}
-                    disabled={deletingQuizId === quiz.id}
-                    aria-label={uiTemplate("刪除測驗 {0}", quiz.title)}
-                    className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition-colors hover:text-rose-600 disabled:opacity-50"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setSelectedQuizId(quiz.id)}
-                    className={`w-full md:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold transition-colors shadow-sm ${
-                      isCompleted
-                        ? 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-                        : quiz.pendingConfirm > 0
-                        ? 'bg-purple-600 text-white hover:bg-purple-700'
-                        : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                    }`}
-                  >
-                    {isCompleted ? <BarChart2 className="w-4 h-4" /> : null}
-                    {isCompleted ? uiText('查看報告') : quiz.pendingConfirm > 0 ? uiText('去確認') : uiText('開始批改')}
-                    {!isCompleted ? <ArrowRight className="w-4 h-4" /> : null}
-                  </button>
-                </div>
-              </motion.div>
-            );
-          })}
+        {/* 已歸納（批改完成） */}
+        {!loading && archivedQuizzes.length > 0 ? (
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => setArchivedExpanded((prev) => !prev)}
+              className="flex items-center gap-2 text-sm font-bold text-slate-500 transition-colors hover:text-slate-700"
+            >
+              <span className="h-4 w-1.5 rounded-full bg-emerald-500" />{uiText("已歸納")}
+              <span className="text-slate-400">{archivedQuizzes.length}</span>
+              <ChevronDown className={`h-4 w-4 transition-transform ${archivedExpanded ? 'rotate-180' : ''}`} />
+            </button>
+            {archivedExpanded ? archivedQuizzes.map((quiz, index) => renderQuizCard(quiz, index, true)) : null}
+          </div>
+        ) : null}
       </div>
       <InfoTipModal open={showHelp} title={uiText("AI 批改怎麼運作")} body="學生作答後，AI 會先自動評分並給出建議分數，例如選擇題直接判對錯、簡答題會給參考理由。你可以直接採用，也能手動調整後再確認送出。" onClose={() => setShowHelp(false)} />
       <PlatformDialog

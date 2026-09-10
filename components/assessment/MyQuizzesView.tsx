@@ -1,7 +1,7 @@
 import { uiText, uiTemplate } from '../../utils/uiI18n';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Edit3, Trash2 } from 'lucide-react';
+import { CheckCircle2, Edit3, Trash2 } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
 import { Icons } from '../icons';
 import { PlatformDialog } from '../system/PlatformDialog';
@@ -28,6 +28,10 @@ const SUB_TABS = [
   { key: 'drafts', label: '草稿' },
   { key: 'published', label: '已發佈' },
 ] as const;
+
+/** 全部已交作答已發佈成績 = 批改完成（歸納） */
+const isQuizGraded = (item: PublishedQuizSummary) =>
+  Number(item.pendingGrading || 0) === 0 && Number(item.pendingConfirm || 0) === 0 && Number(item.completed || 0) > 0;
 
 export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
   onEditDraft,
@@ -70,7 +74,13 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
     fetch(`${API_BASE}/api/quizzes/published`)
       .then((res) => res.json())
       .then((data) => {
-        setPublished(Array.isArray(data?.quizzes) ? data.quizzes : []);
+        const items = Array.isArray(data?.quizzes) ? data.quizzes : [];
+        // 未完成批改嘅測驗置頂，已完成歸納嘅排後（stable sort 保留服務端順序）
+        setPublished([...items].sort((a: PublishedQuizSummary, b: PublishedQuizSummary) => {
+          const aActive = !isQuizGraded(a);
+          const bActive = !isQuizGraded(b);
+          return aActive === bActive ? 0 : aActive ? -1 : 1;
+        }));
       })
       .catch(() => setPublished([]))
       .finally(() => {
@@ -218,12 +228,20 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
                   {item.botSubject ? (
                     <span className="px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full shrink-0">{uiText(item.botSubject)}</span>
                   ) : null}
+                  {isQuizGraded(item) ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full shrink-0">
+                      <CheckCircle2 className="h-3.5 w-3.5" />{uiText("已完成批改")}
+                    </span>
+                  ) : null}
                 </div>
 
                 <div className="flex-1">
                   <h3 className="text-lg font-bold text-slate-800 line-clamp-2">{item.title}</h3>
                   <p className="mt-2 text-sm text-slate-400">
                     {item.questionCount}{uiText(" 題")} · {uiText("發佈日期")} {item.publishedAt ? new Date(item.publishedAt).toISOString().slice(0, 10) : '--'}
+                    {isQuizGraded(item) && item.gradingCompletedAt ? (
+                      <span className="font-bold text-emerald-600"> · {uiText("完成批改")} {new Date(item.gradingCompletedAt).toISOString().slice(5, 10)}</span>
+                    ) : null}
                   </p>
                 </div>
 

@@ -196,7 +196,8 @@ async function initializeQuizTables() {
     ALTER TABLE quizzes
     ADD COLUMN IF NOT EXISTS preferred_question_types_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     ADD COLUMN IF NOT EXISTS question_type_distribution_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-    ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ
+    ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS grading_completed_at TIMESTAMPTZ
   `);
   await pool.query(`
     ALTER TABLE quiz_questions
@@ -1030,20 +1031,107 @@ async function getOrCreateAttempt(quizId: string, studentId: string, botId: stri
   return created.rows[0];
 }
 
-function detectAttemptAnomalies(questions: Array<{ preview: any }>, answers: any[]) {
-  const flags = new Set<string>();
-  const answerText = answers.map((item) => String(item?.answer || "")).join("\n");
-  const lowerAnswerText = answerText.toLowerCase();
-  if (/活著好像沒什麼意義|不想活|自殺|死後/.test(answerText)) flags.add("wellbeing");
-  if (/asdf|不知道 不知道|亂寫|不想寫|有夠蠢/.test(answerText)) flags.add("effort");
-  if (/住在|電話|地址|彌敦道|身份證/.test(answerText)) flags.add("privacy");
-  if (/in conclusion|chatgpt|gemini|ai generated/.test(lowerAnswerText)) flags.add("academic");
-  if (/腦袋有洞|白痴|垃圾|蠢/.test(answerText)) flags.add("inappropriate");
-  const hasBlankQuestion = questions.some((item) => normalizeQuestionType(String(item.preview?.type || "")) === "填充題");
-  if (hasBlankQuestion && answers.some((item) => String(item?.answer || "").trim().length <= 1)) {
-    flags.add("effort");
-  }
-  return Array.from(flags);
+type AnomalyFlagType = 'wellbeing' | 'academic' | 'inappropriate' | 'privacy' | 'effort';
+type AnomalyFlagStatus = 'open' | 'resolved' | 'dismissed';
+
+interface AnomalyFlag {
+  type: AnomalyFlagType;
+  questionIndex: number | null;
+  questionId: string;
+  excerpt: string;
+  reason: string;
+  status: AnomalyFlagStatus;
+  teacherComment: string;
+  resolvedAt: string | null;
+}
+
+const ANOMALY_FLAG_TYPES: AnomalyFlagType[] = ['wellbeing', 'academic', 'inappropriate', 'privacy', 'effort'];
+
+// Detection rules, one flag per rule per answer (first match only). A single
+// answer can still produce several flags when different rules match.
+// Keyword sets per docs/anomaly-detection-spec.md — tune keywords in place,
+// never rename ruleIds (persisted in anomaly_flags_json.reason).
+const ANOMALY_RULES: Array<{ type: AnomalyFlagType; ruleId: string; regex: RegExp; lowercase?: boolean }> = [
+  { type: 'wellbeing', ruleId: 'wellbeing-distress-terms', regex: /活著好像沒什麼意義|不想活|自殺|死後|唔使(再)?醒|不用再醒|人生冇(咩|乜)?意義|人生沒有(甚麼|什麼)?意義|生存冇(咩|乜)?意義|都係因我而起|都是因我而起|我唔喺度會好啲|我不在會更好/ },
+  { type: 'effort', ruleId: 'effort-filler-terms', regex: /asdf|不知道 不知道|亂寫|不想寫|有夠蠢|求其(寫|答)|是但(寫|答)|亂噏|亂up|sdkfj|akjsdh|fsdaf|zzzz|唔識做|無話可說/ },
+  { type: 'privacy', ruleId: 'privacy-personal-info', regex: /住在|電話|地址|彌敦道|身份證|住喺|家住|屋企住|hkid|id ?card|[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/, lowercase: true },
+  { type: 'academic', ruleId: 'academic-ai-generated', regex: /in conclusion|chatgpt|gemini|ai generated|deepseek|豆包|copilot|文心一言|通義千問|作為(一個)?(人工智能|ai)(助手|語言模型)?|訓練數據|知識(截至|截止)|我(嘅|的)?知識庫|上網抄|抄(返|翻)嚟|copy(返|翻)嚟/, lowercase: true },
+  { type: 'inappropriate', ruleId: 'inappropriate-offensive-terms', regex: /腦袋有洞|白痴|垃圾|蠢|阿差|黑鬼|死肥|樣衰|收皮|食屎/ },
+];
+
+function detectAttemptAnomalies(questions: Array<{ id: string; preview: any }>, answers: any[]): AnomalyFlag[] {
+  const flags: AnomalyFlag[] = [];
+  const questionById = new Map(questions.map((question) => [String(question.id), question]));
+  answers.forEach((item, answerIndex) => {
+    const questionId = String(item?.questionId || '');
+    const question = questionById.get(questionId) || questions[Number(item?.questionIndex) || answerIndex];
+    const questionIndex = Number.isInteger(Number(item?.questionIndex)) ? Number(item.questionIndex) : answerIndex;
+    const answerText = String(item?.answer || '');
+    const trimmed = answerText.trim();
+
+    if (trimmed) {
+      const lower = answerText.toLowerCase();
+      for (const rule of ANOMALY_RULES) {
+        const match = rule.regex.exec(rule.lowercase ? lower : answerText);
+        if (!match) continue;
+        flags.push({
+          type: rule.type,
+          questionIndex,
+          questionId: String(question?.id || ''),
+          excerpt: match[0].slice(0, 40),
+          reason: rule.ruleId,
+          status: 'open',
+          teacherComment: '',
+          resolvedAt: null,
+        });
+      }
+    }
+
+    const isFillIn = normalizeQuestionType(String(question?.preview?.type || '')) === '填充題';
+    if (isFillIn && trimmed.length <= 1) {
+      flags.push({
+        type: 'effort',
+        questionIndex,
+        questionId: String(question?.id || ''),
+        excerpt: trimmed.slice(0, 40),
+        reason: 'effort-blank-answer',
+        status: 'open',
+        teacherComment: '',
+        resolvedAt: null,
+      });
+    }
+  });
+  return flags;
+}
+
+function normalizeAnomalyFlags(rawFlags: unknown[]): AnomalyFlag[] {
+  return (Array.isArray(rawFlags) ? rawFlags : []).map((flag) => {
+    if (!flag || typeof flag !== 'object' || Array.isArray(flag)) {
+      // Legacy rows store flat string[] with no question targeting
+      const legacyType = (ANOMALY_FLAG_TYPES as readonly string[]).includes(String(flag)) ? String(flag) as AnomalyFlagType : 'effort';
+      return {
+        type: legacyType,
+        questionIndex: null,
+        questionId: '',
+        excerpt: '',
+        reason: 'legacy',
+        status: 'open',
+        teacherComment: '',
+        resolvedAt: null,
+      };
+    }
+    const f = flag as Record<string, unknown>;
+    return {
+      type: (ANOMALY_FLAG_TYPES as readonly string[]).includes(String(f.type || '')) ? String(f.type) as AnomalyFlagType : 'effort',
+      questionIndex: Number.isInteger(Number(f.questionIndex)) ? Number(f.questionIndex) : null,
+      questionId: String(f.questionId || ''),
+      excerpt: String(f.excerpt || '').slice(0, 200),
+      reason: String(f.reason || 'legacy'),
+      status: ['open', 'resolved', 'dismissed'].includes(String(f.status || '')) ? String(f.status) as AnomalyFlagStatus : 'open',
+      teacherComment: String(f.teacherComment || ''),
+      resolvedAt: f.resolvedAt ? String(f.resolvedAt) : null,
+    };
+  });
 }
 
 function buildAttemptTeacherStatus(status: string, publishedAt?: string | null) {
@@ -1229,6 +1317,7 @@ router.get("/quizzes/published", requireAuth, async (req, res) => {
       `SELECT
          q.id, q.title, q.question_count, q.bot_id,
          COALESCE(q.published_at, q.updated_at) AS published_at,
+         q.grading_completed_at,
          b.name AS bot_name, b.subject AS bot_subject,
          COUNT(a.id) AS total_students,
          COUNT(a.id) FILTER (WHERE a.status='completed') AS submitted,
@@ -1254,7 +1343,7 @@ router.get("/quizzes/published", requireAuth, async (req, res) => {
        LEFT JOIN bots b ON b.id=q.bot_id
        LEFT JOIN quiz_attempts a ON a.quiz_id=q.id
        WHERE q.teacher_id=$1 AND q.status='published'
-       GROUP BY q.id, b.name, b.subject
+       GROUP BY q.id, b.name, b.subject, q.grading_completed_at
        ORDER BY COALESCE(q.published_at, q.updated_at) DESC, q.created_at DESC`,
       [user.id]
     );
@@ -1270,6 +1359,7 @@ router.get("/quizzes/published", requireAuth, async (req, res) => {
           botName: String(row.bot_name || "未命名 Bot"),
           botSubject: String(row.bot_subject || ""),
           publishedAt: row.published_at,
+          gradingCompletedAt: row.grading_completed_at,
           totalStudents,
           submitted,
           completed: Number(row.completed || 0),
@@ -1849,6 +1939,101 @@ router.patch("/quizzes/:id/questions/:questionId", requireAuth, async (req, res)
   } catch (error) {
     console.error("PATCH /quizzes/:id/questions/:questionId Failed:", error);
     return res.status(500).json({ error: "修改題目失敗，請稍後再試。" });
+  }
+});
+
+// 混合出題：由題庫加入題目到草稿測驗（只限 status='draft'）
+router.post("/quizzes/:id/questions", requireAuth, async (req, res) => {
+  try {
+    await ensureQuizTables();
+    const user = getAuthUser(req);
+    if (!user || !["teacher", "admin"].includes(user.role)) {
+      return res.status(403).json({ error: "teacher account required" });
+    }
+
+    const quizId = String(req.params.id || "").trim();
+    if (!quizId) return res.status(400).json({ error: "缺少必要參數。" });
+
+    const content = String(req.body?.content || "").trim();
+    const answer = String(req.body?.answer || "").trim();
+    if (!content) return res.status(400).json({ error: "題目內容不能為空。" });
+    if (!answer) return res.status(400).json({ error: "參考答案不能為空。" });
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const quizResult = await client.query(
+        `SELECT status,
+                (SELECT COALESCE(MAX(qq.order_index) + 1, 0) FROM quiz_questions qq WHERE qq.quiz_id = quizzes.id) AS next_index,
+                (SELECT COUNT(*) FROM quiz_questions qq WHERE qq.quiz_id = quizzes.id) AS actual_count
+         FROM quizzes
+         WHERE id=$1 AND teacher_id=$2
+         LIMIT 1
+         FOR UPDATE`,
+        [quizId, user.id]
+      );
+      if (!quizResult.rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Quiz not found" });
+      }
+      const quizRow = quizResult.rows[0];
+      if (String(quizRow.status || "draft") !== "draft") {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "測驗已發佈，無法新增題目。" });
+      }
+
+      const orderIndex = Number(quizRow.next_index || 0);
+      const question = buildPreviewQuestion(
+        {
+          ...req.body,
+          content,
+          answer,
+          explanation: req.body?.explanation,
+          options: req.body?.options,
+          points: req.body?.points,
+          difficulty: req.body?.difficulty,
+          id: orderIndex + 1,
+        },
+        orderIndex
+      );
+
+      await client.query(
+        `INSERT INTO quiz_questions (
+          id, quiz_id, question_type, cognitive_level, question_text, options_json,
+          correct_answer, explanation, points, difficulty, order_index, preview_payload_json
+        ) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12::jsonb)`,
+        [
+          crypto.randomUUID(),
+          quizId,
+          question.type,
+          question.cognitiveLevel,
+          question.content,
+          JSON.stringify(question.options || []),
+          question.answer,
+          question.explanation || "",
+          Number(question.points || 1),
+          question.difficulty || "medium",
+          orderIndex,
+          JSON.stringify(question),
+        ]
+      );
+
+      await client.query(
+        `UPDATE quizzes SET question_count=$1, updated_at=NOW() WHERE id=$2`,
+        [Number(quizRow.actual_count || 0) + 1, quizId]
+      );
+
+      await client.query("COMMIT");
+      return res.json({ ok: true, question });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => null);
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error("POST /quizzes/:id/questions Failed:", error);
+    return res.status(500).json({ error: "新增題目失敗，請稍後再試。" });
   }
 });
 
@@ -2432,7 +2617,12 @@ router.get("/teachers/me/grading-summary", requireAuth, async (req, res) => {
         q.id,
         q.title,
         q.updated_at,
+        q.bot_id,
+        q.question_count,
+        COALESCE(q.published_at, q.updated_at) AS published_at,
+        q.grading_completed_at,
         b.subject,
+        b.name AS bot_name,
         COUNT(*) FILTER (WHERE u.id IS NOT NULL)::int AS total_students,
         COUNT(*) FILTER (WHERE u.id IS NOT NULL AND a.teacher_status='pending_grading')::int AS pending_grading,
         COUNT(*) FILTER (WHERE u.id IS NOT NULL AND a.teacher_status='pending_confirm')::int AS pending_confirm,
@@ -2452,13 +2642,20 @@ router.get("/teachers/me/grading-summary", requireAuth, async (req, res) => {
             1
           ),
           0
-        ) AS average_score
+        ) AS average_score,
+        COALESCE(SUM(
+          CASE WHEN jsonb_typeof(a.anomaly_flags_json) = 'array' THEN (
+            SELECT COUNT(*)
+            FROM jsonb_array_elements(a.anomaly_flags_json) AS elem
+            WHERE elem->>'status' IS NULL OR elem->>'status' = 'open'
+          ) ELSE 0 END
+        ) FILTER (WHERE u.id IS NOT NULL), 0)::int AS anomaly_count
        FROM quizzes q
        LEFT JOIN quiz_attempts a ON a.quiz_id=q.id
        LEFT JOIN users u ON u.id=a.student_id AND COALESCE(u.role, 'student') NOT IN ('teacher', 'admin')
        LEFT JOIN bots b ON b.id=q.bot_id
        WHERE q.teacher_id=$1 AND q.status='published'
-       GROUP BY q.id, b.subject
+       GROUP BY q.id, b.subject, b.name, q.bot_id, q.question_count, q.published_at, q.grading_completed_at
        ORDER BY q.updated_at DESC, q.created_at DESC`,
       [user.id]
     );
@@ -2468,12 +2665,18 @@ router.get("/teachers/me/grading-summary", requireAuth, async (req, res) => {
         title: String(row.title || ""),
         subject: String(row.subject || "未分類"),
         date: row.updated_at,
+        botId: String(row.bot_id || ""),
+        botName: String(row.bot_name || "--"),
+        questionCount: Number(row.question_count || 0),
+        publishedAt: row.published_at,
+        gradingCompletedAt: row.grading_completed_at,
         totalStudents: Number(row.total_students || 0),
         pendingGrading: Number(row.pending_grading || 0),
         pendingConfirm: Number(row.pending_confirm || 0),
         completed: Number(row.completed || 0),
         submitted: Number(row.submitted || 0),
         averageScore: Number(row.average_score || 0),
+        anomalyCount: Number(row.anomaly_count || 0),
       })),
     });
   } catch (error) {
@@ -2519,7 +2722,7 @@ router.get("/quizzes/:id/grading-detail", requireAuth, async (req, res) => {
     const students = attempts.rows.map((row) => {
       const answers = Array.isArray(row.answers_json) ? row.answers_json : [];
       const review = Array.isArray(row.teacher_review_json) ? row.teacher_review_json : [];
-      const anomalyFlags = Array.isArray(row.anomaly_flags_json) ? row.anomaly_flags_json : [];
+      const anomalyFlags = normalizeAnomalyFlags(Array.isArray(row.anomaly_flags_json) ? row.anomaly_flags_json : []);
       const normalizedAnswers = answers.map((answer: any, index: number) => {
         const question = questionById.get(String(answer?.questionId || "")) || questionRows[index];
         const reviewItem = review.find((item: any) => Number(item?.questionIndex) === Number(answer?.questionIndex));
@@ -2547,6 +2750,7 @@ router.get("/quizzes/:id/grading-detail", requireAuth, async (req, res) => {
           aiScore: Number(answer?.points || 0),
           maxScore: Number(question?.points || 1),
           feedback: String(answer?.feedback || ""),
+          teacherComment: String(reviewItem?.teacherComment || ""),
         };
       });
       const recomputedScoreTotal = normalizedAnswers.reduce((sum, item) => sum + Number(item.score || 0), 0);
@@ -2581,13 +2785,135 @@ router.get("/quizzes/:id/grading-detail", requireAuth, async (req, res) => {
         pendingConfirm: pendingConfirmStudents,
         completed: completedStudents,
         averageScore: Number(averageScore.toFixed(1)),
-        anomalyCount: students.reduce((sum, student) => sum + student.anomalyFlags.length, 0),
+        anomalyCount: students.reduce((sum, student) => sum + student.anomalyFlags.filter((flag) => flag.status === 'open').length, 0),
       },
       students,
     });
   } catch (error) {
     console.error("GET /quizzes/:id/grading-detail Failed:", error);
     return res.status(500).json({ error: "Failed to load grading detail" });
+  }
+});
+
+router.patch("/quizzes/:id/attempts/:attemptId/anomalies/:flagIndex", requireAuth, async (req, res) => {
+  try {
+    await ensureQuizTables();
+    const user = getAuthUser(req);
+    if (!user || !["teacher", "admin"].includes(user.role)) {
+      return res.status(403).json({ error: "teacher account required" });
+    }
+    const quizId = String(req.params.id || "").trim();
+    const attemptId = String(req.params.attemptId || "").trim();
+    const flagIndex = Number(req.params.flagIndex);
+    const status = String(req.body?.status || "").trim();
+    const teacherComment = String(req.body?.teacherComment || "").trim().slice(0, 500);
+    if (!["resolved", "dismissed"].includes(status)) return res.status(400).json({ error: "無效的處理狀態。" });
+    if (!Number.isInteger(flagIndex) || flagIndex < 0) return res.status(400).json({ error: "無效的警示編號。" });
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const attemptResult = await client.query(
+        `SELECT a.anomaly_flags_json
+         FROM quiz_attempts a
+         INNER JOIN quizzes q ON q.id = a.quiz_id
+         WHERE a.id=$1 AND q.id=$2 AND q.teacher_id=$3
+         LIMIT 1
+         FOR UPDATE OF a`,
+        [attemptId, quizId, user.id]
+      );
+      if (!attemptResult.rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "作答紀錄不存在。" });
+      }
+      const flags = normalizeAnomalyFlags(attemptResult.rows[0].anomaly_flags_json);
+      if (flagIndex >= flags.length) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "警示不存在。" });
+      }
+      const target = flags[flagIndex];
+      if (target.status !== "open") {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "此警示已處理。" });
+      }
+      target.status = status as AnomalyFlagStatus;
+      target.teacherComment = teacherComment;
+      target.resolvedAt = new Date().toISOString();
+      await client.query(
+        `UPDATE quiz_attempts SET anomaly_flags_json=$1::jsonb, updated_at=NOW() WHERE id=$2`,
+        [JSON.stringify(flags), attemptId]
+      );
+      await client.query("COMMIT");
+      return res.json({ ok: true, anomalyFlags: flags });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => null);
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error("PATCH /quizzes/:id/attempts/:attemptId/anomalies/:flagIndex Failed:", error);
+    return res.status(500).json({ error: "更新異常警示失敗，請稍後再試。" });
+  }
+});
+
+router.patch("/quizzes/:id/attempts/:attemptId/review", requireAuth, async (req, res) => {
+  try {
+    await ensureQuizTables();
+    const user = getAuthUser(req);
+    if (!user || !["teacher", "admin"].includes(user.role)) {
+      return res.status(403).json({ error: "teacher account required" });
+    }
+    const quizId = String(req.params.id || "").trim();
+    const attemptId = String(req.params.attemptId || "").trim();
+    const incoming = Array.isArray(req.body?.reviews) ? req.body.reviews : [];
+    if (!incoming.length) return res.status(400).json({ error: "沒有可儲存的修改。" });
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const attemptResult = await client.query(
+        `SELECT a.teacher_review_json
+         FROM quiz_attempts a
+         INNER JOIN quizzes q ON q.id = a.quiz_id
+         WHERE a.id=$1 AND q.id=$2 AND q.teacher_id=$3
+         LIMIT 1
+         FOR UPDATE OF a`,
+        [attemptId, quizId, user.id]
+      );
+      if (!attemptResult.rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "作答紀錄不存在。" });
+      }
+      const existing = Array.isArray(attemptResult.rows[0].teacher_review_json) ? attemptResult.rows[0].teacher_review_json : [];
+      const byIndex = new Map<number, any>();
+      existing.forEach((item: any) => byIndex.set(Number(item?.questionIndex), item));
+      for (const item of incoming) {
+        const questionIndex = Number(item?.questionIndex);
+        if (!Number.isInteger(questionIndex) || questionIndex < 0) continue;
+        const target = byIndex.get(questionIndex) || { questionIndex, questionId: String(item?.questionId || "") };
+        if (Number.isFinite(Number(item?.finalPoints))) {
+          target.finalPoints = Math.max(0, Number(item.finalPoints));
+        }
+        target.teacherComment = String(item?.teacherComment || "").slice(0, 500);
+        byIndex.set(questionIndex, target);
+      }
+      const nextReview = Array.from(byIndex.values());
+      await client.query(
+        `UPDATE quiz_attempts SET teacher_review_json=$1::jsonb, updated_at=NOW() WHERE id=$2`,
+        [JSON.stringify(nextReview), attemptId]
+      );
+      await client.query("COMMIT");
+      return res.json({ ok: true, teacherReview: nextReview });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => null);
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error("PATCH /quizzes/:id/attempts/:attemptId/review Failed:", error);
+    return res.status(500).json({ error: "儲存草稿失敗，請稍後再試。" });
   }
 });
 
@@ -2666,6 +2992,24 @@ router.post("/quizzes/:id/grading/publish", requireAuth, async (req, res) => {
           String(attempt.id),
         ]
       );
+    }
+
+    // Mark the quiz as fully graded only when no completed attempts remain ungraded
+    if (attempts.rowCount > 0) {
+      const pendingResult = await client.query(
+        `SELECT COUNT(*)::int AS pending_count
+         FROM quiz_attempts
+         WHERE quiz_id=$1
+           AND status='completed'
+           AND teacher_status IN ('pending_grading', 'pending_confirm')`,
+        [quizId]
+      );
+      if (Number(pendingResult.rows[0]?.pending_count || 0) === 0) {
+        await client.query(
+          `UPDATE quizzes SET grading_completed_at=NOW() WHERE id=$1`,
+          [quizId]
+        );
+      }
     }
 
     await client.query("COMMIT");
