@@ -49,13 +49,15 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
   frameCount,
   fps,
   active = true,
-  startWhenBuffered = false,
+  startWhenBuffered = true,
   className,
   ...imgProps
 }) => {
   const [frame, setFrame] = useState(1);
   const [ready, setReady] = useState(false);
   const loadedRef = useRef<Set<number>>(new Set());
+  const imagesRef = useRef<HTMLImageElement[]>([]);
+  const playbackRef = useRef({ frame: 1, direction: 1 as PlaybackDirection });
   const totalFrameCount = Math.max(1, frameCount);
   const frameDuration = 1000 / Math.max(1, fps);
 
@@ -71,18 +73,20 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
   useEffect(() => {
     let cancelled = false;
     loadedRef.current = new Set();
+    imagesRef.current = [];
+    playbackRef.current = { frame: 1, direction: 1 };
     setReady(false);
     setFrame(1);
     const concurrency = 6;
     let cursor = 0;
 
     const markLoaded = (idx: number) => {
-      if (loadedRef.current.has(idx)) return;
+      if (cancelled || loadedRef.current.has(idx)) return;
       loadedRef.current.add(idx);
       if (
         startWhenBuffered &&
         !cancelled &&
-        loadedRef.current.size >= Math.min(8, totalFrameCount)
+        Array.from({ length: Math.min(8, totalFrameCount) }, (_, i) => i + 1).every(i => loadedRef.current.has(i))
       ) {
         setReady(true);
       }
@@ -91,13 +95,16 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
     const loadOne = (idx: number) =>
       new Promise<void>((resolve) => {
         const img = new Image();
-        img.onload = () => {
-          markLoaded(idx);
+        imagesRef.current[idx - 1] = img;
+        img.onload = async () => {
+          try {
+            await img.decode();
+            markLoaded(idx);
+          } catch { /* Keep the last valid frame if decoding fails. */ }
           resolve();
         };
         img.onerror = () => {
-          // Treat failed frame as loaded to avoid deadlock.
-          markLoaded(idx);
+          // Failed frames are never displayed.
           resolve();
         };
         img.src = frameUrls[idx - 1];
@@ -121,6 +128,7 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
 
     return () => {
       cancelled = true;
+      imagesRef.current = [];
     };
   }, [frameUrls, startWhenBuffered, totalFrameCount]);
 
@@ -129,8 +137,8 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
 
     let rafId = 0;
     let last = performance.now();
-    let current = 1;
-    let direction: PlaybackDirection = 1;
+    let current = playbackRef.current.frame;
+    let direction = playbackRef.current.direction;
 
     const tick = (now: number) => {
       if (now - last >= frameDuration) {
@@ -141,9 +149,10 @@ export const SequencePngPlayer: React.FC<SequencePngPlayerProps> = ({
           totalFrameCount,
           steps
         );
+        current = next.frame;
+        direction = next.direction;
         if (loadedRef.current.has(next.frame)) {
-          current = next.frame;
-          direction = next.direction;
+          playbackRef.current = { frame: current, direction };
           setFrame(current);
         }
         last += steps * frameDuration;

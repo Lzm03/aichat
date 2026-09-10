@@ -3,8 +3,9 @@ import express from "express";
 import multer from "multer";
 import { createRequire } from "module";
 import { pool } from "../db.ts";
-import { requireAuth, getAuthUser, ensurePlatformTables } from "../lib/platform-auth.ts";
+import { requireAuth, getAuthUser, ensurePlatformTables, ensureFeatureAvailable, recordFeatureUsage } from "../lib/platform-auth.ts";
 import { getAI, getVertexAccessToken, getVertexAIConfig, isVertexAIEnabled } from "../lib/gemini-server.ts";
+import { ensureDefaultTeacherExperience } from "../lib/default-teacher-experience.ts";
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -197,7 +198,13 @@ async function initializeQuizTables() {
     ADD COLUMN IF NOT EXISTS preferred_question_types_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     ADD COLUMN IF NOT EXISTS question_type_distribution_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ,
-    ADD COLUMN IF NOT EXISTS grading_completed_at TIMESTAMPTZ
+    ADD COLUMN IF NOT EXISTS grading_completed_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS template_key TEXT
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS quizzes_teacher_template_key_unique_idx
+    ON quizzes(teacher_id, template_key)
+    WHERE template_key IS NOT NULL
   `);
   await pool.query(`
     ALTER TABLE quiz_questions
@@ -1504,11 +1511,12 @@ router.get("/teachers/me/available-quiz-bots", requireAuth, async (req, res) => 
       return res.status(403).json({ error: "teacher account required" });
     }
 
+    await ensureDefaultTeacherExperience(user);
     const result = await pool.query(
-      `SELECT DISTINCT b.id, b.name, b.subject, b.avatar_url
-       FROM bot_student_shares s
-       JOIN bots b ON b.id = s.bot_id
-       WHERE s.teacher_id=$1
+      `SELECT b.id, b.name, b.subject, b.avatar_url,
+              EXISTS (SELECT 1 FROM bot_student_shares s WHERE s.bot_id=b.id AND s.teacher_id=$1) AS is_shared
+       FROM bots b
+       WHERE b.owner_id=$1
        ORDER BY b.name ASC`,
       [user.id]
     );
@@ -1519,6 +1527,7 @@ router.get("/teachers/me/available-quiz-bots", requireAuth, async (req, res) => 
         name: String(row.name || "未命名 Bot"),
         subject: String(row.subject || ""),
         avatarUrl: String(row.avatar_url || ""),
+        isShared: Boolean(row.is_shared),
       })),
     });
   } catch (error) {
@@ -1561,8 +1570,9 @@ router.post("/quizzes/recommend-question-types", requireAuth, async (req, res) =
     const targetGrade = String(req.body?.targetGrade || "").trim();
     const questionCount = Number(req.body?.questionCount || 0);
     if (!targetGrade) return res.status(400).json({ error: "請先選擇目標年級。" });
-    if (!Number.isFinite(questionCount) || questionCount < 1 || questionCount > 15) {
-      return res.status(400).json({ error: "請選擇有效的題目數量。" });
+    const maxQuestionCount = user.plan_name === "starter" ? 10 : 15;
+    if (!Number.isFinite(questionCount) || questionCount < 1 || questionCount > maxQuestionCount) {
+      return res.status(400).json({ error: `目前方案每份測驗最多可建立 ${maxQuestionCount} 題。` });
     }
 
     const recommendation = await recommendQuestionTypesWithGemini(targetGrade, questionCount);
@@ -1604,15 +1614,15 @@ router.post("/quizzes/generate", requireAuth, async (req, res) => {
     if (!botId) return res.status(400).json({ error: "請先選擇要發布測驗的 AI Bot。" });
     if (!sourceText) return res.status(400).json({ error: "請先輸入測驗文本。" });
     if (!targetGrade) return res.status(400).json({ error: "請先選擇目標年級。" });
-    if (!Number.isFinite(questionCount) || questionCount < 1 || questionCount > 15) {
-      return res.status(400).json({ error: "請選擇有效的題目數量。" });
+    const maxQuestionCount = user.plan_name === "starter" ? 10 : 15;
+    if (!Number.isFinite(questionCount) || questionCount < 1 || questionCount > maxQuestionCount) {
+      return res.status(400).json({ error: `目前方案每份測驗最多可建立 ${maxQuestionCount} 題。` });
     }
 
     const botResult = await pool.query(
-      `SELECT DISTINCT b.id, b.name, b.subject, b.avatar_url
-       FROM bot_student_shares s
-       JOIN bots b ON b.id = s.bot_id
-       WHERE s.teacher_id=$1 AND s.bot_id=$2
+      `SELECT b.id, b.name, b.subject, b.avatar_url
+       FROM bots b
+       WHERE b.owner_id=$1 AND b.id=$2
        LIMIT 1`,
       [user.id, botId]
     );
@@ -2291,6 +2301,14 @@ router.post("/quizzes/:id/publish", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "teacher account required" });
     }
     const quizId = String(req.params.id || "").trim();
+    const current = await pool.query(
+      `SELECT status FROM quizzes WHERE id=$1 AND teacher_id=$2 LIMIT 1`,
+      [quizId, user.id]
+    );
+    if (!current.rowCount) return res.status(404).json({ error: "Quiz not found" });
+    const firstPublish = String(current.rows[0].status) !== "published";
+    const shouldCountDemoPublish = firstPublish && user.plan_name === "starter";
+    if (shouldCountDemoPublish) await ensureFeatureAvailable(user.id, "quiz_publish", 1);
     const updated = await pool.query(
       `UPDATE quizzes
        SET status='published', published_at=COALESCE(published_at, NOW()), updated_at=NOW()
@@ -2311,6 +2329,9 @@ router.post("/quizzes/:id/publish", requireAuth, async (req, res) => {
     for (const row of studentShares.rows) {
       await getOrCreateAttempt(quizId, String(row.student_id), botId);
     }
+    if (shouldCountDemoPublish) {
+      await recordFeatureUsage(user.id, "quiz_publish", 1, { quizId, botId });
+    }
     return res.json({
       ok: true,
       quizId: String(updated.rows[0].id),
@@ -2318,9 +2339,9 @@ router.post("/quizzes/:id/publish", requireAuth, async (req, res) => {
       title: String(updated.rows[0].title || ""),
       status: String(updated.rows[0].status || "published"),
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("POST /quizzes/:id/publish Failed:", error);
-    return res.status(500).json({ error: "發佈測驗失敗，請稍後再試。" });
+    return res.status(error?.status || 500).json({ error: error?.message || "發佈測驗失敗，請稍後再試。" });
   }
 });
 

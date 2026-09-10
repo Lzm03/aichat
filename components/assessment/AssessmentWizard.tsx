@@ -99,7 +99,10 @@ export const AssessmentWizard: React.FC<AssessmentWizardProps> = ({ onBack, draf
               handleNext();
             }}
             onDraftImported={(payload) => {
-              setIsDraftMode(true);
+              // Importing a draft from the normal creation flow should continue
+              // into preview + publish. Opening a draft card directly still
+              // initializes isDraftMode from draftId and remains save-only.
+              setIsDraftMode(false);
               setGeneratedQuiz(payload.quiz);
               setGeneratedQuestions(payload.questions);
               handleNext();

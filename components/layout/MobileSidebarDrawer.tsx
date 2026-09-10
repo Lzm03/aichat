@@ -67,7 +67,7 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen
                     className={`w-full flex items-center gap-4 px-4 py-3 rounded-2xl transition-all ${
                       item.disabled
                         ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                        : activePage === item.id 
+                        : !requestAdminActive && activePage === item.id
                         ? 'bg-indigo-50 text-indigo-600 font-semibold' 
                         : 'text-slate-500 hover:bg-slate-50'
                     }`}

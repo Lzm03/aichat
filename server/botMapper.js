@@ -51,5 +51,7 @@ export function toClient(raw) {
     isVisible: raw.is_visible,
     createdAt: raw.created_at || raw.createdAt || "",
     updatedAt: raw.updated_at || raw.updatedAt || "",
+    isDefault: Boolean(raw.template_key),
+    chatMessageLimit: raw.chat_message_limit == null ? null : Number(raw.chat_message_limit),
   };
 }

@@ -18,6 +18,7 @@ import {
   ensureCharacterTopicTables,
   syncInheritedTopicKnowledge,
 } from "../lib/character-topics.ts";
+import { ensureDefaultTeacherExperience } from "../lib/default-teacher-experience.ts";
 
 const router = express.Router();
 type SequenceVideoEntry = { key: "idle" | "thinking" | "talking"; url: string };
@@ -433,6 +434,7 @@ router.get("/", requireAuth, async (req, res) => {
   try {
     await ensureQuizTables();
     const user = getAuthUser(req);
+    await ensureDefaultTeacherExperience(user);
     const result = await pool.query(
       `SELECT
         b.*,
@@ -531,6 +533,88 @@ router.get("/sharing/assignments", requireAuth, async (req, res) => {
     return res.json({ assignments: result.rows.map((row) => ({ botId: row.bot_id, studentId: row.student_id })) });
   } catch (err) {
     return res.status(500).json({ error: "Failed to load assignments" });
+  }
+});
+
+router.get("/:id/access", requireAuth, async (req, res) => {
+  try {
+    await ensurePlatformTables();
+    const user = getAuthUser(req);
+    const bot = await pool.query(
+      "SELECT id, is_visible FROM bots WHERE id=$1 AND owner_id=$2",
+      [String(req.params.id || ""), user?.id]
+    );
+    if (!bot.rowCount) return res.status(404).json({ error: "Bot not found" });
+    const groups = await pool.query(
+      "SELECT group_id FROM bot_group_shares WHERE bot_id=$1 AND teacher_id=$2 ORDER BY created_at ASC",
+      [req.params.id, user?.id]
+    );
+    return res.json({
+      mode: bot.rows[0].is_visible ? "link" : "group",
+      groupIds: groups.rows.map((row) => String(row.group_id)),
+    });
+  } catch (err) {
+    console.error("GET /:id/access Failed:", err);
+    return res.status(500).json({ error: "Failed to load bot access" });
+  }
+});
+
+router.put("/:id/access", requireAuth, async (req, res) => {
+  const mode = String(req.body?.mode || "");
+  const groupIds = Array.isArray(req.body?.groupIds)
+    ? Array.from(new Set(req.body.groupIds.map(String)))
+    : [];
+  if (!['link', 'group'].includes(mode)) {
+    return res.status(400).json({ error: "mode must be link or group" });
+  }
+  if (mode === 'group' && !groupIds.length) {
+    return res.status(400).json({ error: "select at least one class" });
+  }
+
+  try {
+    await ensurePlatformTables();
+    const user = getAuthUser(req);
+    if (!user || !["teacher", "admin"].includes(user.role)) {
+      return res.status(403).json({ error: "teacher account required" });
+    }
+    const bot = await pool.query("SELECT id FROM bots WHERE id=$1 AND owner_id=$2", [req.params.id, user.id]);
+    if (!bot.rowCount) return res.status(404).json({ error: "Bot not found" });
+
+    const allowedGroups = groupIds.length
+      ? await pool.query(
+          "SELECT id FROM student_groups WHERE teacher_id=$1 AND id = ANY($2::text[])",
+          [user.id, groupIds]
+        )
+      : { rows: [] as Array<{ id: string }> };
+    if (allowedGroups.rows.length !== groupIds.length) {
+      return res.status(400).json({ error: "one or more classes are invalid" });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("DELETE FROM bot_group_shares WHERE bot_id=$1 AND teacher_id=$2", [req.params.id, user.id]);
+      await client.query("DELETE FROM bot_student_shares WHERE bot_id=$1 AND teacher_id=$2", [req.params.id, user.id]);
+      await client.query("DELETE FROM bot_student_exclusions WHERE bot_id=$1 AND teacher_id=$2", [req.params.id, user.id]);
+      if (mode === 'group') {
+        await client.query(
+          `INSERT INTO bot_group_shares (bot_id, teacher_id, group_id)
+           SELECT $1, $2, UNNEST($3::text[])`,
+          [req.params.id, user.id, groupIds]
+        );
+      }
+      await client.query("UPDATE bots SET is_visible=$1, updated_at=NOW() WHERE id=$2 AND owner_id=$3", [mode === 'link', req.params.id, user.id]);
+      await client.query("COMMIT");
+      return res.json({ ok: true, mode, groupIds: mode === 'group' ? groupIds : [] });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error("PUT /:id/access Failed:", err);
+    return res.status(500).json({ error: "Failed to update bot access" });
   }
 });
 
@@ -1064,6 +1148,15 @@ router.get("/:id", async (req, res) => {
            WHERE bots.id=$1 AND (
             owner_id=$2 OR is_visible=true OR EXISTS (
               SELECT 1 FROM bot_student_shares s WHERE s.bot_id=bots.id AND s.student_id=$2
+            ) OR EXISTS (
+              SELECT 1
+              FROM bot_group_shares bg
+              JOIN student_group_members gm ON gm.group_id=bg.group_id
+              WHERE bg.bot_id=bots.id AND gm.student_id=$2
+                AND NOT EXISTS (
+                  SELECT 1 FROM bot_student_exclusions ex
+                  WHERE ex.bot_id=bots.id AND ex.student_id=$2
+                )
             )
           )`,
           [id, user.id]
@@ -1240,7 +1333,16 @@ router.put("/:id", requireAuth, async (req, res) => {
 router.delete("/:id", requireAuth, async (req, res) => {
   try {
     const user = getAuthUser(req);
-    await pool.query("DELETE FROM bots WHERE id=$1 AND owner_id=$2", [req.params.id, user?.id]);
+    const result = await pool.query(
+      "DELETE FROM bots WHERE id=$1 AND owner_id=$2 AND template_key IS NULL RETURNING id",
+      [req.params.id, user?.id]
+    );
+    if (!result.rowCount) {
+      const existing = await pool.query("SELECT template_key FROM bots WHERE id=$1 AND owner_id=$2", [req.params.id, user?.id]);
+      if (existing.rows[0]?.template_key) {
+        return res.status(403).json({ error: "預設孔子 Bot 不能刪除，你仍可建立及管理自己的 Bot。" });
+      }
+    }
     res.json({ success: true });
   } catch (err) {
     console.error("❌ DELETE /:id Failed:", err);
@@ -1294,29 +1396,69 @@ router.put("/admin/:id/owner", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "bot id and ownerId are required" });
     }
 
-    const ownerCheck = await pool.query("SELECT id, email FROM users WHERE id=$1", [ownerId]);
+    await ensurePlatformTables();
+    await ensureCharacterTopicTables();
+    const ownerCheck = await pool.query("SELECT id, email FROM users WHERE id=$1 AND status='active'", [ownerId]);
     if (!ownerCheck.rowCount) {
       return res.status(404).json({ error: "target owner not found" });
     }
 
-    const result = await pool.query(
-      `
-      UPDATE bots
-      SET owner_id=$1, owner_email=$2, updated_at=NOW()
-      WHERE id=$3
-      RETURNING *
-      `,
-      [ownerId, ownerCheck.rows[0].email, botId]
-    );
-
-    if (!result.rowCount) {
-      return res.status(404).json({ error: "bot not found" });
+    const source = await pool.query("SELECT owner_id FROM bots WHERE id=$1", [botId]);
+    if (!source.rowCount) return res.status(404).json({ error: "bot not found" });
+    if (source.rows[0].owner_id === ownerId) {
+      return res.status(400).json({ error: "target account already owns this bot" });
     }
 
-    return res.json({ ok: true, bot: toClient(result.rows[0]) });
+    const copiedBotId = crypto.randomUUID();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(
+        `INSERT INTO bots (
+           id, name, subject, subject_color, avatar_url, background, animation,
+           knowledge_base, security_prompt, video_idle, video_thinking, video_talking,
+           voice_id, interactions, accuracy, is_visible, owner_id, owner_email,
+           opening_message, template_key, chat_message_limit
+         )
+         SELECT
+           $1, name, subject, subject_color, avatar_url, background, animation,
+           knowledge_base, security_prompt, video_idle, video_thinking, video_talking,
+           voice_id, 0, accuracy, is_visible, $2, $3,
+           opening_message, NULL, chat_message_limit
+         FROM bots
+         WHERE id=$4
+         RETURNING *`,
+        [copiedBotId, ownerId, ownerCheck.rows[0].email, botId]
+      );
+      if (!result.rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "bot not found" });
+      }
+
+      await client.query(
+        `INSERT INTO character_topics (
+           id, character_id, name, description, system_prompt, knowledge_content,
+           sort_order, is_default, inherits_legacy_knowledge
+         )
+         SELECT
+           CONCAT('topic_', $1::text, '_', ROW_NUMBER() OVER (ORDER BY sort_order, created_at)),
+           $1, name, description, system_prompt, knowledge_content,
+           sort_order, is_default, inherits_legacy_knowledge
+         FROM character_topics
+         WHERE character_id=$2`,
+        [copiedBotId, botId]
+      );
+      await client.query("COMMIT");
+      return res.json({ ok: true, sourceBotId: botId, bot: toClient(result.rows[0]) });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   } catch (err) {
     console.error("❌ PUT /admin/:id/owner Failed:", err);
-    return res.status(500).json({ error: "Failed to update bot owner" });
+    return res.status(500).json({ error: "Failed to copy bot to target owner" });
   }
 });
 

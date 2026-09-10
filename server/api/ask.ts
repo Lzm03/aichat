@@ -1485,6 +1485,39 @@ async function resolveChatActor(req: Request, sharedBotId?: string, botId?: stri
   if (payload?.sub) {
     const user = await findUserById(payload.sub);
     if (user) {
+      const normalizedSharedBotId = String(sharedBotId || "").trim();
+      if (normalizedSharedBotId) {
+        await ensurePlatformTables();
+        const access = await pool.query(
+          `SELECT b.owner_id,
+                  (b.owner_id=$2 OR b.is_visible=TRUE OR EXISTS (
+                    SELECT 1 FROM bot_student_shares s
+                    WHERE s.bot_id=b.id AND s.student_id=$2
+                  ) OR EXISTS (
+                    SELECT 1
+                    FROM bot_group_shares bg
+                    JOIN student_group_members gm ON gm.group_id=bg.group_id
+                    WHERE bg.bot_id=b.id AND gm.student_id=$2
+                      AND NOT EXISTS (
+                        SELECT 1 FROM bot_student_exclusions ex
+                        WHERE ex.bot_id=b.id AND ex.student_id=$2
+                      )
+                  )) AS allowed
+           FROM bots b WHERE b.id=$1 LIMIT 1`,
+          [normalizedSharedBotId, user.id]
+        );
+        if (!access.rowCount) {
+          const error = new Error("shared bot not found");
+          (error as any).status = 404;
+          throw error;
+        }
+        if (!access.rows[0].allowed) {
+          const error = new Error("you do not have access to this bot");
+          (error as any).status = 403;
+          throw error;
+        }
+        return { user, shared: access.rows[0].owner_id !== user.id, integration: false as const };
+      }
       return { user, shared: false as const, integration: false as const };
     }
   }
@@ -1781,6 +1814,25 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     const authUser = actor.user;
     await assertUserCanSpend(authUser.id, 1);
     if (usageType === "chat_message") await ensureFeatureAvailable(authUser.id, "chat_messages", 1);
+
+    if (usageType === "chat_message") {
+      const botChatUsage = await pool.query(
+        `SELECT b.chat_message_limit, COUNT(m.id)::int AS used
+         FROM bots b
+         LEFT JOIN bot_chat_messages m
+           ON m.bot_id=b.id AND m.user_id=$2 AND m.role='user'
+         WHERE b.id=$1
+         GROUP BY b.id, b.chat_message_limit`,
+        [String(botId || "default"), authUser.id]
+      );
+      const botLimit = Number(botChatUsage.rows[0]?.chat_message_limit || 0);
+      const botUsed = Number(botChatUsage.rows[0]?.used || 0);
+      if (botLimit > 0 && botUsed >= botLimit) {
+        const error = new Error(`預設孔子 Bot 的體驗對話已達 ${botLimit} 次上限，你仍可使用測驗功能或建立自己的 Bot。`);
+        (error as any).status = 402;
+        throw error;
+      }
+    }
 
     const normalized = String(userPrompt || "").trim();
     const selectedModelProvider = normalizeChatModelProvider(modelProvider);

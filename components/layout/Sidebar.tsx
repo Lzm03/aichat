@@ -69,7 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, for
                 key={item.id}
                 icon={item.icon}
                 label={uiText(item.label)}
-                active={activePage === item.id}
+                active={!requestAdminActive && activePage === item.id}
                 disabled={item.disabled}
                 onClick={() => setActivePage(item.id)}
               />

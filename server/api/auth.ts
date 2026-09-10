@@ -26,6 +26,8 @@ import {
   findUserById,
   resetFeatureUsageForUser,
 } from "../lib/platform-auth.ts";
+import { ensureQuizTables } from "./quizzes.ts";
+import { ensureDefaultTeacherExperience } from "../lib/default-teacher-experience.ts";
 
 const router = express.Router();
 
@@ -67,6 +69,8 @@ router.post("/login", async (req, res) => {
     await maybeAssignLegacyDataByEmail(email);
 
     const freshUser = await findUserById(user.id);
+    await ensureQuizTables();
+    await ensureDefaultTeacherExperience(freshUser || user);
     return res.json(issueAuthResponse(freshUser || user));
   } catch (error) {
     console.error("POST /api/auth/login failed:", error);
@@ -91,6 +95,8 @@ router.get("/me", async (req, res) => {
       return res.status(404).json({ error: "user not found" });
     }
 
+    await ensureQuizTables();
+    await ensureDefaultTeacherExperience(user);
     return res.json({ user: sanitizeUser(user), features: await getUserFeatureSummary(user.id, user) });
   } catch (error) {
     console.error("GET /api/auth/me failed:", error);
@@ -331,6 +337,8 @@ router.post("/admin/accounts", async (req, res) => {
       ]
     );
 
+    await ensureQuizTables();
+    await ensureDefaultTeacherExperience(result.rows[0]);
     return res.status(201).json({ user: sanitizeUser(result.rows[0]) });
   } catch (error) {
     console.error("POST /api/auth/admin/accounts failed:", error);

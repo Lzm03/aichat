@@ -299,6 +299,14 @@ const App: React.FC = () => {
   const shellThemeClasses = getAppShellThemeClasses(userPreferences);
   const themeMode = userPreferences.appearance.themeMode;
 
+  const navigateToMainPage = (page: Page) => {
+    setActivePage(page);
+    if (isAvatarRequestsAdminRoute) {
+      window.history.pushState({}, '', '/');
+      setIsAvatarRequestsAdminRoute(false);
+    }
+  };
+
   useEffect(() => {
     syncDarkClass(userPreferences);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -359,12 +367,12 @@ const App: React.FC = () => {
         <HelpCenterPage variant="teacher" />
       ) : (
         <>
-          <Sidebar activePage={activePage} setActivePage={setActivePage} forceHidden={isPortraitLayout} showRequestAdmin={canManageAvatarRequests} requestAdminActive={isAvatarRequestsAdminRoute} />
+          <Sidebar activePage={activePage} setActivePage={navigateToMainPage} forceHidden={isPortraitLayout} showRequestAdmin={canManageAvatarRequests} requestAdminActive={isAvatarRequestsAdminRoute} />
           <MobileSidebarDrawer 
             isOpen={isMobileDrawerOpen}
             setIsOpen={setIsMobileDrawerOpen}
             activePage={activePage}
-            setActivePage={setActivePage}
+            setActivePage={navigateToMainPage}
             forceVisible={isPortraitLayout}
             showRequestAdmin={canManageAvatarRequests}
             requestAdminActive={isAvatarRequestsAdminRoute}

@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Icons } from '../../icons';
 import { usePlatformDialog } from '../../../hooks/usePlatformDialog';
 import { PlatformDialog } from '../../system/PlatformDialog';
+import { API_BASE } from '../../../utils/api';
 
 // -----------------------------
 // Section Wrapper
@@ -25,17 +26,11 @@ const Section: React.FC<{ title: string; children: React.ReactNode; subtitle?: s
 // -----------------------------
 type SharingMode = 'group' | 'link';
 
-type MockClass = {
+type ShareClass = {
   id: string;
   name: string;
   studentCount: number;
 };
-
-const mockClasses: MockClass[] = [
-  { id: 'class-3a', name: '3A班', studentCount: 2 },
-  { id: 'class-5c', name: '5C班', studentCount: 2 },
-  { id: 'class-6b', name: '6B班', studentCount: 3 },
-];
 
 const PermissionCard: React.FC<{
   icon: React.ElementType;
@@ -96,7 +91,7 @@ const FilterCard: React.FC<{
 export const CreationStep4: React.FC<{
   onSecurityChange?: (securityPrompt: string) => void;
   botId?: string | null;
-  initialConfig?: { sharingMode?: string; filterLevel?: string; customWords?: string };
+  initialConfig?: { sharingMode?: string; filterLevel?: string; customWords?: string; classIds?: string[] };
 }> = ({ onSecurityChange, botId, initialConfig }) => {
   const [sharingMode, setSharingMode] = useState<SharingMode>((initialConfig?.sharingMode === "group" ? "group" : "link"));
   const [filterLevel, setFilterLevel] = useState<FilterLevel>(
@@ -106,9 +101,63 @@ export const CreationStep4: React.FC<{
   );
   const [customWords, setCustomWords] = useState(initialConfig?.customWords || '');
   const [isCopied, setIsCopied] = useState(false);
-  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
-  const [confirmedClassIds, setConfirmedClassIds] = useState<string[]>([]);
+  const [classes, setClasses] = useState<ShareClass[]>([]);
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>(initialConfig?.classIds || []);
+  const [confirmedClassIds, setConfirmedClassIds] = useState<string[]>(initialConfig?.classIds || []);
+  const [isLoadingClasses, setIsLoadingClasses] = useState(true);
+  const [isSavingAccess, setIsSavingAccess] = useState(false);
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadAccess = async () => {
+      setIsLoadingClasses(true);
+      try {
+        const classResponse = await fetch(`${API_BASE}/api/students`, { cache: 'no-store', signal: controller.signal });
+        const classData = await classResponse.json().catch(() => ({}));
+        if (!classResponse.ok) throw new Error(classData?.error || '無法載入班級');
+        const nextClasses = (Array.isArray(classData.groups) ? classData.groups : []).map((group: any) => ({
+          id: String(group.id),
+          name: String(group.name || ''),
+          studentCount: Array.isArray(group.studentIds) ? group.studentIds.length : 0,
+        }));
+        setClasses(nextClasses);
+
+        if (botId) {
+          const accessResponse = await fetch(`${API_BASE}/api/bots/${encodeURIComponent(botId)}/access`, {
+            cache: 'no-store',
+            signal: controller.signal,
+          });
+          const accessData = await accessResponse.json().catch(() => ({}));
+          if (!accessResponse.ok) throw new Error(accessData?.error || '無法載入分享設定');
+          const nextMode: SharingMode = accessData.mode === 'group' ? 'group' : 'link';
+          const nextGroupIds = Array.isArray(accessData.groupIds) ? accessData.groupIds.map(String) : [];
+          setSharingMode(nextMode);
+          setSelectedClassIds(nextGroupIds);
+          setConfirmedClassIds(nextGroupIds);
+        }
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') {
+          showAlert({ title: uiText('載入失敗'), message: (error as Error).message, tone: 'danger' });
+        }
+      } finally {
+        if (!controller.signal.aborted) setIsLoadingClasses(false);
+      }
+    };
+    void loadAccess();
+    return () => controller.abort();
+  }, [botId, showAlert]);
+
+  const saveAccess = async (mode: SharingMode, groupIds: string[]) => {
+    if (!botId) return;
+    const response = await fetch(`${API_BASE}/api/bots/${encodeURIComponent(botId)}/access`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode, groupIds }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error || '無法儲存分享設定');
+  };
 
   const shareableLink =
     botId && typeof window !== "undefined"
@@ -185,7 +234,7 @@ ${customWords
     if (onSecurityChange) onSecurityChange(buildSecurityPrompt());
   }, [sharingMode, filterLevel, customWords, confirmedClassIds]);
 
-  const confirmClassSelection = () => {
+  const confirmClassSelection = async () => {
     if (selectedClassIds.length === 0) {
       showAlert({
         title: uiText("尚未選擇班級"),
@@ -194,7 +243,30 @@ ${customWords
       });
       return;
     }
-    setConfirmedClassIds(selectedClassIds);
+    setIsSavingAccess(true);
+    try {
+      await saveAccess('group', selectedClassIds);
+      setConfirmedClassIds(selectedClassIds);
+    } catch (error) {
+      showAlert({ title: uiText('更新失敗'), message: (error as Error).message, tone: 'danger' });
+    } finally {
+      setIsSavingAccess(false);
+    }
+  };
+
+  const selectLinkMode = async () => {
+    const previousMode = sharingMode;
+    setSharingMode('link');
+    setIsSavingAccess(true);
+    try {
+      await saveAccess('link', []);
+      setConfirmedClassIds([]);
+    } catch (error) {
+      setSharingMode(previousMode);
+      showAlert({ title: uiText('更新失敗'), message: (error as Error).message, tone: 'danger' });
+    } finally {
+      setIsSavingAccess(false);
+    }
   };
 
   return (
@@ -219,7 +291,7 @@ ${customWords
             title={uiText("任何擁有連結的人")}
             description="組織內使用者可憑連結存取"
             isSelected={sharingMode === 'link'}
-            onClick={() => setSharingMode('link')}
+            onClick={() => void selectLinkMode()}
           />
         </div>
 
@@ -232,12 +304,12 @@ ${customWords
             <div className="flex items-center justify-between">
               <div className="text-sm font-black text-slate-700">{uiText("選擇班級")}</div>
                               <span className="text-xs font-bold text-indigo-600">
-                        {uiTemplate("已選 {0} / {1} 班", selectedClassIds.length, mockClasses.length)}
+                        {uiTemplate("已選 {0} / {1} 班", selectedClassIds.length, classes.length)}
                       </span>
             </div>
 
             <div className="mt-3 space-y-2">
-              {mockClasses.map((classItem) => {
+              {classes.map((classItem) => {
                 const selected = selectedClassIds.includes(classItem.id);
                 return (
                   <button
@@ -270,13 +342,24 @@ ${customWords
                   </button>
                 );
               })}
+              {!isLoadingClasses && classes.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-400">
+                  {uiText('暫時未有班級，請先到學生管理建立班級。')}
+                </p>
+              ) : null}
+              {isLoadingClasses ? (
+                <p className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-400">
+                  {uiText('正在載入班級…')}
+                </p>
+              ) : null}
             </div>
 
               <div className="mt-4 flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={confirmClassSelection}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-700"
+                  disabled={isSavingAccess || isLoadingClasses}
+                  onClick={() => void confirmClassSelection()}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
                   <Icons.success className="h-4 w-4" />
                   {uiText("確認班級")}

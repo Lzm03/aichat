@@ -11,6 +11,8 @@ export interface AiBot {
   createdAt?: string;
   updatedAt?: string;
   isVisible: boolean;
+  isDefault?: boolean;
+  chatMessageLimit?: number | null;
   openingMessage?: string;
   /** 年級帶（P1 / P2-P3 / P4-P6 / S1-S3 / S4-S6）；空字串 = 未設定 */
   grade?: string;

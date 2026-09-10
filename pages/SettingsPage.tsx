@@ -458,7 +458,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
     [managedBots, selectedManagedBotId]
   );
 
-  async function transferBotOwner() {
+  async function copyBotToOwner() {
     const session = readAuthSession();
     if (!session?.token) {
       setError("登入狀態已失效，請重新登入");
@@ -482,7 +482,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "Bot 歸屬轉移失敗");
-      setMessage("Bot 歸屬已更新");
+      setMessage("Bot 已複製至目標帳戶，原帳戶仍保留此 Bot");
       await loadManagedBots();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Bot 歸屬轉移失敗");
@@ -999,11 +999,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
               )}
 
               <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-                <div className="flex items-center justify-between gap-4"><div><h3 className="text-base font-black text-slate-950">{uiText("Bot 歸屬整理")}</h3><p className="mt-1 text-sm text-slate-500">{uiText("把現有 Bot 轉移至正確帳戶。")}</p></div><button type="button" onClick={() => void loadManagedBots()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700"><RefreshCw className={`h-3.5 w-3.5 ${loadingManagedBots ? "animate-spin" : ""}`} />{uiText("刷新 Bot")}</button></div>
+                <div className="flex items-center justify-between gap-4"><div><h3 className="text-base font-black text-slate-950">{uiText("Bot 帳戶複製")}</h3><p className="mt-1 text-sm text-slate-500">{uiText("把現有 Bot 複製至其他帳戶，原帳戶仍會保留。")}</p></div><button type="button" onClick={() => void loadManagedBots()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700"><RefreshCw className={`h-3.5 w-3.5 ${loadingManagedBots ? "animate-spin" : ""}`} />{uiText("刷新 Bot")}</button></div>
                 <div className="mt-5 grid gap-3 xl:grid-cols-[1fr_1fr_auto]">
                   <select value={selectedManagedBotId} onChange={(event) => { setSelectedManagedBotId(event.target.value); setTargetOwnerId(""); }} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm">{managedBots.map((bot) => <option key={bot.id} value={bot.id}>{bot.name || uiText("未命名 Bot")} ({bot.ownerEmail || uiText("未分配帳戶")})</option>)}</select>
                   <select value={targetOwnerId} onChange={(event) => setTargetOwnerId(event.target.value)} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm"><option value="">{uiText("選擇目標帳戶")}</option>{accounts.map((account) => <option key={account.user.id} value={account.user.id}>{account.user.fullName} ({account.user.email})</option>)}</select>
-                  <button type="button" onClick={() => void transferBotOwner()} disabled={!selectedManagedBotId || !targetOwnerId || transferringBotId === selectedManagedBotId} className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white hover:bg-indigo-700 disabled:bg-indigo-300">{transferringBotId === selectedManagedBotId ? uiText("轉移中...") : uiText("轉移歸屬")}</button>
+                  <button type="button" onClick={() => void copyBotToOwner()} disabled={!selectedManagedBotId || !targetOwnerId || targetOwnerId === selectedManagedBot?.ownerId || transferringBotId === selectedManagedBotId} className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white hover:bg-indigo-700 disabled:bg-indigo-300">{transferringBotId === selectedManagedBotId ? uiText("複製中...") : uiText("複製給帳戶")}</button>
                 </div>
                 {selectedManagedBot && <div className="mt-3 text-xs text-slate-500">{uiText("目前歸屬：")}{selectedManagedBot.ownerName || uiText("未知")} {selectedManagedBot.ownerEmail ? `(${selectedManagedBot.ownerEmail})` : ""}</div>}
               </section>
