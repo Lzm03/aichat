@@ -1210,9 +1210,9 @@ router.post("/", requireAuth, async (req, res) => {
         id, name, subject, subject_color, avatar_url,
         background, animation, knowledge_base, security_prompt,
         video_idle, video_thinking, video_talking, voice_id,
-        opening_message, interactions, accuracy, is_visible, owner_id, owner_email
+        opening_message, interactions, accuracy, is_visible, owner_id, owner_email, grade
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
       RETURNING *;
     `;
 
@@ -1236,6 +1236,7 @@ router.post("/", requireAuth, async (req, res) => {
       bot.is_visible ?? true,
       user?.id,
       user?.email || null,
+      bot.grade || null,
     ];
 
     const client = await pool.connect();
@@ -1275,9 +1276,9 @@ router.put("/:id", requireAuth, async (req, res) => {
         name=$1, subject=$2, subject_color=$3, avatar_url=$4,
         background=$5, animation=$6, knowledge_base=$7, security_prompt=$8,
         video_idle=$9, video_thinking=$10, video_talking=$11, voice_id=$12,
-        opening_message=$13, interactions=$14, accuracy=$15, is_visible=$16,
+        opening_message=$13, interactions=$14, accuracy=$15, is_visible=$16, grade=$17,
         updated_at=NOW()
-      WHERE id=$17 AND owner_id=$18
+      WHERE id=$18 AND owner_id=$19
       RETURNING *;
     `;
 
@@ -1298,6 +1299,7 @@ router.put("/:id", requireAuth, async (req, res) => {
       bot.interactions ?? 0,
       bot.accuracy ?? 0,
       bot.is_visible ?? true,
+      bot.grade || null,
       id,
       user?.id,
     ];

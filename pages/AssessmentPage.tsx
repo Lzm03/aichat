@@ -1,277 +1,381 @@
 import { uiText } from '../utils/uiI18n';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Icons } from '../components/icons';
-import { Edit3, FileText, Users, CheckCircle2, Clock, PenTool, AlertCircle, ArrowRight, ShieldAlert, Trash2 } from 'lucide-react';
+import { ArrowRight, CopyPlus, PenTool } from 'lucide-react';
 import { AssessmentWizard } from '../components/assessment/AssessmentWizard';
 import { AssessmentLibrary } from '../components/assessment/AssessmentLibrary';
 import { GradingWorkspaceHome } from '../components/assessment/GradingWorkspaceHome';
-import { AiAlertPlayground } from '../components/assessment/AiAlertPlayground';
+import { AssessmentQualityCard } from '../components/assessment/AssessmentQualityCard';
+import { AnomalyAlertsOverview } from '../components/assessment/AnomalyAlertsOverview';
+import { MyQuizzesView } from '../components/assessment/MyQuizzesView';
+import { PublishedQuizDetailDrawer, type PublishedQuizSummary } from '../components/assessment/PublishedQuizDetailDrawer';
 import { API_BASE } from '../utils/api';
 
-type QuestionBankSummary = {
-  id: string;
-  title: string;
-  questionCount: number;
-  createdAt?: string;
-  updatedAt?: string;
-};
+type TopTab = 'overview' | 'quizzes' | 'library' | 'grading' | 'quality';
+type QualitySubTab = 'performance' | 'alerts';
 
 type AssessmentPageProps = {
   onNavigateToWorkshop?: () => void;
   initialView?: 'dashboard' | 'wizard';
+  // Deep-link：由學習報告跳入，自動開指定測驗嘅 Drawer
+  initialQuizId?: string | null;
+  initialDrawerTab?: 'results' | 'quality';
+  onQuizDeepLinkConsumed?: () => void;
 };
 
-export const AssessmentPage: React.FC<AssessmentPageProps> = ({ onNavigateToWorkshop, initialView = 'dashboard' }) => {
-  const [view, setView] = useState<'dashboard' | 'wizard' | 'library' | 'grading' | 'alerts'>(initialView);
-  const [drafts, setDrafts] = useState<Array<{ id: string; title: string; date: string; questionCount: number }>>([]);
-  const [draftsLoading, setDraftsLoading] = useState(false);
+const TOP_TABS: { key: TopTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { key: 'overview', label: '總覽', icon: Icons.dashboard },
+  { key: 'quizzes', label: '我的測驗', icon: Icons.clipboardList },
+  { key: 'library', label: '題庫', icon: Icons.task },
+  { key: 'grading', label: '批改', icon: Icons.tasks },
+  { key: 'quality', label: '質量分析', icon: Icons.report },
+];
+
+const QUICK_LINKS: {
+  key: string;
+  label: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  chipClass: string;
+  iconClass: string;
+  accent?: boolean;
+  onClick: (handlers: {
+    openWizard: () => void;
+    goQuizzes: () => void;
+    goLibrary: () => void;
+    goGrading: () => void;
+    goQuality: () => void;
+    goWorkshop: () => void;
+  }) => void;
+}[] = [
+  {
+    key: 'create',
+    label: '新建測驗',
+    description: '建立 AI 評測並自動批改',
+    icon: CopyPlus,
+    accent: true,
+    chipClass: 'bg-white/20',
+    iconClass: 'text-white',
+    onClick: (h) => h.openWizard(),
+  },
+  {
+    key: 'quizzes',
+    label: '我的測驗',
+    description: '管理草稿與已發佈的測驗',
+    icon: Icons.clipboardList,
+    chipClass: 'bg-emerald-50 text-emerald-600',
+    iconClass: 'text-emerald-600',
+    onClick: (h) => h.goQuizzes(),
+  },
+  {
+    key: 'library',
+    label: '題庫',
+    description: '查看並整理你的歷史題庫',
+    icon: Icons.task,
+    chipClass: 'bg-sky-50 text-sky-600',
+    iconClass: 'text-sky-600',
+    onClick: (h) => h.goLibrary(),
+  },
+  {
+    key: 'grading',
+    label: '批改',
+    description: '確認 AI 評分與發布成績',
+    icon: PenTool,
+    chipClass: 'bg-rose-50 text-rose-600',
+    iconClass: 'text-rose-600',
+    onClick: (h) => h.goGrading(),
+  },
+  {
+    key: 'quality',
+    label: '質量分析',
+    description: '檢視測驗質量與 AI 異常警示',
+    icon: Icons.report,
+    chipClass: 'bg-violet-50 text-violet-600',
+    iconClass: 'text-violet-600',
+    onClick: (h) => h.goQuality(),
+  },
+  {
+    key: 'workshop',
+    label: 'AI 工作坊',
+    description: '管理 AI 夥伴角色',
+    icon: Icons.bot,
+    chipClass: 'bg-amber-50 text-amber-600',
+    iconClass: 'text-amber-600',
+    onClick: (h) => h.goWorkshop(),
+  },
+];
+
+const QUALITY_SUB_TABS: { key: QualitySubTab; label: string }[] = [
+  { key: 'performance', label: '題目表現' },
+  { key: 'alerts', label: 'AI 異常警示' },
+];
+
+/** grading-summary 物件 → Drawer 所需 shape（缺漏欄位補 fallback） */
+const toPublishedQuizSummary = (summary: any): PublishedQuizSummary => ({
+  id: String(summary.id),
+  title: String(summary.title || '未命名測驗'),
+  questionCount: Number(summary.questionCount || 0),
+  botId: String(summary.botId || ''),
+  botName: String(summary.botName || '--'),
+  botSubject: String(summary.subject || ''),
+  publishedAt: summary.publishedAt || summary.date,
+  gradingCompletedAt: summary.gradingCompletedAt,
+  totalStudents: Number(summary.totalStudents || 0),
+  submitted: Number(summary.submitted || 0),
+  completed: Number(summary.completed || 0),
+  pendingConfirm: Number(summary.pendingConfirm || 0),
+  pendingGrading: Number(summary.pendingGrading || 0),
+  averageScore: Number(summary.averageScore || 0),
+  progress: Number(summary.totalStudents) > 0 ? Number(summary.submitted || 0) / Number(summary.totalStudents) : 0,
+});
+
+export const AssessmentPage: React.FC<AssessmentPageProps> = ({
+  onNavigateToWorkshop,
+  initialView = 'dashboard',
+  initialQuizId = null,
+  initialDrawerTab,
+  onQuizDeepLinkConsumed,
+}) => {
+  const [topTab, setTopTab] = useState<TopTab>(initialQuizId ? 'quizzes' : 'overview');
+  const [wizardOpen, setWizardOpen] = useState(initialView === 'wizard');
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
-  const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
-  const [questionBanks, setQuestionBanks] = useState<QuestionBankSummary[]>([]);
-  const [questionBanksLoading, setQuestionBanksLoading] = useState(false);
+  const [qualitySubTab, setQualitySubTab] = useState<QualitySubTab>('performance');
+  const [quizzesSubTab, setQuizzesSubTab] = useState<'drafts' | 'published'>('published');
+  // 質量分析入口開嘅已發佈測驗 Drawer（同 MyQuizzesView 嘅 Drawer 唔會同時開）
+  const [qualityDrawerQuiz, setQualityDrawerQuiz] = useState<PublishedQuizSummary | null>(null);
+
+  // 總覽 KPI 數據
+  const [draftCount, setDraftCount] = useState(0);
+  const [publishedCount, setPublishedCount] = useState(0);
+  const [pendingResponses, setPendingResponses] = useState(0);
+  const [bankQuestionCount, setBankQuestionCount] = useState(0);
 
   useEffect(() => {
-    if (view !== 'dashboard') return;
-    setDraftsLoading(true);
+    if (topTab !== 'overview') return;
+
     fetch(`${API_BASE}/api/quizzes/drafts`)
       .then((res) => res.json())
-      .then((data) => {
-        const items = Array.isArray(data?.drafts) ? data.drafts : [];
-        setDrafts(items.map((item: any) => ({
-          id: String(item.id),
-          title: String(item.title || '未命名測驗'),
-          date: item.updatedAt ? new Date(item.updatedAt).toISOString().slice(0, 10) : '',
-          questionCount: Number(item.questionCount || 0),
-        })));
-      })
-      .catch(() => setDrafts([]))
-      .finally(() => setDraftsLoading(false));
-  }, [view]);
+      .then((data) => setDraftCount(Array.isArray(data?.drafts) ? data.drafts.length : 0))
+      .catch(() => setDraftCount(0));
 
-  useEffect(() => {
-    if (view !== 'dashboard') return;
-    setQuestionBanksLoading(true);
+    fetch(`${API_BASE}/api/quizzes/published`)
+      .then((res) => res.json())
+      .then((data) => setPublishedCount(Array.isArray(data?.quizzes) ? data.quizzes.length : 0))
+      .catch(() => setPublishedCount(0));
+
+    fetch(`${API_BASE}/api/teachers/me/grading-summary`)
+      .then((res) => res.json())
+      .then((data) => {
+        const quizzes = Array.isArray(data?.quizzes) ? data.quizzes : [];
+        setPendingResponses(quizzes.reduce((sum: number, quiz: any) => sum + Number(quiz.pendingGrading || 0) + Number(quiz.pendingConfirm || 0), 0));
+      })
+      .catch(() => setPendingResponses(0));
+
     fetch(`${API_BASE}/api/quizzes/question-banks`)
       .then((res) => res.json())
       .then((data) => {
-        const items = Array.isArray(data?.banks) ? data.banks : [];
-        setQuestionBanks(items.map((item: any) => ({
-          id: String(item.id || ''),
-          title: String(item.title || '未命名題庫'),
-          questionCount: Number(item.questionCount || 0),
-          createdAt: item.createdAt ? String(item.createdAt) : '',
-          updatedAt: item.updatedAt ? String(item.updatedAt) : '',
-        })));
+        const banks = Array.isArray(data?.banks) ? data.banks : [];
+        setBankQuestionCount(banks.reduce((sum: number, bank: any) => sum + Number(bank.questionCount || 0), 0));
       })
-      .catch(() => setQuestionBanks([]))
-      .finally(() => setQuestionBanksLoading(false));
-  }, [view]);
+      .catch(() => setBankQuestionCount(0));
+  }, [topTab]);
 
-  const visibleQuestionBanks = useMemo(() => questionBanks.slice(0, 2), [questionBanks]);
-
-  const handleDeleteDraft = async (draftId: string) => {
-    setDeletingDraftId(draftId);
-    try {
-      const response = await fetch(`${API_BASE}/api/quizzes/${draftId}`, { method: 'DELETE' });
-      if (!response.ok) {
-        throw new Error('刪除草稿失敗');
-      }
-      setDrafts((prev) => prev.filter((draft) => draft.id !== draftId));
-      if (selectedDraftId === draftId) {
-        setSelectedDraftId(null);
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setDeletingDraftId(null);
-    }
+  const openWizard = () => {
+    setSelectedDraftId(null);
+    setWizardOpen(true);
   };
 
-  if (view === 'wizard') {
-    return <AssessmentWizard onBack={() => { setSelectedDraftId(null); setView('dashboard'); }} draftId={selectedDraftId} />;
-  }
+  const editDraft = (draftId: string) => {
+    setSelectedDraftId(draftId);
+    setWizardOpen(true);
+  };
 
-  if (view === 'library') {
-    return <AssessmentLibrary onBack={() => setView('dashboard')} />;
-  }
-
-  if (view === 'grading') {
-    return <GradingWorkspaceHome onBack={() => setView('dashboard')} onGoToWorkshop={onNavigateToWorkshop} />;
-  }
-
-  if (view === 'alerts') {
+  if (wizardOpen) {
     return (
-      <div className="h-full flex flex-col space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <button onClick={() => setView('dashboard')} className="flex items-center text-sm font-medium text-slate-600 hover:text-indigo-600 mb-2 transition-colors">
-              <Icons.back className="w-4 h-4 mr-2" />{uiText("返回智能評測")}</button>
-            <h1 className="text-2xl font-bold text-slate-800">{uiText("多維度 AI 異常警示展示")}</h1>
-          </div>
-        </div>
-        <AiAlertPlayground />
-      </div>
+      <AssessmentWizard
+        onBack={() => {
+          setWizardOpen(false);
+          setSelectedDraftId(null);
+        }}
+        draftId={selectedDraftId}
+      />
     );
   }
+
+  const kpiCards = [
+    {
+      key: 'published',
+      label: '已發佈測驗',
+      value: publishedCount,
+      valueClass: 'text-indigo-600',
+      onClick: () => {
+        setQuizzesSubTab('published');
+        setTopTab('quizzes');
+      },
+    },
+    {
+      key: 'pending',
+      label: '待批改作答',
+      value: pendingResponses,
+      valueClass: 'text-rose-500',
+      onClick: () => setTopTab('grading'),
+    },
+    {
+      key: 'drafts',
+      label: '草稿',
+      value: draftCount,
+      valueClass: 'text-amber-500',
+      onClick: () => {
+        setQuizzesSubTab('drafts');
+        setTopTab('quizzes');
+      },
+    },
+    {
+      key: 'bank',
+      label: '題庫題目',
+      value: bankQuestionCount,
+      valueClass: 'text-emerald-600',
+      onClick: () => setTopTab('library'),
+    },
+  ];
 
   return (
     <div className="h-full flex flex-col space-y-6">
       {/* Header */}
-      <div className="mb-2 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 mb-2">{uiText("智能評測")}</h1>
-          <p className="text-slate-500">{uiText("運用 AI 技術快速生成測驗，並自動批改與分析學生表現。")}</p>
-        </div>
-        <button 
-          onClick={() => setView('alerts')}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
-        >
-          <ShieldAlert className="w-4 h-4" />{uiText("AI 警示展示")}</button>
+      <div>
+        <h1 className="text-2xl font-bold text-slate-800 mb-2">{uiText("智能評測")}</h1>
+        <p className="text-slate-500">{uiText("運用 AI 技術快速生成測驗，並自動批改與分析學生表現。")}</p>
       </div>
 
-      {/* Bento Grid 2x2 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* Top Left: AI 出題精靈 */}
-        <motion.div 
-          onClick={() => setView('wizard')}
-          whileHover={{ y: -4, boxShadow: '0 20px 25px -5px rgba(79, 70, 229, 0.1), 0 10px 10px -5px rgba(79, 70, 229, 0.04)' }}
-          className="bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-[24px] p-8 text-white shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] flex flex-col justify-between relative overflow-hidden group cursor-pointer min-h-[280px]"
-        >
-          <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
-          
-          <div className="relative z-10">
-            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-6 backdrop-blur-sm">
-              <Icons.sparkles className="w-6 h-6 text-white" />
-            </div>
-            <h2 className="text-2xl font-bold mb-2">{uiText("AI 智能出題")}</h2>
-            <p className="text-indigo-100 text-sm leading-relaxed mb-8">{uiText("上傳教材或輸入主題，AI 將自動為您生成選擇題、填充題與問答題，大幅節省備課時間。")}</p>
-          </div>
-          
-          <button className="relative z-10 w-full py-4 bg-white text-indigo-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-50 transition-colors shadow-sm">
-            <Icons.add className="w-5 h-5" />{uiText("創建新測驗")}</button>
-        </motion.div>
-
-        {/* Top Right: 智能批改工作台 */}
-        <motion.div 
-          onClick={() => setView('grading')}
-          whileHover={{ y: -4, boxShadow: '0 20px 25px -5px rgba(244, 63, 94, 0.1), 0 10px 10px -5px rgba(244, 63, 94, 0.04)' }}
-          className="bg-gradient-to-br from-rose-500 to-rose-700 rounded-[24px] p-8 text-white shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] flex flex-col justify-between relative overflow-hidden group cursor-pointer min-h-[280px]"
-        >
-          <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
-          
-          <div className="relative z-10">
-            <div className="flex items-center justify-between mb-6">
-              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                <PenTool className="w-6 h-6 text-white" />
-              </div>
-              <div className="bg-amber-400 text-amber-900 font-bold px-3 py-1.5 rounded-full text-sm flex items-center gap-1.5 shadow-sm">
-                <AlertCircle className="w-4 h-4" />{uiText("12 份待批改")}</div>
-            </div>
-            <h2 className="text-2xl font-bold mb-2">{uiText("智能批改工作台")}</h2>
-            <p className="text-rose-100 text-sm leading-relaxed mb-8">{uiText("AI 輔助批改主觀題與作文，自動生成評語與得分建議，大幅提升批改效率。")}</p>
-          </div>
-          
-          <button className="relative z-10 w-full py-4 bg-white text-rose-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-rose-50 transition-colors shadow-sm">{uiText("進入批改")}<ArrowRight className="w-5 h-5" />
+      {/* Top-level tabs */}
+      <div className="flex gap-7 overflow-x-auto border-b border-slate-200 text-sm font-bold text-slate-400">
+        {TOP_TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setTopTab(tab.key)}
+            className={`flex shrink-0 items-center gap-2 px-1 pb-4 transition ${topTab === tab.key ? 'border-b-2 border-indigo-600 text-indigo-600' : 'hover:text-slate-700'}`}
+          >
+            <tab.icon className="w-4 h-4" />
+            {uiText(tab.label)}
           </button>
-        </motion.div>
-
-        {/* Bottom Left: 草稿箱 */}
-        <div className="bg-white rounded-[24px] p-6 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] flex flex-col min-h-[280px]">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <FileText className="w-5 h-5 text-slate-400" />{uiText("草稿箱")}</h2>
-            <span className="text-xs font-medium bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full">
-              {drafts.length}{uiText(" 份")}</span>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
-            {draftsLoading ? (
-              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm font-semibold text-slate-400">{uiText("正在載入草稿...")}</div>
-            ) : drafts.length ? drafts.slice(0, 4).map(draft => (
-              <div
-                key={draft.id}
-                onClick={() => {
-                  setSelectedDraftId(draft.id);
-                  setView('wizard');
-                }}
-                className="group p-4 rounded-2xl border border-slate-100 hover:border-indigo-100 hover:bg-indigo-50/30 transition-all flex items-center justify-between cursor-pointer"
-              >
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-700">{uiText("草稿")}</span>
-                    <span className="text-xs text-slate-400">{draft.date}</span>
-                  </div>
-                  <h3 className="font-semibold text-slate-700 group-hover:text-indigo-700 transition-colors">{draft.title}</h3>
-                  <p className="mt-1 text-xs text-slate-400">{draft.questionCount}{uiText(" 題")}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button type="button" className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-white group-hover:text-indigo-600 group-hover:shadow-sm transition-all">
-                    <Edit3 className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void handleDeleteDraft(draft.id);
-                    }}
-                    disabled={deletingDraftId === draft.id}
-                    className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-white hover:text-rose-600 hover:shadow-sm transition-all disabled:opacity-50"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            )) : (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm font-semibold text-slate-400">{uiText("還沒有草稿")}</div>
-            )}
-          </div>
-        </div>
-
-        {/* Bottom Right: 歷史題庫 */}
-        <div className="bg-white rounded-[24px] p-6 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] flex flex-col min-h-[280px]">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <Icons.task className="w-5 h-5 text-slate-400" />{uiText("歷史題庫")}</h2>
-            <button 
-              onClick={() => setView('library')}
-              className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
-            >{uiText("查看全部")}</button>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
-            {questionBanksLoading ? (
-              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm font-semibold text-slate-400">{uiText("正在載入題庫...")}</div>
-            ) : visibleQuestionBanks.length ? visibleQuestionBanks.map(item => (
-              <div 
-                key={item.id} 
-                onClick={() => setView('library')}
-                className="p-4 rounded-2xl border border-slate-100 hover:shadow-md transition-shadow cursor-pointer"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="font-semibold text-slate-700">{item.title}</h3>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0 ml-2 bg-indigo-100 text-indigo-700">{uiText("題庫")}</span>
-                </div>
-                
-                <div className="flex items-center gap-4 mt-3">
-                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                    <Users className="w-3.5 h-3.5" />
-                    <span>{item.questionCount}{uiText(" 題已收錄")}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>{item.updatedAt ? new Date(item.updatedAt).toISOString().slice(0, 10) : uiText('剛剛更新')}</span>
-                  </div>
-                </div>
-              </div>
-            )) : (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-sm font-semibold text-slate-400">{uiText("還沒有題庫，先到測驗預覽把題目加入題庫吧。")}</div>
-            )}
-          </div>
-        </div>
-
+        ))}
       </div>
+
+      {/* 總覽：KPI + 快速入口 */}
+      {topTab === 'overview' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+            {kpiCards.map((card) => (
+              <motion.button
+                key={card.key}
+                type="button"
+                onClick={card.onClick}
+                whileHover={{ y: -2 }}
+                className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] text-left transition-shadow hover:shadow-[0_20px_25px_-5px_rgba(0,0,0,0.1)]"
+              >
+                <span className="text-xs font-bold text-slate-400">{uiText(card.label)}</span>
+                <div className={`mt-2 text-3xl font-black ${card.valueClass}`}>{card.value}</div>
+              </motion.button>
+            ))}
+          </div>
+
+          <div>
+            <h2 className="text-lg font-bold text-slate-800 mb-4">{uiText("快速入口")}</h2>
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+              {QUICK_LINKS.map((link) => (
+                <motion.button
+                  key={link.key}
+                  type="button"
+                  whileHover={link.accent ? { y: -4 } : undefined}
+                  whileTap={link.accent ? { scale: 0.97 } : undefined}
+                  onClick={() =>
+                    link.onClick({
+                      openWizard,
+                      goQuizzes: () => setTopTab('quizzes'),
+                      goLibrary: () => setTopTab('library'),
+                      goGrading: () => setTopTab('grading'),
+                      goQuality: () => setTopTab('quality'),
+                      goWorkshop: () => onNavigateToWorkshop?.(),
+                    })
+                  }
+                  className={`group relative flex min-h-[140px] items-center gap-5 overflow-hidden rounded-[28px] border p-6 text-left ${
+                    link.accent
+                      ? 'border-[#4C71E0] bg-[#5681FF] shadow-[0_14px_32px_rgba(86,129,255,0.45)] transition-shadow hover:shadow-[0_24px_48px_-12px_rgba(86,129,255,0.65)]'
+                      : 'border-slate-100 bg-white shadow-[0_14px_32px_rgba(15,23,42,0.06)] transition hover:-translate-y-1 hover:shadow-xl'
+                  }`}
+                >
+                  <span className={`relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${link.chipClass}`}>
+                    <link.icon className={`h-7 w-7 ${link.iconClass}`} />
+                  </span>
+                  <span className="relative min-w-0">
+                    <span className={`block text-lg font-black ${link.accent ? 'text-white' : 'text-slate-900'}`}>{uiText(link.label)}</span>
+                    <span className={`mt-1 block text-sm ${link.accent ? 'text-white/85' : 'text-slate-500'}`}>{uiText(link.description)}</span>
+                  </span>
+                  <ArrowRight className={`relative ml-auto h-5 w-5 shrink-0 transition group-hover:translate-x-1 ${link.accent ? 'text-white/70 group-hover:text-white' : 'text-slate-300 group-hover:text-indigo-500'}`} />
+                </motion.button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 我的測驗 */}
+      {topTab === 'quizzes' && (
+        <MyQuizzesView
+          initialSubTab={quizzesSubTab}
+          onEditDraft={editDraft}
+          initialQuizId={initialQuizId}
+          initialDrawerTab={initialDrawerTab}
+          onDeepLinkConsumed={onQuizDeepLinkConsumed}
+        />
+      )}
+
+      {/* 題庫 */}
+      {topTab === 'library' && <AssessmentLibrary onBack={() => setTopTab('overview')} />}
+
+      {/* 批改 */}
+      {topTab === 'grading' && <GradingWorkspaceHome onBack={() => setTopTab('overview')} onGoToWorkshop={onNavigateToWorkshop} />}
+
+      {/* 質量分析 */}
+      {topTab === 'quality' && (
+        <div className="space-y-6">
+          <div className="flex flex-wrap items-center gap-2">
+            {QUALITY_SUB_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setQualitySubTab(tab.key)}
+                className={`px-4 py-2 rounded-full text-sm font-bold border transition-all duration-200 ${
+                  qualitySubTab === tab.key
+                    ? 'bg-indigo-600 border-indigo-600 text-white'
+                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                {uiText(tab.label)}
+              </button>
+            ))}
+          </div>
+          {qualitySubTab === 'performance' ? (
+            <AssessmentQualityCard onOpenQuizAlerts={(summary) => setQualityDrawerQuiz(toPublishedQuizSummary(summary))} />
+          ) : (
+            <AnomalyAlertsOverview onOpenQuiz={(summary) => setQualityDrawerQuiz(toPublishedQuizSummary(summary))} />
+          )}
+        </div>
+      )}
+
+      {/* 質量分析入口共用嘅已發佈測驗 Drawer（alerts 模式：純警示視圖，無 tab bar） */}
+      <PublishedQuizDetailDrawer
+        open={Boolean(qualityDrawerQuiz)}
+        quiz={qualityDrawerQuiz}
+        onClose={() => setQualityDrawerQuiz(null)}
+        onDuplicated={() => {
+          setQualityDrawerQuiz(null);
+          setQuizzesSubTab('drafts');
+          setTopTab('quizzes');
+        }}
+        initialTab="quality"
+        mode="alerts"
+      />
     </div>
   );
 };

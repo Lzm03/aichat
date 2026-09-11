@@ -627,7 +627,7 @@ export const StudentManagementPage: React.FC = () => {
                           ))}
                         </div>
                       ) : (
-                        <p className="py-2 text-sm text-slate-400">{uiText('呢個班級未有學生')}</p>
+                        <p className="py-2 text-sm text-slate-400">{uiText('此班級暫無學生')}</p>
                       )}
                     </div>
                   ) : null}
@@ -706,12 +706,12 @@ export const StudentManagementPage: React.FC = () => {
                     <div className="mt-1 text-slate-600">
                       {uiText('每行格式')}
                       <br />
-                      <code className="rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-700">姓名, email</code>
+                      <code className="rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-700">{uiText('姓名, email')}</code>
                     </div>
                     <div className="mt-2 text-slate-600">
                       {uiText('可接受')}
                       <br />
-                      <code className="rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-700">, tab 空格</code>
+                      <code className="rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-700">{uiText(', tab 空格')}</code>
                     </div>
                   </div>
                 </div>

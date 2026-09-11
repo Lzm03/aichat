@@ -1,5 +1,5 @@
 ﻿import { uiText, uiTemplate } from "../../../utils/uiI18n";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, ChevronDown, ChevronRight, Link, Search, ShieldCheck, UsersRound, X } from "lucide-react";
 import type { AiBot } from "../../../types";
@@ -27,6 +27,15 @@ type Props = {
   groups: PermissionGroup[];
   students: PermissionStudent[];
   initialSelectedBotId?: string | null;
+  // 單 Bot 編輯模式（班級分配總覽「編輯班級」）：隱藏 bot 切換同存取模式，直接改授權
+  singleBotId?: string | null;
+  initialGroupIds?: string[];
+  initialExcludedStudentIds?: string[];
+  onSave?: (payload: { groupIds: string[]; excludedStudentIds: string[] }) => void;
+  saving?: boolean;
+  saveError?: string;
+  // 空狀態跳去學生管理（in-app 導航；冇提供時 fallback 到 /student-management 連結）
+  onGoStudentManagement?: () => void;
 };
 
 type Selection = {
@@ -48,11 +57,20 @@ export const BotPermissionDrawer: React.FC<Props> = ({
   groups,
   students,
   initialSelectedBotId,
+  singleBotId = null,
+  initialGroupIds = [],
+  initialExcludedStudentIds = [],
+  onSave,
+  saving = false,
+  saveError = "",
+  onGoStudentManagement,
 }) => {
   const publishedBots = useMemo(
     () => bots.filter((bot) => bot.isVisible !== false),
     [bots]
   );
+
+  const isSingleBotMode = Boolean(singleBotId);
 
   const [selectedBotId, setSelectedBotId] = useState(initialSelectedBotId || publishedBots[0]?.id || "");
   const [mode, setMode] = useState<BotAccessMode>("group");
@@ -60,6 +78,26 @@ export const BotPermissionDrawer: React.FC<Props> = ({
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [expandedGroupIds, setExpandedGroupIds] = useState<string[]>([]);
   const [studentQuery, setStudentQuery] = useState("");
+
+  // 單 Bot 模式：開 Drawer 後等資料就緒，預載現有授權（只做一次）
+  const prefillDone = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      prefillDone.current = false;
+      return;
+    }
+    if (!isSingleBotMode || prefillDone.current) return;
+    if (!students.length || !groups.length) return;
+    prefillDone.current = true;
+    const groupIds = (initialGroupIds || []).filter((id) => groups.some((group) => group.id === id));
+    setSelectedGroupIds(groupIds);
+    const excluded = new Set(initialExcludedStudentIds || []);
+    const included = students
+      .filter((student) => student.groupIds?.some((groupId) => groupIds.includes(groupId)))
+      .map((student) => student.id)
+      .filter((id) => !excluded.has(id));
+    setSelectedStudentIds(included);
+  }, [open, isSingleBotMode, initialGroupIds, initialExcludedStudentIds, students, groups]);
 
   const selectedGroupStudentIds = useMemo(() => {
     const idSet = new Set<string>();
@@ -79,11 +117,15 @@ export const BotPermissionDrawer: React.FC<Props> = ({
 
   const visibleStudents = useMemo(() => {
     const q = studentQuery.trim().toLowerCase();
-    const sorted = [...students].sort((a, b) => a.fullName.localeCompare(b.fullName));
+    // 單 Bot 模式：排除名單只顯示已勾選班級內嘅學生
+    const scoped = isSingleBotMode
+      ? students.filter((student) => student.groupIds?.some((groupId) => selectedGroupIds.includes(groupId)))
+      : students;
+    const sorted = [...scoped].sort((a, b) => a.fullName.localeCompare(b.fullName));
     return q
       ? sorted.filter((student) => `${student.fullName} ${student.email}`.toLowerCase().includes(q))
       : sorted;
-  }, [studentQuery, students]);
+  }, [studentQuery, students, isSingleBotMode, selectedGroupIds]);
 
   const selectedBot = publishedBots.find((bot) => bot.id === selectedBotId) || publishedBots[0] || null;
 
@@ -119,40 +161,41 @@ export const BotPermissionDrawer: React.FC<Props> = ({
     resetSelection();
   };
 
-  const saveButtonDisabled = mode === "group" && !finalSelectedStudentIds.size;
+  const saveButtonDisabled = isSingleBotMode
+    ? saving
+    : mode === "group" && !finalSelectedStudentIds.size;
 
   const applySelection = () => {
     if (saveButtonDisabled) return;
+    if (isSingleBotMode && onSave) {
+      onSave({ groupIds: selectedGroupIds, excludedStudentIds: explicitlyExcludedStudentIds });
+      return;
+    }
     onClose();
   };
 
   return (
     <AnimatePresence>
       {open ? (
-        <div className="fixed inset-0 z-[95]">
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="absolute inset-0 bg-slate-950/45 backdrop-blur-sm"
-          />
+        <div className="pointer-events-none fixed inset-0 z-[95]">
           <motion.div
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 240 }}
-            className="absolute right-0 top-0 h-full w-[min(480px,100vw)] border-l border-slate-200 bg-white shadow-2xl"
+            className="pointer-events-auto absolute right-0 top-0 h-full w-[min(480px,100vw)] border-l border-slate-200 bg-white shadow-2xl"
           >
             <div className="flex h-full flex-col">
               <div className="flex items-start justify-between border-b border-slate-100 px-5 py-5">
                 <div>
                   <div className="flex items-center gap-2 text-sm font-black text-slate-900">
                     <ShieldCheck className="h-5 w-5 text-indigo-600" />
-                    {uiText("Bot 權限管理")}
+                    {isSingleBotMode ? uiText("班級授權") : uiText("Bot 權限管理")}
                   </div>
                   <p className="mt-1 text-xs text-slate-500">
-                    {uiText("管理已發佈 Bot 可以分配嘅班級與學生。")}
+                    {isSingleBotMode
+                      ? uiText("管理此 Bot 可存取的班級與學生。")
+                      : uiText("管理已發佈 Bot 可分配的班級與學生。")}
                   </p>
                 </div>
                 <button
@@ -165,6 +208,7 @@ export const BotPermissionDrawer: React.FC<Props> = ({
               </div>
 
               <div className="flex-1 overflow-y-auto px-5 py-5">
+                {!isSingleBotMode && (
                 <div>
                   <div className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
                     {uiText("選擇已發佈 Bot")}
@@ -194,7 +238,9 @@ export const BotPermissionDrawer: React.FC<Props> = ({
                     })}
                   </div>
                 </div>
+                )}
 
+                {!isSingleBotMode && (
                 <div className="mt-7">
                   <div className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
                     {uiText("存取模式")}
@@ -243,6 +289,7 @@ export const BotPermissionDrawer: React.FC<Props> = ({
                     </button>
                   </div>
                 </div>
+                )}
 
                 {mode === "group" && (
                   <div className="mt-7">
@@ -299,7 +346,7 @@ export const BotPermissionDrawer: React.FC<Props> = ({
                                       ))}
                                     </div>
                                   ) : (
-                                    <p className="py-2 text-sm text-slate-400">{uiText("呢個班級未有學生")}</p>
+                                    <p className="py-2 text-sm text-slate-400">{uiText("此班級暫無學生")}</p>
                                   )}
                                 </div>
                               ) : null}
@@ -310,19 +357,26 @@ export const BotPermissionDrawer: React.FC<Props> = ({
                     ) : (
                       <div className="mt-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-4">
                         <p className="text-sm font-semibold text-slate-600">{uiText("暫時未有班級")}</p>
-                        <a href="/student-management" className="mt-3 inline-flex items-center gap-1.5 text-xs font-black text-indigo-600 hover:underline">
-                          {uiText("先到學生管理加入學生與建立班級")}
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        </a>
+                        {onGoStudentManagement ? (
+                          <button type="button" onClick={onGoStudentManagement} className="mt-3 inline-flex items-center gap-1.5 text-xs font-black text-indigo-600 hover:underline">
+                            {uiText("前往學生管理加入學生並建立班級")}
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </button>
+                        ) : (
+                          <a href="/student-management" className="mt-3 inline-flex items-center gap-1.5 text-xs font-black text-indigo-600 hover:underline">
+                            {uiText("前往學生管理加入學生並建立班級")}
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </a>
+                        )}
                       </div>
                     )}
                   </div>
                 )}
 
-                {mode === "group" && students.length > 0 && (
+                {mode === "group" && students.length > 0 && (!isSingleBotMode || selectedGroupIds.length > 0) && (
                   <div className="mt-7">
                     <div className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
-                      {uiText("未分組學生")}
+                      {isSingleBotMode ? uiText("排除學生") : uiText("未分組學生")}
                     </div>
                     <div className="mt-2 flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
                       <Search className="h-4 w-4 text-slate-400" />
@@ -338,7 +392,7 @@ export const BotPermissionDrawer: React.FC<Props> = ({
                         <StudentPermissionRow key={student.id} student={student} selected={finalSelectedStudentIds.has(student.id)} onToggle={() => toggleStudent(student.id)} />
                       ))}
                       {visibleStudents.length === 0 ? (
-                        <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-4 text-sm text-slate-400">{uiText("冇符合條件嘅學生")}</p>
+                        <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-4 text-sm text-slate-400">{uiText("沒有符合條件的學生")}</p>
                       ) : null}
                     </div>
                   </div>
@@ -347,11 +401,18 @@ export const BotPermissionDrawer: React.FC<Props> = ({
                 {mode === "group" && students.length === 0 ? (
                   <div className="mt-7 rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-4 text-center">
                     <p className="text-sm font-semibold text-slate-600">{uiText("尚未加入學生")}</p>
-                    <p className="mt-1 text-xs text-slate-400">{uiText("先到學生管理加入學生後，先可以為 Bot 分配權限。")}</p>
-                    <a href="/student-management" className="mt-3 inline-flex items-center gap-1.5 text-xs font-black text-indigo-600 hover:underline">
-                      {uiText("前往學生管理")}
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </a>
+                    <p className="mt-1 text-xs text-slate-400">{uiText("前往學生管理加入學生後，方可為 Bot 分配權限。")}</p>
+                    {onGoStudentManagement ? (
+                      <button type="button" onClick={onGoStudentManagement} className="mt-3 inline-flex items-center gap-1.5 text-xs font-black text-indigo-600 hover:underline">
+                        {uiText("前往學生管理")}
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
+                    ) : (
+                      <a href="/student-management" className="mt-3 inline-flex items-center gap-1.5 text-xs font-black text-indigo-600 hover:underline">
+                        {uiText("前往學生管理")}
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </a>
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -362,13 +423,22 @@ export const BotPermissionDrawer: React.FC<Props> = ({
                     {uiText("已選 ")}<span className="font-black text-slate-900">{finalSelectedStudentIds.size}</span>{uiText(" 位學生")}
                   </div>
                 )}
+                {isSingleBotMode && saveError ? (
+                  <p className="mb-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">{saveError}</p>
+                ) : null}
                 <button
                   type="button"
                   onClick={applySelection}
                   disabled={saveButtonDisabled}
                   className="w-full rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
                 >
-                  {mode === "link" ? uiText("完成設定") : uiText("儲存分享設定")}
+                  {isSingleBotMode
+                    ? saving
+                      ? uiText("儲存中...")
+                      : uiText("儲存變更")
+                    : mode === "link"
+                    ? uiText("完成設定")
+                    : uiText("儲存分享設定")}
                 </button>
               </div>
             </div>

@@ -1,0 +1,217 @@
+﻿# 對接文件 — 班級與 Bot 權限
+日期：2026-09-08
+前端設計負責人：Doris
+交接對象：Jayden
+
+## 摘要
+
+目前前端需要以下班級與 Bot 權限 API。相關資料表已存在，但讀寫 API 尚未完整。
+前端暫時以 mock 資料支撐介面；待 API 完成後，前端將改為連接真實資料。
+
+## 命名對應
+
+- 前端 API 使用「classes」與 classId。
+- 資料層沿用既有名稱：
+  - classId 對應 student_groups.id
+  - 班級表 對應 student_groups
+  - 班級成員 對應 student_group_members
+  - 班級授權 對應 bot_group_shares
+  - 個別排除 對應 bot_student_exclusions
+
+## 現有資料表
+
+### student_groups
+- id TEXT PRIMARY KEY
+- teacher_id TEXT NOT NULL
+- name TEXT NOT NULL
+- type TEXT NOT NULL
+- created_at / updated_at TIMESTAMPTZ
+
+### student_group_members
+- group_id TEXT -> student_groups(id)
+- student_id TEXT -> users(id)
+- created_at TIMESTAMPTZ
+- PK (group_id, student_id)
+
+### bot_group_shares
+- bot_id TEXT -> bots(id)
+- teacher_id TEXT -> users(id)
+- group_id TEXT -> student_groups(id)
+- created_at TIMESTAMPTZ
+- PK (bot_id, group_id)
+
+### bot_student_exclusions
+- bot_id TEXT -> bots(id)
+- teacher_id TEXT -> users(id)
+- student_id TEXT -> users(id)
+- created_at TIMESTAMPTZ
+- PK (bot_id, student_id)
+
+### 相關既有資料表
+- teacher_students (teacher_id, student_id)
+- bot_student_shares (bot_id, teacher_id, student_id)
+
+## 前端所需 API
+
+所有路由皆須具備教師／管理員權限，請沿用現有 server/api/bots.ts 中的
+getAuthUser / requireAuth middleware。
+
+### 1. 列出教師的班級
+GET /api/bots/classes
+
+Response 200:
+{
+  "classes": [
+    {
+      "id": "class-xxx",
+      "name": "3A班",
+      "type": "class",
+      "createdAt": "ISO",
+      "updatedAt": "ISO",
+      "studentIds": ["student-id-1", "student-id-2"]
+    }
+  ]
+}
+
+說明：
+- 僅回傳目前教師所屬的班級。
+- studentIds 由 student_group_members 解析取得。
+
+### 2. 建立班級
+POST /api/bots/classes
+
+Request:
+{
+  "name": "3A班"
+}
+
+Response 201:
+{
+  "class": {
+    "id": "class-xxx",
+    "name": "3A班",
+    "type": "class",
+    "createdAt": "ISO",
+    "updatedAt": "ISO",
+    "studentIds": []
+  }
+}
+
+說明：
+- 由後端產生 id（例如 crypto.randomUUID，或沿用現有慣例）。
+- teacher_id = 目前登入教師 id。
+- type 固定為 'class'。
+
+### 3. 修改班級名稱
+PATCH /api/bots/classes/:id
+
+Request:
+{
+  "name": "3A班"
+}
+
+Response 200:
+{
+  "class": {
+    "id": "class-xxx",
+    "name": "3A班",
+    ...
+  }
+}
+
+說明：
+- 須驗證班級屬於目前登入教師。
+- 更新 updated_at。
+
+### 4. 刪除班級
+DELETE /api/bots/classes/:id
+
+Response 200:
+{ "ok": true }
+
+說明：
+- 須驗證所有權。
+- student_group_members 與 bot_group_shares 應自動 cascade 刪除。
+
+### 5. 設定班級成員
+PUT /api/bots/classes/:id/members
+
+Request:
+{
+  "studentIds": ["student-id-1", "student-id-2"]
+}
+
+Response 200:
+{
+  "class": {
+    "id": "class-xxx",
+    "studentIds": ["student-id-1", "student-id-2"]
+  }
+}
+
+說明：
+- 直接替換整個班級成員集合。
+- 驗證每個 studentId 必須存在於目前教師的 teacher_students。
+
+### 6. 設定 Bot 班級授權與排除名單
+PUT /api/bots/:id/group-shares
+
+Request:
+{
+  "groupIds": ["class-xxx", "class-yyy"],
+  "excludedStudentIds": ["student-id-3"]
+}
+
+Response 200:
+{
+  "ok": true,
+  "groupIds": ["class-xxx", "class-yyy"],
+  "excludedStudentIds": ["student-id-3"]
+}
+
+說明：
+- 以 groupIds 替換該 bot 的 bot_group_shares。
+- 以 excludedStudentIds 替換該 bot 的 bot_student_exclusions。
+- 須驗證 bot 屬於目前教師。
+
+### 7. 查詢 Bot 班級授權與排除名單
+GET /api/bots/:id/group-shares
+
+Response 200:
+{
+  "botId": "bot-xxx",
+  "groupIds": ["class-xxx"],
+  "excludedStudentIds": ["student-id-3"]
+}
+
+說明：
+- 回傳目前的 bot_group_shares 與 bot_student_exclusions。
+
+## 既有且仍可使用的 endpoints
+
+- GET /api/bots/sharing/students
+  回傳教師的有效學生。
+
+- POST /api/bots/sharing/students
+  以 email 將一位學生加入 teacher_students。
+
+- PUT /api/bots/:id/shares
+  現有的直接學生分享 API，請維持相容。
+
+- GET /api/bots/shared/with-me
+  目前已動態解析直接分享、班級與排除，暫無需變更。
+
+## 前端整合期望
+
+1. CreationStep4
+   - 以 GET /api/bots/classes 取得可選班級。
+   - 待發布取得 bot id 後，以 PUT /api/bots/:id/group-shares 儲存。
+   - 以 GET /api/bots/:id/group-shares 載入既有選擇。
+
+2. BotAssignmentOverview（AI 工作坊首頁）
+   - 以 GET /api/bots/:id/group-shares 顯示每個已發布 Bot 的班級分配。
+   - 以 PUT /api/bots/:id/group-shares 更新班級分配。
+
+3. StudentManagementPage
+   - 以 classes API 與 members API 取代目前 local mock。
+   - 未分組學生可由 sharing/students 與班級成員資料推算。

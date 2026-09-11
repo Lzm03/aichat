@@ -402,8 +402,11 @@ export const StudentLearningReportCard = () => {
             className="flex flex-col h-full"
           >
             <div className="flex items-center justify-between mb-3 md:mb-4">
-              <h3 className="flex items-center shrink-0 text-sm font-bold text-[#1E293B] md:text-base">
-                <Target className="w-5 h-5 mr-2 text-indigo-500" />{uiText("能力追蹤報告")}</h3>
+              <div>
+                <h3 className="flex items-center shrink-0 text-sm font-bold text-[#1E293B] md:text-base">
+                  <Target className="w-5 h-5 mr-2 text-indigo-500" />{uiText("能力追蹤報告")}</h3>
+                <p className="mt-0.5 text-xs text-slate-400">{uiText("追蹤全班思維自主指數、知識覆蓋、學習狀態分佈與學生對話記錄。")}</p>
+              </div>
             </div>
             <div className="space-y-2 flex-1">
               {sharedBots.length ? sharedBots.map((bot) => {

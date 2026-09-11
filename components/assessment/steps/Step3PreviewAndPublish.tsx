@@ -1,8 +1,10 @@
-import { uiText, uiError } from '../../../utils/uiI18n';
-import React, { useEffect, useState } from 'react';
+import { uiText, uiError, uiTemplate } from '../../../utils/uiI18n';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Edit3, ChevronDown, Save, Rocket, ArrowLeft, PlusCircle, X, Search, Eye, LoaderCircle, FolderPlus, CheckCircle2 } from 'lucide-react';
 import { API_BASE } from '../../../utils/api';
+import { usePlatformDialog } from '../../../hooks/usePlatformDialog';
+import { PlatformDialog } from '../../system/PlatformDialog';
 
 interface Step3PreviewAndPublishProps {
   onPrev: () => void;
@@ -40,50 +42,22 @@ type QuestionBankSummary = {
   updatedAt?: string;
 };
 
-const mockQuestions = [
-  {
-    id: 1,
-    type: '多項選擇題',
-    cognitiveLevel: '記憶',
-    levelColor: 'bg-blue-100 text-blue-700',
-    content: '《桃花源記》的作者是誰？',
-    options: ['A. 李白', 'B. 陶淵明', 'C. 杜甫', 'D. 蘇軾'],
-    answer: 'B. 陶淵明'
-  },
-  {
-    id: 2,
-    type: '簡答題',
-    cognitiveLevel: '理解',
-    levelColor: 'bg-emerald-100 text-emerald-700',
-    content: '請簡述桃花源中的居民為何「不知有漢，無論魏晉」？',
-    answer: '因為他們的祖先為了躲避秦朝的戰亂而來到這個與世隔絕的地方，之後就再也沒有出去過，所以不知道外界朝代的更迭。'
-  },
-  {
-    id: 3,
-    type: '論述題',
-    cognitiveLevel: '評價',
-    levelColor: 'bg-red-100 text-red-700',
-    content: '你認為桃花源是一個理想的社會嗎？請結合文本説明你的觀點。',
-    answer: '(自由作答，需結合文本中「黃髮垂髫，並怡然自樂」等描述進行評價)'
-  },
-  {
-    id: 4,
-    type: '多項選擇題',
-    cognitiveLevel: '應用',
-    levelColor: 'bg-amber-100 text-amber-700',
-    content: '下列哪一個成語最適合用來形容桃花源的環境？',
-    options: ['A. 豁然開朗', 'B. 世外桃源', 'C. 阡陌交通', 'D. 落英繽紛'],
-    answer: 'B. 世外桃源'
-  },
-  {
-    id: 5,
-    type: '填充題',
-    cognitiveLevel: '記憶',
-    levelColor: 'bg-blue-100 text-blue-700',
-    content: '芳草鮮美，__________。',
-    answer: '落英繽紛'
-  }
-];
+type HistorySource = {
+  id: string;
+  title: string;
+  questions: Array<{
+    id: number | string;
+    type: string;
+    cognitiveLevel: string;
+    levelColor: string;
+    content: string;
+    options?: string[];
+    answer: string;
+    explanation?: string;
+    points?: number;
+    difficulty?: string;
+  }>;
+};
 
 export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
   onPrev,
@@ -96,8 +70,8 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
   const [title, setTitle] = useState(initialQuiz?.title || 'AI 測驗草稿');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [selectedHistoryQuestions, setSelectedHistoryQuestions] = useState<number[]>([]);
-  const [questions, setQuestions] = useState(initialQuestions.length ? initialQuestions : mockQuestions);
+  const [selectedHistoryQuestions, setSelectedHistoryQuestions] = useState<string[]>([]);
+  const [questions, setQuestions] = useState(initialQuestions);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishError, setPublishError] = useState('');
   const [draftSaved, setDraftSaved] = useState(false);
@@ -118,6 +92,12 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
   const [savingBankQuestionId, setSavingBankQuestionId] = useState<string | number | null>(null);
   const [newBankTitle, setNewBankTitle] = useState('');
   const [bankSuccessMessage, setBankSuccessMessage] = useState('');
+  const [historySources, setHistorySources] = useState<HistorySource[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const [searchHistoryQuery, setSearchHistoryQuery] = useState('');
+  const [isAddingHistory, setIsAddingHistory] = useState(false);
+  const { dialog, closeDialog, showAlert, showConfirm } = usePlatformDialog();
 
   useEffect(() => {
     setTypeSelections(
@@ -128,45 +108,132 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
     );
   }, [questions]);
 
-  const mockHistoryAssessments = [
-    {
-      id: 'h1',
-      title: '中二古文測驗 (去年)',
-      questions: [
-        { id: 101, content: '解釋「黃髮垂髫」的意思。', cognitiveLevel: '理解', levelColor: 'bg-emerald-100 text-emerald-700', type: '簡答題' },
-        { id: 102, content: '桃花源記中，漁人離開時做了什麼記號？', cognitiveLevel: '記憶', levelColor: 'bg-blue-100 text-blue-700', type: '多項選擇題' }
-      ]
-    },
-    {
-      id: 'h2',
-      title: '期中考 - 閱讀理解',
-      questions: [
-        { id: 201, content: '比較桃花源與現實社會的差異。', cognitiveLevel: '分析', levelColor: 'bg-orange-100 text-orange-700', type: '論述題' }
-      ]
+  const loadHistorySources = async () => {
+    setHistoryLoading(true);
+    setHistoryError('');
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/question-banks?includeQuestions=1`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(data?.error || '載入歷史題庫失敗，請稍後再試。'));
+      }
+      const banks = Array.isArray(data?.banks) ? data.banks : [];
+      setHistorySources(
+        banks
+          .map((bank: any) => ({
+            id: String(bank?.id || ''),
+            title: String(bank?.title || '未命名題庫'),
+            questions: Array.isArray(bank?.questions) ? bank.questions : [],
+          }))
+          .filter((bank: HistorySource) => bank.id)
+      );
+    } catch (error) {
+      setHistorySources([]);
+      setHistoryError(error instanceof Error ? error.message : '載入歷史題庫失敗，請稍後再試。');
+    } finally {
+      setHistoryLoading(false);
     }
-  ];
+  };
 
-  const handleToggleHistoryQuestion = (id: number) => {
-    setSelectedHistoryQuestions(prev => 
-      prev.includes(id) ? prev.filter(qId => qId !== id) : [...prev, id]
+  const openHistoryDrawer = () => {
+    setIsDrawerOpen(true);
+    setSearchHistoryQuery('');
+    setSelectedHistoryQuestions([]);
+    void loadHistorySources();
+  };
+
+  // 跨題庫題目 id 會重複，用 `${bankId}:${questionId}` 做選取 key
+  const historyQuestionKey = (bankId: string, questionId: number | string) => `${bankId}:${questionId}`;
+
+  const filteredHistorySources = useMemo(() => {
+    const keyword = searchHistoryQuery.trim().toLowerCase();
+    if (!keyword) return historySources;
+    return historySources
+      .map((source) => ({
+        ...source,
+        questions: source.questions.filter(
+          (question) =>
+            String(question.content || '').toLowerCase().includes(keyword) ||
+            String(question.type || '').toLowerCase().includes(keyword) ||
+            String(question.cognitiveLevel || '').toLowerCase().includes(keyword)
+        ),
+      }))
+      .filter((source) => source.questions.length > 0);
+  }, [historySources, searchHistoryQuery]);
+
+  const handleToggleHistoryQuestion = (key: string) => {
+    setSelectedHistoryQuestions((prev) =>
+      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]
     );
   };
 
-  const handleAddHistoryQuestions = () => {
-    const newQuestions = mockHistoryAssessments.flatMap(a => a.questions)
-      .filter(q => selectedHistoryQuestions.includes(q.id))
-      .map(q => ({ ...q, isFromHistory: true, answer: '歷史題庫參考答案' }));
-    
-    setQuestions([...questions, ...newQuestions]);
-    setIsDrawerOpen(false);
-    setSelectedHistoryQuestions([]);
+  const handleAddHistoryQuestions = async () => {
+    const selected = historySources
+      .flatMap((source) => source.questions.map((question) => ({ sourceId: source.id, question })))
+      .filter((item) => selectedHistoryQuestions.includes(historyQuestionKey(item.sourceId, item.question.id)));
+
+    if (!selected.length) return;
+    if (!initialQuiz?.id) {
+      setPublishError('測驗尚未建立，請返回上一步重新生成。');
+      return;
+    }
+
+    setPublishError('');
+    setIsAddingHistory(true);
+    const added: any[] = [];
+    const addedKeys: string[] = [];
+    // 逐條 POST。任何一條失敗即停,但已成功嘅一定要即刻寫入 state 並由選取
+    // 移除——佢哋已經喺 server 持久化咗,唔移除嘅話用戶重試會重複加題。
+    const commitAdded = () => {
+      if (!added.length) return;
+      setQuestions((prev) => [...prev, ...added]);
+      setSelectedHistoryQuestions((prev) => prev.filter((key) => !addedKeys.includes(key)));
+    };
+    try {
+      for (const item of selected) {
+        const response = await fetch(`${API_BASE}/api/quizzes/${initialQuiz.id}/questions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: item.question.type,
+            cognitiveLevel: item.question.cognitiveLevel,
+            content: item.question.content,
+            options: item.question.options || [],
+            answer: item.question.answer,
+            explanation: item.question.explanation || '',
+            points: item.question.points,
+            difficulty: item.question.difficulty,
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(String(data?.error || '加入題目失敗，請稍後再試。'));
+        }
+        if (data?.question) {
+          added.push({ ...data.question, isFromHistory: true });
+          addedKeys.push(historyQuestionKey(item.sourceId, item.question.id));
+        }
+      }
+      commitAdded();
+      setIsDrawerOpen(false);
+      setSearchHistoryQuery('');
+    } catch (error) {
+      commitAdded();
+      setPublishError(error instanceof Error ? error.message : '加入題目失敗，請稍後再試。');
+    } finally {
+      setIsAddingHistory(false);
+    }
   };
 
   const visibleQuestions = isExpanded ? questions : questions.slice(0, 2);
 
   const handlePublishQuiz = async () => {
     if (!initialQuiz?.id) {
-      onPublish();
+      setPublishError('測驗尚未建立，請返回上一步重新生成。');
+      return;
+    }
+    if (!questions.length) {
+      setPublishError('測驗沒有任何題目，無法發佈。');
       return;
     }
     setPublishError('');
@@ -180,7 +247,13 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
       if (!response.ok) {
         throw new Error(String(data?.error || '發佈測驗失敗，請稍後再試。'));
       }
-      onPublish();
+      showConfirm({
+        title: uiText('發佈成功'),
+        message: uiTemplate('「{0}」已發佈，學生將可作答。', title.trim() || initialQuiz.title || ''),
+        confirmText: uiText('返回智能評測'),
+        cancelText: uiText('留在本頁'),
+        onConfirm: onPublish,
+      });
     } catch (error) {
       setPublishError(error instanceof Error ? error.message : '發佈測驗失敗，請稍後再試。');
     } finally {
@@ -436,11 +509,20 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
         <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center shrink-0">
           <Sparkles className="w-4 h-4 text-emerald-600" />
         </div>
-        <span className="font-bold">{uiText("✨ AI 已成功為您生成 ")}{questions.length}{uiText(" 道題目")}</span>
+        <span className="font-bold">
+          {questions.length
+            ? <>{uiText("✨ AI 已成功為您生成 ")}{questions.length}{uiText(" 道題目")}</>
+            : uiText("此測驗暫無題目，從下方歷史題庫挑選題目，或返回上一步重新生成。")}
+        </span>
       </div>
 
       {/* 題目預覽卡片 */}
       <div className="space-y-4">
+        {!questions.length ? (
+          <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm font-medium text-slate-500">
+            {uiText("此測驗暫無題目，從下方歷史題庫挑選題目，或返回上一步重新生成。")}
+          </div>
+        ) : null}
         <AnimatePresence initial={false}>
           {visibleQuestions.map((q: any, index: number) => (
             <motion.div 
@@ -724,8 +806,8 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
         </AnimatePresence>
         
         {/* 從歷史題庫挑選題目按鈕 */}
-        <button 
-          onClick={() => setIsDrawerOpen(true)}
+        <button
+          onClick={openHistoryDrawer}
           className="w-full border-2 border-dashed border-slate-200 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-300 text-slate-500 hover:text-indigo-600 rounded-[24px] p-6 flex flex-col items-center justify-center gap-2 transition-colors cursor-pointer group"
         >
           <PlusCircle className="w-8 h-8 opacity-50 group-hover:opacity-100 transition-opacity" />
@@ -836,8 +918,10 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
                 </div>
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
+                    value={searchHistoryQuery}
+                    onChange={(event) => setSearchHistoryQuery(event.target.value)}
                     placeholder={uiText("搜尋題目內容或標籤...")}
                     className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
                   />
@@ -846,42 +930,59 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
 
               {/* 面板主體 */}
               <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-                {mockHistoryAssessments.map(assessment => (
-                  <div key={assessment.id} className="space-y-3">
-                    <h4 className="font-bold text-slate-700 flex items-center gap-2">
-                      <span className="w-1.5 h-4 bg-indigo-500 rounded-full"></span>
-                      {assessment.title}
-                    </h4>
-                    <div className="space-y-2">
-                      {assessment.questions.map(q => (
-                        <label 
-                          key={q.id} 
-                          className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                            selectedHistoryQuestions.includes(q.id) 
-                              ? 'border-indigo-500 bg-indigo-50/30' 
-                              : 'border-slate-100 hover:border-indigo-200 hover:bg-slate-50'
-                          }`}
-                        >
-                          <input 
-                            type="checkbox" 
-                            checked={selectedHistoryQuestions.includes(q.id)}
-                            onChange={() => handleToggleHistoryQuestion(q.id)}
-                            className="mt-1 w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 accent-indigo-600"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${q.levelColor}`}>
-                                {uiText(q.cognitiveLevel)}
-                              </span>
-                              <span className="text-xs text-slate-500">{uiText(q.type)}</span>
-                            </div>
-                            <p className="text-sm text-slate-700 leading-relaxed">{q.content}</p>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
+                {historyLoading ? (
+                  <div className="flex items-center justify-center gap-2 py-10 text-sm font-medium text-slate-500">
+                    <LoaderCircle className="w-4 h-4 animate-spin" />{uiText("正在載入歷史題庫...")}
                   </div>
-                ))}
+                ) : historyError ? (
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+                    {uiError(historyError)}
+                  </div>
+                ) : !filteredHistorySources.length ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm font-medium text-slate-500">
+                    {searchHistoryQuery.trim() ? uiText("沒有搜尋到相符題目") : uiText("題庫暫無題目。")}
+                  </div>
+                ) : (
+                  filteredHistorySources.map((source) => (
+                    <div key={source.id} className="space-y-3">
+                      <h4 className="font-bold text-slate-700 flex items-center gap-2">
+                        <span className="w-1.5 h-4 bg-indigo-500 rounded-full"></span>
+                        {source.title}
+                      </h4>
+                      <div className="space-y-2">
+                        {source.questions.map((q) => {
+                          const key = historyQuestionKey(source.id, q.id);
+                          return (
+                            <label
+                              key={key}
+                              className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                                selectedHistoryQuestions.includes(key)
+                                  ? 'border-indigo-500 bg-indigo-50/30'
+                                  : 'border-slate-100 hover:border-indigo-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedHistoryQuestions.includes(key)}
+                                onChange={() => handleToggleHistoryQuestion(key)}
+                                className="mt-1 w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 accent-indigo-600"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${q.levelColor}`}>
+                                    {uiText(q.cognitiveLevel)}
+                                  </span>
+                                  <span className="text-xs text-slate-500">{uiText(q.type)}</span>
+                                </div>
+                                <p className="text-sm text-slate-700 leading-relaxed">{q.content}</p>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
 
               {/* 面板底部 */}
@@ -889,12 +990,13 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
                 <div className="flex items-center justify-between mb-4">
                   <span className="text-sm font-medium text-slate-600">{uiText("已選擇 ")}<strong className="text-indigo-600 text-lg">{selectedHistoryQuestions.length}</strong>{uiText(" 題")}</span>
                 </div>
-                <button 
-                  onClick={handleAddHistoryQuestions}
-                  disabled={selectedHistoryQuestions.length === 0}
+                <button
+                  onClick={() => void handleAddHistoryQuestions()}
+                  disabled={selectedHistoryQuestions.length === 0 || isAddingHistory}
                   className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-all shadow-sm active:scale-95"
                 >
-                  <PlusCircle className="w-5 h-5" />{uiText("加入至當前測驗")}</button>
+                  <PlusCircle className="w-5 h-5" />
+                  {isAddingHistory ? uiText('加入中...') : uiText("加入至當前測驗")}</button>
               </div>
             </motion.div>
           </>
@@ -976,6 +1078,16 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
+      <PlatformDialog
+        open={dialog.open}
+        title={dialog.title}
+        message={dialog.message}
+        confirmText={dialog.confirmText}
+        cancelText={dialog.cancelText}
+        tone={dialog.tone}
+        onClose={closeDialog}
+        onConfirm={dialog.onConfirm || undefined}
+      />
     </motion.div>
   );
 };

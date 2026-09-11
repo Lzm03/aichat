@@ -1,0 +1,92 @@
+# 對接文件 — 學習報告：Bloom 六層級能力追蹤 API
+日期：2026-09-09
+前端設計負責人：Doris
+交接對象：Jayden
+
+## 摘要
+
+新頁面「學習報告」（教師端）需要一個班級層級嘅 Bloom 六層級能力追蹤 API。
+前端暫時以 mock 資料支撐介面（aichat-preview-mock 已有對應 endpoint）；
+待本 API 完成後，前端改為連接真實資料（response shape 已對齊，無需改前端契約）。
+
+## Endpoint
+
+GET /api/teachers/me/ability-report?period=30d|all&classId=<optional>
+
+- 掛載沿用現有 quizzes router（server/api/quizzes.ts，mount 於 /api）。
+- 權限：requireAuth + role gate，照 server/api/quizzes.ts 2423-2429 嘅
+  GET /teachers/me/grading-summary 模式（僅 teacher / admin，否則 403）。
+- period 預設 30d；非法值回 400 或 fallback 30d（同 mock 行為一致）。
+- classId 可選：student_groups.id（type='class'），必須屬於目前教師，
+  否則 404 或忽略。有 classId 時：students 只回該班成員
+  （student_group_members），classLevels 只聚合該班作答；
+  無 classId 時回教師全部學生（teacher_students / bot_student_shares 範圍）。
+- 前端班級切換列表來自 GET /api/bots/classes（見另一份 handoff
+  server/handoff-backend-classes-bot-permissions-2026-09-08.txt 第 1 點）。
+
+## 數據源與計算（重用現有邏輯）
+
+1. 六層級定義：server/api/student-tasks.ts 23-30 行 SKILL_DIMENSIONS
+   （remember / understand / apply / analyze / evaluate / create）。
+2. 認知層級解析：student-tasks.ts 32-37 行 resolveSkillKey
+   （quiz_questions.cognitive_level 文字 → skill key，含別名）。
+3. 正確率規則（同 student-tasks.ts 265-267 行）：
+   - 有 teacher_review_json.finalPoints → finalPoints >= question.points 算正確
+   - 否則 → answers_json 內 answer.isCorrect
+   - value = answered ? Math.round(correct / answered * 100) : 0
+
+## 老師範圍
+
+- 學生範圍：老師嘅 teacher_students 或 bot_student_shares 內嘅學生
+  （quiz_attempts.student_id ∈ 該集合）。
+- 測驗範圍：quizzes WHERE teacher_id = $1 AND status = 'published'。
+- 學生端 users 排除 teacher / admin（照 grading-summary 嘅做法）。
+
+## Period 語義（重要，請照此實現）
+
+- 時間以 HKT（Asia/Hong_Kong）計，用 quiz_attempts 嘅 answered_at（無則 created_at）。
+- period=30d：窗口 = 最近 30 日。
+  - classLevels：窗口內聚合。
+  - 每位學生 recent = 窗口內、past = 窗口前全期（all-time prior）。
+- period=all：全期聚合。
+  - classLevels：全部作答聚合。
+  - 每位學生 recent = 全期、past = null（前端會顯示單圈雷達）。
+
+## Response JSON shape（同 mock 完全一致）
+
+{
+  "period": "30d" | "all",
+  "generatedAt": "ISO",
+  "classLevels": [
+    { "key": "remember", "value": 85, "answered": 132, "correct": 112 },
+    ...共 6 項，順序 remember → create，key 固定
+  ],
+  "students": [
+    {
+      "studentId": "student-id",
+      "name": "陳小明",
+      "avatar": "陳",                      // 姓氏首字（前端顯示用，可後端補全名首字）
+      "recent": { "remember": 90, "understand": 85, "apply": 80, "analyze": 75, "evaluate": 60, "create": 50 },
+      "past": { "remember": 80, ... } | null  // period=all 時為 null
+    },
+    ...
+  ]
+}
+
+欄位說明：
+- value：0-100 整數正確率；answered = 0 時 value = 0。
+- 學生只回傳有作答紀錄嘅學生（學生列表僅用於雷達圖）。
+- 學生排序：按 total answered 降序（作答多者先）。
+
+## Deferred（之後再加，唔使今次做）
+
+1. dataSource 欄位預留：將來若加入對話互動分析（Bloom 由對話計），
+   response 加 dataSource 標明「quiz」或「chat」，前端已預留展示位。
+2. 學生個人報告 endpoint：教師查看單一學生嘅詳細 Bloom 報告（同學生端共享），
+   設計待定，暫不實現。
+
+## 前端已就緒
+
+- 前端 fetch：GET /api/teachers/me/ability-report?period=30d|all
+  （components/dashboard/AbilityTrackingReport.tsx，學習報告頁右下卡）。
+- mock 已對齊（aichat-preview-mock/mock-server.mjs），可即時視覺走查。

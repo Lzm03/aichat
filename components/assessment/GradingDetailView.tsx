@@ -1,9 +1,11 @@
-import { uiText } from '../../utils/uiI18n';
+import { uiText, uiTemplate } from '../../utils/uiI18n';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Flag, HeartPulse, AlertTriangle, MessageSquareWarning, ShieldAlert, HelpCircle, Download } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
 import { downloadAssessmentResultsCsv } from '../../utils/assessment-csv';
 import { Icons } from '../icons';
+import { PlatformDialog } from '../system/PlatformDialog';
+import { usePlatformDialog } from '../../hooks/usePlatformDialog';
 
 interface GradingDetailViewProps {
   quizId: string;
@@ -23,6 +25,12 @@ export const GradingDetailView: React.FC<GradingDetailViewProps> = ({ quizId, on
   const [loading, setLoading] = useState(true);
   const [currentStudentIdx, setCurrentStudentIdx] = useState(0);
   const [publishing, setPublishing] = useState(false);
+  const { dialog, closeDialog, showAlert, showConfirm } = usePlatformDialog();
+  // 教師調整草稿：attemptId → questionIndex → { finalPoints, teacherComment }
+  const [draftMap, setDraftMap] = useState<Record<string, Record<number, { finalPoints: number; teacherComment: string }>>>({});
+  const [initialMap, setInitialMap] = useState<Record<string, Record<number, { finalPoints: number; teacherComment: string }>>>({});
+  const [saving, setSaving] = useState(false);
+  const [saveState, setSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
 
   useEffect(() => {
     let active = true;
@@ -48,7 +56,103 @@ export const GradingDetailView: React.FC<GradingDetailViewProps> = ({ quizId, on
 
   const students = Array.isArray(data?.students) ? data.students : [];
   const currentStudent = students[currentStudentIdx] || null;
-  const activeAnomalyKey = currentStudent?.anomalyFlags?.[0];
+
+  // Seed editing drafts from server answers whenever detail data (re)loads
+  useEffect(() => {
+    if (!Array.isArray(data?.students)) return;
+    const initial: typeof initialMap = {};
+    const drafts: typeof draftMap = {};
+    data.students.forEach((student: any) => {
+      const perQuestion: Record<number, { finalPoints: number; teacherComment: string }> = {};
+      (Array.isArray(student.answers) ? student.answers : []).forEach((answer: any) => {
+        perQuestion[Number(answer.questionIndex)] = {
+          finalPoints: Number(answer.score || 0),
+          teacherComment: String(answer.teacherComment || ''),
+        };
+      });
+      initial[String(student.attemptId)] = perQuestion;
+      drafts[String(student.attemptId)] = JSON.parse(JSON.stringify(perQuestion));
+    });
+    setInitialMap(initial);
+    setDraftMap(drafts);
+    setSaveState('idle');
+  }, [data]);
+
+  const attemptId = currentStudent ? String(currentStudent.attemptId) : '';
+  const canEdit = currentStudent?.status === 'pending_confirm';
+  const currentDrafts = attemptId ? draftMap[attemptId] || {} : {};
+  const currentInitial = attemptId ? initialMap[attemptId] || {} : {};
+  const isDirty = Object.keys(currentInitial).some(
+    (key) =>
+      Number(currentDrafts[Number(key)]?.finalPoints || 0) !== Number(currentInitial[Number(key)]?.finalPoints || 0) ||
+      String(currentDrafts[Number(key)]?.teacherComment || '') !== String(currentInitial[Number(key)]?.teacherComment || '')
+  );
+  const displayTotal = Object.values(currentDrafts).reduce((sum, item) => sum + Number(item.finalPoints || 0), 0);
+
+  const updateDraft = (questionIndex: number, patch: { finalPoints?: number; teacherComment?: string }) => {
+    if (!attemptId) return;
+    setDraftMap((prev) => {
+      const perQuestion = { ...(prev[attemptId] || {}) };
+      perQuestion[questionIndex] = {
+        finalPoints: patch.finalPoints !== undefined ? patch.finalPoints : Number(perQuestion[questionIndex]?.finalPoints || 0),
+        teacherComment: patch.teacherComment !== undefined ? patch.teacherComment : String(perQuestion[questionIndex]?.teacherComment || ''),
+      };
+      return { ...prev, [attemptId]: perQuestion };
+    });
+    setSaveState('idle');
+  };
+
+  const adoptAiForQuestion = (questionIndex: number) => {
+    const answer = currentStudent?.answers?.find((item: any) => Number(item.questionIndex) === questionIndex);
+    if (!answer) return;
+    updateDraft(questionIndex, { finalPoints: Number(answer.aiScore || 0) });
+  };
+
+  const adoptAllAi = () => {
+    if (!attemptId) return;
+    setDraftMap((prev) => {
+      const perQuestion = { ...(prev[attemptId] || {}) };
+      (currentStudent?.answers || []).forEach((answer: any) => {
+        perQuestion[Number(answer.questionIndex)] = {
+          finalPoints: Number(answer.aiScore || 0),
+          teacherComment: String(perQuestion[Number(answer.questionIndex)]?.teacherComment || ''),
+        };
+      });
+      return { ...prev, [attemptId]: perQuestion };
+    });
+    setSaveState('idle');
+  };
+
+  const saveDraft = async () => {
+    if (!attemptId || !canEdit || saving) return;
+    const drafts = draftMap[attemptId] || {};
+    const reviews = Object.entries(drafts).map(([questionIndex, item]) => ({
+      questionIndex: Number(questionIndex),
+      finalPoints: Number(item.finalPoints || 0),
+      teacherComment: String(item.teacherComment || '').trim(),
+    }));
+    setSaving(true);
+    setSaveState('idle');
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/${quizId}/attempts/${attemptId}/review`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reviews }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(payload?.error || uiText("儲存草稿失敗，請稍後再試。")));
+      setInitialMap((prev) => ({ ...prev, [attemptId]: JSON.parse(JSON.stringify(draftMap[attemptId] || {})) }));
+      setSaveState('saved');
+      window.setTimeout(() => setSaveState('idle'), 2500);
+    } catch (error) {
+      setSaveState('error');
+      console.error(error);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const firstFlag = currentStudent?.anomalyFlags?.[0];
+  const activeAnomalyKey = typeof firstFlag === 'string' ? firstFlag : firstFlag?.type;
   const activeAnomaly = activeAnomalyKey ? anomalyConfig[activeAnomalyKey] : null;
 
   const progress = useMemo(() => {
@@ -60,7 +164,23 @@ export const GradingDetailView: React.FC<GradingDetailViewProps> = ({ quizId, on
   const publishGrades = async () => {
     setPublishing(true);
     try {
-      await fetch(`${API_BASE}/api/quizzes/${quizId}/grading/publish`, { method: 'POST' });
+      const response = await fetch(`${API_BASE}/api/quizzes/${quizId}/grading/publish`, { method: 'POST' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(data?.error || uiText("批量發佈成績失敗，請稍後再試。")));
+      // 發佈成功：提示已發佈人數，確認後返批改工作台（測驗會歸納入「已歸納」區）
+      showConfirm({
+        title: uiText("成績已發佈"),
+        message: uiTemplate("已發佈 {0} 份學生成績。未儲存草稿嘅學生會以 AI 分數發佈。", Number(data?.publishedCount || 0)),
+        confirmText: uiText("返回批改工作台"),
+        cancelText: uiText("繼續查看"),
+        onConfirm: onBack,
+      });
+    } catch (error) {
+      showAlert({
+        title: uiText("發佈失敗"),
+        message: error instanceof Error ? error.message : uiText("批量發佈成績失敗，請稍後再試。"),
+        tone: 'danger',
+      });
     } finally {
       setPublishing(false);
     }
@@ -135,7 +255,19 @@ export const GradingDetailView: React.FC<GradingDetailViewProps> = ({ quizId, on
             <div className="text-[25px] font-black leading-tight text-slate-900">{currentStudent?.name || uiText('學生')}</div>
             <div className="mt-2 text-sm font-semibold text-slate-400">{uiText("提交於 ")}{currentStudent?.submittedAt ? new Date(currentStudent.submittedAt).toISOString().slice(5, 16).replace('T', ' ') : '--'}</div>
           </div>
-          <div className="rounded-full bg-indigo-50 px-4 py-2 text-base font-black text-indigo-600">{uiText("總分 ")}{currentStudent?.score || 0} / {currentStudent?.totalPoints || 0}
+          <div className="flex items-center gap-3">
+            {canEdit ? (
+              <button
+                type="button"
+                onClick={adoptAllAi}
+                className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-4 py-2 text-xs font-bold text-indigo-600 transition hover:bg-indigo-50"
+              >
+                <Icons.sparkles className="h-3.5 w-3.5" />{uiText("全部採用 AI 分數")}
+              </button>
+            ) : null}
+            {isDirty ? <span className="text-xs font-bold text-amber-500">{uiText("未儲存")}</span> : null}
+            <div className="rounded-full bg-indigo-50 px-4 py-2 text-base font-black text-indigo-600">{uiText("總分 ")}{displayTotal} / {currentStudent?.totalPoints || 0}
+            </div>
           </div>
         </div>
 
@@ -147,23 +279,74 @@ export const GradingDetailView: React.FC<GradingDetailViewProps> = ({ quizId, on
             </div>
           ) : null}
 
-          {currentStudent?.answers?.map((answer: any, index: number) => (
-            <div key={`${answer.questionId}-${index}`} className="rounded-[28px] border border-slate-100 bg-white p-7 shadow-sm">
-              <div className="text-[16px] font-black leading-8 text-slate-900">{index + 1}. {answer.question}</div>
-              <div className={`mt-4 rounded-2xl border px-5 py-4 text-base font-bold ${
-                answer.isCorrect ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'
-              }`}>
-                <div>{uiText("學生作答：")}{answer.studentAnswer || uiText('未作答')}</div>
-                <div className="mt-2">{uiText("正確答案：")}{formatCorrectAnswer(answer)}</div>
-                <div className="mt-2 text-right text-2xl font-black">{answer.score} / {answer.maxScore}</div>
-              </div>
-              {answer.feedback ? <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm font-medium leading-7 text-slate-600">{uiText("AI 評語：")}{answer.feedback}</div> : null}
+          {currentStudent?.status === 'pending_grading' ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
+              {uiText("此學生尚未完成作答，完成後先可以確認分數。")}
             </div>
-          ))}
+          ) : null}
+
+          {currentStudent?.answers?.map((answer: any, index: number) => {
+            const draft = currentDrafts[Number(answer.questionIndex)];
+            const draftPoints = draft ? Number(draft.finalPoints || 0) : Number(answer.score || 0);
+            const differsFromAi = draftPoints !== Number(answer.aiScore || 0);
+            return (
+              <div key={`${answer.questionId}-${index}`} className="rounded-[28px] border border-slate-100 bg-white p-7 shadow-sm">
+                <div className="text-[16px] font-black leading-8 text-slate-900">{index + 1}. {answer.question}</div>
+                <div className={`mt-4 rounded-2xl border px-5 py-4 text-base font-bold ${
+                  answer.isCorrect ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'
+                }`}>
+                  <div>{uiText("學生作答：")}{answer.studentAnswer || uiText('未作答')}</div>
+                  <div className="mt-2">{uiText("正確答案：")}{formatCorrectAnswer(answer)}</div>
+                  <div className="mt-2 text-right text-2xl font-black">{draftPoints} / {answer.maxScore}</div>
+                </div>
+                {answer.feedback ? <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm font-medium leading-7 text-slate-600">{uiText("AI 評語：")}{answer.feedback}</div> : null}
+
+                {canEdit ? (
+                  <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-indigo-500">{uiText("教師調整")}</span>
+                      <button
+                        type="button"
+                        onClick={() => adoptAiForQuestion(Number(answer.questionIndex))}
+                        className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-bold text-indigo-600 transition hover:bg-indigo-50"
+                      >
+                        <Icons.sparkles className="h-3 w-3" />{uiText("採用 AI 分數")}
+                      </button>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <span className="text-xs font-bold text-slate-500">{uiText("分數")}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={Number(answer.maxScore || 0)}
+                        step={0.5}
+                        value={draftPoints}
+                        onChange={(event) => updateDraft(Number(answer.questionIndex), { finalPoints: Number(event.target.value) })}
+                        className="w-24 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-400"
+                      />
+                      <span className="text-sm font-bold text-slate-400">/ {answer.maxScore}</span>
+                      {differsFromAi ? <span className="text-xs font-bold text-amber-600">{uiText("AI 原分")} {answer.aiScore}</span> : null}
+                    </div>
+                    <textarea
+                      value={draft?.teacherComment || ''}
+                      onChange={(event) => updateDraft(Number(answer.questionIndex), { teacherComment: event.target.value })}
+                      placeholder={uiText("教師評語（選填）")}
+                      rows={2}
+                      className="mt-3 w-full resize-none rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700 outline-none transition focus:border-indigo-400"
+                    />
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
 
         <div className="border-t border-slate-100 bg-white p-5 flex items-center justify-between">
-          <div className="text-sm font-semibold text-slate-500">{uiText("本次平均分 ")}{data?.metrics?.averageScore || 0}{uiText(" · 異常標記 ")}{data?.metrics?.anomalyCount || 0}</div>
+          <div className="text-sm font-semibold text-slate-500">
+            {uiText("本次平均分 ")}{data?.metrics?.averageScore || 0}{uiText(" · 異常標記 ")}{data?.metrics?.anomalyCount || 0}
+            {saveState === 'saved' ? <span className="ml-3 font-bold text-emerald-600">{uiText("草稿已儲存")}</span> : null}
+            {saveState === 'error' ? <span className="ml-3 font-bold text-rose-500">{uiText("儲存失敗")}</span> : null}
+          </div>
           <div className="flex gap-3">
             <button
               onClick={() => downloadAssessmentResultsCsv(data)}
@@ -171,13 +354,28 @@ export const GradingDetailView: React.FC<GradingDetailViewProps> = ({ quizId, on
               className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-7 py-3 text-sm font-black text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Download className="h-4 w-4" />{uiText("匯出 CSV")}</button>
-            <button className="rounded-full border border-slate-200 bg-white px-7 py-3 text-sm font-black text-slate-600">{uiText("儲存草稿")}</button>
+            <button
+              onClick={() => void saveDraft()}
+              disabled={!canEdit || saving || !isDirty}
+              className="rounded-full border border-slate-200 bg-white px-7 py-3 text-sm font-black text-slate-600 transition disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {saving ? uiText("儲存中...") : uiText("儲存草稿")}</button>
             <button onClick={() => void publishGrades()} disabled={publishing} className="rounded-full bg-indigo-600 px-7 py-3 text-sm font-black text-white disabled:opacity-60">
               {publishing ? uiText('發佈中...') : uiText('批量發佈成績')}
             </button>
           </div>
         </div>
       </div>
+      <PlatformDialog
+        open={dialog.open}
+        title={dialog.title}
+        message={dialog.message}
+        confirmText={dialog.confirmText}
+        cancelText={dialog.cancelText}
+        tone={dialog.tone}
+        onClose={closeDialog}
+        onConfirm={dialog.onConfirm || undefined}
+      />
     </div>
   );
 };

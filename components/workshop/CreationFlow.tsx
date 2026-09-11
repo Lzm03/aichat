@@ -150,6 +150,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         background: "",
         animation: t("defaultAnimation"),
         subject: "",
+        grade: "",
 
         knowledgeBase: "",
         securityPrompt: "",
@@ -170,6 +171,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       background: "",
       animation: "",
       subject: "",
+      grade: "",
       knowledgeBase: "",
       securityPrompt: "",
       videoIdle: "",
@@ -200,6 +202,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
           background: data.background || "",
           animation: data.animation || "",
           subject: data.subject || "",
+          grade: data.grade || "",
           knowledgeBase: data.knowledgeBase || "",
           securityPrompt: data.securityPrompt || "",
           videoIdle: data.videoIdle || "",
@@ -480,6 +483,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
 
         knowledgeBase: botConfig.knowledgeBase,
         securityPrompt: botConfig.securityPrompt,
+        grade: botConfig.grade || "",
 
         videoIdle: botConfig.videoIdle,
         videoThinking: botConfig.videoThinking,
@@ -606,6 +610,8 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
               initialData={parsedKnowledgeData}
               subject={botConfig.subject}
               onSubjectChange={(value) => updateConfig("subject", value)}
+              grade={botConfig.grade}
+              onGradeChange={(value) => updateConfig("grade", value)}
               afterKnowledgePointEditor={
                 <TopicManager characterId={String(botConfig.id || botId || "").trim() || null} />
               }

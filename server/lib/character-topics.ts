@@ -26,6 +26,8 @@ export type CharacterRow = {
   security_prompt: string | null;
   owner_id: string | null;
   is_visible: boolean;
+  /** 年級帶（P1 / P2-P3 / P4-P6 / S1-S3 / S4-S6）；NULL = 未設定 */
+  grade: string | null;
 };
 
 export class CharacterTopicError extends Error {
@@ -179,7 +181,7 @@ export async function getAccessibleCharacter(characterId: string, userId?: strin
   await ensureCharacterTopicTables();
   const result = await pool.query(
     `
-    SELECT b.id, b.name, b.knowledge_base, b.security_prompt, b.owner_id, b.is_visible
+    SELECT b.id, b.name, b.knowledge_base, b.security_prompt, b.owner_id, b.is_visible, b.grade
     FROM bots b
     WHERE b.id=$1
       AND (
@@ -200,7 +202,7 @@ export async function getAccessibleCharacter(characterId: string, userId?: strin
 export async function getOwnedCharacter(characterId: string, userId: string) {
   await ensureCharacterTopicTables();
   const result = await pool.query(
-    `SELECT id, name, knowledge_base, security_prompt, owner_id, is_visible
+    `SELECT id, name, knowledge_base, security_prompt, owner_id, is_visible, grade
      FROM bots WHERE id=$1 AND owner_id=$2 LIMIT 1`,
     [characterId, userId]
   );

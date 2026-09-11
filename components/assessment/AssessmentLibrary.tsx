@@ -4,20 +4,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from '../icons';
 import { Search, BookOpen, Download, Share2, X, ChevronRight, Trash2 } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
+import { QuestionCard, type LibraryQuestion } from './QuestionCard';
 
 interface AssessmentLibraryProps {
   onBack: () => void;
 }
-
-type LibraryQuestion = {
-  id: string | number;
-  type: string;
-  cognitiveLevel: string;
-  levelColor: string;
-  content: string;
-  options?: string[];
-  answer: string;
-};
 
 type QuestionBank = {
   id: string;
@@ -27,39 +18,6 @@ type QuestionBank = {
   updatedAt?: string;
   questions?: LibraryQuestion[];
 };
-
-const QuestionCard = ({ q, index }: { q: LibraryQuestion; index: number }) => (
-  <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-    <div className="flex gap-2 mb-4">
-      <span className={`px-3 py-1 rounded-full text-xs font-bold ${q.levelColor || 'bg-slate-100 text-slate-700'}`}>
-        {uiText(q.cognitiveLevel)}
-      </span>
-      <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
-        {uiText(q.type)}
-      </span>
-    </div>
-
-    <p className="text-slate-800 font-medium mb-4 text-lg leading-relaxed">
-      <span className="text-slate-400 mr-2">{index + 1}.</span>
-      {q.content}
-    </p>
-
-    {q.options?.length ? (
-      <div className="space-y-2 mb-6 ml-6">
-        {q.options.map((opt: string) => (
-          <div key={opt} className="px-4 py-2.5 bg-slate-50 rounded-xl text-sm text-slate-700 border border-slate-100">
-            {opt}
-          </div>
-        ))}
-      </div>
-    ) : null}
-
-    <div className="bg-slate-50 p-4 rounded-xl text-sm text-slate-600 border border-slate-100">
-      <span className="font-bold text-slate-700 mr-2">{uiText("參考答案：")}</span>
-      {q.answer}
-    </div>
-  </div>
-);
 
 export const AssessmentLibrary: React.FC<AssessmentLibraryProps> = ({ onBack }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -120,7 +78,7 @@ export const AssessmentLibrary: React.FC<AssessmentLibraryProps> = ({ onBack }) 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <button onClick={onBack} className="flex items-center text-sm font-medium text-slate-600 hover:text-indigo-600 mb-2 transition-colors">
-            <Icons.back className="w-4 h-4 mr-2" />{uiText("返回指揮艙")}</button>
+            <Icons.back className="w-4 h-4 mr-2" />{uiText("返回總覽")}</button>
           <h1 className="text-2xl font-bold text-slate-800">{uiText("歷史題庫")}</h1>
         </div>
 

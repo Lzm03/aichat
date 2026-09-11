@@ -9,8 +9,7 @@ import { API_BASE } from '../utils/api';
 import { subjectColorOf } from '../utils/subjects';
 import type { AiBot } from '../types';
 
-import { AssessmentQualityCard } from '../components/assessment/AssessmentQualityCard';
-import { StudentLearningReportCard } from '../components/dashboard/StudentLearningReportCard';
+import { LearningReportEntryCard } from '../components/dashboard/LearningReportEntryCard';
 import { DemoNotice } from '../components/system/DemoNotice';
 
 const WELCOME_T = {
@@ -55,6 +54,7 @@ type DashboardProps = {
   onCreateBot: () => void;
   onCreateQuiz: () => void;
   onOpenSharing: () => void;
+  onOpenLearningReport: () => void;
 };
 
 function formatRecentTime(value?: string) {
@@ -77,6 +77,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onCreateBot,
   onCreateQuiz,
   onOpenSharing,
+  onOpenLearningReport,
 }) => {
   const teacherName = readAuthSession()?.user?.fullName?.trim() || uiText('老師');
   const [bots, setBots] = useState<AiBot[]>([]);
@@ -221,18 +222,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <Users className="h-7 w-7" />
             </span>
             <span className="relative min-w-0">
-              <span className="block text-lg font-black text-slate-900">{uiText("學生與 Bot 分享")}</span>
-              <span className="mt-1 block text-sm text-slate-500">{uiText("管理學生可以對話嘅 AI 夥伴")}</span>
+              <span className="block text-lg font-black text-slate-900">{uiText("學生管理")}</span>
+              <span className="mt-1 block text-sm text-slate-500">{uiText("管理學生帳戶與班級。")}</span>
             </span>
             <ArrowRight className="relative ml-auto h-5 w-5 shrink-0 text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500" />
           </button>
+
+          <LearningReportEntryCard onClick={onOpenLearningReport} />
         </div>
       </section>
-
-          <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2 flex-1">
-        <StudentLearningReportCard />
-        <AssessmentQualityCard />
-      </div>
     </div>
   );
 };
