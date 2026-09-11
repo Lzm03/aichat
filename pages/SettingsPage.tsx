@@ -936,12 +936,35 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                     <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input type="text" value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} placeholder={uiText("搜尋姓名或電子郵件")} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-indigo-400 focus:bg-white" />
                   </label>
-                  <select aria-label={uiText("角色篩選")} value={accountRole} onChange={(event) => setAccountRole(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm">
-                    <option value="all">{uiText("全部角色")}</option>
-                    <option value="teacher">{uiText("老師")}</option>
-                    <option value="student">{uiText("學生")}</option>
-                    <option value="admin">{uiText("管理員")}</option>
-                  </select>
+                  <div
+                    role="group"
+                    aria-label={uiText("角色篩選")}
+                    className="flex w-full items-center gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 md:w-auto"
+                  >
+                    {[
+                      ["all", uiText("全部")],
+                      ["teacher", uiText("老師")],
+                      ["student", uiText("學生")],
+                      ["admin", uiText("管理員")],
+                    ].map(([role, label]) => {
+                      const selected = accountRole === role;
+                      return (
+                        <button
+                          key={role}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => setAccountRole(role)}
+                          className={`shrink-0 rounded-lg px-3.5 py-2 text-xs font-bold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1 ${
+                            selected
+                              ? "bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200/70"
+                              : "text-slate-500 hover:bg-white/60 hover:text-slate-800"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
                   <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
                     <span className="rounded-lg bg-indigo-50 px-3 py-2 text-indigo-700">{uiText("全部 ")}{filteredAccounts.length}</span>
                     <span className="rounded-lg px-3 py-2">{uiText("每頁 ")}{accountPageSize}{uiText(" 位")}</span>
