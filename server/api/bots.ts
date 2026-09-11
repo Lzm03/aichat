@@ -536,6 +536,65 @@ router.get("/sharing/assignments", requireAuth, async (req, res) => {
   }
 });
 
+router.get("/:id/group-shares", requireAuth, async (req, res) => {
+  try {
+    await ensurePlatformTables();
+    const user = getAuthUser(req);
+    const bot = await pool.query("SELECT id FROM bots WHERE id=$1 AND owner_id=$2", [req.params.id, user?.id]);
+    if (!bot.rowCount) return res.status(404).json({ error: "Bot not found" });
+    const groups = await pool.query("SELECT group_id FROM bot_group_shares WHERE bot_id=$1 AND teacher_id=$2", [req.params.id, user?.id]);
+    const exclusions = await pool.query("SELECT student_id FROM bot_student_exclusions WHERE bot_id=$1 AND teacher_id=$2", [req.params.id, user?.id]);
+    return res.json({ groupIds: groups.rows.map(row => row.group_id), excludedStudentIds: exclusions.rows.map(row => row.student_id) });
+  } catch (error) {
+    console.error("Load group shares failed", error);
+    return res.status(500).json({ error: "Failed to load class access" });
+  }
+});
+
+router.put("/:id/group-shares", requireAuth, async (req, res) => {
+  if (!Array.isArray(req.body?.groupIds) || !Array.isArray(req.body?.excludedStudentIds)) {
+    return res.status(400).json({ error: "groupIds and excludedStudentIds are required" });
+  }
+  const groupIds = [...new Set(req.body.groupIds.map(String))];
+  const excludedStudentIds = [...new Set(req.body.excludedStudentIds.map(String))];
+  try {
+    await ensurePlatformTables();
+    const user = getAuthUser(req);
+    if (!user || !['teacher', 'admin'].includes(user.role)) return res.status(403).json({ error: "teacher account required" });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const bot = await client.query("SELECT id FROM bots WHERE id=$1 AND owner_id=$2 FOR UPDATE", [req.params.id, user.id]);
+      if (!bot.rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Bot not found" });
+      }
+      const groups = await client.query("SELECT id FROM student_groups WHERE teacher_id=$1 AND id=ANY($2::text[])", [user.id, groupIds]);
+      const students = await client.query(`SELECT DISTINCT gm.student_id FROM student_group_members gm
+        JOIN student_groups sg ON sg.id=gm.group_id WHERE sg.teacher_id=$1 AND sg.id=ANY($2::text[])
+        AND gm.student_id=ANY($3::text[])`, [user.id, groupIds, excludedStudentIds]);
+      if (groups.rowCount !== groupIds.length || students.rowCount !== excludedStudentIds.length) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "Invalid classes or excluded students" });
+      }
+      await client.query("DELETE FROM bot_group_shares WHERE bot_id=$1 AND teacher_id=$2", [req.params.id, user.id]);
+      await client.query("DELETE FROM bot_student_exclusions WHERE bot_id=$1 AND teacher_id=$2", [req.params.id, user.id]);
+      await client.query("INSERT INTO bot_group_shares (bot_id, teacher_id, group_id) SELECT $1, $2, UNNEST($3::text[])", [req.params.id, user.id, groupIds]);
+      await client.query("INSERT INTO bot_student_exclusions (bot_id, teacher_id, student_id) SELECT $1, $2, UNNEST($3::text[])", [req.params.id, user.id, excludedStudentIds]);
+      await client.query("COMMIT");
+      return res.json({ ok: true, groupIds, excludedStudentIds });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error("Save group shares failed", error);
+    return res.status(500).json({ error: "Failed to save class access" });
+  }
+});
+
 router.get("/:id/access", requireAuth, async (req, res) => {
   try {
     await ensurePlatformTables();

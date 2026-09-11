@@ -1,3 +1,4 @@
+import { quizAudienceSql } from "../lib/quiz-audience.ts";
 import crypto from "crypto";
 import express from "express";
 import multer from "multer";
@@ -756,10 +757,8 @@ async function canUserAccessQuizBot(botId: string, user: { id: string; role?: st
   }
 
   const sharedBot = await pool.query(
-    `SELECT 1
-     FROM bot_student_shares
-     WHERE bot_id=$1 AND student_id=$2
-     LIMIT 1`,
+    `SELECT 1 FROM users u WHERE u.id=$2 AND u.role='student' AND u.status='active'
+      AND ${quizAudienceSql('$1', 'u.id')} LIMIT 1`,
     [botId, user.id]
   );
   return Boolean(sharedBot.rowCount);
@@ -1326,7 +1325,7 @@ router.get("/quizzes/published", requireAuth, async (req, res) => {
          COALESCE(q.published_at, q.updated_at) AS published_at,
          q.grading_completed_at,
          b.name AS bot_name, b.subject AS bot_subject,
-         COUNT(a.id) AS total_students,
+         COUNT(u.id) AS total_students,
          COUNT(a.id) FILTER (WHERE a.status='completed') AS submitted,
          COUNT(a.id) FILTER (WHERE a.teacher_status='completed') AS completed,
          COUNT(a.id) FILTER (WHERE a.teacher_status='pending_confirm') AS pending_confirm,
@@ -1348,7 +1347,9 @@ router.get("/quizzes/published", requireAuth, async (req, res) => {
          ) AS average_score
        FROM quizzes q
        LEFT JOIN bots b ON b.id=q.bot_id
-       LEFT JOIN quiz_attempts a ON a.quiz_id=q.id
+       LEFT JOIN users u ON u.role='student' AND u.status='active' AND u.id<>q.teacher_id
+         AND ${quizAudienceSql('q.bot_id', 'u.id')}
+       LEFT JOIN quiz_attempts a ON a.quiz_id=q.id AND a.student_id=u.id
        WHERE q.teacher_id=$1 AND q.status='published'
        GROUP BY q.id, b.name, b.subject, q.grading_completed_at
        ORDER BY COALESCE(q.published_at, q.updated_at) DESC, q.created_at DESC`,
@@ -2672,8 +2673,9 @@ router.get("/teachers/me/grading-summary", requireAuth, async (req, res) => {
           ) ELSE 0 END
         ) FILTER (WHERE u.id IS NOT NULL), 0)::int AS anomaly_count
        FROM quizzes q
-       LEFT JOIN quiz_attempts a ON a.quiz_id=q.id
-       LEFT JOIN users u ON u.id=a.student_id AND COALESCE(u.role, 'student') NOT IN ('teacher', 'admin')
+       LEFT JOIN users u ON u.role='student' AND u.status='active' AND u.id<>q.teacher_id
+         AND ${quizAudienceSql('q.bot_id', 'u.id')}
+       LEFT JOIN quiz_attempts a ON a.quiz_id=q.id AND a.student_id=u.id
        LEFT JOIN bots b ON b.id=q.bot_id
        WHERE q.teacher_id=$1 AND q.status='published'
        GROUP BY q.id, b.subject, b.name, q.bot_id, q.question_count, q.published_at, q.grading_completed_at

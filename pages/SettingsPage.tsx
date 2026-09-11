@@ -113,6 +113,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
   const [accounts, setAccounts] = useState<ManagedAccount[]>([]);
   const [selectedUserId, setSelectedUserId] = useState("");
   const [accountSearch, setAccountSearch] = useState("");
+  const [accountRole, setAccountRole] = useState("all");
   const [featureDrafts, setFeatureDrafts] = useState<Record<string, { used: string; limit: string }>>({});
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
@@ -178,13 +179,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
 
   const filteredAccounts = useMemo(() => {
     const keyword = accountSearch.trim().toLowerCase();
-    if (!keyword) return accounts;
     return accounts.filter((account) => {
+      if (accountRole !== "all" && account.user.role !== accountRole) return false;
       const fullName = String(account.user.fullName || "").toLowerCase();
       const email = String(account.user.email || "").toLowerCase();
       return fullName.includes(keyword) || email.includes(keyword);
     });
-  }, [accounts, accountSearch]);
+  }, [accounts, accountSearch, accountRole]);
 
   const accountPageSize = 8;
   const accountPageCount = Math.max(1, Math.ceil(filteredAccounts.length / accountPageSize));
@@ -195,7 +196,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
 
   useEffect(() => {
     setAccountPage(0);
-  }, [accountSearch]);
+  }, [accountSearch, accountRole]);
 
   useEffect(() => {
     setAccountPage((page) => Math.min(page, accountPageCount - 1));
@@ -935,6 +936,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                     <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input type="text" value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} placeholder={uiText("搜尋姓名或電子郵件")} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-indigo-400 focus:bg-white" />
                   </label>
+                  <select aria-label={uiText("角色篩選")} value={accountRole} onChange={(event) => setAccountRole(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm">
+                    <option value="all">{uiText("全部角色")}</option>
+                    <option value="teacher">{uiText("老師")}</option>
+                    <option value="student">{uiText("學生")}</option>
+                    <option value="admin">{uiText("管理員")}</option>
+                  </select>
                   <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
                     <span className="rounded-lg bg-indigo-50 px-3 py-2 text-indigo-700">{uiText("全部 ")}{filteredAccounts.length}</span>
                     <span className="rounded-lg px-3 py-2">{uiText("每頁 ")}{accountPageSize}{uiText(" 位")}</span>

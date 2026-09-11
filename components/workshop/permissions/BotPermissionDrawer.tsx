@@ -87,7 +87,7 @@ export const BotPermissionDrawer: React.FC<Props> = ({
       return;
     }
     if (!isSingleBotMode || prefillDone.current) return;
-    if (!students.length || !groups.length) return;
+    if (!groups.length) return;
     prefillDone.current = true;
     const groupIds = (initialGroupIds || []).filter((id) => groups.some((group) => group.id === id));
     setSelectedGroupIds(groupIds);
@@ -132,9 +132,14 @@ export const BotPermissionDrawer: React.FC<Props> = ({
   const hasGroupSelection = selectedGroupIds.length > 1 || (selectedGroupIds.length === 1 && explicitlyExcludedStudentIds.length > 0);
 
   const toggleGroup = (groupId: string) => {
-    setSelectedGroupIds((current) =>
-      current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId]
-    );
+    const adding = !selectedGroupIds.includes(groupId);
+    const nextGroups = adding ? [...selectedGroupIds, groupId] : selectedGroupIds.filter((id) => id !== groupId);
+    const allowed = new Set(groups.filter((group) => nextGroups.includes(group.id)).flatMap((group) => group.studentIds));
+    setSelectedGroupIds(nextGroups);
+    setSelectedStudentIds((current) => adding
+      ? Array.from(new Set([...current, ...(groups.find((group) => group.id === groupId)?.studentIds || [])]))
+      : current.filter((id) => allowed.has(id)));
+
   };
 
   const toggleStudent = (studentId: string) => {

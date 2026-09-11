@@ -217,34 +217,31 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     let cancelled = false;
     const load = async () => {
       try {
-        const [classesRes, studentsRes] = await Promise.all([
-          fetch(`${API_BASE}/api/bots/classes`),
-          fetch(`${API_BASE}/api/bots/sharing/students`),
-        ]);
-        const classesData = await classesRes.json().catch(() => ({}));
-        const studentsData = await studentsRes.json().catch(() => ({}));
+        const response = await fetch(`${API_BASE}/api/students`, { cache: 'no-store' });
+        if (!response.ok) throw new Error('無法載入班級資料');
+        const data = await response.json();
         if (cancelled) return;
-        setDrawerGroups((Array.isArray(classesData?.classes) ? classesData.classes : []).map((item: any) => ({
+        setDrawerGroups((Array.isArray(data?.groups) ? data.groups : []).map((item: any) => ({
           id: String(item.id),
           name: String(item.name),
           type: 'class' as const,
           studentIds: Array.isArray(item.studentIds) ? item.studentIds.map(String) : [],
         })));
-        setDrawerStudents((Array.isArray(studentsData?.students) ? studentsData.students : []).map((item: any) => ({
+        setDrawerStudents((Array.isArray(data?.students) ? data.students : []).map((item: any) => ({
           id: String(item.id),
           fullName: String(item.fullName || ''),
           email: String(item.email || ''),
           groupIds: Array.isArray(item.groupIds) ? item.groupIds.map(String) : [],
         })));
       } catch {
-        // 保持空列表，Drawer 內有 empty state
+        if (!cancelled) setClassShareError(uiText('無法載入班級資料，請關閉後重試。'));
       }
     };
     void load();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [viewMode, manageClassBotId]);
 
   // 每個 Bot 嘅班級授權（總覽 tag 資料源；進入班級分配 view 時拉取）
   useEffect(() => {
