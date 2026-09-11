@@ -9,12 +9,22 @@ type KnowledgePoint = {
   assessmentCriteria?: string;
 };
 
+/** 後台對話狀態（知識點覆蓋實錄），由 ask.ts 每輪載入並注入 prompt */
+export type ConversationStateInput = {
+  coveredPointIds?: string[];
+  nextPointId?: string | null;
+  turnsSinceSummary?: number;
+  studentLevel?: string;
+};
+
 type PromptCompilerInput = {
   roleName?: string;
   knowledgeBase?: string;
   securityPrompt?: string;
   /** 年級帶（P1 / P2-P3 / P4-P6 / S1-S3 / S4-S6）；未設定則不加難度規則 */
   gradeBand?: string | null;
+  /** 後台實錄嘅對話狀態；提供咗就用真實狀態取代模型自估 */
+  conversationState?: ConversationStateInput | null;
 };
 
 export type ChatReplyLanguage = "cantonese" | "mandarin" | "english";
@@ -25,6 +35,9 @@ type ParsedPromptSource = {
   knowledgeSummary: string;
   knowledgePoints: KnowledgePoint[];
   personaProfile: string;
+  /** 老師設定書可選覆寫節；冇寫就落 DEFAULT_* */
+  unknownBoundary: string;
+  closingRitual: string;
 };
 
 const DEFAULT_CORE_MISSION =
@@ -48,14 +61,24 @@ Your goal is NOT to spoon-feed information, but to guide the student toward inde
 1. Answer in Traditional Chinese unless the student clearly uses another language variety and expects it.
 2. Stay in character, but remain clear and easy for students to understand.
 3. Do not output stage directions or action descriptions such as "（微笑）" or "*點頭*".
-4. Keep each reply to 1-3 short sentences, usually under 120 Chinese characters unless the student explicitly asks for detail.
-5. Do not ask a follow-up question every single turn. Some turns should simply answer and stop.
-6. Only ask one short, knowledge-related follow-up question when it naturally helps the student think deeper.
-7. Never ask more than one question in a single reply. One reply can contain zero or one question only.
-8. If you choose to ask a question, end the reply with that single question and do not add a second question anywhere else in the same reply.
-9. Do not stack two Socratic prompts in one turn. Ask about only one knowledge point at a time.
-10. If the student seems confused, lower the difficulty first; if the student is engaged, gently raise the cognitive depth.
-11. If you do not know, admit uncertainty honestly while preserving the role voice.
+4. Produce ONE complete reply per turn. Do not split one reply into two separate messages.
+5. Keep each reply to a short passage of at most 3 message units — one unit = one piece of information, one question, or one set of 2-3 options. Usually under 150 Chinese characters unless the student explicitly asks for detail.
+6. 訊息先行 (info before asking): if the reply ends with a question, it must first deliver at least one piece of new information or one substantive affirmation BEFORE the question (1 info + 1 question). Two consecutive turns that only ask questions without delivering any new information are a violation.
+7. Do not ask a follow-up question every single turn. Some turns should simply answer and stop.
+8. Only ask one short, knowledge-related follow-up question when it naturally helps the student think deeper.
+9. Never ask more than one question in a single reply. One reply can contain zero or one question only. An A/B choice still counts as one question and must end with a single question mark, e.g. 「你想知紅色定黑色？」 is allowed, 「係唔係咁？定係咁？」 is not. A rhetorical self-answered question also counts — end it with a full stop instead, e.g. 「你諗下點解扯唔開——力斜斜咁壓入去。」 not 「點解扯唔開？係因為力。」
+10. Do not stack two Socratic prompts in one turn. Ask about only one knowledge point at a time.
+11. If the student seems confused or says they don't know, lower the difficulty FIRST: give one small piece of information or 2-3 options to choose from. Do not keep asking deeper questions.
+12. 先肯定觀察，再精準校正: if the student's answer is partially right, use the pattern 「你捉到 X 方向；更準確係 Y。例如 Z。」 — affirm the correct part in one sentence, then correct the wrong part precisely with a concrete example. Never fully endorse a misconception.
+13. If the student's answer is completely wrong: do not praise it. Give one gentle factual correction, then continue guiding.
+14. Never reveal the answer inside a question or hint. The question must not contain the keyword or fact the student is meant to produce.
+15. If the student jokes or goes off-topic: acknowledge the joke warmly in one sentence, then bridge back to the knowledge point naturally. Do not immediately fire a serious question.
+16. Topic lock: never switch topics without the student's consent. When the student drifts, bridge the old and new topic in one sentence and let them choose (continue the new topic, or return to the old one).
+17. 稱呼學生一律用「同學」或直接唔用稱呼。唔准假設學生性別（禁止「師弟」「師妹」「妹妹」等），除非學生自己表明性別或稱呼偏好。
+18. 每 3-5 輪，用一句話做小結，重複學生目前學到嘅重點（例如「你到而家學咗：紅色代表忠義，白色代表奸詐」），令學生知道自己嘅進度，然後先繼續。
+19. 相近概念唔准混為一談（例如「變臉」係快速換臉譜嘅技巧，「臉譜」係面上嘅色彩圖案）。學生混淆時，用一句話幫佢分清定義。
+20. 推進對話（Advance）：如果 # Input Context 提供咗 Covered_Points 同 Next_Point，推進問題必須圍繞 Next_Point，嚴禁再問 Covered_Points 內已覆蓋嘅知識點；冇提供就按對話歷史自行判斷。總之唔准重複問學生已經答過嘅問題，唔准「鬼打牆」。
+21. If you do not know, admit uncertainty honestly while preserving the role voice.
 `.trim();
 
 export function buildChatReplyLanguageRule(
@@ -73,7 +96,7 @@ export function buildChatReplyLanguageRule(
   if (replyLanguage === "mandarin") {
     return "Reply only in natural Standard Mandarin written with Traditional Chinese characters. Never use Cantonese grammar, vocabulary, or particles. This rule applies to every sentence, question, and teaching hint.";
   }
-  return "Reply in natural Hong Kong Cantonese written with Traditional Chinese characters and everyday Cantonese wording. Do not switch to Mandarin unless the user asks.";
+  return "Reply in natural Hong Kong Cantonese written with Traditional Chinese characters and everyday Cantonese wording. Use 「我係」 not 「我是」. Do not switch to Mandarin unless the user asks.";
 }
 
 /**
@@ -109,14 +132,16 @@ function matchSection(source: string, label: string, fallbackLabels: string[] = 
 function matchPersonaProfile(source: string) {
   // This container holds nested 【...】 controls. The generic section parser
   // stops at the first nested label and would silently discard all controls.
+  // 但緊接住嘅 optional 節（【不知道邏輯】【收尾儀式】）有自己嘅解析器，
+  // 必須喺度切走，唔可以當成角色策略一部分，否則會重複注入。
   return (
     source.match(
-      /【角色對話策略】\s*([\s\S]*?)(?=\n請根據「人物背景設定」|$)/i
+      /【角色對話策略】\s*([\s\S]*?)(?=\s*【(?:不知道邏輯|收尾儀式)】|\n請根據「人物背景設定」|$)/i
     )?.[1]?.trim() || ""
   );
 }
 
-function parseKnowledgePoints(raw: string): KnowledgePoint[] {
+export function parseKnowledgePoints(raw: string): KnowledgePoint[] {
   try {
     const parsed = JSON.parse(raw || "[]");
     if (!Array.isArray(parsed)) return [];
@@ -164,20 +189,19 @@ function inferBuzzwords(personaProfile: string) {
 
 function inferResponseTriggers(roleName: string) {
   return [
-    `當學生質疑我時，我會先接住疑問，再請他指出最卡住的一點。`,
-    `當學生偏題時，我會用一句話把焦點拉回${roleName || "當前主題"}相關知識。`,
-    "當學生沉默或說不知道時，我會先降難度，再給一個可直接回答的小提示。",
+    `當學生質疑你時：先接住疑問，再請佢指出最卡住嘅一點。`,
+    `當學生偏題時：用一句話點出新舊話題嘅關聯做橋樑，再俾學生揀「繼續新話題」定「返返之前話題」，唔准硬拉。`,
+    `當學生沉默或話「唔知」時：先降難度——俾一小步資訊或者 2-3 個選項，唔准繼續追問更深。`,
   ].join(" ");
 }
 
 function inferMultipleHooks(roleName: string, background: string) {
-  const opener = roleName ? `我是${roleName}` : "我們來聊聊這個主題";
   const firstLine = background.split(/[。！？!?]/)[0]?.trim();
   return [
-    `${opener}，我們先從你最有感覺的一點開始。`,
-    `${opener}，別急著找答案，先陪我一起想一想。`,
-    `${firstLine || opener}，你願意先說說你現在怎麼看嗎？`,
-  ].join(" | ");
+    `自我介紹（含角色名）只准喺對話開始嘅第一輪出現一次；之後除非學生親口問「你係邊個」或「你叫咩名」，一律唔准重複自介。`,
+    `重新接話時直接講內容，例如：「我哋先從你最有感覺嘅一點開始。」「唔使急，陪你一步一步諗。」「你願意先講講你而家點睇？」`,
+    `${firstLine || "你願意先講講你而家點睇？"}，可以由此切入。`,
+  ].join(" ");
 }
 
 export function parsePromptSource(input: { roleName?: string; knowledgeBase?: string }): ParsedPromptSource {
@@ -190,6 +214,9 @@ export function parsePromptSource(input: { roleName?: string; knowledgeBase?: st
     String(input.roleName || "").trim() ||
     characterBackground.match(/我是([^，。！？!?]{1,12})/)?.[1]?.trim() ||
     "";
+  // 可選覆寫節：設定書寫咗就用佢，冇寫就落骨架層預設
+  const unknownBoundary = matchSection(source, "不知道邏輯");
+  const closingRitual = matchSection(source, "收尾儀式");
 
   return {
     roleName: roleNameFromSource,
@@ -197,6 +224,8 @@ export function parsePromptSource(input: { roleName?: string; knowledgeBase?: st
     knowledgeSummary,
     knowledgePoints: parseKnowledgePoints(pointsRaw),
     personaProfile,
+    unknownBoundary,
+    closingRitual,
   };
 }
 
@@ -205,7 +234,20 @@ export function buildStoredKnowledgeBase(input: {
   knowledgeSummary: string;
   knowledgePoints: KnowledgePoint[];
   personaProfile: string;
+  /** 可選覆寫節：留空就唔輸出，組裝層會落 DEFAULT_* */
+  unknownBoundary?: string;
+  closingRitual?: string;
+  /** 唔進入 prompt 嘅製作備註（服務情境／視覺設定等） */
+  productionNotes?: string;
 }) {
+  const optionalSections = [
+    input.unknownBoundary?.trim() ? `【不知道邏輯】\n${input.unknownBoundary.trim()}` : "",
+    input.closingRitual?.trim() ? `【收尾儀式】\n${input.closingRitual.trim()}` : "",
+    input.productionNotes?.trim() ? `【製作備註】\n${input.productionNotes.trim()}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
   return `
 【人物背景設定】
 ${input.characterBackground}
@@ -218,7 +260,7 @@ ${JSON.stringify(input.knowledgePoints, null, 2)}
 
 【角色對話策略】
 ${input.personaProfile}
-
+${optionalSections ? `\n${optionalSections}\n` : ""}
 請根據「人物背景設定」與「知識庫摘要」回答問題，不要捏造不存在的資訊。
   `.trim();
 }
@@ -245,6 +287,44 @@ export function buildChatSystemPrompt(input: PromptCompilerInput) {
 
   const gradeBandRule = buildGradeBandRule(input.gradeBand);
 
+  // Input Context：有後台實錄狀態就用真實狀態（Covered/Next），冇就維持模型自估
+  const state = input.conversationState;
+  const inputContextSections: string[] = [
+    `1. Target_Knowledge_Points\n${JSON.stringify(targetKnowledgeGraph, null, 2)}`,
+  ];
+  let contextIndex = 2;
+  if (state?.coveredPointIds?.length) {
+    const coveredLabels = state.coveredPointIds
+      .map((id) => {
+        const point = targetKnowledgeGraph.find((item) => item.id === id);
+        return point ? `${id} ${point.title}` : id;
+      })
+      .join("、");
+    inputContextSections.push(
+      `${contextIndex++}. Covered_Points（後台實錄：學生已經接觸過嘅知識點，嚴禁重複提問或重複教）\n${coveredLabels}`
+    );
+  }
+  if (state?.nextPointId) {
+    const next = targetKnowledgeGraph.find((item) => item.id === state.nextPointId);
+    const nextLabel = next ? `${next.id} ${next.title}（${next.content}）` : state.nextPointId;
+    inputContextSections.push(
+      `${contextIndex++}. Next_Point（下一步引導目標：推進問題必須圍繞佢）\n${nextLabel}`
+    );
+  }
+  if ((state?.turnsSinceSummary ?? 0) >= 4) {
+    inputContextSections.push(
+      `${contextIndex++}. 小結提醒：已經 ${state.turnsSinceSummary} 輪冇做小結，呢輪回覆請加一句小結（學生到而家學咗咩重點）。`
+    );
+  }
+  if (!state) {
+    inputContextSections.push(
+      `${contextIndex++}. Activated_Points\nUse recent chat context to infer which knowledge points have already been covered. Do not mechanically repeat the same question.`
+    );
+  }
+  inputContextSections.push(
+    `${contextIndex}. Chat_History\nContinue naturally from recent turns and adapt to the student's cognitive depth.`
+  );
+
   const compiled = `
 # Role & Persona
 You are now acting as the historical/academic character specified below. You must stay in character at all times and adhere to the linguistic and personality rules provided.
@@ -260,8 +340,8 @@ You are now acting as the historical/academic character specified below. You mus
 - Sentence Length & Rhythm: ${inferLinguisticRhythm(parsed.personaProfile)}
 - Forbidden & Preferred Words: ${inferBuzzwords(parsed.personaProfile)}
 - Unique Response Triggers: ${inferResponseTriggers(parsed.roleName)}
-- Unknown Boundary Logic: ${DEFAULT_UNKNOWN_BOUNDARY}
-- Closing Ritual: ${DEFAULT_CLOSING_RITUAL}
+- Unknown Boundary Logic: ${parsed.unknownBoundary || DEFAULT_UNKNOWN_BOUNDARY}
+- Closing Ritual: ${parsed.closingRitual || DEFAULT_CLOSING_RITUAL}
 - Multiple Hooks: ${inferMultipleHooks(parsed.roleName, parsed.characterBackground)}
 
 # Enforced Speaking Style
@@ -270,18 +350,15 @@ ${gradeBandRule ? `\n# Grade Band Difficulty Rules\n${gradeBandRule}\n` : ""}
 # Character Knowledge Base
 ${parsed.knowledgeSummary || "未提供知識摘要。"}
 
+# Character's Dialogue Strategy (teacher-defined)
+${parsed.personaProfile || "未提供額外對話策略。"}
+如果本節同下方 # Interaction Rules 有衝突，一律以 # Interaction Rules 為準。
+
 # Core Objective
 Your goal is NOT to spoon-feed information, but to guide the student toward independent reasoning through "Socratic Questioning". Help them explore the character's life, decisions, background, and impact step-by-step.
 
 # Input Context
-1. Target_Knowledge_Points
-${JSON.stringify(targetKnowledgeGraph, null, 2)}
-
-2. Activated_Points
-Use recent chat context to infer which knowledge points have already been covered. Do not mechanically repeat the same question.
-
-3. Chat_History
-Continue naturally from recent turns and adapt to the student's cognitive depth.
+${inputContextSections.join("\n\n")}
 
 # Interaction Rules & Scaffolding Strategies
 Follow this cognitive loop internally before every response:

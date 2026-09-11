@@ -45,7 +45,7 @@ function fallbackOpeningMessage(name: string) {
   return `你好，我是${safeName}，我們一起開始今天的學習吧。`;
 }
 
-async function generateOpeningMessage(bot: any) {
+export async function generateOpeningMessage(bot: any) {
   const apiKey = String(process.env.DEEPSEEK_API_KEY || "").trim();
   if (!apiKey) {
     return fallbackOpeningMessage(String(bot?.name || ""));
@@ -58,7 +58,7 @@ async function generateOpeningMessage(bot: any) {
     .slice(0, 4000);
 
   const systemPrompt =
-    "你是角色語氣設計助手。你必須根據角色背景與人設寫一句固定開場白。只輸出一句繁體中文，不要引號，不要換行，不要解釋。";
+    "你是角色語氣設計助手。你必須根據角色背景與人設寫一句固定開場白。只輸出一句，不要引號，不要換行，不要解釋。";
   const userPrompt = `
 角色名稱：${name}
 角色背景與設定：
@@ -66,10 +66,14 @@ ${characterContext || "（未提供）"}
 
 請寫一句「固定開場句」，要求：
 1. 必須緊扣知識庫裡的人物特點與語氣，不可泛泛而談；
-2. 簡短，12-32字；
+2. 簡短，12-45字；
 3. 可直接用在每次對話開頭；
 4. 禁止模板句（例如「你好我是...有什麼可以幫你」）；
-5. 若角色屬古典人物（如孔子、陶淵明等），可用符合角色的文言或詩性語氣，但保持易懂。
+5. 語言要同角色人設一致，請自行判斷：
+   - 香港本地角色／師兄師姐式角色 → 自然香港粵語口語，用繁體字，可用「係、喎、咩、㗎、啦」等語氣詞；禁止北方話詞彙「咱们、啥、咋」及儿化音；
+   - 外語老師（例如英文老師）→ 用該外語，或自然中英混合，例如「嗨！我是Penny！今天想跟我聊聊什麼英文呢？Don't be shy！」；
+   - 古典人物（如孔子、陶淵明）→ 符合角色的淺近文言或詩性語氣，但保持易懂；
+   - 其他 → 繁體中文書面語。
 `.trim();
 
   try {

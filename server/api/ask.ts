@@ -34,6 +34,10 @@ import {
   resolveCharacterTopic,
 } from "../lib/character-topics.ts";
 import {
+  getConversationState,
+  trackConversationState,
+} from "../lib/conversation-state.ts";
+import {
   buildChatReplyLanguageRule,
   buildChatSystemPrompt,
 } from "../../utils/chat-prompt.ts";
@@ -1638,6 +1642,24 @@ async function recordBotInteractionEvent(input: {
   }
 }
 
+// 記憶窗口：最多 HISTORY_WINDOW 條，總字數唔超過 HISTORY_CHAR_BUDGET。
+// 由最新往回 keep，確保最新上下文一定入 prompt（舊對話先被擠走）。
+const HISTORY_WINDOW = 20;
+const HISTORY_CHAR_BUDGET = 4000;
+
+function fitHistoryWindow(messages: RecentChatMessage[]) {
+  const window = messages.slice(-HISTORY_WINDOW);
+  const kept: RecentChatMessage[] = [];
+  let total = 0;
+  for (let i = window.length - 1; i >= 0; i--) {
+    const len = window[i].content.length;
+    if (total + len > HISTORY_CHAR_BUDGET && kept.length >= 2) break;
+    kept.unshift(window[i]);
+    total += len;
+  }
+  return kept;
+}
+
 async function fetchRecentBotChatMessages(botId: string, userId: string, limit = 6): Promise<RecentChatMessage[]> {
   const normalizedBotId = String(botId || "").trim();
   const normalizedUserId = String(userId || "").trim();
@@ -1864,9 +1886,12 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     let effectiveSystemPrompt = String(systemPrompt || "");
     // 年級帶（L1 prompt 難度規則）；null = 未設定，唔套用難度規則
     let characterGradeBand: string | null = null;
+    // 知識庫原文，回覆後攞嚟計「已覆蓋知識點」狀態
+    let characterKnowledgeBase = "";
     if (usageType === "chat_message" && normalizedBotId && normalizedBotId !== "default") {
       const character = await getAccessibleCharacter(normalizedBotId, authUser.id);
       if (!character) return res.status(404).json({ error: "Character not found" });
+      characterKnowledgeBase = character.knowledge_base || "";
       activeTopic = await resolveCharacterTopic({
         characterId: normalizedBotId,
         requestedTopicId: String(topicId || "").trim() || null,
@@ -1880,11 +1905,23 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
         );
       }
       characterGradeBand = character.grade || null;
+      // 後台實錄嘅對話狀態（已覆蓋知識點／下一步目標）——有就注入，冇就用模型自估
+      const conversationState = activeConversation
+        ? await getConversationState(activeConversation.id)
+        : null;
       const characterBasePrompt = buildChatSystemPrompt({
         roleName: character.name,
         knowledgeBase: character.knowledge_base || "",
         securityPrompt: character.security_prompt || "",
         gradeBand: characterGradeBand,
+        conversationState: conversationState
+          ? {
+              coveredPointIds: conversationState.covered_point_ids,
+              nextPointId: conversationState.next_point_id,
+              turnsSinceSummary: conversationState.turns_since_summary,
+              studentLevel: conversationState.student_level,
+            }
+          : null,
       });
       const composedCharacterPrompt = composeCharacterTopicPrompt(
         characterBasePrompt,
@@ -1913,14 +1950,43 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
     const externalRecentMessages = externalMode
       ? normalizeRecentMessages(req.body?.recentMessages)
       : [];
-    const recentChatMessages: RecentChatMessage[] = (externalMode ? externalRecentMessages : storedConversationMessages || [])
-      .filter((message) => message.role === "user" || message.role === "assistant" || message.role === "bot")
-      .slice(-6)
-      .map((message) => ({
+    const allRecent = (externalMode ? externalRecentMessages : storedConversationMessages || [])
+      .filter((message) => message.role === "user" || message.role === "assistant" || message.role === "bot");
+
+    // 連續輸入 Debounce：若最新學生訊息同上幾條學生訊息（中間冇 Bot 回覆）
+    // 相距 ≤ 3 秒，就合併做一個 input，避免 Bot 對零碎訊息各答一次、語無倫次。
+    const DEBOUNCE_WINDOW_MS = 3000;
+    let debouncedPrompt = normalizedPrompt;
+    if (
+      !externalMode &&
+      usageType === "chat_message" &&
+      storedConversationMessages &&
+      storedConversationMessages.length >= 2
+    ) {
+      const last = storedConversationMessages[storedConversationMessages.length - 1];
+      if (last.role === "user") {
+        const lastTime = new Date(String(last.created_at || "")).getTime();
+        const parts = [normalizedPrompt];
+        let prevIdx = storedConversationMessages.length - 2;
+        while (prevIdx >= 0 && storedConversationMessages[prevIdx].role === "user") {
+          const prevTime = new Date(
+            String(storedConversationMessages[prevIdx].created_at || "")
+          ).getTime();
+          if (!lastTime || !prevTime || lastTime - prevTime > DEBOUNCE_WINDOW_MS) break;
+          parts.unshift(String(storedConversationMessages[prevIdx].content || "").trim());
+          prevIdx -= 1;
+        }
+        debouncedPrompt = parts.filter(Boolean).join("\n");
+      }
+    }
+
+    const recentChatMessages: RecentChatMessage[] = fitHistoryWindow(
+      allRecent.map((message) => ({
         role: message.role === "assistant" || message.role === "bot" ? "bot" : "user",
         content: sanitizeChatHistoryContent(String(message.content || "")),
-      }));
-    const contextualPrompt = buildContextualUserPrompt(normalizedPrompt, recentChatMessages);
+      }))
+    );
+    const contextualPrompt = buildContextualUserPrompt(debouncedPrompt, recentChatMessages);
     const active = actor.shared ? null : await getActiveTeachingSession(authUser.id, normalizedBotId);
 
     const ensureActiveConversation = async () => {
@@ -2236,6 +2302,23 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
         });
       }
       await persistAssistantMessage(reply);
+      if (
+        usageType === "chat_message" &&
+        !externalMode &&
+        activeConversation &&
+        characterKnowledgeBase
+      ) {
+        void trackConversationState({
+          botId: normalizedBotId,
+          userId: authUser.id,
+          conversationId: activeConversation.id,
+          knowledgeBase: characterKnowledgeBase,
+          recentMessages: recentChatMessages,
+          reply,
+        }).catch((error) =>
+          console.warn("[ask] conversation state tracking failed", error)
+        );
+      }
       if (isDebugLogEnabled) console.log("[ask] consuming credits");
       await consumeUserCredits(authUser.id, "ask", 1, { streaming: false, promptLength: normalizedPrompt.length, source: actor.shared ? "shared_bot" : "direct", modelProvider: selectedModelProvider, imageCount: chatImages.length });
       if (isDebugLogEnabled) console.log("[ask] sending json response");
@@ -2286,6 +2369,23 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
       });
     }
     await persistAssistantMessage(streamedReply);
+    if (
+      usageType === "chat_message" &&
+      !externalMode &&
+      activeConversation &&
+      characterKnowledgeBase
+    ) {
+      void trackConversationState({
+        botId: normalizedBotId,
+        userId: authUser.id,
+        conversationId: activeConversation.id,
+        knowledgeBase: characterKnowledgeBase,
+        recentMessages: recentChatMessages,
+        reply: streamedReply,
+      }).catch((error) =>
+        console.warn("[ask] conversation state tracking failed", error)
+      );
+    }
     await consumeUserCredits(authUser.id, "ask", 1, { streaming: true, promptLength: normalizedPrompt.length, source: actor.shared ? "shared_bot" : "direct", modelProvider: selectedModelProvider, imageCount: chatImages.length });
     res.end();
   } catch (err: any) {

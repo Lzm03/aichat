@@ -278,7 +278,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
     const bgMatch = knowledgeBase.match(/【人物背景設定】([\s\S]*?)【人物知識庫摘要】/);
     const ksMatch = knowledgeBase.match(/【人物知識庫摘要】([\s\S]*?)(?:【知識點分級】|【角色對話策略】|請根據「人物背景設定」與「知識庫摘要」回答問題，不要捏造不存在的資訊。|$)/);
     const pointsMatch = knowledgeBase.match(/【知識點分級】([\s\S]*?)(?:【角色對話策略】|請根據「人物背景設定」與「知識庫摘要」回答問題，不要捏造不存在的資訊。|$)/);
-    const personaMatch = knowledgeBase.match(/【角色對話策略】([\s\S]*?)(?:請根據「人物背景設定」與「知識庫摘要」回答問題，不要捏造不存在的資訊。|$)/);
+    const personaMatch = knowledgeBase.match(/【角色對話策略】([\s\S]*?)(?=【不知道邏輯】|【收尾儀式】|【製作備註】|請根據「人物背景設定」與「知識庫摘要」回答問題，不要捏造不存在的資訊。|$)/);
     const personaText = personaMatch?.[1] || "";
     let knowledgePoints: KnowledgePoint[] = [];
     try {

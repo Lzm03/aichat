@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, Check, CheckCircle2, ChevronDown, FileText, ImagePlus, LoaderCircle, Pencil, Plus, ShieldCheck, Sparkles, Trash2, UploadCloud, X } from 'lucide-react';
 import { API_BASE } from '../utils/api';
+import { buildBotProposal } from '../utils/bot-proposal';
 
 const SUBJECTS = [
   '中國語文', '中國歷史 · 歷史科', '英國語文 (English Language)', '數學科 · 邏輯思維',
@@ -50,13 +51,23 @@ const MAX_ROLES_PER_REQUEST = 10;
 
 const timingLabel = (value: RoleDraft['usageTiming']) => ({ during: '課堂中使用', after: '課後／自主學習', both: '課堂中與課後皆使用' }[value]);
 
-const buildProposal = (role: RoleDraft) => {
-  const subjectText = [...role.subjects, role.customSubject].filter(Boolean).join('、') || '跨學科教學';
-  const styleText = role.styles.length
-    ? role.styles.map((id) => STYLE_META.find((item) => item.id === id)?.title).filter(Boolean).join('、')
-    : '由製作團隊按角色定位建議';
-  return `角色定位\n${role.name} 將作為 ${role.classInfo} 的 AI 教學夥伴，預計服務約 ${role.studentCount} 位學生，主要在「${timingLabel(role.usageTiming)}」情境出現。\n\n性格與語氣\n以清楚、鼓勵及具引導性的方式互動。角色背景以「${role.background.trim()}」為核心，回應時先理解學生想法，再透過提問、例子與提示逐步建立答案。\n\n教學範圍\n主要支援：${subjectText}。回答將以老師提供的教材和知識點為優先依據，避免超出課程程度。\n\n視覺設定\n${styleText}。保留適合校園使用的親和感、清晰輪廓及一致角色識別。${role.notes.trim() ? `\n\n補充製作要求\n${role.notes.trim()}` : ''}`;
-};
+// 草案直接採用 Bot 知識庫嘅節名格式（見 utils/bot-proposal.ts），
+// 確認後可以原封存入 bots.knowledge_base，唔使再由人手抄一次。
+const buildProposal = (role: RoleDraft) =>
+  buildBotProposal({
+    name: role.name,
+    classInfo: role.classInfo,
+    studentCount: role.studentCount,
+    timingLabel: timingLabel(role.usageTiming),
+    subjectText: [...role.subjects, role.customSubject].filter(Boolean).join('、') || '跨學科教學',
+    styleText: role.styles.length
+      ? role.styles.map((id) => STYLE_META.find((item) => item.id === id)?.title).filter(Boolean).join('、')
+      : '由製作團隊按角色定位建議',
+    background: role.background,
+    notes: role.notes,
+    materialFileNames: role.materialFiles.map((file) => file.name),
+    materialTextLength: role.materialText.trim().length,
+  });
 
 const inputClass = 'w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500';
 
@@ -120,7 +131,8 @@ export const SchoolAvatarRequestPage: React.FC = () => {
         name: role.name.trim(), subjects: role.subjects, customSubject: role.customSubject.trim(),
         visualStyles: role.styles.map((id) => STYLE_META.find((style) => style.id === id)?.title || id),
         materialText: role.materialText.trim(),
-        notes: [`班級：${role.classInfo}`, `學生人數：約 ${role.studentCount} 人`, `使用時段：${timingLabel(role.usageTiming)}`, `角色背景：${role.background}`, role.notes && `補充需求：${role.notes}`, `已確認角色草案：\n${role.proposalText}`].filter(Boolean).join('\n'),
+        notes: [`班級：${role.classInfo}`, `學生人數：約 ${role.studentCount} 人`, `使用時段：${timingLabel(role.usageTiming)}`].filter(Boolean).join('\n'),
+        proposalText: role.proposalText,
       }))));
       roles.forEach((role, index) => {
         role.referenceFiles.forEach((file) => form.append(`reference-${index}`, file));

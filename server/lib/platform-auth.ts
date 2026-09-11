@@ -371,6 +371,22 @@ export async function ensurePlatformTables() {
         ON bot_chat_messages(bot_id, created_at DESC);
       `);
       await pool.query(`
+        CREATE TABLE IF NOT EXISTS bot_conversation_states (
+          conversation_id TEXT PRIMARY KEY,
+          bot_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          covered_point_ids JSONB NOT NULL DEFAULT '[]',
+          next_point_id TEXT,
+          student_level TEXT NOT NULL DEFAULT '未評估',
+          turns_since_summary INT NOT NULL DEFAULT 0,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS bot_conversation_states_bot_user_idx
+        ON bot_conversation_states(bot_id, user_id, updated_at DESC);
+      `);
+      await pool.query(`
         CREATE TABLE IF NOT EXISTS conversations (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
