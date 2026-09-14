@@ -8,6 +8,7 @@ import { readAuthSession } from '../../utils/auth';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { API_BASE } from '../../utils/api';
 import { parsePromptSource } from '../../utils/chat-prompt';
+import { SafeAvatarImage } from '../shared/SafeAvatarImage';
 
 type AssessmentRow = {
   id: string;
@@ -419,10 +420,10 @@ export const StudentLearningReportCard = () => {
                   >
                     <div className="flex min-w-0 items-center gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-indigo-50 text-indigo-600">
-                        <img
+                        <SafeAvatarImage
                           src={bot.avatarUrl || botAvatarFallback}
                           alt={bot.name}
-                          className="h-full w-full object-cover"
+                          className="h-full w-full"
                         />
                       </div>
                       <div className="min-w-0">
@@ -462,10 +463,10 @@ export const StudentLearningReportCard = () => {
                 <ArrowLeft className="w-4 h-4" />{uiText("返回")}</button>
               <div className="flex items-center gap-2">
                 <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-indigo-50">
-                  <img
+                  <SafeAvatarImage
                     src={selectedBot?.avatarUrl || botAvatarFallback}
                     alt={selectedBot?.name || uiText('共享 Bot')}
-                    className="h-full w-full object-cover"
+                    className="h-full w-full"
                   />
                 </div>
                 <div className="rounded-full bg-slate-100 px-2.5 py-1.5 text-[10px] font-black text-slate-600 sm:text-[11px]">

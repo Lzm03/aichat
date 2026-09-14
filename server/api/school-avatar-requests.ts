@@ -5,6 +5,7 @@ import path from "path";
 import { pool } from "../db.ts";
 import { getAuthUser, requireAuth } from "../lib/platform-auth.ts";
 import { canManageAllAccounts } from "../config/account-overrides.ts";
+import { normalizeUploadFilename } from "../../utils/uploadFilename.ts";
 
 const router = express.Router();
 
@@ -17,6 +18,7 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024, files: 30, fields: 20 },
   fileFilter: (_req, file, callback) => {
+    file.originalname = normalizeUploadFilename(file.originalname);
     const ext = path.extname(file.originalname || "").toLowerCase();
     callback(null, ALLOWED_EXTENSIONS.has(ext));
   },
@@ -207,7 +209,12 @@ router.get("/:requestId", requireAuth, async (req, res) => {
     ),
   ]);
   if (!requestResult.rowCount) return res.status(404).json({ error: "request not found" });
-  return res.json({ request: requestResult.rows[0], roles: rolesResult.rows, files: filesResult.rows });
+  const files = filesResult.rows.map((file) => ({
+    ...file,
+    // Repair filenames saved before UTF-8 multipart names were normalized.
+    original_name: normalizeUploadFilename(file.original_name),
+  }));
+  return res.json({ request: requestResult.rows[0], roles: rolesResult.rows, files });
 });
 
 router.patch("/:requestId/status", requireAuth, async (req, res) => {
@@ -234,8 +241,9 @@ router.get("/:requestId/files/:fileId", requireAuth, async (req, res) => {
   );
   if (!result.rowCount) return res.status(404).json({ error: "file not found" });
   const file = result.rows[0];
+  const originalName = normalizeUploadFilename(file.original_name);
   res.setHeader("Content-Type", file.mime_type || "application/octet-stream");
-  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(file.original_name)}`);
+  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(originalName)}`);
   return res.send(file.content);
 });
 

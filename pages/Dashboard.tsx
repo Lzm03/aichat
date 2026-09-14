@@ -11,6 +11,7 @@ import type { AiBot } from '../types';
 
 import { LearningReportEntryCard } from '../components/dashboard/LearningReportEntryCard';
 import { DemoNotice } from '../components/system/DemoNotice';
+import { SafeAvatarImage } from '../components/shared/SafeAvatarImage';
 
 const WELCOME_T = {
   "zh-HK": "歡迎回到教學指揮艙，和學生們一起開啟今天的學習之旅！",
@@ -141,10 +142,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 {recentBots.map((bot) => (
                   <div key={bot.id} className="flex min-h-[280px] flex-col rounded-2xl border border-slate-100 bg-gradient-to-b from-white to-slate-50/60 p-5">
                     <div className="relative mx-auto h-28 w-28 shrink-0">
-                      <img
+                      <SafeAvatarImage
                         src={bot.avatarUrl || "/avatars/bot-default.svg"}
                         alt={bot.name}
-                        className="h-28 w-28 rounded-full border border-slate-100 object-cover"
+                        className="h-28 w-28 rounded-full border border-slate-100"
                       />
                     </div>
                     <h3 className="mt-5 truncate text-lg font-black text-slate-950">{bot.name}</h3>

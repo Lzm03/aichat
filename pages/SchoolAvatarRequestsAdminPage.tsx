@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { CalendarDays, CheckCircle2, ChevronRight, Download, FileText, Inbox, LoaderCircle, Mail, Phone, RefreshCw, School, UserRound } from 'lucide-react';
 import { API_BASE } from '../utils/api';
+import { normalizeUploadFilename } from '../utils/uploadFilename';
 
 type RequestSummary = {
   id: string;
@@ -133,7 +134,7 @@ export const SchoolAvatarRequestsAdminPage: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = file.original_name;
+      anchor.download = normalizeUploadFilename(file.original_name);
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (reason) {
@@ -198,7 +199,7 @@ export const SchoolAvatarRequestsAdminPage: React.FC = () => {
               {detail.roles.map((role) => {
                 const files = detail.files.filter((file) => file.role_index === role.role_index);
                 const tags = [...(role.subjects || []), role.custom_subject, ...(role.visual_styles || [])].filter(Boolean);
-                return <div key={role.id} className="border-l-2 border-blue-100 pl-4 sm:pl-5"><div className="flex items-center gap-3"><span className="text-xs font-black text-[#e63946]">{String(role.role_index + 1).padStart(2, '0')}</span><h4 className="font-black text-slate-800">{role.name}</h4></div>{tags.length ? <div className="mt-3 flex flex-wrap gap-2">{tags.map((tag) => <span key={tag} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{uiText(tag)}</span>)}</div> : null}{role.material_text ? <div className="mt-4"><p className="text-xs font-bold text-slate-400">{uiText("教材文字")}</p><p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600">{role.material_text}</p></div> : null}{role.notes ? <div className="mt-4"><p className="text-xs font-bold text-slate-400">{uiText("補充需求")}</p><p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600">{role.notes}</p></div> : null}{files.length ? <div className="mt-4 space-y-2">{files.map((file) => <button key={file.id} onClick={() => void downloadFile(file)} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-left transition hover:border-blue-200 hover:bg-blue-50/40"><FileText className="h-4 w-4 shrink-0 text-[#1b365d]" /><span className="min-w-0 flex-1"><strong className="block truncate text-sm text-slate-700">{file.original_name}</strong><span className="text-xs text-slate-400">{file.kind === 'reference' ? uiText('角色參考圖') : uiText('教材')} · {formatBytes(file.size_bytes)}</span></span>{downloadingId === file.id ? <LoaderCircle className="h-4 w-4 animate-spin text-slate-400" /> : <Download className="h-4 w-4 text-slate-400" />}</button>)}</div> : null}</div>;
+                return <div key={role.id} className="border-l-2 border-blue-100 pl-4 sm:pl-5"><div className="flex items-center gap-3"><span className="text-xs font-black text-[#e63946]">{String(role.role_index + 1).padStart(2, '0')}</span><h4 className="font-black text-slate-800">{role.name}</h4></div>{tags.length ? <div className="mt-3 flex flex-wrap gap-2">{tags.map((tag) => <span key={tag} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{uiText(tag)}</span>)}</div> : null}{role.material_text ? <div className="mt-4"><p className="text-xs font-bold text-slate-400">{uiText("教材文字")}</p><p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600">{role.material_text}</p></div> : null}{role.notes ? <div className="mt-4"><p className="text-xs font-bold text-slate-400">{uiText("補充需求")}</p><p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600">{role.notes}</p></div> : null}{files.length ? <div className="mt-4 space-y-2">{files.map((file) => <button key={file.id} onClick={() => void downloadFile(file)} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-left transition hover:border-blue-200 hover:bg-blue-50/40"><FileText className="h-4 w-4 shrink-0 text-[#1b365d]" /><span className="min-w-0 flex-1"><strong className="block truncate text-sm text-slate-700">{normalizeUploadFilename(file.original_name)}</strong><span className="text-xs text-slate-400">{file.kind === 'reference' ? uiText('角色參考圖') : uiText('教材')} · {formatBytes(file.size_bytes)}</span></span>{downloadingId === file.id ? <LoaderCircle className="h-4 w-4 animate-spin text-slate-400" /> : <Download className="h-4 w-4 text-slate-400" />}</button>)}</div> : null}</div>;
               })}
             </div></div>
 

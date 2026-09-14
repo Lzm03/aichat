@@ -2,6 +2,7 @@ import { uiText, uiError } from '../utils/uiI18n';
 import React, { useEffect, useMemo, useState } from "react";
 import { Bot, Check, ChevronRight, Filter, LoaderCircle, Plus, Search, UserRound, Users } from "lucide-react";
 import { API_BASE } from "../utils/api";
+import { SafeAvatarImage } from "../components/shared/SafeAvatarImage";
 
 type Student = { id: string; fullName: string; email: string };
 type SharedBot = { id: string; name: string; subject?: string; avatarUrl?: string };
@@ -146,10 +147,10 @@ export const TeacherSharingPage: React.FC = () => {
                           : "border-transparent bg-white/70 hover:border-slate-200 hover:bg-white"
                       }`}
                     >
-                      <img
+                      <SafeAvatarImage
                         src={bot.avatarUrl || "/avatars/bot-default.svg"}
                         alt=""
-                        className="h-11 w-11 rounded-2xl bg-indigo-50 object-cover ring-1 ring-slate-100"
+                        className="h-11 w-11 rounded-2xl bg-indigo-50 ring-1 ring-slate-100"
                       />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-black text-slate-900">{bot.name}</div>
@@ -170,10 +171,10 @@ export const TeacherSharingPage: React.FC = () => {
                 <div className="flex h-full min-h-[520px] flex-col rounded-[26px] border border-slate-100 bg-gradient-to-b from-white to-slate-50/60 p-4 sm:p-5">
                   <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-3">
-                      <img
+                      <SafeAvatarImage
                         src={selectedBot.avatarUrl || "/avatars/bot-default.svg"}
                         alt=""
-                        className="h-12 w-12 rounded-2xl bg-indigo-50 object-cover ring-1 ring-slate-100"
+                        className="h-12 w-12 rounded-2xl bg-indigo-50 ring-1 ring-slate-100"
                       />
                       <div>
                         <div className="text-base font-black text-slate-900">{selectedBot.name}</div>

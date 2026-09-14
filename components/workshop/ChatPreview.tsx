@@ -4,6 +4,7 @@ import { uiText } from '../../utils/uiI18n';
 import React, { useState, useEffect, useRef } from "react";
 import { Icons } from "../icons";
 import { API_BASE } from "../../utils/api";
+import { SafeAvatarImage } from "../shared/SafeAvatarImage";
 
 interface ChatPreviewProps {
   currentStep: number;
@@ -251,7 +252,7 @@ function renderFormattedMessage(text: string) {
             <div className="flex justify-center mt-2 mb-2 md:mb-2 mb-4">
               {avatarSrc && (
                 <div className="w-24 h-24 md:w-20 md:h-20 rounded-full overflow-hidden border-2 border-white shadow-[0_18px_40px_rgba(15,23,42,0.32)] bg-white/15 backdrop-blur-sm">
-                  <img src={avatarSrc} className="w-full h-full object-cover" />
+                  <SafeAvatarImage src={avatarSrc} alt={botConfig.name || uiText("角色頭像")} className="w-full h-full" />
                 </div>
               )}
             </div>

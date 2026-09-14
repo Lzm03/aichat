@@ -37,6 +37,8 @@ import {
   buildChatReplyLanguageRule,
   buildChatSystemPrompt,
 } from "../../utils/chat-prompt.ts";
+import { normalizeUploadFilename } from "../../utils/uploadFilename.ts";
+import { combineExtractedFileText } from "../lib/knowledge-files.ts";
 import {
   getAI,
   getVertexAccessToken,
@@ -53,7 +55,13 @@ const MAX_FILE_PROMPT_CHARS = 18000;
 const MAX_CHAT_IMAGE_COUNT = 4;
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: (_req, file, callback) => {
+    file.originalname = normalizeUploadFilename(file.originalname);
+    callback(null, true);
+  },
+});
 const MOCK_UPSTREAM = /^(1|true|yes|on)$/i.test(String(process.env.MOCK_UPSTREAM || "").trim());
 const ENABLE_DIALOGUE_SUGGESTION_LLM = !/^(0|false|no|off)$/i.test(String(process.env.ENABLE_DIALOGUE_SUGGESTION_LLM || "true").trim());
 
@@ -1729,11 +1737,7 @@ router.post("/ask-file", requireAuth, upload.any(), async (req: Request, res: Re
       return res.json({ reply: "（文件沒有可解析文字）" });
     }
 
-    const combinedText = nonEmptyParts
-      .map((part) => `【文件：${part.fileName}】\n${part.extractedText}`)
-      .join("\n\n")
-      .trim();
-    const normalizedPromptText = combinedText.slice(0, MAX_FILE_PROMPT_CHARS);
+    const normalizedPromptText = combineExtractedFileText(nonEmptyParts, MAX_FILE_PROMPT_CHARS);
     const systemPrompt: string = (req.body as any)?.systemPrompt || "";
     const reply = await askModelOnce(modelProvider, systemPrompt, normalizedPromptText);
     await consumeUserCredits(authUser!.id, "ask_file", 4, {
