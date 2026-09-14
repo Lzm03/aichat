@@ -379,9 +379,18 @@ export async function ensurePlatformTables() {
           next_point_id TEXT,
           student_level TEXT NOT NULL DEFAULT '未評估',
           turns_since_summary INT NOT NULL DEFAULT 0,
+          skipped_point_ids JSONB NOT NULL DEFAULT '[]',
+          turns_on_next_point INT NOT NULL DEFAULT 0,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
       `);
+      // 舊環境補欄（欄位係 2026-09-14 加：next_point 連續推唔動就跳過）
+      await pool.query(
+        `ALTER TABLE bot_conversation_states ADD COLUMN IF NOT EXISTS skipped_point_ids JSONB NOT NULL DEFAULT '[]';`
+      );
+      await pool.query(
+        `ALTER TABLE bot_conversation_states ADD COLUMN IF NOT EXISTS turns_on_next_point INT NOT NULL DEFAULT 0;`
+      );
       await pool.query(`
         CREATE INDEX IF NOT EXISTS bot_conversation_states_bot_user_idx
         ON bot_conversation_states(bot_id, user_id, updated_at DESC);

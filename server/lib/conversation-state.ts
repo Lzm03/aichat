@@ -6,7 +6,7 @@
  */
 import { pool } from "../db.ts";
 import { ensurePlatformTables } from "./platform-auth.ts";
-import { parsePromptSource } from "../../utils/chat-prompt.ts";
+import { parsePromptSource, type KnowledgePoint } from "../../utils/chat-prompt.ts";
 
 export type ConversationStateRow = {
   conversation_id: string;
@@ -16,6 +16,8 @@ export type ConversationStateRow = {
   next_point_id: string | null;
   student_level: string;
   turns_since_summary: number;
+  skipped_point_ids: string[];
+  turns_on_next_point: number;
   updated_at: string;
 };
 
@@ -40,6 +42,10 @@ export async function getConversationState(
       next_point_id: row.next_point_id ? String(row.next_point_id) : null,
       student_level: String(row.student_level || "未評估"),
       turns_since_summary: Number(row.turns_since_summary || 0),
+      skipped_point_ids: Array.isArray(row.skipped_point_ids)
+        ? row.skipped_point_ids.map(String)
+        : [],
+      turns_on_next_point: Number(row.turns_on_next_point || 0),
       updated_at: String(row.updated_at || ""),
     };
   } catch (error) {
@@ -51,6 +57,102 @@ export async function getConversationState(
 /** 回覆含小結句式就當做過小結，計數歸零 */
 const SUMMARY_MARKERS =
   /(你到而家學咗|到而家你學咗|你而家識|小結|總結|記住三個字)/;
+
+/**
+ * 覆蓋訊號門檻：一個知識點要 ≥2 個「獨立訊號」先算已覆蓋。
+ *
+ * 訊號 = (keyword × 輪次) 對，例如 "榫卯@0"。兩個訊號只要 keyword 唔同
+ * 或者輪次唔同就當獨立 —— 兩個 keyword 同一輪、或同一個 keyword 跨兩輪
+ * 都夠數。單一通用 keyword 喺一輪出現一次，唔會鎖死知識點。
+ *
+ * 2026-09-12 三段真對話重播定嘅規則：舊版（任何一個 keyword 出現一次就
+ * 算）會將「傳說」「茅草」「街名」呢類泛用詞當成教過，之後 prompt 就
+ * 永久禁止 bot 再教嗰點。strict（要 2 個唔同 keyword 兼跨 2 輪）就反過來
+ * 太緊：單輪一次過教完嘅知識點永遠標唔到，next_point 會卡死喺嗰度，
+ * bot 被指示重複教。呢個 union 版本兩邊都避開。
+ */
+const MIN_SIGNALS = 2;
+
+/** 由「角色自己講過嘅每輪文字」算出新覆蓋嘅知識點（唔會覆蓋走已經 covered 嘅） */
+export function computeNewlyCovered(
+  points: KnowledgePoint[],
+  assistantTurns: string[],
+  previouslyCovered: Set<string>
+): Set<string> {
+  const coveredNow = new Set(previouslyCovered);
+  for (const point of points) {
+    if (coveredNow.has(point.id)) continue;
+    const signals = new Set<string>();
+    assistantTurns.forEach((text, turnIndex) => {
+      for (const keyword of point.keywords || []) {
+        if (!keyword || keyword.length < 2) continue;
+        if (text.includes(keyword)) signals.add(`${keyword}@${turnIndex}`);
+      }
+    });
+    if (signals.size >= MIN_SIGNALS) coveredNow.add(point.id);
+  }
+  return coveredNow;
+}
+
+/**
+ * next_point 連續幾多輪推唔動就跳過佢。
+ *
+ * 為咩需要：知識點嘅 keyword 清單係由教材抽取出嚟，每份都唔同，冇可能保證
+ * 每點都攞到 ≥2 個可用訊號。魯班 kp_002 就係實例 —— keywords = [鋸, 刨,
+ * 墨斗, 傳說]，「鋸」「刨」單字被跳過，剩返「墨斗」（對話冇出現）同
+ * 「傳說」（只出現一次）→ 永遠得 1 個訊號 → 永遠標唔到已覆蓋 →
+ * next_point 由 T4 起一路卡死喺 kp_002，prompt 每輪都叫 bot 教同一點。
+ * 舊版門檻 1 冇呢個問題，係新規則放大咗嘅既有風險。
+ *
+ * 跳過（skip）同已覆蓋（covered）係兩件事：跳過只係唔再逼 bot 教佢，
+ * 知識點仍然可以教、教到夠訊號就自動變已覆蓋，然後由 skipped 名單剔走。
+ * 所以跳錯嘅代價低（少咗個指引），唔跳嘅代價高（永久叫 bot 重複教）。
+ *
+ * 4 呢個數係 2026-09-14 四段真對話重播定嘅：正常目標都會揸 3-4 輪
+ * （開場自介＋熱身佔兩三輪，之後先夠訊號），所以 4 係喺最壞正常情況
+ * 之上留一格，唔會誤跳。低過 3 就會連正常開場都跳走。
+ */
+const NEXT_POINT_STALL_LIMIT = 4;
+
+/**
+ * 揀下一個要推嘅知識點，附「推唔動就跳過」保險。
+ *
+ * 每輪計法：covered 增長唔一定令目標前進（可能係後面嘅點被教到），
+ * 所以呢度追蹤嘅係「目標本身」維持咗幾多輪冇換過 —— 一換就歸零。
+ * 連續 NEXT_POINT_STALL_LIMIT 輪都係同一個目標就跳過佢，改推下一個。
+ *
+ * 但呢個保險只喺「對話已經有覆蓋」之後先啟動：一輪都未覆蓋過即係仲喺
+ * 開場熱身（或者學生離題），呢個時候跳走知識點係誤判 —— 離題對話仲會
+ * 每 4 輪靜靜雞跳走一點，跳到 next_point 變 null，冇晒引導目標。
+ */
+export function computeNextPoint(
+  points: KnowledgePoint[],
+  covered: Set<string>,
+  previouslySkipped: Set<string>,
+  previous: { nextPointId: string | null; turnsOnNextPoint: number } | null
+): { nextPointId: string | null; skippedIds: string[]; turnsOnNextPoint: number } {
+  // 被跳過但後來教到 → 已經係 covered，唔使再留喺跳過名單
+  const skipped = new Set(
+    [...previouslySkipped].filter((id) => !covered.has(id))
+  );
+  const firstUncovered = () =>
+    points.find((point) => !covered.has(point.id) && !skipped.has(point.id))?.id ??
+    null;
+
+  let nextPointId = firstUncovered();
+  let turnsOnNextPoint =
+    previous && previous.nextPointId === nextPointId
+      ? previous.turnsOnNextPoint + 1
+      : 0;
+
+  if (covered.size > 0 && nextPointId && turnsOnNextPoint >= NEXT_POINT_STALL_LIMIT) {
+    skipped.add(nextPointId);
+    nextPointId = firstUncovered();
+    turnsOnNextPoint = 0;
+  }
+
+  return { nextPointId, skippedIds: [...skipped], turnsOnNextPoint };
+}
 
 export async function trackConversationState(input: {
   botId: string;
@@ -67,23 +169,38 @@ export async function trackConversationState(input: {
 
     await ensurePlatformTables();
     const previous = await getConversationState(input.conversationId);
-    const coveredNow = new Set<string>(previous?.covered_point_ids || []);
 
-    // 呢輪對話文本（歷史＋最新回覆）出現咗知識點 keyword 就計做已覆蓋
-    const turnText = [
-      ...input.recentMessages.map((message) => message.content),
+    // 只計「角色自己講過」嘅內容。學生講出知識點名字唔等於教過 ——
+    // 2026-09-12 端到端測試實證：舊版將學生訊息一齊拼入嚟，學生問一句
+    // 「榫卯係咩嚟㗎？」就即刻令 kp_001 標記已覆蓋，6 個知識點有 4 個
+    // 係咁樣被誤標，之後 bot 反而被 Covered_Points 禁止再教。
+    // 注意 role 有兩種寫法：DB 出嚟係 "assistant"，但 ask.ts:1985 會
+    // 正規化成 "bot" 先傳入嚟，兩者都要認。
+    // 每輪獨立一組字（唔 join 成一條），訊號先分得出「跨輪」。
+    const assistantTurns = [
+      ...input.recentMessages
+        .filter((message) => message.role === "assistant" || message.role === "bot")
+        .map((message) => message.content),
       input.reply,
-    ].join("\n");
-    for (const point of points) {
-      if (coveredNow.has(point.id)) continue;
-      const hit = (point.keywords || []).some(
-        (keyword) => keyword && keyword.length >= 2 && turnText.includes(keyword)
-      );
-      if (hit) coveredNow.add(point.id);
-    }
+    ];
+    const coveredNow = computeNewlyCovered(
+      points,
+      assistantTurns,
+      new Set<string>(previous?.covered_point_ids || [])
+    );
 
     const coveredIds = Array.from(coveredNow);
-    const nextPoint = points.find((point) => !coveredNow.has(point.id))?.id || null;
+    const { nextPointId, skippedIds, turnsOnNextPoint } = computeNextPoint(
+      points,
+      coveredNow,
+      new Set<string>(previous?.skipped_point_ids || []),
+      previous
+        ? {
+            nextPointId: previous.next_point_id,
+            turnsOnNextPoint: previous.turns_on_next_point,
+          }
+        : null
+    );
     const didSummarize = SUMMARY_MARKERS.test(input.reply);
     const turnsSinceSummary = didSummarize
       ? 0
@@ -91,22 +208,26 @@ export async function trackConversationState(input: {
 
     await pool.query(
       `INSERT INTO bot_conversation_states
-         (conversation_id, bot_id, user_id, covered_point_ids, next_point_id, student_level, turns_since_summary, updated_at)
-       VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,NOW())
+         (conversation_id, bot_id, user_id, covered_point_ids, next_point_id, student_level, turns_since_summary, skipped_point_ids, turns_on_next_point, updated_at)
+       VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8::jsonb,$9,NOW())
        ON CONFLICT (conversation_id) DO UPDATE SET
          covered_point_ids=EXCLUDED.covered_point_ids,
          next_point_id=EXCLUDED.next_point_id,
          student_level=EXCLUDED.student_level,
          turns_since_summary=EXCLUDED.turns_since_summary,
+         skipped_point_ids=EXCLUDED.skipped_point_ids,
+         turns_on_next_point=EXCLUDED.turns_on_next_point,
          updated_at=NOW()`,
       [
         input.conversationId,
         input.botId,
         input.userId,
         JSON.stringify(coveredIds),
-        nextPoint,
+        nextPointId,
         previous?.student_level || "未評估",
         turnsSinceSummary,
+        JSON.stringify(skippedIds),
+        turnsOnNextPoint,
       ]
     );
   } catch (error) {

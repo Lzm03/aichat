@@ -1,6 +1,6 @@
 import { gradeBandOf } from "./grades";
 
-type KnowledgePoint = {
+export type KnowledgePoint = {
   id: string;
   tier: "basic_fact" | "deep_understanding";
   title: string;
