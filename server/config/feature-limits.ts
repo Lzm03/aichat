@@ -87,3 +87,12 @@ export const FEATURE_LIMITS: Record<FeatureLimitKey, FeatureLimitDefinition> = {
 export const FEATURE_LIMIT_LIST = Object.values(FEATURE_LIMITS).filter(
   (item) => item.key !== "avatar_ai_generate" && item.key !== "background_ai_generate"
 );
+
+const TEACHER_UNLIMITED_FEATURES = new Set<FeatureLimitKey>([
+  "chat_messages",
+  "voice_messages",
+]);
+
+export function isFeatureUnlimitedForRole(role: string | null | undefined, featureKey: FeatureLimitKey) {
+  return role === "teacher" && TEACHER_UNLIMITED_FEATURES.has(featureKey);
+}

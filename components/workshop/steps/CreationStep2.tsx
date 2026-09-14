@@ -90,7 +90,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   // --------------------------
   // ⭐ 系統提示詞（深度分析 PDF）
   // --------------------------
-  const systemPrompt = `
+  const defaultSystemPrompt = `
 你是一個專業的教育內容結構化專家。你要閱讀用戶提供的文本、網址或文件內容，為一個可對話的教學角色抽取知識，並按認知層級分級。
 
 【任務要求】
@@ -130,6 +130,7 @@ JSON 必須符合以下結構：
   ]
 }
 `;
+  const [systemPrompt, setSystemPrompt] = useState(defaultSystemPrompt);
 
   const buildKnowledgeSummary = (points: KnowledgePoint[]) =>
     points
@@ -256,8 +257,25 @@ JSON 必須符合以下結構：
   // --------------------------
   const handleFileDrop = useCallback((nextFiles: FileList | null) => {
     if (!nextFiles || nextFiles.length === 0) return;
-    setFiles(Array.from(nextFiles));
+    setFiles((currentFiles) => {
+      const merged = [...currentFiles];
+      const knownFiles = new Set(
+        currentFiles.map((file) => `${file.name}:${file.size}:${file.lastModified}`)
+      );
+      Array.from(nextFiles).forEach((file) => {
+        const key = `${file.name}:${file.size}:${file.lastModified}`;
+        if (!knownFiles.has(key)) {
+          knownFiles.add(key);
+          merged.push(file);
+        }
+      });
+      return merged;
+    });
   }, []);
+
+  const removeFile = (indexToRemove: number) => {
+    setFiles((currentFiles) => currentFiles.filter((_, index) => index !== indexToRemove));
+  };
 
   // --------------------------
   // 🔥 文件 → /api/ask-file
@@ -275,7 +293,9 @@ JSON 必須符合以下結構：
       body: form,
     });
 
-    return await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || "文件解析失敗");
+    return data;
   };
 
   // --------------------------
@@ -569,15 +589,6 @@ JSON 必須符合以下結構：
   }, [status, viewMode]);
 
   // --------------------------
-  // 🔥 自動觸發文件解析
-  // --------------------------
-  useEffect(() => {
-    if (uploadMethod === "file" && files.length > 0 && status === "idle") {
-      handleProcess();
-    }
-  }, [files]);
-
-  // --------------------------
   // 🔧 UI：輸入區域
   // --------------------------
   const renderInputArea = () => {
@@ -598,14 +609,38 @@ JSON 必須符合以下結構：
               accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               multiple
               className="hidden"
-              onChange={(e) => handleFileDrop(e.target.files)}
+              onChange={(e) => {
+                handleFileDrop(e.target.files);
+                e.currentTarget.value = "";
+              }}
             />
           </label>
           <p className="mt-3 text-xs text-slate-500">{uiText("支援 PDF、DOC、DOCX，可一次上傳多個文件")}</p>
           {files.length > 0 ? (
-            <div className="mt-4 w-full max-w-xl rounded-xl bg-white/70 p-3 text-sm text-slate-600">
+            <div className="mt-4 w-full max-w-xl rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
               <p className="font-semibold text-slate-700">{uiText("已選擇 ")}{files.length}{uiText(" 個文件")}</p>
-              <p className="mt-1 break-words">{files.map((file) => file.name).join("、")}</p>
+              <div className="mt-2 space-y-2">
+                {files.map((file, index) => (
+                  <div key={`${file.name}:${file.size}:${file.lastModified}`} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
+                    <span className="min-w-0 flex-1 truncate" title={file.name}>{file.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(index)}
+                      className="shrink-0 rounded-md px-2 py-1 text-xs font-bold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                      aria-label={`${uiText("移除文件")} ${file.name}`}
+                    >
+                      {uiText("移除")}
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={handleProcess}
+                className="mt-3 w-full rounded-lg bg-indigo-600 px-4 py-2.5 font-bold text-white transition hover:bg-indigo-700"
+              >
+                {uiText("開始解析 ")}{files.length}{uiText(" 個文件")}
+              </button>
             </div>
           ) : null}
         </div>
@@ -765,20 +800,22 @@ JSON 必須符合以下結構：
             <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
               <h3 className="mb-3 text-sm font-black text-slate-800">{uiText("人物背景設定")}</h3>
               <textarea
-                readOnly
                 rows={6}
                 value={characterBackground}
-                className="w-full resize-none rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700 outline-none"
+                onChange={(event) => setCharacterBackground(event.target.value)}
+                className="w-full resize-y rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
               />
+              <p className="mt-2 text-xs text-slate-400">{uiText("可直接修改，內容會自動保存到角色 Prompt。")}</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
               <h3 className="mb-3 text-sm font-black text-slate-800">{uiText("知識庫摘要")}</h3>
               <textarea
-                readOnly
                 rows={6}
                 value={knowledgeSummary}
-                className="w-full resize-none rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700 outline-none"
+                onChange={(event) => setKnowledgeSummary(event.target.value)}
+                className="w-full resize-y rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
               />
+              <p className="mt-2 text-xs text-slate-400">{uiText("可直接修改，內容會自動保存到知識庫 Prompt。")}</p>
             </div>
           </div>
 
@@ -1280,6 +1317,37 @@ JSON 必須符合以下結構：
             ) : null}
           </div>
         </div>
+      )}
+
+      {status === "idle" && (
+        <details className="group rounded-2xl border border-slate-200 bg-white">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+            <div>
+              <p className="text-sm font-bold text-slate-800">{uiText("自定義知識提取 Prompt")}</p>
+              <p className="mt-1 text-xs text-slate-500">{uiText("可修改 AI 如何閱讀文件、整理角色背景及知識點。")}</p>
+            </div>
+            <span className="text-xs font-bold text-indigo-600 group-open:hidden">{uiText("展開編輯")}</span>
+            <span className="hidden text-xs font-bold text-indigo-600 group-open:inline">{uiText("收起")}</span>
+          </summary>
+          <div className="border-t border-slate-100 p-4">
+            <textarea
+              rows={12}
+              value={systemPrompt}
+              onChange={(event) => setSystemPrompt(event.target.value)}
+              className="w-full resize-y rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs leading-6 text-slate-700 outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+            />
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <p className="text-xs text-slate-400">{uiText("此 Prompt 會同時套用於 PDF、DOC、DOCX、網址及文字內容。")}</p>
+              <button
+                type="button"
+                onClick={() => setSystemPrompt(defaultSystemPrompt)}
+                className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
+              >
+                {uiText("恢復預設")}
+              </button>
+            </div>
+          </div>
+        </details>
       )}
 
       {/* Upload method tabs */}

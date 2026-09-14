@@ -3,6 +3,7 @@ import React from 'react';
 import type { AiBot } from '../../types';
 import { ChevronRight, UsersRound } from 'lucide-react';
 import type { PermissionGroup } from './permissions/BotPermissionDrawer';
+import { SafeAvatarImage } from '../shared/SafeAvatarImage';
 
 export type BotClassShare = {
   groupIds: string[];
@@ -48,10 +49,10 @@ export const BotAssignmentOverview: React.FC<AssignmentViewProps> = ({ bots, cla
                   key={bot.id}
                   className="flex items-center gap-4 rounded-2xl border border-slate-100 bg-slate-50/50 px-4 py-3.5 transition hover:border-indigo-200 hover:bg-indigo-50/30"
                 >
-                  <img
+                  <SafeAvatarImage
                     src={bot.avatarUrl || '/avatars/bot-default.svg'}
                     alt=""
-                    className="h-11 w-11 shrink-0 rounded-full bg-slate-100 object-cover"
+                    className="h-11 w-11 shrink-0 rounded-full bg-slate-100"
                   />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-black text-slate-900">{bot.name}</div>

@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, ChevronDown, ChevronRight, Link, Search, ShieldCheck, UsersRound, X } from "lucide-react";
 import type { AiBot } from "../../../types";
+import { SafeAvatarImage } from "../../shared/SafeAvatarImage";
 
 export type BotAccessMode = "link" | "group";
 
@@ -87,7 +88,7 @@ export const BotPermissionDrawer: React.FC<Props> = ({
       return;
     }
     if (!isSingleBotMode || prefillDone.current) return;
-    if (!students.length || !groups.length) return;
+    if (!groups.length) return;
     prefillDone.current = true;
     const groupIds = (initialGroupIds || []).filter((id) => groups.some((group) => group.id === id));
     setSelectedGroupIds(groupIds);
@@ -132,9 +133,14 @@ export const BotPermissionDrawer: React.FC<Props> = ({
   const hasGroupSelection = selectedGroupIds.length > 1 || (selectedGroupIds.length === 1 && explicitlyExcludedStudentIds.length > 0);
 
   const toggleGroup = (groupId: string) => {
-    setSelectedGroupIds((current) =>
-      current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId]
-    );
+    const adding = !selectedGroupIds.includes(groupId);
+    const nextGroups = adding ? [...selectedGroupIds, groupId] : selectedGroupIds.filter((id) => id !== groupId);
+    const allowed = new Set(groups.filter((group) => nextGroups.includes(group.id)).flatMap((group) => group.studentIds));
+    setSelectedGroupIds(nextGroups);
+    setSelectedStudentIds((current) => adding
+      ? Array.from(new Set([...current, ...(groups.find((group) => group.id === groupId)?.studentIds || [])]))
+      : current.filter((id) => allowed.has(id)));
+
   };
 
   const toggleStudent = (studentId: string) => {
@@ -227,10 +233,10 @@ export const BotPermissionDrawer: React.FC<Props> = ({
                               : "border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:bg-indigo-50/40"
                           }`}
                         >
-                          <img
+                          <SafeAvatarImage
                             src={bot.avatarUrl || "/avatars/bot-default.svg"}
                             alt=""
-                            className="h-6 w-6 rounded-full bg-slate-100 object-cover"
+                            className="h-6 w-6 rounded-full bg-slate-100"
                           />
                           <span className="truncate">{bot.name}</span>
                         </button>

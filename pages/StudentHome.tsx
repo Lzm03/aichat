@@ -10,6 +10,7 @@ import { InfoTipModal } from "../components/system/InfoTipModal";
 import { SequencePngPlayer } from "../components/workshop/SequencePngPlayer";
 import { UserMenu } from "../components/layout/UserMenu";
 import { useTeacherLang, setTeacherLang } from "../utils/teacherI18n";
+import { SafeAvatarImage } from "../components/shared/SafeAvatarImage";
 
 type StudentHomeProps = {
   currentUser: StoredAuthUser;
@@ -131,10 +132,10 @@ const StudentBotCard: React.FC<{
       <div className="flex items-start justify-between">
         <div className="relative flex h-[130px] w-[130px] items-center justify-center overflow-hidden rounded-full bg-white text-indigo-500 shadow-md ring-1 ring-slate-100">
           {companion.avatarUrl ? (
-            <img
+            <SafeAvatarImage
               src={companion.avatarUrl}
               alt={companion.name}
-              className={`h-full w-full rounded-full object-cover transition-opacity duration-200 ${canShowIdlePreview ? "opacity-0" : "opacity-100"}`}
+              className={`h-full w-full rounded-full transition-opacity duration-200 ${canShowIdlePreview ? "opacity-0" : "opacity-100"}`}
             />
           ) : (
             <Bot className={`h-12 w-12 transition-opacity duration-200 ${canShowIdlePreview ? "opacity-0" : "opacity-100"}`} />

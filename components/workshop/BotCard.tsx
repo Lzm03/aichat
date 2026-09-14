@@ -2,6 +2,7 @@ import { uiText, uiTemplate } from '../../utils/uiI18n';
 import React, { useEffect, useRef, useState } from "react";
 import type { AiBot } from "../../types";
 import { SequencePngPlayer } from "./SequencePngPlayer";
+import { SafeAvatarImage } from "../shared/SafeAvatarImage";
 
 interface BotCardProps {
   bot: AiBot;
@@ -122,7 +123,7 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onShowSub
       {/* 頂部：頭像 + 測試題角標 */}
       <div className="flex items-start justify-between">
         <div className="relative h-[140px] w-[140px] overflow-hidden rounded-full bg-white">
-          <img src={bot.avatarUrl || undefined} alt={bot.name} className={`h-full w-full rounded-full object-cover transition-opacity duration-200 ${canShowIdlePreview ? "opacity-0" : "opacity-100"}`} />
+          <SafeAvatarImage src={bot.avatarUrl || undefined} alt={bot.name} className={`h-full w-full rounded-full transition-opacity duration-200 ${canShowIdlePreview ? "opacity-0" : "opacity-100"}`} />
           {isPreviewingIdle && isIdleSequence && idleSequence && !idleSequenceFailed ? (
             <SequencePngPlayer
               folderUrl={idleSequence.folderUrl}

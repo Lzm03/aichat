@@ -7,6 +7,7 @@ import type { FeatureEntitlement } from "../../../hooks/useFeatureEntitlements";
 import { usePlatformDialog } from "../../../hooks/usePlatformDialog";
 import { PlatformDialog } from "../../system/PlatformDialog";
 import { API_BASE } from "../../../utils/api";
+import { SafeAvatarImage } from "../../shared/SafeAvatarImage";
 
 interface CreationStep3Props {
   updateConfig: (key: "avatarUrl" | "background", value: string) => void;
@@ -93,7 +94,7 @@ const AvatarUploader: React.FC<{ onImageUploaded: (url: string) => void }> = ({
 
   return preview ? (
       <div className="relative w-48 h-48 mx-auto group">
-        <img src={preview} className="w-full h-full object-cover rounded-full shadow-lg" />
+        <SafeAvatarImage src={preview} alt={uiText("上傳頭像預覽")} className="w-full h-full rounded-full shadow-lg" />
 
         <button
           onClick={() => setPreview(null)}
@@ -157,9 +158,10 @@ export const CreationStep3: React.FC<CreationStep3Props> = ({
 
       {/* ⭐ 頭像預覽（正確使用 avatarUrl） */}
       <div className="flex justify-center mb-4">
-        <img
+        <SafeAvatarImage
           src={botConfig.avatarUrl}
-          className="w-24 h-24 rounded-full shadow-lg border-2 border-white object-cover"
+          alt={uiText("角色頭像預覽")}
+          className="w-24 h-24 rounded-full shadow-lg border-2 border-white"
         />
       </div>
 

@@ -1,7 +1,12 @@
 import crypto from "crypto";
 import type { NextFunction, Request, Response } from "express";
 import { pool } from "../db.ts";
-import { FEATURE_LIMIT_LIST, FEATURE_LIMITS, type FeatureLimitKey } from "../config/feature-limits.ts";
+import {
+  FEATURE_LIMIT_LIST,
+  FEATURE_LIMITS,
+  isFeatureUnlimitedForRole,
+  type FeatureLimitKey,
+} from "../config/feature-limits.ts";
 import { canManageAllAccounts, canResetOwnUsage, isUnlimitedAccount } from "../config/account-overrides.ts";
 
 export type AppRole = "teacher" | "student" | "admin";
@@ -645,10 +650,10 @@ async function getUserFeatureLimitOverrides(userId: string) {
   return overrides;
 }
 
-export async function getUserFeatureSummary(userId: string, knownUser?: Pick<AuthUser, "email"> | null) {
+export async function getUserFeatureSummary(userId: string, knownUser?: Pick<AuthUser, "email" | "role"> | null) {
   await ensurePlatformTables();
   const user = knownUser || await findUserById(userId);
-  const unlimited = Boolean(user?.email && isUnlimitedAccount(user.email));
+  const accountUnlimited = Boolean(user?.email && isUnlimitedAccount(user.email));
   const actionNames = FEATURE_LIMIT_LIST.map((item) => featureActionName(item.key));
   const [limitOverrides, result] = await Promise.all([
     getUserFeatureLimitOverrides(userId),
@@ -670,6 +675,7 @@ export async function getUserFeatureSummary(userId: string, knownUser?: Pick<Aut
   }
 
   return FEATURE_LIMIT_LIST.map((definition) => {
+    const unlimited = accountUnlimited || isFeatureUnlimitedForRole(user?.role, definition.key);
     const effectiveLimit = limitOverrides.get(definition.key) ?? definition.limit;
     const used = usedMap.get(featureActionName(definition.key)) || 0;
     const remaining = Math.max(0, effectiveLimit - used);
@@ -690,13 +696,19 @@ export async function ensureFeatureAvailable(
   amount = 1
 ) {
   const definition = FEATURE_LIMITS[featureKey];
+  if (!definition) {
+    throw new Error(`unknown feature limit: ${featureKey}`);
+  }
   const user = await findUserById(userId);
-  if (user?.email && isUnlimitedAccount(user.email)) {
+  if (
+    (user?.email && isUnlimitedAccount(user.email)) ||
+    isFeatureUnlimitedForRole(user?.role, featureKey)
+  ) {
     return null;
   }
   const summary = await getUserFeatureSummary(userId);
   const current = summary.find((item) => item.key === featureKey);
-  if (!definition || !current) {
+  if (!current) {
     throw new Error(`unknown feature limit: ${featureKey}`);
   }
   if (current.used + amount > current.limit) {
