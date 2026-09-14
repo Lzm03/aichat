@@ -112,8 +112,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const recentBots = useMemo(() => bots, [bots]);
   const hasBots = recentBots.length > 0;
-  const subjectColorRaw = recentBots[0]?.subject ? subjectColorOf(recentBots[0].subject) : "#94A3B8";
-  const subjectColor = subjectColorRaw.includes("gradient") ? "#A855F7" : subjectColorRaw;
 
   return (
     <div className="h-full flex flex-col pb-32 md:pb-0">
@@ -139,33 +137,37 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             ) : hasBots ? (
               <div className="mt-auto grid gap-4 lg:grid-cols-3">
-                {recentBots.map((bot) => (
-                  <div key={bot.id} className="flex min-h-[280px] flex-col rounded-2xl border border-slate-100 bg-gradient-to-b from-white to-slate-50/60 p-5">
-                    <div className="relative mx-auto h-28 w-28 shrink-0">
-                      <SafeAvatarImage
-                        src={bot.avatarUrl || "/avatars/bot-default.svg"}
-                        alt={bot.name}
-                        className="h-28 w-28 rounded-full border border-slate-100"
-                      />
+                {recentBots.map((bot) => {
+                  // 每張卡用返自己嘅學科色（原本三張卡共用第一隻 bot 嘅色）
+                  const subjectColor = subjectColorOf(bot.subject);
+                  return (
+                    <div key={bot.id} className="flex min-h-[280px] flex-col rounded-2xl border border-slate-100 bg-gradient-to-b from-white to-slate-50/60 p-5">
+                      <div className="relative mx-auto h-28 w-28 shrink-0">
+                        <SafeAvatarImage
+                          src={bot.avatarUrl || "/avatars/bot-default.svg"}
+                          alt={bot.name}
+                          className="h-28 w-28 rounded-full border border-slate-100"
+                        />
+                      </div>
+                      <h3 className="mt-5 truncate text-lg font-black text-slate-950">{bot.name}</h3>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold" style={{ backgroundColor: `${subjectColor}1A`, color: subjectColor }}>
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: subjectColor }} />
+                          {uiText(bot.subject) || uiText("未分類")}
+                        </span>
+                        <span className="text-xs text-slate-400">{formatRecentTime(bot.updatedAt || bot.createdAt)}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onEditRecentBot(bot.id)}
+                        className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-50 px-3 py-3 text-sm font-black text-indigo-600 transition hover:bg-indigo-100"
+                      >
+                        <Pencil className="h-4 w-4" />
+                        {uiText("繼續編輯")}
+                      </button>
                     </div>
-                    <h3 className="mt-5 truncate text-lg font-black text-slate-950">{bot.name}</h3>
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold" style={{ backgroundColor: `${subjectColor}1A`, color: subjectColor }}>
-                        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: subjectColor }} />
-                        {uiText(bot.subject) || uiText("未分類")}
-                      </span>
-                      <span className="text-xs text-slate-400">{formatRecentTime(bot.updatedAt || bot.createdAt)}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onEditRecentBot(bot.id)}
-                      className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-50 px-3 py-3 text-sm font-black text-indigo-600 transition hover:bg-indigo-100"
-                    >
-                      <Pencil className="h-4 w-4" />
-                      {uiText("繼續編輯")}
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
                 {recentBots.length === 1 ? (
                   <button
                     type="button"
