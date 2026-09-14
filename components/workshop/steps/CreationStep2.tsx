@@ -109,7 +109,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
 - tier：只能是 "basic_fact" 或 "deep_understanding"
 - title：8 到 14 個字的知識主題，不要直接複製完整長句
 - content：知識點內容
-- keywords：2 到 5 個關鍵詞
+- keywords：3 到 5 個關鍵詞；每個至少 2 個字，必須有辨識度（專有名詞、具體事物或術語，例如「榫卯」「應縣木塔」），禁止使用「觀察」「自然」「街名」這類任何主題都適用的泛用詞；要挑角色自己會在對話中使用的詞
 - assessment_criteria：一句可用於判斷學生是否掌握的標準
 
 【輸出要求】
@@ -1074,6 +1074,15 @@ JSON 必須符合以下結構：
                 ))}
                 </div>
               </fieldset>
+              <label className="block md:col-span-12">
+                <span className="text-xs font-bold text-slate-700">{uiText("關鍵詞")}</span>
+                <input
+                  value={newPointKeywords}
+                  onChange={(e) => setNewPointKeywords(e.target.value)}
+                  placeholder={uiText("以「、」或「,」分隔，3-5 個有辨識度的詞，例如：榫卯、凹凸")}
+                  className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+                />
+              </label>
               <label className="block md:col-span-12">
                 <span className="text-xs font-bold text-slate-700">{uiText("知識內容")}</span>
                 <textarea

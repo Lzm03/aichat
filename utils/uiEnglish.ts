@@ -1483,6 +1483,8 @@ export const englishUi: Record<string, string> = {
   "直接補充單一知識；新增後會立即出現在上方知識架構。": "Add a single knowledge point. It will appear in the structure above immediately.",
   "例如：人物背景": "e.g. Character Background",
   "知識層級": "Knowledge Level",
+  "關鍵詞": "Keywords",
+  "以「、」或「,」分隔，3-5 個有辨識度的詞，例如：榫卯、凹凸": "Separate with 、 or , — 3-5 distinctive terms the character would say, e.g. mortise and tenon, interlocking.",
   "輸入完整説明，讓角色能準確理解並回答。": "Enter a full explanation so the character can understand and answer accurately.",
   "角色基礎": "Character Foundations",
   "這些設定會套用到所有主題，維持角色個性與回答方式一致。": "These settings apply to all topics to maintain a consistent personality and response style.",
