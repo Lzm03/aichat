@@ -47,6 +47,7 @@ const LIB_T: Record<TeacherLang, Record<string, string | ((arg: string) => strin
     chatMessages: "對話訊息",
     unlimited: "無限制",
     proUnlimitedChat: "PRO 方案不限對話次數",
+    teacherUnlimitedChat: "老師帳戶不限對話次數",
     seatsFull: (usage: string) => `機器人角色席位已用完（${usage}）。PRO 用戶可洽客服快速加開席位。`,
     contactSupport: "聯絡客服",
     limitReached: "已達機器人上限",
@@ -82,6 +83,7 @@ const LIB_T: Record<TeacherLang, Record<string, string | ((arg: string) => strin
     chatMessages: "Chat messages",
     unlimited: "Unlimited",
     proUnlimitedChat: "PRO Plan: unlimited chat messages",
+    teacherUnlimitedChat: "Teacher accounts have unlimited chat messages",
     seatsFull: (usage: string) => `Bot persona seats are full (${usage}). PRO users can contact support to add seats quickly.`,
     contactSupport: "Contact support",
     limitReached: "Bot limit reached",
@@ -193,7 +195,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     ? bots.filter((bot) => String(bot.name || "").normalize("NFKC").toLocaleLowerCase().includes(normalizedSearchQuery))
     : bots, [bots, normalizedSearchQuery]);
   const creationLocked = featureLoading || botsLoading || Boolean(createBotFeature?.locked);
-  const isPro = Boolean(createBotFeature?.unlimited || chatMessagesFeature?.unlimited || readAuthSession()?.user.plan?.toLowerCase().includes("pro"));
+  const authUser = readAuthSession()?.user;
+  const isTeacher = authUser?.role === "teacher";
+  const isPro = Boolean(createBotFeature?.unlimited || authUser?.plan?.toLowerCase().includes("pro"));
   const percent = (feature?: FeatureEntitlement) => feature?.unlimited ? 100 : Math.min(100, ((feature?.used || 0) / Math.max(feature?.limit || 1, 1)) * 100);
   const usageLabel = (feature?: FeatureEntitlement) => feature?.unlimited ? t("unlimited") : feature ? `${feature.used}/${feature.limit}` : t("loading");
   const startCreation = () => {
@@ -381,7 +385,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
           <div className={`rounded-2xl border p-3.5 ${chatMessagesFeature?.unlimited ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-slate-50"}`}>
             <div className="flex items-baseline justify-between gap-3 text-[13px] font-bold text-slate-700"><span>{t("chatMessages")}</span><span className={chatMessagesFeature?.unlimited ? "text-xs font-extrabold text-emerald-600" : "text-xs font-extrabold text-indigo-600"}>{chatMessagesFeature?.unlimited ? `✓ ${t("unlimited")}` : usageLabel(chatMessagesFeature)}</span></div>
-            {chatMessagesFeature?.unlimited ? <div className="mt-2 text-xs text-lime-600">{t("proUnlimitedChat")}</div> : <div className="mt-2 h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-indigo-500" style={{ width: `${percent(chatMessagesFeature)}%` }} /></div>}
+            {chatMessagesFeature?.unlimited ? <div className="mt-2 text-xs text-lime-600">{t(isTeacher ? "teacherUnlimitedChat" : "proUnlimitedChat")}</div> : <div className="mt-2 h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-indigo-500" style={{ width: `${percent(chatMessagesFeature)}%` }} /></div>}
           </div>
         </div>
         {isPro && createBotFeature?.locked && !bannerDismissed ? (

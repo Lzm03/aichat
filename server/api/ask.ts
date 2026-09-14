@@ -17,6 +17,7 @@ import {
   findUserById,
   requireAuth,
 } from "../lib/platform-auth.ts";
+import { isFeatureUnlimitedForRole } from "../config/feature-limits.ts";
 import {
   createConversation,
   getConversationForUser,
@@ -1819,7 +1820,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     await assertUserCanSpend(authUser.id, 1);
     if (usageType === "chat_message") await ensureFeatureAvailable(authUser.id, "chat_messages", 1);
 
-    if (usageType === "chat_message") {
+    if (usageType === "chat_message" && !isFeatureUnlimitedForRole(authUser.role, "chat_messages")) {
       const botChatUsage = await pool.query(
         `SELECT b.chat_message_limit, COUNT(m.id)::int AS used
          FROM bots b
