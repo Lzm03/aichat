@@ -1,0 +1,212 @@
+# 對接文件 — 2026-09-10 server 改動（批改評語／異常警示／混合出題／bot 年級欄位）
+日期：2026-09-10
+前端設計負責人：Doris
+交接對象：Jayden（負責 API 實作對接 + 部署上線）
+
+## 摘要
+
+今日共有兩組檔案改動，全部由前端同事撰寫，**請 review SQL／交易正確性**。
+A–C 組位於 `server/api/quizzes.ts`，屬於「前端介面已接好、真後端需對齊」的改動，
+**無 DB schema 變動**（沿用既有 JSONB 欄位），部署後前端無須改動即可運作。
+E 組為另一功能（對話 bot 年級欄位），**有 DB schema 變動**（新增 `bots.grade` 欄），
+但以 `ADD COLUMN IF NOT EXISTS` 冪等套用，無須人手 migration。
+
+| 節 | 改動 | 涉及 endpoint |
+|---|---|---|
+| A | 批改詳情：教師逐題改分＋評語（草稿 → 發佈） | **新** PATCH /quizzes/:id/attempts/:attemptId/review（＋ grading-detail 回傳 `teacherComment`） |
+| B | AI 異常警示中心（質量分析入口由死路改為可處理） | **新** PATCH /quizzes/:id/attempts/:attemptId/anomalies/:flagIndex（＋ grading-detail／grading-summary 改動） |
+| C | 新建測驗「混合出題」持久化 | **新** POST /quizzes/:id/questions |
+| E | 對話 bot 年級欄位（`bots.grade`）＋ 年級難度 prompt 規則 | 現有 POST /bots、PUT /bots/:id 加欄位（**無新 endpoint**） |
+
+新增 route 全部為 `requireAuth` ＋ teacher/admin gate（403 `teacher account required`），
+交易模式與檔內其他寫入 route 一致（`BEGIN` / `COMMIT` / 失敗 `ROLLBACK`）。
+
+> **關於 B 節**：同一內容已隨 `handoff-backend-integration-2026-09-09.txt` D 節交付。
+> 本次收錄只為使本文件可獨立閱讀；如已 review 過可略過。
+
+---
+
+## A. 批改詳情：教師逐題改分＋評語
+
+教師在批改詳情逐題改分／撰寫評語，前端儲存本地 draft，按下「儲存草稿」後才寫入後端。
+（`components/assessment/GradingDetailView.tsx`）
+
+### A1. **新** PATCH /api/quizzes/:id/attempts/:attemptId/review — `quizzes.ts:2860`
+
+| 項目 | 內容 |
+|---|---|
+| Body | `{ reviews: [{ questionIndex, questionId?, finalPoints?, teacherComment? }] }` |
+| 驗證 | `reviews` 非陣列或空 → 400「沒有可儲存的修改。」 |
+| 擁有權 | `SELECT a.teacher_review_json FROM quiz_attempts a INNER JOIN quizzes q ON q.id=a.quiz_id WHERE a.id=$1 AND q.id=$2 AND q.teacher_id=$3 FOR UPDATE OF a` → 404「作答紀錄不存在。」 |
+| 合併語意 | 按 `questionIndex` **upsert merge** 入既有 `teacher_review_json` 陣列——只更新傳入的數題，其餘題目的既有評語保留 |
+| 欄位處理 | `finalPoints` 只在 `Number.isFinite` 時更新，取 `Math.max(0, n)`（不傳 = 保留原值）；`teacherComment` 取 `slice(0, 500)`；`questionIndex` 非整數或 < 0 → 跳過該項 |
+| 寫入 | `UPDATE quiz_attempts SET teacher_review_json=$1::jsonb, updated_at=NOW() WHERE id=$2` |
+| 回傳 | `{ ok: true, teacherReview }`（合併後完整陣列） |
+| 錯誤 | 500 →「儲存草稿失敗，請稍後再試。」 |
+
+### A2. grading-detail 回傳加 `teacherComment` — `quizzes.ts:2724-2753`
+
+`GET /quizzes/:id/grading-detail` 的 `normalizedAnswers` 每題加上 `teacherComment`
+（由該 attempt 的 `teacher_review_json` 按 `questionIndex` 對應讀出，無則為 `""`），
+使教師重新進入頁面時可見到上次儲存的評語。
+
+### A3. 發佈時的行為（已核實，非本次改動但請確認）
+
+`POST /quizzes/:id/grading/publish` 會使用 `recomputeAttemptScoresForPublish()`（`quizzes.ts:1153`）
+重算並覆寫 `teacher_review_json`，其中 `teacherComment: String(existing?.teacherComment || "")`（`quizzes.ts:1208`）
+**會保留教師評語**，客觀題分數重算、主觀題沿用教師的 `finalPoints`。
+
+**請 review：**
+
+1. `FOR UPDATE OF a` 只鎖定 `quiz_attempts` 列——同一 attempt 的多個 tab 同時儲存時由該鎖阻擋；
+   請確認 `OF a` 在 `INNER JOIN` ＋ `q.teacher_id` 條件下的行為符合預期。
+2. A1（草稿儲存）與 A3（發佈）都會寫入 `teacher_review_json`。發佈路徑的 `FOR UPDATE OF a` 鎖定的是
+   `status='completed'` 的 attempt，草稿路徑則未檢查 status——請確認「教師儲存草稿期間有人發佈」
+   的先後關係是否可接受（目前為 last-write-wins，無版本衝突檢測）。
+3. 未限制 `reviews` 陣列長度（理論上可傳送超大 payload）；如需可加上長度上限。
+
+---
+
+## B. AI 異常警示中心
+
+質量分析「AI 異常警示」由無法操作的死路改為警示中心，`server/api/quizzes.ts` 有以下改動：
+
+| 改動 | 位置 |
+|---|---|
+| `anomaly_flags_json` 由 flat `string[]` 改為結構化 flag 陣列（`type` / `questionIndex` / `questionId` / `excerpt` / `reason` / `status` / `teacherComment` / `resolvedAt`）；`detectAttemptAnomalies` 逐題偵測＋摘錄 | `ANOMALY_RULES`(1054)、`detectAttemptAnomalies`(1062)、`normalizeAnomalyFlags`(1107) |
+| GET /quizzes/:id/grading-detail — flag 於服務端 normalize（**legacy `string[]` 相容**）；`metrics.anomalyCount` 改為只計算 `status==='open'` | grading-detail |
+| GET /teachers/me/grading-summary — 每份測驗加上 `botId` / `botName` / `questionCount` / `publishedAt` / `anomalyCount`（open-flag jsonb subquery，對 legacy 與結構化格式均適用） | grading-summary |
+| **新** PATCH /quizzes/:id/attempts/:attemptId/anomalies/:flagIndex — 教師處理警示（`resolved` / `dismissed` ＋選填評語）；teacher gate ＋交易 ＋ `FOR UPDATE` ＋ `q.teacher_id` 擁有權；**只可由 `open` 轉為其他狀態** | `quizzes.ts:2798` |
+
+無 DB schema 變動（沿用 `anomaly_flags_json` JSONB）；grading/publish 不觸碰 flag，
+處理結果不會被覆寫。前後端規格一致，實作後前端無須改動。
+
+**請 review：** grading-summary 的 jsonb subquery 效能（已加 `jsonb_typeof` guard）與 PATCH 交易。
+
+> 偵測規則完整規格（型別／關鍵字／假陽性風險／官方依據／擴展 checklist）見
+> `docs/anomaly-detection-spec.md`（v1，含教育局／PDPO／考評局來源引用）。
+
+---
+
+## C. 新建測驗「混合出題」持久化
+
+新建測驗 Step3「從歷史題庫挑選 → 加入至當前測驗」原本只寫入前端 state（重新載入即消失，
+真後端沒有對應 endpoint）。新增一條寫入 route。
+
+### **新** POST /api/quizzes/:id/questions — `quizzes.ts:1946`
+
+（位置：PATCH `/quizzes/:id/questions/:questionId` 之後、bank attach 之前）
+
+| 項目 | 內容 |
+|---|---|
+| Body | `{ type, cognitiveLevel, content, options?, answer, explanation?, points?, difficulty? }` |
+| 驗證 | `content` 空 → 400「題目內容不能為空。」；`answer` 空 → 400「參考答案不能為空。」（與 PATCH 相同 message） |
+| 擁有權／狀態 | `SELECT status, MAX(order_index)+1 AS next_index, COUNT(*) AS actual_count … WHERE id=$1 AND teacher_id=$2 FOR UPDATE` → 404 `Quiz not found`；`status !== 'draft'` → 400「測驗已發佈，無法新增題目。」 |
+| 寫入 | `normalizeQuestionType(type)` ＋ options 正規化（MCQ slice 4／判斷題強制 `A. 正確` `B. 錯誤`／其餘 `[]`，與 PATCH 規則相同）；INSERT `quiz_questions`（`crypto.randomUUID()`、`order_index = next_index`、`preview_payload_json` 帶 `id = orderIndex+1`）；`UPDATE quizzes SET question_count = actual_count + 1, updated_at = NOW()` |
+| 回傳 | `{ ok: true, question }`（`buildPreviewQuestion(payload, orderIndex)` 產生，形狀與 `GET /quizzes/:id` 的 questions 一致） |
+| 錯誤 | 500 →「新增題目失敗，請稍後再試。」 |
+
+**請 review：**
+
+1. `question_count` 採用 `actual_count + 1`（實際 `COUNT(*)`）而非 `question_count + 1` ——
+   目的是避免歷史漂移，但請確認與 generate／刪題等其他寫入路徑的一致性。
+2. `order_index` 取 `MAX(order_index) + 1`，並發時同一草稿的多個 tab 同時加題會由 `FOR UPDATE`
+   鎖定 quizzes 列阻擋；請確認沒有其他寫入路徑繞過該鎖。
+3. Front-end **逐條 POST**（N 條題目 = N 個 request），沒有 batch endpoint。
+   如日後想一次加入數十條，可考慮擴充為接受 `questions: []` 陣列。
+
+前端對接：`components/assessment/steps/Step3PreviewAndPublish.tsx` — 加入時逐條 POST，
+任何一條失敗即停止；已成功的題目立即 append 入列表（帶 `isFromHistory: true` 標記）並由選取中移除，
+使用戶重試時只會重送失敗的數條，不會重複寫入。
+
+---
+
+## D. Mock 環境更新（只供預覽，不可上線作資料源）
+
+`aichat-preview-mock/mock-server.mjs`（repo 外）今日補齊新建測驗 wizard 全流程 route，
+09-09 文件所列的兩個 mock 缺口（`DELETE /api/quizzes/question-banks/:bankId`、
+`POST /api/quizzes/:id/publish`）已經補齊。
+
+新增／補齊 route：`GET /api/teachers/me/available-quiz-bots`、
+`POST /api/quizzes/source-text/upload`（multipart）、`POST /api/quizzes/generate`、
+`PATCH /api/quizzes/:id/draft`、`POST /api/quizzes/:id/publish`、
+`POST /api/quizzes/:id/questions`、`PATCH /api/quizzes/:id/questions/:questionId`、
+`POST /api/quizzes/:id/questions/:questionId/rewrite-type`、
+`POST /api/quizzes/question-banks`、`POST /api/quizzes/question-banks/:bankId/questions`、
+`DELETE /api/quizzes/question-banks/:bankId`。
+
+Mock 冒煙 46 項全部通過（含 400／404 錯誤碼與 message 對齊真 server）。
+
+---
+
+## E. 對話 bot 年級欄位（`bots.grade`）
+
+> ⚠️ 本節與 A–C 不同：**有 DB schema 變動**，而且改動**不在 `quizzes.ts`**。
+
+### E1. DB：新增 `bots.grade` 欄 — `server/lib/platform-auth.ts:418`
+
+（位於現有 ALTER 群之後）
+
+```sql
+ALTER TABLE bots ADD COLUMN IF NOT EXISTS grade TEXT;
+```
+
+- `NULL` = 未設定，沿用原本回覆風格（**現有 bot 全部為 NULL，行為完全不變**）
+- 值域：`P1` / `P2-P3` / `P4-P6` / `S1-S3` / `S4-S6`（前端只會送出這 5 個）
+- **DB 層沒有 CHECK constraint**，如需防呆可加（見下方 review 點 2）
+- `IF NOT EXISTS` 冪等，隨 `ensurePlatformTables()` 套用
+
+### E2. 讀寫路徑
+
+| 檔案 | 改動 |
+|---|---|
+| `server/botMapper.js` | `toDb` 加上 `grade: bot.grade \|\| null`；`toClient` 加上 `grade: raw.grade \|\| ""` |
+| `server/api/bots.ts` | `POST /` INSERT 加上 `grade`（第 20 欄，`$20`）；`PUT /:id` UPDATE 加上 `grade=$17`（`WHERE id=$18 AND owner_id=$19`） |
+| `server/lib/character-topics.ts` | `CharacterRow` 加上 `grade: string \| null`；`getAccessibleCharacter`、`getOwnedCharacter` 兩條 SELECT 加上 `b.grade` |
+
+> `toClient` 將 NULL 轉為 `""`（空字串 = 未設定），與檔內其他可選字串欄位一致。
+
+### E3. `server/api/ask.ts`：prompt 注入
+
+`buildChatSystemPrompt()` 新增一個參數：
+
+```ts
+gradeBand: characterGradeBand,   // = character.grade || null
+```
+
+- `characterGradeBand` 來自 `getAccessibleCharacter()` 的 `b.grade`
+- `utils/chat-prompt.ts` 為前後端**共用**的檔案（`ask.ts` 直接 import），
+  因此規則字串只有一份實作，無須在 server 另行複製
+- 未設定年級（NULL）→ `buildGradeBandRule()` 回傳空字串，**system prompt 完全不變**，
+  現有 bot 零影響
+- 年級難度規則同時適用於**粵語、普通話、英語**三種回覆
+  （產品有三語語音輸入輸出）。規則只調整難度，**不改變語域**——
+  粵語口語 default 維持不變，`buildChatReplyLanguageRule()` 一行也未改動
+
+**沒有任何 post-processing hook**：E 組只在 prompt 組裝階段加入參數，
+回覆產生之後不會再有任何本地或 LLM 加工。
+
+**請 review：**
+
+1. `ADD COLUMN IF NOT EXISTS` 在 `ensurePlatformTables()` 的套用時機——
+   與 A–C 相同，希望確認 Railway 部署時會如常執行。
+2. 是否需要在 DB 層加上 `CHECK (grade IN (...))`？前端已有限制，但直接呼叫 API 可以繞過。
+3. `toClient` 將 NULL 轉為 `""` 的一致性——請確認沒有其他消費端預期收到 `null`。
+
+---
+
+## 相關文件
+
+- `server/handoff-backend-integration-2026-09-09.txt` — 主對接文件（A/B/C/D 節：Command Center、學習報告、班級授權、異常警示）
+- `server/handoff-ability-report-2026-09-09.txt` — ability-report API 完整 spec
+- `server/handoff-backend-classes-bot-permissions-2026-09-08.txt` — classes/group-shares API 完整 spec
+- `docs/anomaly-detection-spec.md` — 異常偵測規則完整規格（v1）
+
+## 待確認事項
+
+1. A 節三個 review 點（尤其是發佈與草稿儲存之間的 race）。
+2. C 節 `question_count` / `order_index` 在其他寫入路徑的一致性。
+3. **DB schema**：A–C 組無 migration；E 組有（新增 `bots.grade`，以
+   `ADD COLUMN IF NOT EXISTS` 冪等套用）。請確認 Railway 部署時
+   `ensureQuizTables()` / `ensurePlatformTables()` 兩者都會如常執行。
+4. E 節三個 review 點（尤其是 DB 層是否需要加上 `CHECK (grade IN (...))`）。
