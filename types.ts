@@ -5,7 +5,8 @@ export interface AiBot {
   animation?: string;
   name: string;
   subject: string;
-  subjectColor: 'indigo' | 'emerald' | 'amber';
+  /** 學科代表色：新資料係 hex（utils/subjects.ts），舊資料可能仍係 Tailwind 色名 */
+  subjectColor: string;
   interactions: number;
   accuracy: number;
   createdAt?: string;

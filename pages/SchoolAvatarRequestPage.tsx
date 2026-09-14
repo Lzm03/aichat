@@ -7,12 +7,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, Check, CheckCircle2, ChevronDown, FileText, ImagePlus, LoaderCircle, Pencil, Plus, ShieldCheck, Sparkles, Trash2, UploadCloud, X } from 'lucide-react';
 import { API_BASE } from '../utils/api';
 import { buildBotProposal } from '../utils/bot-proposal';
-
-const SUBJECTS = [
-  '中國語文', '中國歷史 · 歷史科', '英國語文 (English Language)', '數學科 · 邏輯思維',
-  '小學常識科 · 跨學科', '科學 · STEM · 創科教育', '公民與社會發展科 (CS) · 德育及公民教育',
-  'SEN 特殊教育 · 社交與情緒共融', '校園導覽 · 圖書館 · 升學規劃',
-];
+import { SUBJECT_OPTIONS, subjectOptionOf } from '../utils/subjects';
 
 const STYLE_META = [
   { id: 'pixar', title: 'Pixar 3D 立體風格', description: '生動具科技感，學生最喜愛', image: '/avatar-intake/style-pixar.png', recommended: true },
@@ -192,7 +187,11 @@ export const SchoolAvatarRequestPage: React.FC = () => {
           <section className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 sm:p-7">
             <div className="flex items-center justify-between"><div><h2 className="text-base font-black text-slate-900">{uiText("本次已提交角色")}</h2><p className="mt-1 text-xs text-slate-400">{uiText("團隊會以老師確認的設定草案為製作依據。")}</p></div><CheckCircle2 className="h-5 w-5 text-emerald-500" /></div>
             <div className="mt-5 divide-y divide-slate-100">
-              {submittedRoles.map((role) => <div key={role.id} className="flex items-start justify-between gap-4 py-4 first:pt-0 last:pb-0"><div><p className="text-sm font-black text-slate-800">{role.name}</p><div className="mt-2 flex flex-wrap gap-1.5">{[...role.subjects.slice(0, 2), timingLabel(role.usageTiming)].map((tag) => <span key={tag} className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-600">{uiText(tag)}</span>)}</div></div><span className="inline-flex items-center gap-1 text-xs font-bold text-slate-400"><Pencil className="h-3.5 w-3.5" />{uiText(" 已提交")}</span></div>)}
+              {submittedRoles.map((role) => <div key={role.id} className="flex items-start justify-between gap-4 py-4 first:pt-0 last:pb-0"><div><p className="text-sm font-black text-slate-800">{role.name}</p><div className="mt-2 flex flex-wrap gap-1.5">{[...role.subjects.slice(0, 2), timingLabel(role.usageTiming)].map((tag) => {
+                // 學科 tag 用科目色；時段 tag 唔喺科目清單，維持 indigo（中性 metadata）
+                const option = subjectOptionOf(tag);
+                return <span key={tag} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${option ? '' : 'bg-indigo-50 text-indigo-600'}`} style={option ? { backgroundColor: `${option.color}1A`, color: option.color } : undefined}>{option ? <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: option.color }} /> : null}{uiText(tag)}</span>;
+              })}</div></div><span className="inline-flex items-center gap-1 text-xs font-bold text-slate-400"><Pencil className="h-3.5 w-3.5" />{uiText(" 已提交")}</span></div>)}
             </div>
           </section>
         ) : null}
@@ -257,7 +256,7 @@ const RoleEditor: React.FC<RoleEditorProps> = ({ role, index, removable, ready, 
           <label><FieldLabel>{uiText("使用時段")}</FieldLabel><div className="relative"><select value={role.usageTiming} onChange={(event) => updateRole(role.id, { usageTiming: event.target.value as RoleDraft['usageTiming'] })} className={`${inputClass} appearance-none pr-9 font-bold`}><option value="during">{uiText("課堂中使用")}</option><option value="after">{uiText("課後／自主學習使用")}</option><option value="both">{uiText("課堂中與課後皆使用")}</option></select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /></div></label>
         </div>
 
-        <div className="mt-6"><FieldLabel>{uiText("應用學科（可多選）")}</FieldLabel><div className="flex flex-wrap gap-2">{SUBJECTS.map((subject) => { const active = role.subjects.includes(subject); return <button key={subject} type="button" onClick={() => toggleValue(role, 'subjects', subject)} className={`rounded-full border px-3 py-2 text-xs font-bold transition ${active ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>{active ? '✓ ' : ''}{uiText(subject)}</button>; })}</div><input value={role.customSubject} onChange={(event) => updateRole(role.id, { customSubject: event.target.value })} className={`${inputClass} mt-3 max-w-sm`} placeholder={uiText("其他自訂學科")} /></div>
+        <div className="mt-6"><FieldLabel>{uiText("應用學科（可多選）")}</FieldLabel><div className="flex flex-wrap gap-2">{SUBJECT_OPTIONS.map((option) => { const active = role.subjects.includes(option.label); return <button key={option.value} type="button" aria-pressed={active} onClick={() => toggleValue(role, 'subjects', option.label)} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-bold transition ${active ? '' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`} style={active ? { backgroundColor: `${option.color}1A`, borderColor: `${option.color}66`, color: option.color } : undefined}><span className="h-2 w-2 rounded-full" style={{ backgroundColor: option.color }} />{uiText(option.label)}</button>; })}</div><input value={role.customSubject} onChange={(event) => updateRole(role.id, { customSubject: event.target.value })} className={`${inputClass} mt-3 max-w-sm`} placeholder={uiText("其他自訂學科")} /></div>
 
         <div className="mt-6"><FieldLabel>{uiText("角色視覺風格偏好（可多選）")}</FieldLabel><div className="grid gap-3 sm:grid-cols-2">{STYLE_META.map((style) => { const active = role.styles.includes(style.id); return <button key={style.id} type="button" onClick={() => toggleValue(role, 'styles', style.id)} className={`group flex items-start gap-3 rounded-2xl border p-3 text-left transition ${active ? 'border-indigo-400 bg-indigo-50/60 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-indigo-200'}`}><div className="relative h-[76px] w-[76px] shrink-0 overflow-hidden rounded-xl bg-slate-100"><img src={style.image} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />{active ? <span className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-white"><Check className="h-3 w-3" /></span> : null}</div><span className="min-w-0 pt-0.5"><span className="flex flex-wrap items-center gap-1.5"><strong className="text-xs leading-5 text-slate-800">{uiText(style.title)}</strong>{style.recommended ? <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-black text-amber-700">{uiText("推薦")}</span> : null}</span><span className="mt-1 block text-[11px] leading-5 text-slate-400">{uiText(style.description)}</span></span></button>; })}</div></div>
 

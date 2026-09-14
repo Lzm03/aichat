@@ -1176,8 +1176,8 @@ JSON 必須符合以下結構：
                 >
                   <span
                     className={`h-2.5 w-2.5 rounded-full ${active ? "bg-white" : ""}`}
-                    // 用 background（而非 backgroundColor）以支援漸變色
-                    style={active ? undefined : { background: option.color }}
+                    // 色點由 utils/subjects.ts 派生；active 時整粒 pill 變實心 indigo（見上），色點轉白
+                    style={active ? undefined : { backgroundColor: option.color }}
                   />
                   {uiText(option.label)}
                 </button>
