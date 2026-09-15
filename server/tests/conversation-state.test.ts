@@ -236,3 +236,32 @@ test("全部覆蓋：next_point 變 null", () => {
   ]);
   assert.equal(states[2].nextPointId, null);
 });
+
+// ── next_point 優先 basic_fact（課程結構簡化） ─────────────────────────
+
+const deepPoint = (id: string, keywords: string[]): KnowledgePoint => ({
+  id,
+  tier: "deep_understanding",
+  title: id,
+  content: "測試內容",
+  keywords,
+});
+
+test("next_point 優先推 basic_fact：deep 排前面都照樣先教基礎", () => {
+  const points = [
+    deepPoint("kp_001", ["因果", "影響"]),
+    point("kp_002", ["榫卯", "斗拱"]),
+    deepPoint("kp_003", ["價值", "遷移"]),
+  ];
+  const result = computeNextPoint(points, new Set(), new Set(), null);
+  assert.equal(result.nextPointId, "kp_002", "跳過排頭嘅 deep，指返基礎點");
+});
+
+test("全部 basic_fact 覆蓋後先推 deep_understanding", () => {
+  const points = [
+    point("kp_001", ["榫卯", "斗拱"]),
+    deepPoint("kp_002", ["因果", "影響"]),
+  ];
+  const result = computeNextPoint(points, new Set(["kp_001"]), new Set(), null);
+  assert.equal(result.nextPointId, "kp_002", "基礎做完先輪到 deep");
+});

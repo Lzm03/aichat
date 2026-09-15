@@ -263,6 +263,38 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [recordingError, setRecordingError] = useState("");
   const [stagePhotoError, setStagePhotoError] = useState("");
   const [isCapturingStagePhoto, setIsCapturingStagePhoto] = useState(false);
+  const [studentProgress, setStudentProgress] = useState<{
+    total: number;
+    covered: number;
+    points: Array<{ id: string; tier: string; title: string; covered: boolean }>;
+  } | null>(null);
+  const [progressPanelOpen, setProgressPanelOpen] = useState(false);
+
+  // 學生端（共享視圖）累積進度：開場即載入，之後每 5 秒輪詢一次，
+  // 追上 trackConversationState 嘅 fire-and-forget 寫入。
+  useEffect(() => {
+    if (!isOpen || !isSharedView || !botConfig.id) return;
+    let cancelled = false;
+    const loadProgress = () => {
+      fetch(`${API_BASE}/api/bots/${botConfig.id}/progress`)
+        .then((res) => {
+          if (!res.ok) throw new Error("progress load failed");
+          return res.json();
+        })
+        .then((data) => {
+          if (!cancelled) setStudentProgress(data);
+        })
+        .catch(() => {
+          if (!cancelled) setStudentProgress(null);
+        });
+    };
+    loadProgress();
+    const timer = window.setInterval(loadProgress, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isOpen, isSharedView, botConfig.id]);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showTopMenu, setShowTopMenu] = useState(false);
@@ -4365,6 +4397,37 @@ const unlockAudioAndMic = async () => {
                   <X size={20} />
                 </button>
               </div>
+
+              {isSharedView && studentProgress && studentProgress.total > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setProgressPanelOpen((current) => !current)}
+                  className="w-full border-b border-[#ebe5db] bg-[#fbf6ec] px-4 py-2 text-left"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-black text-[#6c4b22]">{uiText("學習進度")} {studentProgress.covered}/{studentProgress.total}</span>
+                    <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-[#8b7a64] transition ${progressPanelOpen ? "rotate-180" : ""}`} />
+                  </div>
+                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[#e8ddcc]">
+                    <div
+                      className="h-full rounded-full bg-indigo-500 transition-all duration-500"
+                      style={{ width: `${Math.round((studentProgress.covered / studentProgress.total) * 100)}%` }}
+                    />
+                  </div>
+                  {progressPanelOpen ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {studentProgress.points.map((point) => (
+                        <span
+                          key={point.id}
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${point.covered ? "bg-indigo-500 text-white" : "bg-[#ede4d4] text-[#8b7a64]"}`}
+                        >
+                          {point.covered ? "✓ " : ""}{point.title}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </button>
+              ) : null}
 
               {activeQuiz && quizUiState === "banner" ? (
                 <div className="border-b border-[#ebe5db] bg-white px-0 py-0">

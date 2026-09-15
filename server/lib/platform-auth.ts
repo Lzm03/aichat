@@ -400,6 +400,21 @@ export async function ensurePlatformTables() {
         CREATE INDEX IF NOT EXISTS bot_conversation_states_bot_user_idx
         ON bot_conversation_states(bot_id, user_id, updated_at DESC);
       `);
+      // 跨對話累積進度：key 係 (bot_id, user_id)，唔係 conversation。
+      // 學生下次開新對話時 seed 返已掌握知識點，唔會歸零重教。
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS bot_student_progress (
+          bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          covered_point_ids JSONB NOT NULL DEFAULT '[]',
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (bot_id, user_id)
+        );
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS bot_student_progress_user_id_idx
+        ON bot_student_progress(user_id, updated_at DESC);
+      `);
       await pool.query(`
         CREATE TABLE IF NOT EXISTS conversations (
           id TEXT PRIMARY KEY,

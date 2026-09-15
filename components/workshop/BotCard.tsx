@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import type { AiBot } from "../../types";
 import { SequencePngPlayer } from "./SequencePngPlayer";
 import { SafeAvatarImage } from "../shared/SafeAvatarImage";
+import { ProgressRing } from "../shared/ProgressRing";
 import { subjectColorOf } from "../../utils/subjects";
 
 interface BotCardProps {
@@ -178,9 +179,17 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onShowSub
         </div>
       </div>
 
-      {/* 底部：互動次數 */}
+      {/* 底部：互動次數 + 全班覆蓋 */}
       <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-[18px]">
-        <p className="text-[13px] text-slate-400">{uiText("今日互動 ")}{bot.interactions || 0}{uiText(" 次")}</p>
+        <div className="flex items-center gap-3">
+          <p className="text-[13px] text-slate-400">{uiText("今日互動 ")}{bot.interactions || 0}{uiText(" 次")}</p>
+          {bot.coverage && bot.coverage.total > 0 ? (
+            <span className="flex items-center gap-1.5 text-[12px] font-bold text-indigo-500">
+              <ProgressRing covered={bot.coverage.covered} total={bot.coverage.total} size={18} stroke={3} />
+              {uiTemplate("已覆蓋 {0}/{1} 知識點", bot.coverage.covered, bot.coverage.total)}
+            </span>
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={(event) => {

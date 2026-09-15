@@ -1,7 +1,9 @@
 /**
- * 對話狀態追蹤（啟發式，零額外 LLM call）：
- * 每輪回覆後，按知識點 keyword 喺近期對話文本嘅出現情況，記錄「已覆蓋知識點」，
- * 並計出下一個未覆蓋知識點做引導目標。狀態下一輪注入 system prompt，
+ * 對話狀態追蹤（Hybrid，零額外 LLM call）：
+ * 每輪回覆後，用兩層訊號判定「已覆蓋知識點」：
+ *   1. 主訊號：學生回答有展現理解（computeStudentEvidence）
+ *   2. 兜底：角色自己講過 keyword（computeNewlyCovered，防輕鬆對話大量漏標）
+ * 再計出下一個未覆蓋知識點做引導目標。狀態下一輪注入 system prompt，
  * 驅動蘇格拉底三步曲嘅 Advance（唔准重複已討論概念）。
  */
 import { pool } from "../db.ts";
@@ -54,6 +56,61 @@ export async function getConversationState(
   }
 }
 
+/**
+ * 讀取學生 × Bot 嘅跨對話累積進度（已掌握知識點）。
+ * 冇紀錄（第一次對話）回傳空陣列。
+ */
+export async function getStudentProgress(
+  botId: string,
+  userId: string
+): Promise<string[]> {
+  try {
+    await ensurePlatformTables();
+    const result = await pool.query(
+      `SELECT covered_point_ids FROM bot_student_progress WHERE bot_id=$1 AND user_id=$2 LIMIT 1`,
+      [botId, userId]
+    );
+    if (!result.rows.length) return [];
+    const row = result.rows[0];
+    return Array.isArray(row.covered_point_ids)
+      ? row.covered_point_ids.map(String)
+      : [];
+  } catch (error) {
+    console.warn("[conversation-state] failed to load student progress", error);
+    return [];
+  }
+}
+
+/**
+ * 將今輪已覆蓋知識點合併入跨對話累積進度（並集，唔會倒退）。
+ * coveredPointIds 係「累積 + 今輪新增」嘅完整集合，合併時照做去重並集，
+ * 以防同一個 (bot, user) 有並行對話時後寫嘅舊集合覆蓋走新進度。
+ */
+export async function mergeStudentProgress(
+  botId: string,
+  userId: string,
+  coveredPointIds: string[]
+) {
+  try {
+    await ensurePlatformTables();
+    await pool.query(
+      `INSERT INTO bot_student_progress (bot_id, user_id, covered_point_ids, updated_at)
+       VALUES ($1, $2, $3::jsonb, NOW())
+       ON CONFLICT (bot_id, user_id) DO UPDATE SET
+         covered_point_ids = (
+           SELECT COALESCE(jsonb_agg(DISTINCT elem), '[]'::jsonb)
+           FROM jsonb_array_elements_text(
+             bot_student_progress.covered_point_ids || EXCLUDED.covered_point_ids
+           ) AS elem
+         ),
+         updated_at = NOW()`,
+      [botId, userId, JSON.stringify(coveredPointIds)]
+    );
+  } catch (error) {
+    console.warn("[conversation-state] failed to merge student progress", error);
+  }
+}
+
 /** 回覆含小結句式就當做過小結，計數歸零 */
 const SUMMARY_MARKERS =
   /(你到而家學咗|到而家你學咗|你而家識|小結|總結|記住三個字)/;
@@ -92,6 +149,44 @@ export function computeNewlyCovered(
     if (signals.size >= MIN_SIGNALS) coveredNow.add(point.id);
   }
   return coveredNow;
+}
+
+/**
+ * 學生「實質輸入」最短字數：低過呢個數嘅回覆（哦／唔知／係／單詞）唔當證據。
+ * 閾值唔可以太高 —— 中文好精煉，「榫卯係唔用釘」得 6 個字已經係完整示範。
+ * 4 呢個數純粹用嚟隔走最明顯嘅敷衍回覆，亦順手擋走學生複述單一 keyword
+ * 嘅 echo（例如淨係回「榫卯」）。
+ */
+const SUBSTANTIVE_INPUT_MIN = 4;
+
+/**
+ * 由「學生自己講過嘅每輪文字」算出有展現理解嘅知識點（Hybrid 主訊號）。
+ *
+ * 同 computeNewlyCovered 嘅分別：嗰個數「角色講過咩」（教咗），呢個數「學生
+ * 講過咩」（學咗）。學生主動講出知識點 keyword = 強證據，所以 1 個訊號就夠
+ * （唔似角色版要 2 個去避泛用詞誤鎖）。
+ *
+ * 已知限制（D4 換 LLM 判斷先解決）：
+ * - 字串匹配只捉到「學生用咗 exact keyword」，捉唔到「用自己說話講出概念」。
+ * - 學生複述 keyword 嚟提問（「榫卯？咩嚟㗎」）會被當成證據，要靠 LLM 先分到。
+ */
+export function computeStudentEvidence(
+  points: KnowledgePoint[],
+  studentTurns: string[]
+): Set<string> {
+  const evidenced = new Set<string>();
+  for (const point of points) {
+    const signals = new Set<string>();
+    studentTurns.forEach((text, turnIndex) => {
+      if (text.trim().length < SUBSTANTIVE_INPUT_MIN) return;
+      for (const keyword of point.keywords || []) {
+        if (!keyword || keyword.length < 2) continue;
+        if (text.includes(keyword)) signals.add(`${keyword}@${turnIndex}`);
+      }
+    });
+    if (signals.size >= 1) evidenced.add(point.id);
+  }
+  return evidenced;
 }
 
 /**
@@ -135,8 +230,13 @@ export function computeNextPoint(
   const skipped = new Set(
     [...previouslySkipped].filter((id) => !covered.has(id))
   );
+  // 課程結構簡化：優先推 basic_fact（基礎事實），全部基礎做完先推 deep_understanding。
+  // 唔再依賴陣列順序 —— 就算 deep 點排喺前面都照樣先教基礎。
+  const isAvailable = (point: KnowledgePoint) =>
+    !covered.has(point.id) && !skipped.has(point.id);
   const firstUncovered = () =>
-    points.find((point) => !covered.has(point.id) && !skipped.has(point.id))?.id ??
+    points.find((point) => point.tier === "basic_fact" && isAvailable(point))?.id ??
+    points.find(isAvailable)?.id ??
     null;
 
   let nextPointId = firstUncovered();
@@ -170,6 +270,13 @@ export async function trackConversationState(input: {
     await ensurePlatformTables();
     const previous = await getConversationState(input.conversationId);
 
+    // 新對話開場（冇 conversation 狀態）時，用跨對話累積進度 seed，
+    // 令 bot 唔會每段新對話都重新教同一批已掌握知識點。
+    // 已有 conversation 狀態就照舊由 conversation 嘅 covered 起步。
+    const previouslyCovered = previous
+      ? new Set<string>(previous.covered_point_ids)
+      : new Set<string>(await getStudentProgress(input.botId, input.userId));
+
     // 只計「角色自己講過」嘅內容。學生講出知識點名字唔等於教過 ——
     // 2026-09-12 端到端測試實證：舊版將學生訊息一齊拼入嚟，學生問一句
     // 「榫卯係咩嚟㗎？」就即刻令 kp_001 標記已覆蓋，6 個知識點有 4 個
@@ -183,11 +290,21 @@ export async function trackConversationState(input: {
         .map((message) => message.content),
       input.reply,
     ];
+    // 學生自己講過嘅每輪文字（Hybrid 主訊號來源）。只認 role === "user"，
+    // 同 assistant/bot 對稱 —— 呢個正規化喺 ask.ts 入嚟前已經做好。
+    const studentTurns = input.recentMessages
+      .filter((message) => message.role === "user")
+      .map((message) => message.content);
+
     const coveredNow = computeNewlyCovered(
       points,
       assistantTurns,
-      new Set<string>(previous?.covered_point_ids || [])
+      previouslyCovered
     );
+    // Hybrid：學生有展現理解嘅知識點直接標為已覆蓋（主訊號優先於 keyword 兜底）。
+    for (const id of computeStudentEvidence(points, studentTurns)) {
+      coveredNow.add(id);
+    }
 
     const coveredIds = Array.from(coveredNow);
     const { nextPointId, skippedIds, turnsOnNextPoint } = computeNextPoint(
@@ -230,6 +347,9 @@ export async function trackConversationState(input: {
         turnsOnNextPoint,
       ]
     );
+
+    // 每輪結束後，將覆蓋進度合併入跨對話累積表（並集，唔會倒退）。
+    await mergeStudentProgress(input.botId, input.userId, coveredIds);
   } catch (error) {
     console.warn("[conversation-state] failed to track state", error);
   }

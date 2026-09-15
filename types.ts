@@ -27,4 +27,6 @@ export interface AiBot {
   hasPendingQuiz?: boolean;
   activeQuizId?: string;
   activeQuizTitle?: string;
+  /** 全班覆蓋：covered = 有學生覆蓋咗嘅知識點數、total = 知識點總數（教師端卡片用） */
+  coverage?: { covered: number; total: number };
 }

@@ -12,6 +12,7 @@ import type { AiBot } from '../types';
 import { LearningReportEntryCard } from '../components/dashboard/LearningReportEntryCard';
 import { DemoNotice } from '../components/system/DemoNotice';
 import { SafeAvatarImage } from '../components/shared/SafeAvatarImage';
+import { ProgressRing } from '../components/shared/ProgressRing';
 
 const WELCOME_T = {
   "zh-HK": "歡迎回到教學指揮艙，和學生們一起開啟今天的學習之旅！",
@@ -157,6 +158,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         </span>
                         <span className="text-xs text-slate-400">{formatRecentTime(bot.updatedAt || bot.createdAt)}</span>
                       </div>
+                      {bot.coverage && bot.coverage.total > 0 ? (
+                        <div className="mt-3 flex items-center gap-1.5">
+                          <ProgressRing covered={bot.coverage.covered} total={bot.coverage.total} size={18} stroke={3} />
+                          <span className="text-xs font-bold text-indigo-500">{uiTemplate("已覆蓋 {0}/{1} 知識點", bot.coverage.covered, bot.coverage.total)}</span>
+                        </div>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => onEditRecentBot(bot.id)}
