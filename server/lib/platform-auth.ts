@@ -376,6 +376,50 @@ export async function ensurePlatformTables() {
         ON bot_chat_messages(bot_id, created_at DESC);
       `);
       await pool.query(`
+        CREATE TABLE IF NOT EXISTS bot_conversation_states (
+          conversation_id TEXT PRIMARY KEY,
+          bot_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          covered_point_ids JSONB NOT NULL DEFAULT '[]',
+          next_point_id TEXT,
+          student_level TEXT NOT NULL DEFAULT '未評估',
+          turns_since_summary INT NOT NULL DEFAULT 0,
+          skipped_point_ids JSONB NOT NULL DEFAULT '[]',
+          turns_on_next_point INT NOT NULL DEFAULT 0,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+      // 舊環境補欄（欄位係 2026-09-14 加：next_point 連續推唔動就跳過）
+      await pool.query(
+        `ALTER TABLE bot_conversation_states ADD COLUMN IF NOT EXISTS skipped_point_ids JSONB NOT NULL DEFAULT '[]';`
+      );
+      await pool.query(
+        `ALTER TABLE bot_conversation_states ADD COLUMN IF NOT EXISTS turns_on_next_point INT NOT NULL DEFAULT 0;`
+      );
+      // D4：距離上一次 LLM 判斷隔咗幾多輪（每 3 輪跑一次判斷）
+      await pool.query(
+        `ALTER TABLE bot_conversation_states ADD COLUMN IF NOT EXISTS turns_since_judge INT NOT NULL DEFAULT 0;`
+      );
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS bot_conversation_states_bot_user_idx
+        ON bot_conversation_states(bot_id, user_id, updated_at DESC);
+      `);
+      // 跨對話累積進度：key 係 (bot_id, user_id)，唔係 conversation。
+      // 學生下次開新對話時 seed 返已掌握知識點，唔會歸零重教。
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS bot_student_progress (
+          bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          covered_point_ids JSONB NOT NULL DEFAULT '[]',
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (bot_id, user_id)
+        );
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS bot_student_progress_user_id_idx
+        ON bot_student_progress(user_id, updated_at DESC);
+      `);
+      await pool.query(`
         CREATE TABLE IF NOT EXISTS conversations (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

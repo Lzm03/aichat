@@ -5,7 +5,8 @@ export interface AiBot {
   animation?: string;
   name: string;
   subject: string;
-  subjectColor: 'indigo' | 'emerald' | 'amber';
+  /** 學科代表色：新資料係 hex（utils/subjects.ts），舊資料可能仍係 Tailwind 色名 */
+  subjectColor: string;
   interactions: number;
   accuracy: number;
   createdAt?: string;
@@ -26,4 +27,6 @@ export interface AiBot {
   hasPendingQuiz?: boolean;
   activeQuizId?: string;
   activeQuizTitle?: string;
+  /** 全班覆蓋：covered = 有學生覆蓋咗嘅知識點數、total = 知識點總數（教師端卡片用） */
+  coverage?: { covered: number; total: number };
 }

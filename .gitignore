@@ -8,11 +8,11 @@ server/node_modules/
 server/.env
 server/.env.*
 server/uploads/
+# Local bot-prompt test artifacts; the .example.json template stays tracked
+server/bot-prompt-test-output.txt
+server/bot-prompt-test-persona.json
 dist/
 /tmp
-/tests/load/users.csv
-/tests/load/results/
-/tests/load/tmp/
 /tests/*
 !/tests/speech-playback.test.mjs
 !/tests/ui-i18n.test.mjs

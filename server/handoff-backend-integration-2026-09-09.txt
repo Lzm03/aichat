@@ -1,0 +1,121 @@
+# 對接文件 — 後端整合與部署總覽（2026-09-09）
+日期：2026-09-09
+前端設計負責人：Doris
+交接對象：Jayden（負責 API 實作對接 + 部署上線）
+
+## 摘要
+
+今日三個功能區塊已完成前端開發並 push 至分支 `doris/new-ui`（commit 618afc8 / e72b4d9 / cb6fe8e）：
+
+1. **智能評測 Command Center**（618afc8）— 測驗工作台整理＋已發佈測驗詳情 Drawer（題目預覽／作答結果／質量分析三頁籤）＋測驗複製
+2. **學習報告頁面**（e72b4d9）— 新獨立頁面：能力追蹤大卡搬出 Dashboard、Bloom 六層級視角（班級聚合＋學生雷達）、評測質量列表 deep-link 入 Drawer
+3. **班級授權 Drawer**（cb6fe8e）— AI 工作坊「編輯班級」直接編輯班級權限（group-shares GET/PUT）
+
+後端影響分三類（下文 A/B/C）。**B 類三組 API 係真實後端未有、前端已 mock 跑通嘅核心阻塞**，規格已喺兩份現有對接文件，實作後前端零改動即可切換。
+
+## A. 今日 commit 內已改動嘅 server 程式碼（請 review + 會隨部署生效）
+
+`server/api/quizzes.ts`（+179 行，commit 618afc8，由前端同事撰寫，請 review SQL 正確性）：
+
+| 改動 | 位置 |
+|---|---|
+| GET /api/quizzes/published — 列出已發佈測驗 | quizzes.ts:1221 |
+| POST /api/quizzes/:id/duplicate — 複製測驗（transactional，連題目一併複製） | quizzes.ts:1997 |
+| DELETE /api/quizzes/:id — 刪除測驗 | quizzes.ts:1975（沿用既有） |
+
+DB 欄位（唔使手動 migration）：`initializeQuizTables()`（quizzes.ts:155-271）以
+`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 加入新欄位：
+
+- quizzes.published_at（quizzes.ts:199）
+- quiz_attempts.published_at（quizzes.ts:268）
+- quiz_attempts.teacher_review_json / anomaly_flags_json / teacher_score / teacher_status / result_dismissed_at（quizzes.ts:263-267，部分為既有）
+
+啟動時經 `ensureQuizTables()`（quizzes.ts:275，lazy singleton）＋ `server/index.ts:198` 自動套用。
+**部署新版本後欄位自動建立，無需人手執行 migration。**
+
+## B. 前端依賴、真實後端未有 → 目前靠 mock 跑（請優先實作）
+
+以下三組 API 喺 `server/` 內未有任何實作（只存在於 handoff spec），
+係今日三個新功能嘅資料來源。**response shape 已同 mock 完全對齊，實作後前端毋須改動。**
+
+| Endpoint | 用途 | 規格 |
+|---|---|---|
+| GET /api/teachers/me/ability-report?period=30d\|all&classId=<optional> | 學習報告頁 Bloom 六層級視角 | `server/handoff-ability-report-2026-09-09.txt` |
+| GET /api/bots/classes | 班級列表（Bloom 班級切換＋授權 Drawer） | `server/handoff-backend-classes-bot-permissions-2026-09-08.txt` 第 1 點 |
+| POST/PATCH/DELETE /api/bots/classes/:id、PUT /api/bots/classes/:id/members | 班級 CRUD＋成員（學生管理頁） | 同上文件第 2-5 點 |
+| GET/PUT /api/bots/:id/group-shares | 班級授權 Drawer 讀寫（今日主線功能） | 同上文件第 6-7 點 |
+
+權限要求：全部需要 requireAuth ＋ teacher/admin gate（照 quizzes.ts:2423 grading-summary 嘅模式）。
+
+## C. 真實後端已有、前端沿用（無需新工作）
+
+今日前端介面用到嘅其餘 endpoint 全部已存在於真實後端：
+
+| Endpoint | 位置 |
+|---|---|
+| GET /api/quizzes/drafts、/published、/:id、/:id/grading-detail | quizzes.ts:1192 / 1221 / 1372 / 2485 |
+| GET /api/teachers/me/grading-summary | quizzes.ts:2423 |
+| GET/POST /api/quizzes/question-banks、DELETE :bankId、POST :bankId/questions | quizzes.ts:1289-1342 / 1855 |
+| POST /api/quizzes/:id/publish、attempts/* | quizzes.ts:2101 起 |
+| GET /api/bots、/api/bots/sharing/students、/api/bots/interactions/today?ids=csv | bots.ts:432 / 474 / 960 |
+| GET /api/bots/teacher/assessment-report?botId= | bots.ts:649（學習報告大卡資料源） |
+| GET/PUT/DELETE /api/bots/:id | bots.ts:1037 / 1170 / 1238 |
+
+Router 掛載：server/index.ts:129-147（quizzesRoute 於 /api，botsRoute 於 /api/bots）。
+
+## Mock 環境說明（只供預覽，唔可以上線作資料源）
+
+- `aichat-preview-mock/mock-server.mjs`（repo 外，port 4000——同真實後端預設 port 相同，本機互斥）
+- 今日新增 route：GET /api/teachers/me/ability-report（解析 period/classId）、GET /api/bots/classes、
+  GET/PUT /api/bots/:id/group-shares、GET /api/bots/teacher/assessment-report
+- 已知 mock 缺口（真實後端兩者都有）：DELETE /api/quizzes/question-banks/:bankId、POST /api/quizzes/:id/publish
+
+## 切換真 API 方法（前端零程式碼改動）
+
+- `utils/api.ts`：`VITE_API_URL` env 優先，否則 fallback 到 same-origin（`window.location.origin`）
+- 本機 dev：vite.config.ts:10-17 proxy `/api` → http://localhost:4000（跑真實 server 就得）
+- **生產（Vercel 前端 + Railway 後端）**：vercel.json 只 rewrite 到 index.html、唔會 proxy /api，
+  **必須喺 Vercel 設定 VITE_API_URL 指向 Railway 後端 URL**，否則前端會打自己 origin 攞唔到資料
+- 倉內目前冇 .env / .env.example
+
+## 部署注意事項
+
+- Railway（railway.toml）：build = `cd server && npm ci`；start = `cd server && node --import tsx index.ts`；
+  healthcheck /api/health
+- server PORT env（預設 4000）；DATABASE_URL 喺 server/db.ts:6
+- CORS allowlist（server/index.ts:38-47）：FRONTEND_URL / FRONTEND_ORIGIN / FRONTEND_ORIGINS（csv）
+  ＋硬編碼 https://aichat-lilac-six.vercel.app
+- 冇 Dockerfile；migration 靠 boot 時 ensure*Tables() 自動套用（見 A 節）
+
+## 建議分工順序
+
+1. Jayden 按兩份 spec 實作 B 節三組 API（ability-report 09-09 文件；classes＋group-shares 09-08 文件）
+2. Review commit 618afc8 嘅 server/api/quizzes.ts 改動（published/duplicate + 欄位）
+3. 前端設 VITE_API_URL 指向真實後端，驗證三個新功能區塊
+4. 部署 Railway（後端）+ Vercel（前端，設 VITE_API_URL）；mock 倉可退役或留作離線預覽
+
+## 待確認事項
+
+1. B 節三組 API 大概幾時可完成？（學習報告 Bloom 卡同班級授權 Drawer 依賴）
+2. 切換真實 API 後，aichat-preview-mock 倉點處理？（繼續維護／凍結）
+3. VITE_API_URL 喺 Vercel 生產嘅實際值由邊個設定？
+
+## 相關文件
+
+- `server/handoff-ability-report-2026-09-09.txt` — ability-report API 完整 spec
+- `server/handoff-backend-classes-bot-permissions-2026-09-08.txt` — classes/group-shares API 完整 spec
+
+## D. 2026-09-10 新增：AI 異常警示中心（server 改動，請 review SQL／交易正確性）
+
+質量分析「AI 異常警示」由死路改為警示中心，`server/api/quizzes.ts` 有以下改動：
+
+| 改動 | 位置 |
+|---|---|
+| `anomaly_flags_json` 由 flat `string[]` 改為結構化 flag 陣列（type/questionIndex/questionId/excerpt/reason/status/teacherComment/resolvedAt）；`detectAttemptAnomalies` 逐題偵測＋摘錄 | `ANOMALY_RULES`、`normalizeAnomalyFlags` |
+| GET /api/quizzes/:id/grading-detail — flag 服務端 normalize（legacy `string[]` 相容）；`metrics.anomalyCount` 改只數 open | grading-detail |
+| GET /api/teachers/me/grading-summary — 每測驗加 `botId/botName/questionCount/publishedAt/anomalyCount`（open-flag jsonb subquery，對 legacy 同結構化都適用） | grading-summary |
+| **新** PATCH /api/quizzes/:id/attempts/:attemptId/anomalies/:flagIndex — 老師處理警示（resolved/dismissed＋選填評語）；teacher gate＋交易＋FOR UPDATE＋`q.teacher_id` 擁有權；只可由 open 轉 | 新 route |
+
+無 DB schema 變動（沿用 `anomaly_flags_json` JSONB）；grading/publish 唔掂 flag，處理結果唔會被覆寫。前後端規格一致，實作後前端零改動。**請 review：grading-summary 嘅 jsonb subquery 效能（已加 `jsonb_typeof` guard）同 PATCH 交易。**
+
+> 偵測規則完整規格（型別／關鍵字／假陽性風險／官方依據／擴展 checklist）見 `docs/anomaly-detection-spec.md`（v1，含教育局／PDPO／考評局來源引用）。

@@ -7,6 +7,9 @@
     "db": "node --import tsx db.ts",
     "migrate:topics": "node --import tsx scripts/migrate-character-topics.ts",
     "test:topics": "node --import tsx --test tests/character-topics.integration.test.ts",
+    "test:proposal": "node --import tsx --test tests/bot-proposal.test.ts",
+    "test:conversation-state": "node --import tsx --test tests/conversation-state.test.ts",
+    "test:golden": "node --import tsx --test tests/conversation-state-golden.test.ts tests/answer-judge.test.ts tests/conversation-state.test.ts",
     "start": "node --import tsx index.ts"
   },
   "dependencies": {

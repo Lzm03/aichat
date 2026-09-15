@@ -80,7 +80,8 @@ async function findOrCreateConfuciusBot(client: PoolClient, user: any) {
     RETURNING id`,
     [
       botId,
-      sourceBot.subject || "語文（中文）",
+      // 舊分類「語文（中文）」已退役（見 utils/subjects.ts）—— fallback 唔應該再產生舊 label
+      sourceBot.subject || "中國語文",
       sourceBot.subject_color || "indigo",
       sourceBot.avatar_url || "/avatars/bot-default.svg",
       sourceBot.background || "",

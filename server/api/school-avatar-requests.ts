@@ -54,9 +54,12 @@ export function ensureSchoolAvatarRequestTables() {
           visual_styles JSONB NOT NULL DEFAULT '[]'::jsonb,
           material_text TEXT NOT NULL DEFAULT '',
           notes TEXT NOT NULL DEFAULT '',
+          proposal_text TEXT NOT NULL DEFAULT '',
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
       `);
+      // 舊部署補欄位；additive + default，唔會鎖表
+      await pool.query(`ALTER TABLE school_avatar_request_roles ADD COLUMN IF NOT EXISTS proposal_text TEXT NOT NULL DEFAULT ''`);
       await pool.query(`
         CREATE TABLE IF NOT EXISTS school_avatar_request_files (
           id TEXT PRIMARY KEY,
@@ -127,6 +130,7 @@ router.post("/", rateLimit, upload.any(), async (req, res) => {
     visualStyles: Array.isArray(raw?.visualStyles) ? raw.visualStyles.map((v: unknown) => text(v, 80)).filter(Boolean).slice(0, 10) : [],
     materialText: text(raw?.materialText, 20000),
     notes: text(raw?.notes, 5000),
+    proposalText: text(raw?.proposalText, 8000),
   }));
   if (roles.some((role) => !role.name)) return res.status(400).json({ error: "請為每個數字人填寫名稱或角色主題。" });
 
@@ -147,9 +151,9 @@ router.post("/", rateLimit, upload.any(), async (req, res) => {
     for (let index = 0; index < roles.length; index += 1) {
       const role = roles[index];
       await client.query(
-        `INSERT INTO school_avatar_request_roles (id, request_id, role_index, name, subjects, custom_subject, visual_styles, material_text, notes)
-         VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb,$8,$9)`,
-        [crypto.randomUUID(), id, index, role.name, JSON.stringify(role.subjects), role.customSubject, JSON.stringify(role.visualStyles), role.materialText, role.notes]
+        `INSERT INTO school_avatar_request_roles (id, request_id, role_index, name, subjects, custom_subject, visual_styles, material_text, notes, proposal_text)
+         VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb,$8,$9,$10)`,
+        [crypto.randomUUID(), id, index, role.name, JSON.stringify(role.subjects), role.customSubject, JSON.stringify(role.visualStyles), role.materialText, role.notes, role.proposalText]
       );
     }
     for (const file of files) {
@@ -198,7 +202,7 @@ router.get("/:requestId", requireAuth, async (req, res) => {
       [req.params.requestId]
     ),
     pool.query(
-      `SELECT id, role_index, name, subjects, custom_subject, visual_styles, material_text, notes
+      `SELECT id, role_index, name, subjects, custom_subject, visual_styles, material_text, notes, proposal_text
        FROM school_avatar_request_roles WHERE request_id=$1 ORDER BY role_index ASC`,
       [req.params.requestId]
     ),

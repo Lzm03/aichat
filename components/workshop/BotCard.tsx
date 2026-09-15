@@ -3,6 +3,8 @@ import React, { useEffect, useRef, useState } from "react";
 import type { AiBot } from "../../types";
 import { SequencePngPlayer } from "./SequencePngPlayer";
 import { SafeAvatarImage } from "../shared/SafeAvatarImage";
+import { ProgressRing } from "../shared/ProgressRing";
+import { subjectColorOf } from "../../utils/subjects";
 
 interface BotCardProps {
   bot: AiBot;
@@ -10,14 +12,6 @@ interface BotCardProps {
   onEdit: () => void;
   onShowSubjectHelp?: () => void;
 }
-
-const colorMap: Record<string, string> = {
-  indigo: "bg-indigo-100 text-indigo-800",
-  emerald: "bg-emerald-100 text-emerald-800",
-  amber: "bg-amber-100 text-amber-800",
-  sky: "bg-sky-100 text-sky-800",
-  rose: "bg-rose-100 text-rose-800",
-};
 
 type IdleSequenceManifest = {
   folderUrl: string;
@@ -27,6 +21,8 @@ type IdleSequenceManifest = {
 };
 
 export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onShowSubjectHelp }) => {
+  // 由 label 派生顏色（唔讀 bot.subjectColor 欄）：舊 bot 嘅欄位係 Tailwind 色名，讀咗會跌灰色
+  const subjectColor = subjectColorOf(bot.subject);
   const [isPreviewingIdle, setIsPreviewingIdle] = useState(false);
   const [idleVideoFailed, setIdleVideoFailed] = useState(false);
   const [idleSequence, setIdleSequence] = useState<IdleSequenceManifest | null>(null);
@@ -171,16 +167,29 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onShowSub
           {bot.name}
         </h3>
 
-        {/* 學科顏色 - 你可以改為用戶自定義 */}
         <div className="flex items-center gap-1.5">
-          <span className={`rounded-full px-3 py-1 text-xs font-bold ${colorMap[bot.subjectColor] || colorMap.indigo}`}>{uiText(bot.subject)}</span>
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold"
+            style={{ backgroundColor: `${subjectColor}1A`, color: subjectColor }}
+          >
+            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: subjectColor }} />
+            {uiText(bot.subject)}
+          </span>
           {onShowSubjectHelp ? <button type="button" aria-label={uiText("科目標籤説明")} onClick={(event) => { event.stopPropagation(); onShowSubjectHelp(); }} className="flex h-[18px] w-[18px] items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-[11px] font-extrabold text-slate-400">?</button> : null}
         </div>
       </div>
 
-      {/* 底部：互動次數 */}
+      {/* 底部：互動次數 + 全班覆蓋 */}
       <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-[18px]">
-        <p className="text-[13px] text-slate-400">{uiText("今日互動 ")}{bot.interactions || 0}{uiText(" 次")}</p>
+        <div className="flex items-center gap-3">
+          <p className="text-[13px] text-slate-400">{uiText("今日互動 ")}{bot.interactions || 0}{uiText(" 次")}</p>
+          {bot.coverage && bot.coverage.total > 0 ? (
+            <span className="flex items-center gap-1.5 text-[12px] font-bold text-indigo-500">
+              <ProgressRing covered={bot.coverage.covered} total={bot.coverage.total} size={18} stroke={3} />
+              {uiTemplate("已覆蓋 {0}/{1} 知識點", bot.coverage.covered, bot.coverage.total)}
+            </span>
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={(event) => {

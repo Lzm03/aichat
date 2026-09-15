@@ -8,10 +8,7 @@
     "build": "vite build",
     "lint": "tsc --noEmit",
     "test:i18n": "node --test tests/ui-i18n.test.mjs",
-    "preview": "vite preview",
-    "load:users": "tests/load/k6/provision-users.sh",
-    "load:smoke": "tests/load/k6/run-k6.sh smoke",
-    "load:normal": "tests/load/k6/run-k6.sh normal"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@google/genai": "^1.42.0",

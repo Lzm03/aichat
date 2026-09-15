@@ -1,7 +1,7 @@
 import { uiText, uiTemplate } from '../../utils/uiI18n';
 import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Copy, X, CheckCircle2, XCircle, ShieldAlert, ChevronDown } from 'lucide-react';
+import { Copy, X, CheckCircle2, XCircle, ShieldAlert, ChevronDown, ArrowRight } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
 import { Icons } from '../icons';
 import { QuestionCard, type LibraryQuestion } from './QuestionCard';
@@ -72,6 +72,8 @@ type PublishedQuizDetailDrawerProps = {
   onDuplicated: () => void;
   initialTab?: DrawerTab;
   mode?: DrawerMode;
+  /** 提供後，成績結果 tab 有「前往批改」入口 */
+  onOpenGrading?: (quizId: string) => void;
 };
 
 const STATUS_PILL: Record<string, string> = {
@@ -101,6 +103,7 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
   onDuplicated,
   initialTab = 'preview',
   mode = 'detail',
+  onOpenGrading,
 }) => {
   const isAlertsMode = mode === 'alerts';
   const [activeTab, setActiveTab] = useState<DrawerTab>('preview');
@@ -263,6 +266,15 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
 
                 {!isAlertsMode && activeTab === 'results' && (
                   <div className="space-y-4">
+                    {onOpenGrading && quiz && (metrics?.pendingGrading || 0) + (metrics?.pendingConfirm || 0) > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenGrading(quiz.id)}
+                        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm font-bold text-indigo-600 transition hover:bg-indigo-50"
+                      >
+                        {uiText("前往批改")} <ArrowRight className="h-4 w-4" />
+                      </button>
+                    ) : null}
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                       <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
                         <span className="text-xs font-bold text-slate-400">{uiText("平均分")}</span>

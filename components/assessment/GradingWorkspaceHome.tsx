@@ -12,6 +12,8 @@ import { usePlatformDialog } from '../../hooks/usePlatformDialog';
 interface GradingWorkspaceHomeProps {
   onBack: () => void;
   onGoToWorkshop?: () => void;
+  /** 提供後，直接開指定測驗嘅批改詳情（由測驗 Drawer「前往批改」跳入） */
+  initialQuizId?: string | null;
 }
 
 type QuizSummary = {
@@ -26,8 +28,8 @@ type QuizSummary = {
   gradingCompletedAt?: string | null;
 };
 
-export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBack, onGoToWorkshop }) => {
-  const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
+export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBack, onGoToWorkshop, initialQuizId = null }) => {
+  const [selectedQuizId, setSelectedQuizId] = useState<string | null>(initialQuizId);
   const [quizzes, setQuizzes] = useState<QuizSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingQuizId, setDeletingQuizId] = useState<string | null>(null);
