@@ -27,10 +27,12 @@ type KnowledgePoint = {
   content: string;
   keywords: string[];
   assessmentCriteria: string;
+  /** 教學目標（必達）：驅動覆蓋追蹤／next_point／進度。預設 true。 */
+  core: boolean;
 };
 
-const MAX_KNOWLEDGE_POINTS = 8;
-const MAX_POINTS_PER_TIER = 4;
+const MAX_KNOWLEDGE_POINTS = 20;
+const MAX_POINTS_PER_TIER = 10;
 
 type VideoStudioTask = {
   id: string;
@@ -265,6 +267,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
           ...point,
           title: point.title?.trim() || createKnowledgeTitle(point.content, point.keywords),
           id: `kp_${String(index + 1).padStart(3, "0")}`,
+          core: point.core !== false,
         }));
     };
 
@@ -273,6 +276,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         ...point,
         title: point.title?.trim() || createKnowledgeTitle(point.content, point.keywords),
         id: point.id || `kp_${String(index + 1).padStart(3, "0")}`,
+        core: point.core !== false,
       }));
 
     const bgMatch = knowledgeBase.match(/【人物背景設定】([\s\S]*?)【人物知識庫摘要】/);
@@ -295,6 +299,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
                 ? item.keywords.map((keyword: string) => String(keyword || "").trim()).filter(Boolean)
                 : [],
               assessmentCriteria: String(item?.assessmentCriteria || item?.assessment_criteria || "").trim(),
+              core: item?.core !== false,
             }))
             .filter((item) => item.content)
         : []);
@@ -336,6 +341,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
             content: parsedContent,
             keywords,
             assessmentCriteria: assessmentMatch?.[1]?.trim() || "",
+            core: true,
           };
         })
         .filter((item) => item.content));

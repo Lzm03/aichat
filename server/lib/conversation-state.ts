@@ -1,14 +1,19 @@
 /**
- * 對話狀態追蹤（Hybrid，零額外 LLM call）：
- * 每輪回覆後，用兩層訊號判定「已覆蓋知識點」：
- *   1. 主訊號：學生回答有展現理解（computeStudentEvidence）
- *   2. 兜底：角色自己講過 keyword（computeNewlyCovered，防輕鬆對話大量漏標）
- * 再計出下一個未覆蓋知識點做引導目標。狀態下一輪注入 system prompt，
+ * 對話狀態追蹤（零額外 LLM call，mode-aware）：
+ * 只追蹤「教學目標（core）」知識點嘅覆蓋，判定按 bot 答題策略分兩種：
+ *   - 直接給答案：角色講過 keyword 就算（學生唔會產出答案）。
+ *   - 引導後再回答 / 不直接給答案：角色教咗 AND 學生答到先算。
+ * 再計出下一個未覆蓋知識點做引導目標，下一輪注入 system prompt，
  * 驅動蘇格拉底三步曲嘅 Advance（唔准重複已討論概念）。
  */
 import { pool } from "../db.ts";
 import { ensurePlatformTables } from "./platform-auth.ts";
-import { parsePromptSource, type KnowledgePoint } from "../../utils/chat-prompt.ts";
+import {
+  parsePromptSource,
+  parseAnswerMode,
+  type KnowledgePoint,
+} from "../../utils/chat-prompt.ts";
+import { judgeStudentAnswers, shouldRunJudge } from "./answer-judge.ts";
 
 export type ConversationStateRow = {
   conversation_id: string;
@@ -20,6 +25,7 @@ export type ConversationStateRow = {
   turns_since_summary: number;
   skipped_point_ids: string[];
   turns_on_next_point: number;
+  turns_since_judge: number;
   updated_at: string;
 };
 
@@ -48,6 +54,7 @@ export async function getConversationState(
         ? row.skipped_point_ids.map(String)
         : [],
       turns_on_next_point: Number(row.turns_on_next_point || 0),
+      turns_since_judge: Number(row.turns_since_judge || 0),
       updated_at: String(row.updated_at || ""),
     };
   } catch (error) {
@@ -190,6 +197,37 @@ export function computeStudentEvidence(
 }
 
 /**
+ * 計出「教學目標（core）」嘅新覆蓋集合，判定跟 bot 答題策略（mode-aware）：
+ * - strictCoverage = false（直接給答案）：角色講過 keyword 就算。
+ * - strictCoverage = true（引導後再回答／不直接給答案）：
+ *   角色教咗 AND 學生答到先算 —— 兩個訊號都要齊。
+ *
+ * studentEvidence 係「學生答到嘅知識點」集合，由 caller 決定點嚟：
+ * LLM 判斷（D4）或者字串匹配（fallback）。
+ */
+export function computeCoreCovered(
+  points: KnowledgePoint[],
+  assistantTurns: string[],
+  studentEvidence: Set<string>,
+  previouslyCovered: Set<string>,
+  strictCoverage: boolean
+): Set<string> {
+  const coveredNow = new Set(previouslyCovered);
+  const botCovered = computeNewlyCovered(points, assistantTurns, new Set());
+  if (!strictCoverage) {
+    for (const id of botCovered) coveredNow.add(id);
+    return coveredNow;
+  }
+  for (const point of points) {
+    if (coveredNow.has(point.id)) continue;
+    if (botCovered.has(point.id) && studentEvidence.has(point.id)) {
+      coveredNow.add(point.id);
+    }
+  }
+  return coveredNow;
+}
+
+/**
  * next_point 連續幾多輪推唔動就跳過佢。
  *
  * 為咩需要：知識點嘅 keyword 清單係由教材抽取出嚟，每份都唔同，冇可能保證
@@ -263,8 +301,12 @@ export async function trackConversationState(input: {
   reply: string;
 }) {
   try {
-    const points = parsePromptSource({ knowledgeBase: input.knowledgeBase })
+    const allPoints = parsePromptSource({ knowledgeBase: input.knowledgeBase })
       .knowledgePoints;
+    if (!allPoints.length) return;
+
+    // 只追蹤「教學目標（core）」；非 core 嘅參考點唔入覆蓋 / next_point / 進度。
+    const points = allPoints.filter((point) => point.core !== false);
     if (!points.length) return;
 
     await ensurePlatformTables();
@@ -296,15 +338,37 @@ export async function trackConversationState(input: {
       .filter((message) => message.role === "user")
       .map((message) => message.content);
 
-    const coveredNow = computeNewlyCovered(
+    // 覆蓋判定跟 bot 答題策略：直接給答案 = 角色講過就算；
+    // 引導後再回答 / 不直接給答案 = 角色教咗 AND 學生答到先算。
+    const answerMode = parseAnswerMode(input.knowledgeBase);
+    const strictCoverage = answerMode !== "直接給答案";
+
+    // 學生證據：strict mode 下每 JUDGE_INTERVAL_TURNS 輪跑一次 LLM 判斷（D4），
+    // 其餘輪、或者判斷唔到（null）就用字串匹配兜底。
+    let studentEvidence: Set<string> = new Set();
+    let turnsSinceJudge = Number(previous?.turns_since_judge || 0);
+    if (strictCoverage) {
+      const judgeTurns = input.recentMessages.map((message) => ({
+        role: (message.role === "user" ? "student" : "bot") as "student" | "bot",
+        content: message.content,
+      }));
+      if (shouldRunJudge(turnsSinceJudge, judgeTurns)) {
+        const judged = await judgeStudentAnswers({ points, turns: judgeTurns });
+        studentEvidence = judged ?? computeStudentEvidence(points, studentTurns);
+        turnsSinceJudge = 0;
+      } else {
+        studentEvidence = computeStudentEvidence(points, studentTurns);
+        turnsSinceJudge += 1;
+      }
+    }
+
+    const coveredNow = computeCoreCovered(
       points,
       assistantTurns,
-      previouslyCovered
+      studentEvidence,
+      previouslyCovered,
+      strictCoverage
     );
-    // Hybrid：學生有展現理解嘅知識點直接標為已覆蓋（主訊號優先於 keyword 兜底）。
-    for (const id of computeStudentEvidence(points, studentTurns)) {
-      coveredNow.add(id);
-    }
 
     const coveredIds = Array.from(coveredNow);
     const { nextPointId, skippedIds, turnsOnNextPoint } = computeNextPoint(
@@ -325,8 +389,8 @@ export async function trackConversationState(input: {
 
     await pool.query(
       `INSERT INTO bot_conversation_states
-         (conversation_id, bot_id, user_id, covered_point_ids, next_point_id, student_level, turns_since_summary, skipped_point_ids, turns_on_next_point, updated_at)
-       VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8::jsonb,$9,NOW())
+         (conversation_id, bot_id, user_id, covered_point_ids, next_point_id, student_level, turns_since_summary, skipped_point_ids, turns_on_next_point, turns_since_judge, updated_at)
+       VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8::jsonb,$9,$10,NOW())
        ON CONFLICT (conversation_id) DO UPDATE SET
          covered_point_ids=EXCLUDED.covered_point_ids,
          next_point_id=EXCLUDED.next_point_id,
@@ -334,6 +398,7 @@ export async function trackConversationState(input: {
          turns_since_summary=EXCLUDED.turns_since_summary,
          skipped_point_ids=EXCLUDED.skipped_point_ids,
          turns_on_next_point=EXCLUDED.turns_on_next_point,
+         turns_since_judge=EXCLUDED.turns_since_judge,
          updated_at=NOW()`,
       [
         input.conversationId,
@@ -345,6 +410,7 @@ export async function trackConversationState(input: {
         turnsSinceSummary,
         JSON.stringify(skippedIds),
         turnsOnNextPoint,
+        turnsSinceJudge,
       ]
     );
 

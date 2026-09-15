@@ -42,6 +42,13 @@ type KnowledgePoint = {
   completed: boolean;
 };
 
+/** 只取「教學目標（core）」知識點；非 core 嘅參考點唔入進度/覆蓋統計。 */
+function coreKnowledgePoints(knowledgeBase: string) {
+  return parsePromptSource({ knowledgeBase }).knowledgePoints.filter(
+    (point) => point.core !== false
+  );
+}
+
 function fallbackOpeningMessage(name: string) {
   const safeName = (name || "").trim() || "AI 助手";
   return `你好，我是${safeName}，我們一起開始今天的學習吧。`;
@@ -471,9 +478,7 @@ router.get("/", requireAuth, async (req, res) => {
     const botIds = result.rows.map((row) => String(row.id));
     const coverageMap = new Map<string, { covered: number; total: number }>();
     for (const row of result.rows) {
-      const total = parsePromptSource({
-        knowledgeBase: String(row.knowledge_base || ""),
-      }).knowledgePoints.length;
+      const total = coreKnowledgePoints(String(row.knowledge_base || "")).length;
       coverageMap.set(String(row.id), { covered: 0, total });
     }
     if (botIds.length) {
@@ -831,7 +836,7 @@ router.get("/shared/with-me", requireAuth, async (req, res) => {
     }
     return res.json(rows.map((row) => {
       const knowledgeBase = String(row.knowledge_base || "");
-      const total = parsePromptSource({ knowledgeBase }).knowledgePoints.length;
+      const total = coreKnowledgePoints(knowledgeBase).length;
       const covered = progressMap.get(String(row.id))?.length || 0;
       return {
         ...toClient(row),
@@ -864,9 +869,7 @@ router.get("/:botId/progress", requireAuth, async (req, res) => {
     if (!botResult.rows.length) return res.status(404).json({ error: "Bot not found" });
     const bot = botResult.rows[0];
 
-    const points = parsePromptSource({
-      knowledgeBase: String(bot.knowledge_base || ""),
-    }).knowledgePoints;
+    const points = coreKnowledgePoints(String(bot.knowledge_base || ""));
     const coveredIds = await getStudentProgress(botId, user.id);
     const coveredSet = new Set(coveredIds);
 
@@ -1142,9 +1145,7 @@ router.get("/teacher/progress-overview", requireAuth, async (req, res) => {
     const bots = [];
     for (const row of botsResult.rows) {
       const botId = String(row.id);
-      const points = parsePromptSource({
-        knowledgeBase: String(row.knowledge_base || ""),
-      }).knowledgePoints;
+      const points = coreKnowledgePoints(String(row.knowledge_base || ""));
 
       const progressResult = await pool.query(
         `SELECT covered_point_ids FROM bot_student_progress WHERE bot_id=$1`,
@@ -1159,6 +1160,19 @@ router.get("/teacher/progress-overview", requireAuth, async (req, res) => {
       }
       const studentsWithProgress = progressResult.rows.length;
 
+      // 「常被跳過」：有幾多段對話喺 next_point 推唔動時跳走咗呢個點。
+      const skipResult = await pool.query(
+        `SELECT skipped_point_ids FROM bot_conversation_states WHERE bot_id=$1`,
+        [botId]
+      );
+      const skipCounts = new Map<string, number>();
+      for (const s of skipResult.rows) {
+        const ids = Array.isArray(s.skipped_point_ids)
+          ? s.skipped_point_ids.map(String)
+          : [];
+        for (const id of ids) skipCounts.set(id, (skipCounts.get(id) || 0) + 1);
+      }
+
       bots.push({
         id: botId,
         name: String(row.name || "AI Bot"),
@@ -1169,6 +1183,7 @@ router.get("/teacher/progress-overview", requireAuth, async (req, res) => {
           tier: point.tier,
           title: point.title,
           coveredCount: coveredCounts.get(point.id) || 0,
+          skippedCount: skipCounts.get(point.id) || 0,
         })),
       });
     }

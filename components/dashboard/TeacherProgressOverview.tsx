@@ -9,6 +9,7 @@ type PointProgress = {
   tier: 'basic_fact' | 'deep_understanding';
   title: string;
   coveredCount: number;
+  skippedCount: number;
 };
 
 type BotProgress = {
@@ -97,6 +98,14 @@ export const TeacherProgressOverview: React.FC = () => {
                       <span className={`w-10 shrink-0 text-right text-xs font-black ${untouched ? 'text-rose-500' : 'text-slate-600'}`}>
                         {point.coveredCount}
                       </span>
+                      {point.skippedCount > 0 ? (
+                        <span
+                          className="shrink-0 rounded-md bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700"
+                          title={uiText("此知識點曾多次推唔動而被跳過")}
+                        >
+                          {uiText("跳過")} {point.skippedCount}
+                        </span>
+                      ) : null}
                     </div>
                   );
                 }) : (

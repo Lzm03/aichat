@@ -396,6 +396,10 @@ export async function ensurePlatformTables() {
       await pool.query(
         `ALTER TABLE bot_conversation_states ADD COLUMN IF NOT EXISTS turns_on_next_point INT NOT NULL DEFAULT 0;`
       );
+      // D4：距離上一次 LLM 判斷隔咗幾多輪（每 3 輪跑一次判斷）
+      await pool.query(
+        `ALTER TABLE bot_conversation_states ADD COLUMN IF NOT EXISTS turns_since_judge INT NOT NULL DEFAULT 0;`
+      );
       await pool.query(`
         CREATE INDEX IF NOT EXISTS bot_conversation_states_bot_user_idx
         ON bot_conversation_states(bot_id, user_id, updated_at DESC);

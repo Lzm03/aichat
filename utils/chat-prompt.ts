@@ -7,6 +7,8 @@ export type KnowledgePoint = {
   content: string;
   keywords: string[];
   assessmentCriteria?: string;
+  /** 教學目標（必達）：驅動覆蓋追蹤、next_point、進度 UI。缺省 true（老師唔郁就全部照計）。 */
+  core?: boolean;
 };
 
 /** 後台對話狀態（知識點覆蓋實錄），由 ask.ts 每輪載入並注入 prompt */
@@ -157,6 +159,7 @@ export function parseKnowledgePoints(raw: string): KnowledgePoint[] {
           ? item.keywords.map((keyword: any) => String(keyword || "").trim()).filter(Boolean)
           : [],
         assessmentCriteria: String(item?.assessmentCriteria || item?.assessment_criteria || "").trim(),
+        core: item?.core !== false,
       }))
       .filter((item) => item.content);
   } catch {
@@ -227,6 +230,19 @@ export function parsePromptSource(input: { roleName?: string; knowledgeBase?: st
     unknownBoundary,
     closingRitual,
   };
+}
+
+export type AnswerMode = "直接給答案" | "引導後再回答" | "不直接給答案";
+
+/**
+ * 由知識庫原文讀 bot 嘅答題策略（【角色對話策略】→【答題策略】）。
+ * 冇寫或者唔認得就當「引導後再回答」（預設）。
+ */
+export function parseAnswerMode(knowledgeBase: string): AnswerMode {
+  const personaProfile = matchPersonaProfile(String(knowledgeBase || ""));
+  const mode = matchSection(personaProfile, "答題策略").trim();
+  if (mode === "直接給答案" || mode === "不直接給答案") return mode;
+  return "引導後再回答";
 }
 
 export function buildStoredKnowledgeBase(input: {
