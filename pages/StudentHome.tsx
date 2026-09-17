@@ -11,6 +11,7 @@ import { SequencePngPlayer } from "../components/workshop/SequencePngPlayer";
 import { UserMenu } from "../components/layout/UserMenu";
 import { useTeacherLang, setTeacherLang } from "../utils/teacherI18n";
 import { SafeAvatarImage } from "../components/shared/SafeAvatarImage";
+import { ProgressRing } from "../components/shared/ProgressRing";
 
 type StudentHomeProps = {
   currentUser: StoredAuthUser;
@@ -33,6 +34,7 @@ type SharedBot = {
   interactions?: number;
   teacherName?: string;
   hasPendingQuiz?: boolean;
+  progress?: { covered: number; total: number };
 };
 
 type IdleSequenceManifest = {
@@ -179,7 +181,15 @@ const StudentBotCard: React.FC<{
       </div>
       <h2 className="mt-4 truncate text-lg font-extrabold text-slate-950">{companion.name}</h2>
       <span className="mt-2 inline-block rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-500">{uiText(companion.subject) || uiText("未分類")}</span>
-      <div className="mt-auto border-t border-slate-100 pt-4 text-[13px] text-slate-400">{uiText("今日互動 ")}{companion.interactions || 0}{uiText(" 次")}</div>
+      <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-4">
+        <span className="text-[13px] text-slate-400">{uiText("今日互動 ")}{companion.interactions || 0}{uiText(" 次")}</span>
+        {companion.progress && companion.progress.total > 0 ? (
+          <span className="flex items-center gap-2 text-[13px] font-black text-indigo-500">
+            <ProgressRing covered={companion.progress.covered} total={companion.progress.total} size={38} />
+            {uiText("已掌握")} {companion.progress.covered}/{companion.progress.total}
+          </span>
+        ) : null}
+      </div>
     </motion.button>
   );
 };

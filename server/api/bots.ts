@@ -19,6 +19,8 @@ import {
   syncInheritedTopicKnowledge,
 } from "../lib/character-topics.ts";
 import { ensureDefaultTeacherExperience } from "../lib/default-teacher-experience.ts";
+import { getStudentProgress } from "../lib/conversation-state.ts";
+import { parsePromptSource } from "../../utils/chat-prompt.ts";
 
 const router = express.Router();
 type SequenceVideoEntry = { key: "idle" | "thinking" | "talking"; url: string };
@@ -40,12 +42,19 @@ type KnowledgePoint = {
   completed: boolean;
 };
 
+/** 只取「教學目標（core）」知識點；非 core 嘅參考點唔入進度/覆蓋統計。 */
+function coreKnowledgePoints(knowledgeBase: string) {
+  return parsePromptSource({ knowledgeBase }).knowledgePoints.filter(
+    (point) => point.core !== false
+  );
+}
+
 function fallbackOpeningMessage(name: string) {
   const safeName = (name || "").trim() || "AI 助手";
   return `你好，我是${safeName}，我們一起開始今天的學習吧。`;
 }
 
-async function generateOpeningMessage(bot: any) {
+export async function generateOpeningMessage(bot: any) {
   const apiKey = String(process.env.DEEPSEEK_API_KEY || "").trim();
   if (!apiKey) {
     return fallbackOpeningMessage(String(bot?.name || ""));
@@ -58,7 +67,7 @@ async function generateOpeningMessage(bot: any) {
     .slice(0, 4000);
 
   const systemPrompt =
-    "你是角色語氣設計助手。你必須根據角色背景與人設寫一句固定開場白。只輸出一句繁體中文，不要引號，不要換行，不要解釋。";
+    "你是角色語氣設計助手。你必須根據角色背景與人設寫一句固定開場白。只輸出一句，不要引號，不要換行，不要解釋。";
   const userPrompt = `
 角色名稱：${name}
 角色背景與設定：
@@ -66,10 +75,14 @@ ${characterContext || "（未提供）"}
 
 請寫一句「固定開場句」，要求：
 1. 必須緊扣知識庫裡的人物特點與語氣，不可泛泛而談；
-2. 簡短，12-32字；
+2. 簡短，12-45字；
 3. 可直接用在每次對話開頭；
 4. 禁止模板句（例如「你好我是...有什麼可以幫你」）；
-5. 若角色屬古典人物（如孔子、陶淵明等），可用符合角色的文言或詩性語氣，但保持易懂。
+5. 語言要同角色人設一致，請自行判斷：
+   - 香港本地角色／師兄師姐式角色 → 自然香港粵語口語，用繁體字，可用「係、喎、咩、㗎、啦」等語氣詞；禁止北方話詞彙「咱们、啥、咋」及儿化音；
+   - 外語老師（例如英文老師）→ 用該外語，或自然中英混合，例如「嗨！我是Penny！今天想跟我聊聊什麼英文呢？Don't be shy！」；
+   - 古典人物（如孔子、陶淵明）→ 符合角色的淺近文言或詩性語氣，但保持易懂；
+   - 其他 → 繁體中文書面語。
 `.trim();
 
   try {
@@ -460,12 +473,41 @@ router.get("/", requireAuth, async (req, res) => {
       ORDER BY b.created_at DESC`,
       [user?.id, user?.id]
     );
+
+    // 全班覆蓋：每隻 bot 有幾多知識點被「至少一個學生」覆蓋（跨對話累積）。
+    const botIds = result.rows.map((row) => String(row.id));
+    const coverageMap = new Map<string, { covered: number; total: number }>();
+    for (const row of result.rows) {
+      const total = coreKnowledgePoints(String(row.knowledge_base || "")).length;
+      coverageMap.set(String(row.id), { covered: 0, total });
+    }
+    if (botIds.length) {
+      const covResult = await pool.query(
+        `SELECT bot_id, covered_point_ids FROM bot_student_progress WHERE bot_id = ANY($1)`,
+        [botIds]
+      );
+      const distinct = new Map<string, Set<string>>();
+      for (const r of covResult.rows) {
+        const botId = String(r.bot_id);
+        if (!distinct.has(botId)) distinct.set(botId, new Set());
+        const ids = Array.isArray(r.covered_point_ids)
+          ? r.covered_point_ids.map(String)
+          : [];
+        for (const id of ids) distinct.get(botId)!.add(id);
+      }
+      for (const [botId, set] of distinct) {
+        const m = coverageMap.get(botId);
+        if (m) m.covered = set.size;
+      }
+    }
+
     res.json(result.rows.map((row) => ({
       ...toClient(row),
       hasPublishedQuiz: Boolean(row.active_quiz_id),
       hasPendingQuiz: Boolean(row.active_quiz_id) && row.active_quiz_attempt_status !== "completed",
       activeQuizId: row.active_quiz_id || "",
       activeQuizTitle: row.active_quiz_title || "",
+      coverage: coverageMap.get(String(row.id)),
     })));
   } catch (err) {
     console.error("❌ GET / Failed:", err);
@@ -775,17 +817,77 @@ router.get("/shared/with-me", requireAuth, async (req, res) => {
        ORDER BY b.updated_at DESC`,
       [user?.id]
     );
-    return res.json(result.rows.map((row) => ({
-      ...toClient(row),
-      teacherName: row.teacher_name || "",
-      hasPublishedQuiz: Boolean(row.active_quiz_id),
-      hasPendingQuiz: Boolean(row.active_quiz_id) && row.active_quiz_attempt_status !== "completed",
-      activeQuizId: row.active_quiz_id || "",
-      activeQuizTitle: row.active_quiz_title || "",
-    })));
+    const rows = result.rows;
+    // 每隻 bot 嘅累積進度（跨對話）；一次查完，唔逐隻 bot N+1。
+    const botIds = rows.map((row) => String(row.id));
+    const progressMap = new Map<string, string[]>();
+    if (botIds.length) {
+      const progressResult = await pool.query(
+        `SELECT bot_id, covered_point_ids FROM bot_student_progress
+         WHERE user_id=$1 AND bot_id = ANY($2)`,
+        [user?.id, botIds]
+      );
+      for (const p of progressResult.rows) {
+        progressMap.set(
+          String(p.bot_id),
+          Array.isArray(p.covered_point_ids) ? p.covered_point_ids.map(String) : []
+        );
+      }
+    }
+    return res.json(rows.map((row) => {
+      const knowledgeBase = String(row.knowledge_base || "");
+      const total = coreKnowledgePoints(knowledgeBase).length;
+      const covered = progressMap.get(String(row.id))?.length || 0;
+      return {
+        ...toClient(row),
+        teacherName: row.teacher_name || "",
+        hasPublishedQuiz: Boolean(row.active_quiz_id),
+        hasPendingQuiz: Boolean(row.active_quiz_id) && row.active_quiz_attempt_status !== "completed",
+        activeQuizId: row.active_quiz_id || "",
+        activeQuizTitle: row.active_quiz_title || "",
+        progress: { covered, total },
+      };
+    }));
   } catch (err) {
     console.error("GET /shared/with-me Failed:", err);
     return res.status(500).json({ error: "Failed to load shared bots" });
+  }
+});
+
+// 學生對單一 Bot 嘅累積進度（跨對話）；供聊天內進度條用。
+router.get("/:botId/progress", requireAuth, async (req, res) => {
+  try {
+    await ensurePlatformTables();
+    const user = getAuthUser(req);
+    const botId = String(req.params.botId || "");
+    if (!botId) return res.status(400).json({ error: "missing botId" });
+
+    const botResult = await pool.query(
+      `SELECT id, name, knowledge_base FROM bots WHERE id=$1`,
+      [botId]
+    );
+    if (!botResult.rows.length) return res.status(404).json({ error: "Bot not found" });
+    const bot = botResult.rows[0];
+
+    const points = coreKnowledgePoints(String(bot.knowledge_base || ""));
+    const coveredIds = await getStudentProgress(botId, user.id);
+    const coveredSet = new Set(coveredIds);
+
+    return res.json({
+      botId,
+      total: points.length,
+      covered: points.filter((point) => coveredSet.has(point.id)).length,
+      coveredPointIds: coveredIds,
+      points: points.map((point) => ({
+        id: point.id,
+        tier: point.tier,
+        title: point.title,
+        covered: coveredSet.has(point.id),
+      })),
+    });
+  } catch (err) {
+    console.error("GET /:botId/progress Failed:", err);
+    return res.status(500).json({ error: "Failed to load progress" });
   }
 });
 
@@ -1019,6 +1121,77 @@ router.get("/teacher/assessment-report", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("GET /teacher/assessment-report Failed:", err);
     return res.status(500).json({ error: "Failed to build assessment report" });
+  }
+});
+
+// C3：老師「使用後總結」—— 每隻 Bot 每個知識點有幾多學生已掌握（跨對話累積）。
+router.get("/teacher/progress-overview", requireAuth, async (req, res) => {
+  try {
+    await ensurePlatformTables();
+    const user = getAuthUser(req);
+    if (!user || !["teacher", "admin"].includes(user.role)) {
+      return res.status(403).json({ error: "teacher account required" });
+    }
+
+    const botsResult = await pool.query(
+      `SELECT DISTINCT b.id, b.name, b.knowledge_base, b.avatar_url
+       FROM bots b
+       JOIN bot_student_shares s ON s.bot_id = b.id
+       WHERE s.teacher_id=$1
+       ORDER BY b.updated_at DESC`,
+      [user.id]
+    );
+
+    const bots = [];
+    for (const row of botsResult.rows) {
+      const botId = String(row.id);
+      const points = coreKnowledgePoints(String(row.knowledge_base || ""));
+
+      const progressResult = await pool.query(
+        `SELECT covered_point_ids FROM bot_student_progress WHERE bot_id=$1`,
+        [botId]
+      );
+      const coveredCounts = new Map<string, number>();
+      for (const p of progressResult.rows) {
+        const ids = Array.isArray(p.covered_point_ids)
+          ? p.covered_point_ids.map(String)
+          : [];
+        for (const id of ids) coveredCounts.set(id, (coveredCounts.get(id) || 0) + 1);
+      }
+      const studentsWithProgress = progressResult.rows.length;
+
+      // 「常被跳過」：有幾多段對話喺 next_point 推唔動時跳走咗呢個點。
+      const skipResult = await pool.query(
+        `SELECT skipped_point_ids FROM bot_conversation_states WHERE bot_id=$1`,
+        [botId]
+      );
+      const skipCounts = new Map<string, number>();
+      for (const s of skipResult.rows) {
+        const ids = Array.isArray(s.skipped_point_ids)
+          ? s.skipped_point_ids.map(String)
+          : [];
+        for (const id of ids) skipCounts.set(id, (skipCounts.get(id) || 0) + 1);
+      }
+
+      bots.push({
+        id: botId,
+        name: String(row.name || "AI Bot"),
+        avatarUrl: String(row.avatar_url || ""),
+        studentsWithProgress,
+        points: points.map((point) => ({
+          id: point.id,
+          tier: point.tier,
+          title: point.title,
+          coveredCount: coveredCounts.get(point.id) || 0,
+          skippedCount: skipCounts.get(point.id) || 0,
+        })),
+      });
+    }
+
+    return res.json({ bots });
+  } catch (err) {
+    console.error("GET /teacher/progress-overview Failed:", err);
+    return res.status(500).json({ error: "Failed to build progress overview" });
   }
 });
 

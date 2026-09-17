@@ -19,10 +19,12 @@ type KnowledgePoint = {
   content: string;
   keywords: string[];
   assessmentCriteria: string;
+  /** 教學目標（必達）：驅動覆蓋追蹤／next_point／進度。預設 true。 */
+  core: boolean;
 };
 
-const MAX_KNOWLEDGE_POINTS = 8;
-const MAX_POINTS_PER_TIER = 4;
+const MAX_KNOWLEDGE_POINTS = 20;
+const MAX_POINTS_PER_TIER = 10;
 
 interface CreationStep2Props {
   onGenerated: (data: {
@@ -99,8 +101,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
 - 3 到 6 句
 - 要自然、有角色感，不逐字照抄原文
 
-2. 再生成最多 8 個核心知識點，並分成兩個層級：
-- 盡量保持 "basic_fact" 4 個、"deep_understanding" 4 個
+2. 再生成最多 20 個核心知識點，並分成兩個層級：
+- 盡量保持 "basic_fact" 10 個、"deep_understanding" 10 個
 - "basic_fact"：客觀事實、時間、地點、定義、名稱，偏向記憶與識別
 - "deep_understanding"：動機、因果、背景、影響、評價，偏向分析與解釋
 
@@ -109,8 +111,9 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
 - tier：只能是 "basic_fact" 或 "deep_understanding"
 - title：8 到 14 個字的知識主題，不要直接複製完整長句
 - content：知識點內容
-- keywords：2 到 5 個關鍵詞
+- keywords：3 到 5 個關鍵詞；每個至少 2 個字，必須有辨識度（專有名詞、具體事物或術語，例如「榫卯」「應縣木塔」），禁止使用「觀察」「自然」「街名」這類任何主題都適用的泛用詞；要挑角色自己會在對話中使用的詞
 - assessment_criteria：一句可用於判斷學生是否掌握的標準
+- core：固定 true（全部知識點都係教學目標，老師可之後自行調整）
 
 【輸出要求】
 只能輸出合法 JSON，不能輸出 Markdown，不能輸出解釋。
@@ -125,7 +128,8 @@ JSON 必須符合以下結構：
       "title": "知識主題",
       "content": "知識點內容",
       "keywords": ["關鍵詞1", "關鍵詞2"],
-      "assessment_criteria": "評估標準"
+      "assessment_criteria": "評估標準",
+      "core": true
     }
   ]
 }
@@ -178,6 +182,7 @@ JSON 必須符合以下結構：
       ...point,
       title: point.title?.trim() || createKnowledgeTitle(point.content, point.keywords),
       id: point.id || `kp_${String(index + 1).padStart(3, "0")}`,
+      core: point.core !== false,
     }));
 
   const normalizeKnowledgePoint = (point: any, index: number): KnowledgePoint | null => {
@@ -196,6 +201,7 @@ JSON 必須符合以下結構：
       content,
       keywords,
       assessmentCriteria: String(point?.assessment_criteria || point?.assessmentCriteria || "").trim(),
+      core: point?.core !== false,
     };
   };
 
@@ -504,6 +510,16 @@ JSON 必須符合以下結構：
     });
   };
 
+  const toggleKnowledgeCore = (id: string) => {
+    setKnowledgePoints((prev) => {
+      const next = prev.map((point) =>
+        point.id === id ? { ...point, core: !point.core } : point
+      );
+      setKnowledgeSummary(buildKnowledgeSummary(next));
+      return next;
+    });
+  };
+
   const handleAddKnowledgePoint = () => {
     const content = newPointContent.trim();
     if (!content) {
@@ -522,6 +538,7 @@ JSON 必須符合以下結構：
       content,
       keywords,
       assessmentCriteria: newPointAssessment.trim(),
+      core: true,
     };
     const nextPoints = normalizeKnowledgePoints([...knowledgePoints, nextPoint]);
     setKnowledgePoints(nextPoints);
@@ -1027,6 +1044,7 @@ JSON 必須符合以下結構：
                                 </div>
                               </div>
                               <div className="mt-3 flex flex-wrap gap-2">
+                                <button type="button" onClick={() => toggleKnowledgeCore(point.id)} className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${point.core ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"}`}>{uiText("教學目標")}{point.core ? " ✓" : ""}</button>
                                 <button type="button" onClick={() => toggleKnowledgeTier(point.id)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700">{uiText("切換為深度理解")}</button>
                                 <button type="button" onClick={() => removeKnowledgePoint(point.id)} className="rounded-lg bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600">{uiText("刪除")}</button>
                               </div>
@@ -1060,6 +1078,7 @@ JSON 必須符合以下結構：
                                 </div>
                               </div>
                               <div className="mt-3 flex flex-wrap gap-2">
+                                <button type="button" onClick={() => toggleKnowledgeCore(point.id)} className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${point.core ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"}`}>{uiText("教學目標")}{point.core ? " ✓" : ""}</button>
                                 <button type="button" onClick={() => toggleKnowledgeTier(point.id)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700">{uiText("切換為基礎知識")}</button>
                                 <button type="button" onClick={() => removeKnowledgePoint(point.id)} className="rounded-lg bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600">{uiText("刪除")}</button>
                               </div>
@@ -1111,6 +1130,15 @@ JSON 必須符合以下結構：
                 ))}
                 </div>
               </fieldset>
+              <label className="block md:col-span-12">
+                <span className="text-xs font-bold text-slate-700">{uiText("關鍵詞")}</span>
+                <input
+                  value={newPointKeywords}
+                  onChange={(e) => setNewPointKeywords(e.target.value)}
+                  placeholder={uiText("以「、」或「,」分隔，3-5 個有辨識度的詞，例如：榫卯、凹凸")}
+                  className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+                />
+              </label>
               <label className="block md:col-span-12">
                 <span className="text-xs font-bold text-slate-700">{uiText("知識內容")}</span>
                 <textarea
@@ -1167,8 +1195,8 @@ JSON 必須符合以下結構：
                 >
                   <span
                     className={`h-2.5 w-2.5 rounded-full ${active ? "bg-white" : ""}`}
-                    // 用 background（而非 backgroundColor）以支援漸變色
-                    style={active ? undefined : { background: option.color }}
+                    // 色點由 utils/subjects.ts 派生；active 時整粒 pill 變實心 indigo（見上），色點轉白
+                    style={active ? undefined : { backgroundColor: option.color }}
                   />
                   {uiText(option.label)}
                 </button>

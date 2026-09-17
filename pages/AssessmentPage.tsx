@@ -1,5 +1,5 @@
 import { uiText } from '../utils/uiI18n';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Icons } from '../components/icons';
 import { ArrowRight, CopyPlus, PenTool } from 'lucide-react';
@@ -144,6 +144,8 @@ export const AssessmentPage: React.FC<AssessmentPageProps> = ({
   const [quizzesSubTab, setQuizzesSubTab] = useState<'drafts' | 'published'>('published');
   // 質量分析入口開嘅已發佈測驗 Drawer（同 MyQuizzesView 嘅 Drawer 唔會同時開）
   const [qualityDrawerQuiz, setQualityDrawerQuiz] = useState<PublishedQuizSummary | null>(null);
+  // 測驗 Drawer「前往批改」跳入批改工作台時要直接開嘅測驗
+  const [gradingWorkspaceQuizId, setGradingWorkspaceQuizId] = useState<string | null>(null);
 
   // 總覽 KPI 數據
   const [draftCount, setDraftCount] = useState(0);
@@ -151,9 +153,7 @@ export const AssessmentPage: React.FC<AssessmentPageProps> = ({
   const [pendingResponses, setPendingResponses] = useState(0);
   const [bankQuestionCount, setBankQuestionCount] = useState(0);
 
-  useEffect(() => {
-    if (topTab !== 'overview') return;
-
+  const loadKpis = useCallback(() => {
     fetch(`${API_BASE}/api/quizzes/drafts`)
       .then((res) => res.json())
       .then((data) => setDraftCount(Array.isArray(data?.drafts) ? data.drafts.length : 0))
@@ -179,7 +179,22 @@ export const AssessmentPage: React.FC<AssessmentPageProps> = ({
         setBankQuestionCount(banks.reduce((sum: number, bank: any) => sum + Number(bank.questionCount || 0), 0));
       })
       .catch(() => setBankQuestionCount(0));
-  }, [topTab]);
+  }, []);
+
+  useEffect(() => {
+    if (topTab !== 'overview') return;
+    loadKpis();
+    // 定時＋視窗聚焦 refresh（發佈／批改返總覽後 KPI 唔會停留喺舊值）
+    const refresh = () => {
+      if (document.visibilityState === 'visible') loadKpis();
+    };
+    const interval = window.setInterval(refresh, 15000);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [topTab, loadKpis]);
 
   const openWizard = () => {
     setSelectedDraftId(null);
@@ -253,7 +268,10 @@ export const AssessmentPage: React.FC<AssessmentPageProps> = ({
         {TOP_TABS.map((tab) => (
           <button
             key={tab.key}
-            onClick={() => setTopTab(tab.key)}
+            onClick={() => {
+              setGradingWorkspaceQuizId(null);
+              setTopTab(tab.key);
+            }}
             className={`flex shrink-0 items-center gap-2 px-1 pb-4 transition ${topTab === tab.key ? 'border-b-2 border-indigo-600 text-indigo-600' : 'hover:text-slate-700'}`}
           >
             <tab.icon className="w-4 h-4" />
@@ -328,6 +346,10 @@ export const AssessmentPage: React.FC<AssessmentPageProps> = ({
           initialQuizId={initialQuizId}
           initialDrawerTab={initialDrawerTab}
           onDeepLinkConsumed={onQuizDeepLinkConsumed}
+          onOpenGrading={(quizId) => {
+            setGradingWorkspaceQuizId(quizId);
+            setTopTab('grading');
+          }}
         />
       )}
 
@@ -335,7 +357,16 @@ export const AssessmentPage: React.FC<AssessmentPageProps> = ({
       {topTab === 'library' && <AssessmentLibrary onBack={() => setTopTab('overview')} />}
 
       {/* 批改 */}
-      {topTab === 'grading' && <GradingWorkspaceHome onBack={() => setTopTab('overview')} onGoToWorkshop={onNavigateToWorkshop} />}
+      {topTab === 'grading' && (
+        <GradingWorkspaceHome
+          onBack={() => {
+            setGradingWorkspaceQuizId(null);
+            setTopTab('overview');
+          }}
+          onGoToWorkshop={onNavigateToWorkshop}
+          initialQuizId={gradingWorkspaceQuizId}
+        />
+      )}
 
       {/* 質量分析 */}
       {topTab === 'quality' && (
