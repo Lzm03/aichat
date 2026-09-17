@@ -4399,34 +4399,53 @@ const unlockAudioAndMic = async () => {
               </div>
 
               {isSharedView && studentProgress && studentProgress.total > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setProgressPanelOpen((current) => !current)}
-                  className="w-full border-b border-[#ebe5db] bg-[#fbf6ec] px-4 py-2 text-left"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-black text-[#6c4b22]">{uiText("學習進度")} {studentProgress.covered}/{studentProgress.total}</span>
-                    <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-[#8b7a64] transition ${progressPanelOpen ? "rotate-180" : ""}`} />
-                  </div>
-                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[#e8ddcc]">
-                    <div
-                      className="h-full rounded-full bg-indigo-500 transition-all duration-500"
-                      style={{ width: `${Math.round((studentProgress.covered / studentProgress.total) * 100)}%` }}
-                    />
-                  </div>
+                <div className="relative border-b border-[#ebe5db] bg-[#fbf6ec]">
+                  <button
+                    type="button"
+                    onClick={() => setProgressPanelOpen((current) => !current)}
+                    className="w-full px-4 py-2 text-left"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-black text-[#6c4b22]">{uiText("學習進度")} {studentProgress.covered}/{studentProgress.total}</span>
+                      <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-[#8b7a64] transition ${progressPanelOpen ? "rotate-180" : ""}`} />
+                    </div>
+                    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[#e8ddcc]">
+                      <div
+                        className="h-full rounded-full bg-indigo-500 transition-all duration-500"
+                        style={{ width: `${Math.round((studentProgress.covered / studentProgress.total) * 100)}%` }}
+                      />
+                    </div>
+                  </button>
                   {progressPanelOpen ? (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {studentProgress.points.map((point) => (
-                        <span
-                          key={point.id}
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${point.covered ? "bg-indigo-500 text-white" : "bg-[#ede4d4] text-[#8b7a64]"}`}
-                        >
-                          {point.covered ? "✓ " : ""}{point.title}
-                        </span>
-                      ))}
+                    <div className="absolute inset-x-0 top-full z-50 max-h-60 space-y-2 overflow-y-auto rounded-b-2xl border border-t-0 border-[#ebe5db] bg-white px-3 py-2 shadow-[0_16px_40px_rgba(15,23,42,0.18)]">
+                      {(["basic_fact", "deep_understanding"] as const).map((tier) => {
+                        const tierPoints = studentProgress.points.filter((point) => point.tier === tier);
+                        if (!tierPoints.length) return null;
+                        const tierCovered = tierPoints.filter((point) => point.covered).length;
+                        const tierLabel = tier === "basic_fact" ? uiText("基礎事實") : uiText("深度理解");
+                        return (
+                          <div key={tier}>
+                            <div className="mb-1 flex items-center justify-between text-[10px] font-black text-[#8b7a64]">
+                              <span>{tierLabel}</span>
+                              <span className="text-[#6c4b22]">{tierCovered}/{tierPoints.length}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1">
+                              {tierPoints.map((point) => (
+                                <span
+                                  key={point.id}
+                                  className={`flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-[10px] font-semibold ${point.covered ? "bg-indigo-50 text-indigo-700" : "bg-[#f0e9dc] text-[#9a8a72]"}`}
+                                >
+                                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${point.covered ? "bg-indigo-500" : "bg-slate-300"}`} />
+                                  <span className="truncate">{point.title}</span>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : null}
-                </button>
+                </div>
               ) : null}
 
               {activeQuiz && quizUiState === "banner" ? (
