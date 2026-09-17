@@ -36,7 +36,7 @@ const BLOOM_LEVEL_LABELS = ['記憶', '理解', '應用', '分析', '評價', '�
 
 /**
  * 學生嘅布魯姆層級評分 = 最高答啱嘅題目層級（數字 + 中文名）；
- * 冇答啱任何題 → null。能力追蹤卡同 CSV 匯出都用同一條規則，保證兩邊一致。
+ * 冇答啱任何題 → null。CSV 匯出用。
  */
 export function computeBloomLevel(
   answers: Array<{ cognitiveLevel?: string; isCorrect?: boolean }> | undefined | null
@@ -48,6 +48,23 @@ export function computeBloomLevel(
     if (index > bestIndex) bestIndex = index;
   }
   return bestIndex >= 0 ? { level: bestIndex + 1, label: BLOOM_LEVEL_LABELS[bestIndex] } : null;
+}
+
+/**
+ * 六層布魯姆逐層統計（答啱數/題數），成績結果卡嘅 mini chip 用。
+ * 順序跟 BLOOM_LEVEL_LABELS：記憶 → 創造。
+ */
+export function computeBloomBreakdown(
+  answers: Array<{ cognitiveLevel?: string; isCorrect?: boolean }> | undefined | null
+): Array<{ label: string; correct: number; total: number }> {
+  const stats = BLOOM_LEVEL_LABELS.map((label) => ({ label, correct: 0, total: 0 }));
+  for (const answer of answers || []) {
+    const index = BLOOM_LEVEL_LABELS.indexOf(String(answer?.cognitiveLevel || ''));
+    if (index < 0) continue;
+    stats[index].total += 1;
+    if (answer?.isCorrect) stats[index].correct += 1;
+  }
+  return stats;
 }
 
 const csvCell = (value: unknown) => {

@@ -4,8 +4,9 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Copy, X, ShieldAlert, ArrowRight } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
 import { Icons } from '../icons';
+import { QuestionCard, type LibraryQuestion } from './QuestionCard';
 import { AnomalyAlertCenter, type AnomalyFlag } from './AnomalyAlertCenter';
-import { computeBloomLevel } from '../../utils/assessment-csv';
+import { computeBloomBreakdown } from '../../utils/assessment-csv';
 
 export type PublishedQuizSummary = {
   id: string;
@@ -25,8 +26,8 @@ export type PublishedQuizSummary = {
   progress: number;
 };
 
-export type DrawerTab = 'results' | 'quality';
-/** detail = 測驗管理語境（我的測驗，2 tabs）；alerts = 質量分析語境（純異常警示視圖，無 tab bar） */
+export type DrawerTab = 'results' | 'quality' | 'preview';
+/** detail = 測驗管理語境（我的測驗，3 tabs）；alerts = 質量分析語境（純異常警示視圖，無 tab bar） */
 export type DrawerMode = 'detail' | 'alerts';
 
 type StudentRow = {
@@ -82,6 +83,7 @@ type PublishedQuizDetailDrawerProps = {
 const DRAWER_TABS: { key: DrawerTab; label: string }[] = [
   { key: 'results', label: '成績結果' },
   { key: 'quality', label: '質量分析' },
+  { key: 'preview', label: '題目預覽' },
 ];
 
 const formatDate = (value?: string) => (value ? new Date(value).toISOString().slice(0, 10) : '--');
@@ -97,6 +99,8 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
 }) => {
   const isAlertsMode = mode === 'alerts';
   const [activeTab, setActiveTab] = useState<DrawerTab>('results');
+  const [questions, setQuestions] = useState<LibraryQuestion[]>([]);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
   const [detail, setDetail] = useState<GradingDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
@@ -109,6 +113,26 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
     setDuplicateError('');
 
     let active = true;
+    if (isAlertsMode) {
+      setQuestions([]);
+      setQuestionsLoading(false);
+    } else {
+      setQuestionsLoading(true);
+      fetch(`${API_BASE}/api/quizzes/${quiz.id}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!active) return;
+          setQuestions(Array.isArray(data?.questions) ? data.questions : []);
+        })
+        .catch(() => {
+          if (!active) return;
+          setQuestions([]);
+        })
+        .finally(() => {
+          if (active) setQuestionsLoading(false);
+        });
+    }
+
     setDetailLoading(true);
     fetch(`${API_BASE}/api/quizzes/${quiz.id}/grading-detail`)
       .then((res) => res.json())
@@ -192,27 +216,13 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
                     </span>
                   </p>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {!isAlertsMode ? (
-                    <button
-                      type="button"
-                      onClick={handleDuplicate}
-                      disabled={duplicating}
-                      title={uiText("複製為草稿")}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                      {duplicating ? uiText("複製中...") : uiText("複製為草稿")}
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
 
               {/* Tabs（alerts 模式唔顯示，純警示視圖） */}
@@ -238,39 +248,44 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
                       <div className="rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">{uiText("正在載入成績...")}</div>
                     ) : students.length ? (
                       <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-                        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-3 text-xs font-bold text-slate-400">
+                        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_auto] items-center gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-3 text-xs font-bold text-slate-400">
                           <span>{uiText("學生姓名 / 賬號")}</span>
                           <span className="text-center">{uiText("布魯姆等級")}</span>
                           <span className="text-right">{uiText("總分數")}</span>
                         </div>
                         <div className="divide-y divide-slate-50">
-                          {students.map((student) => {
-                            const bloom = computeBloomLevel(student.answers);
-                            return (
-                              <div key={student.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3">
-                                <div className="min-w-0">
-                                  <p className="truncate text-sm font-bold text-slate-800">{student.name}</p>
-                                  {student.account ? (
-                                    <p className="truncate text-xs text-slate-400">{student.account}</p>
-                                  ) : null}
-                                </div>
-                                <span className="text-center">
-                                  {bloom ? (
-                                    <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-black text-indigo-600">
-                                      L{bloom.level}
-                                      <span className="font-bold text-indigo-400">{bloom.label}</span>
-                                    </span>
-                                  ) : (
-                                    <span className="text-xs font-bold text-slate-300">—</span>
-                                  )}
-                                </span>
-                                <span className="text-right text-sm font-bold text-slate-600">
-                                  {student.score}
-                                  <span className="text-xs font-semibold text-slate-400"> / {student.totalPoints}</span>
-                                </span>
+                          {students.map((student) => (
+                            <div key={student.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_auto] items-center gap-3 px-4 py-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-bold text-slate-800">{student.name}</p>
+                                {student.account ? (
+                                  <p className="truncate text-xs text-slate-400">{student.account}</p>
+                                ) : null}
                               </div>
-                            );
-                          })}
+                              <div className="flex flex-wrap items-center justify-center gap-1">
+                                {computeBloomBreakdown(student.answers).map((level) => {
+                                  const stateClass = level.total === 0
+                                    ? 'bg-slate-50 text-slate-300'
+                                    : level.correct === level.total
+                                      ? 'bg-emerald-50 text-emerald-600'
+                                      : 'bg-amber-50 text-amber-600';
+                                  return (
+                                    <span
+                                      key={level.label}
+                                      title={`${level.label} ${level.total ? `${level.correct}/${level.total}` : '—'}`}
+                                      className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold ${stateClass}`}
+                                    >
+                                      {level.label} {level.total ? `${level.correct}/${level.total}` : '─'}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                              <span className="text-right text-sm font-bold text-slate-600">
+                                {student.score}
+                                <span className="text-xs font-semibold text-slate-400"> / {student.totalPoints}</span>
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     ) : (
@@ -329,13 +344,36 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
                     />
                   </div>
                 )}
+
+                {!isAlertsMode && activeTab === 'preview' && (
+                  <div className="space-y-4">
+                    {questionsLoading ? (
+                      <div className="rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">{uiText("正在載入題目...")}</div>
+                    ) : questions.length ? (
+                      questions.map((q, index) => <QuestionCard key={`${quiz.id}-${q.id}-${index}`} q={q} index={index} />)
+                    ) : (
+                      <div className="rounded-[24px] border border-dashed border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">{uiText("此測驗暫無題目")}</div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Footer：複製為草稿已搬到 header（詳情模式），alerts 模式只顯示關閉 */}
+              {/* Footer：複製為草稿係題目預覽語境嘅動作，成績結果／質量分析／alerts 模式唔顯示 */}
               <div className="flex items-center gap-3 border-t border-slate-100 bg-white px-6 py-4">
-                {!isAlertsMode && duplicateError ? (
+                {!isAlertsMode && activeTab === 'preview' && duplicateError ? (
                   <p className="text-xs font-bold text-rose-500 mr-auto">{duplicateError}</p>
                 ) : <span className="mr-auto" />}
+                {!isAlertsMode && activeTab === 'preview' ? (
+                  <button
+                    type="button"
+                    onClick={handleDuplicate}
+                    disabled={duplicating}
+                    className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    <Copy className="h-4 w-4" />
+                    {duplicating ? uiText("複製中...") : uiText("複製為草稿")}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={onClose}
