@@ -24,7 +24,7 @@ const Section: React.FC<{ title: string; children: React.ReactNode; subtitle?: s
 // -----------------------------
 // Permission Card
 // -----------------------------
-type SharingMode = 'group' | 'link';
+type SharingMode = 'group' | 'link' | 'both';
 
 type ShareClass = {
   id: string;
@@ -93,7 +93,11 @@ export const CreationStep4: React.FC<{
   botId?: string | null;
   initialConfig?: { sharingMode?: string; filterLevel?: string; customWords?: string; classIds?: string[] };
 }> = ({ onSecurityChange, botId, initialConfig }) => {
-  const [sharingMode, setSharingMode] = useState<SharingMode>((initialConfig?.sharingMode === "group" ? "group" : "link"));
+  const [sharingMode, setSharingMode] = useState<SharingMode>(
+    initialConfig?.sharingMode === "group" || initialConfig?.sharingMode === "both"
+      ? initialConfig.sharingMode
+      : "link"
+  );
   const [filterLevel, setFilterLevel] = useState<FilterLevel>(
     initialConfig?.filterLevel === "strict" || initialConfig?.filterLevel === "custom"
       ? (initialConfig.filterLevel as FilterLevel)
@@ -130,7 +134,7 @@ export const CreationStep4: React.FC<{
           });
           const accessData = await accessResponse.json().catch(() => ({}));
           if (!accessResponse.ok) throw new Error(accessData?.error || '無法載入分享設定');
-          const nextMode: SharingMode = accessData.mode === 'group' ? 'group' : 'link';
+          const nextMode: SharingMode = ['group', 'both'].includes(accessData.mode) ? accessData.mode : 'link';
           const nextGroupIds = Array.isArray(accessData.groupIds) ? accessData.groupIds.map(String) : [];
           setSharingMode(nextMode);
           setSelectedClassIds(nextGroupIds);
@@ -221,7 +225,7 @@ ${customWords
 
     base += `
 【共享模式】${sharingMode}
-【班級名單】${sharingMode === 'group' ? confirmedClassIds.join(',') : ''}
+【班級名單】${sharingMode === 'group' || sharingMode === 'both' ? confirmedClassIds.join(',') : ''}
 【過濾等級】${filterLevel}
 【自定義詞】${customWords.trim()}
 `;
@@ -245,7 +249,7 @@ ${customWords
     }
     setIsSavingAccess(true);
     try {
-      await saveAccess('group', selectedClassIds);
+      await saveAccess(sharingMode === 'both' ? 'both' : 'group', selectedClassIds);
       setConfirmedClassIds(selectedClassIds);
     } catch (error) {
       showAlert({ title: uiText('更新失敗'), message: (error as Error).message, tone: 'danger' });
@@ -293,9 +297,16 @@ ${customWords
             isSelected={sharingMode === 'link'}
             onClick={() => void selectLinkMode()}
           />
+          <PermissionCard
+            icon={Icons.success}
+            title={uiText("指定班級及持連結者")}
+            description="指定班級學生及任何持有連結的人均可存取"
+            isSelected={sharingMode === 'both'}
+            onClick={() => setSharingMode('both')}
+          />
         </div>
 
-        {sharingMode === 'group' && (
+        {(sharingMode === 'group' || sharingMode === 'both') && (
           <motion.div
             initial={{ opacity: 0, y: -5 }}
             animate={{ opacity: 1, y: 0 }}
@@ -375,7 +386,7 @@ ${customWords
           </motion.div>
         )}
 
-        {sharingMode === 'link' && (
+        {(sharingMode === 'link' || sharingMode === 'both') && (
           <motion.div
             initial={{ opacity: 0, y: -5 }}
             animate={{ opacity: 1, y: 0 }}
