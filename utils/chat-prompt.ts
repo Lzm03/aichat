@@ -347,8 +347,12 @@ export function buildChatSystemPrompt(input: PromptCompilerInput) {
     knowledgeBase: input.knowledgeBase,
   });
 
-  const targetKnowledgeGraph = parsed.knowledgePoints.length
-    ? parsed.knowledgePoints
+  // 教學目標只計 core 知識點，同覆蓋追蹤 / next_point / 進度 UI 同一集。
+  // 非 core 點仍然喺【人物知識庫摘要】文字入面做背景知識，只係唔再係必教目標
+  // —— 否則 bot 會教一啲永遠唔會出現喺進度分母嘅知識點。
+  const corePoints = parsed.knowledgePoints.filter((point) => point.core !== false);
+  const targetKnowledgeGraph = corePoints.length
+    ? corePoints
         .map((point) => ({
           id: point.id,
           tier:
