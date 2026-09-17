@@ -666,7 +666,11 @@ router.get("/:id/access", requireAuth, async (req, res) => {
       [req.params.id, user?.id]
     );
     return res.json({
-      mode: bot.rows[0].is_visible ? "link" : "group",
+      mode: bot.rows[0].is_visible && groups.rowCount
+        ? "both"
+        : bot.rows[0].is_visible
+          ? "link"
+          : "group",
       groupIds: groups.rows.map((row) => String(row.group_id)),
     });
   } catch (err) {
@@ -680,10 +684,10 @@ router.put("/:id/access", requireAuth, async (req, res) => {
   const groupIds = Array.isArray(req.body?.groupIds)
     ? Array.from(new Set(req.body.groupIds.map(String)))
     : [];
-  if (!['link', 'group'].includes(mode)) {
-    return res.status(400).json({ error: "mode must be link or group" });
+  if (!['link', 'group', 'both'].includes(mode)) {
+    return res.status(400).json({ error: "mode must be link, group, or both" });
   }
-  if (mode === 'group' && !groupIds.length) {
+  if ((mode === 'group' || mode === 'both') && !groupIds.length) {
     return res.status(400).json({ error: "select at least one class" });
   }
 
@@ -712,16 +716,16 @@ router.put("/:id/access", requireAuth, async (req, res) => {
       await client.query("DELETE FROM bot_group_shares WHERE bot_id=$1 AND teacher_id=$2", [req.params.id, user.id]);
       await client.query("DELETE FROM bot_student_shares WHERE bot_id=$1 AND teacher_id=$2", [req.params.id, user.id]);
       await client.query("DELETE FROM bot_student_exclusions WHERE bot_id=$1 AND teacher_id=$2", [req.params.id, user.id]);
-      if (mode === 'group') {
+      if (mode === 'group' || mode === 'both') {
         await client.query(
           `INSERT INTO bot_group_shares (bot_id, teacher_id, group_id)
            SELECT $1, $2, UNNEST($3::text[])`,
           [req.params.id, user.id, groupIds]
         );
       }
-      await client.query("UPDATE bots SET is_visible=$1, updated_at=NOW() WHERE id=$2 AND owner_id=$3", [mode === 'link', req.params.id, user.id]);
+      await client.query("UPDATE bots SET is_visible=$1, updated_at=NOW() WHERE id=$2 AND owner_id=$3", [mode === 'link' || mode === 'both', req.params.id, user.id]);
       await client.query("COMMIT");
-      return res.json({ ok: true, mode, groupIds: mode === 'group' ? groupIds : [] });
+      return res.json({ ok: true, mode, groupIds: mode === 'group' || mode === 'both' ? groupIds : [] });
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

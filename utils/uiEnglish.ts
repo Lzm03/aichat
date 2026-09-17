@@ -1606,6 +1606,8 @@ export const englishUi: Record<string, string> = {
   "僅限指定名單成員存取": "Only designated members can access",
   "任何擁有連結的人": "Anyone with the Link",
   "組織內使用者可憑連結存取": "Members of your organization can access via the link",
+  "指定班級及持連結者": "Specific Classes and Link Holders",
+  "指定班級學生及任何持有連結的人均可存取": "Students in selected classes and anyone with the link can access",
   "已複製": "Copied",
   "複製連結": "Copy Link",
   "安全過濾強度": "Content Filter Strength",

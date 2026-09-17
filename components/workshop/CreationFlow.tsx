@@ -517,7 +517,9 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode: accessConfig.sharingMode === 'group' ? 'group' : 'link',
+          mode: accessConfig.sharingMode === 'group' || accessConfig.sharingMode === 'both'
+            ? accessConfig.sharingMode
+            : 'link',
           groupIds: accessConfig.classIds,
         }),
       });
