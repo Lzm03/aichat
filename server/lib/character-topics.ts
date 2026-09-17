@@ -191,6 +191,16 @@ export async function getAccessibleCharacter(characterId: string, userId?: strin
           SELECT 1 FROM bot_student_shares s
           WHERE s.bot_id=b.id AND s.student_id=$2
         ))
+        OR ($2::TEXT IS NOT NULL AND EXISTS (
+          SELECT 1
+          FROM bot_group_shares bg
+          JOIN student_group_members gm ON gm.group_id=bg.group_id
+          WHERE bg.bot_id=b.id AND gm.student_id=$2
+            AND NOT EXISTS (
+              SELECT 1 FROM bot_student_exclusions ex
+              WHERE ex.bot_id=b.id AND ex.student_id=$2
+            )
+        ))
       )
     LIMIT 1
     `,
