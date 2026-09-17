@@ -618,6 +618,8 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
               onSubjectChange={(value) => updateConfig("subject", value)}
               grade={botConfig.grade}
               onGradeChange={(value) => updateConfig("grade", value)}
+              botName={botConfig.name}
+              securityPrompt={botConfig.securityPrompt}
               afterKnowledgePointEditor={
                 <TopicManager characterId={String(botConfig.id || botId || "").trim() || null} />
               }
