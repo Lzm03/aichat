@@ -123,6 +123,7 @@ function normalizeBots(data: any[]): AiBot[] {
     createdAt: raw.createdAt || "", updatedAt: raw.updatedAt || "",
     hasPublishedQuiz: Boolean(raw.hasPublishedQuiz), hasPendingQuiz: Boolean(raw.hasPendingQuiz),
     activeQuizId: raw.activeQuizId || "", activeQuizTitle: raw.activeQuizTitle || "",
+    coverage: raw.coverage,
   }));
 }
 

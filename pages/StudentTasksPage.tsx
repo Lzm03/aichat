@@ -141,7 +141,7 @@ export const StudentTasksPage: React.FC = () => {
             <div className="text-4xl" aria-hidden="true">🎉</div>
             <p className="mt-4 text-sm font-bold text-[var(--text-main)]">{uiText("暫時沒有新任務")}</p>
             <p className="mt-1 text-xs text-[var(--text-muted)]">{uiText("老師新分享的 Bot 或測驗會顯示在這裡")}</p>
-            <a href="/" className="mt-5 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition hover:brightness-110 active:scale-95">{uiText("回星際地圖")}</a>
+            <a href="/" className="mt-5 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition hover:brightness-110 active:scale-95">{uiText("回我的主頁")}</a>
           </div>
         ) : null}
 

@@ -7,7 +7,7 @@ import { usePathname } from 'next/navigation';
 import { Icons } from '../icons';
 
 const navItems = [
-  { href: '/portal/student', icon: Icons.dashboard, label: '星際地圖' },
+  { href: '/portal/student', icon: Icons.dashboard, label: '我的主頁' },
   { href: '/portal/student/lab', icon: Icons.wand, label: '創意實驗室' },
   { href: '/portal/student/achievements', icon: Icons.shieldCheck, label: '成就博物館' },
 ];

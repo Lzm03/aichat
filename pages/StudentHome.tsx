@@ -182,13 +182,14 @@ const StudentBotCard: React.FC<{
       <h2 className="mt-4 truncate text-lg font-extrabold text-slate-950">{companion.name}</h2>
       <span className="mt-2 inline-block rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-500">{uiText(companion.subject) || uiText("未分類")}</span>
       <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-4">
-        <span className="text-[13px] text-slate-400">{uiText("今日互動 ")}{companion.interactions || 0}{uiText(" 次")}</span>
-        {companion.progress && companion.progress.total > 0 ? (
+        {companion.progress && companion.progress.covered > 0 ? (
           <span className="flex items-center gap-2 text-[13px] font-black text-indigo-500">
             <ProgressRing covered={companion.progress.covered} total={companion.progress.total} size={38} />
             {uiText("已掌握")} {companion.progress.covered}/{companion.progress.total}
           </span>
-        ) : null}
+        ) : (
+          <span className="text-[13px] text-slate-400">{uiText("今日互動 ")}{companion.interactions || 0}{uiText(" 次")}</span>
+        )}
       </div>
     </motion.button>
   );
@@ -223,7 +224,7 @@ const T: Record<"zh-HK" | "en", StudentHomeStrings> = {
     loadingBots: "正在載入老師分享的 AI Bot...",
     startAdventure: "選擇一位學習夥伴，開始今天的冒險",
     noBots: "老師尚未分享 AI Bot 給你",
-    starMap: "學習夥伴",
+    starMap: "我的主頁",
     todayTasks: "今日任務",
     achievements: "我的成就",
     companionTipTitle: "如何選擇學習夥伴",
@@ -239,7 +240,7 @@ const T: Record<"zh-HK" | "en", StudentHomeStrings> = {
     loadingBots: "Loading AI buddies shared by your teacher...",
     startAdventure: "Pick a buddy and start today's adventure",
     noBots: "Your teacher hasn't shared any AI buddies with you",
-    starMap: "Study buddy",
+    starMap: "My Home",
     todayTasks: "Today's Tasks",
     achievements: "Achievements",
     companionTipTitle: "How do I pick a buddy?",

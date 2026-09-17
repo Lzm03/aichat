@@ -121,7 +121,7 @@ export default function PortalSelectionPage() {
           href="/portal/student"
           icon={Icons.dashboard}
           title="學生門戶"
-          description="星際冒險地圖、創意實驗室、成就博物館。"
+          description="我的主頁、創意實驗室、成就博物館。"
           color="emerald"
         />
         <IdentityCard
