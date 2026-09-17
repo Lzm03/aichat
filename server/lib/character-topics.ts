@@ -177,28 +177,6 @@ export function mapCharacterTopicRow(row: CharacterTopicRow, includeDetails = fa
   return mapped;
 }
 
-export async function getAccessibleCharacter(characterId: string, userId?: string | null) {
-  await ensureCharacterTopicTables();
-  const result = await pool.query(
-    `
-    SELECT b.id, b.name, b.knowledge_base, b.security_prompt, b.owner_id, b.is_visible, b.grade
-    FROM bots b
-    WHERE b.id=$1
-      AND (
-        b.is_visible=TRUE
-        OR ($2::TEXT IS NOT NULL AND b.owner_id=$2)
-        OR ($2::TEXT IS NOT NULL AND EXISTS (
-          SELECT 1 FROM bot_student_shares s
-          WHERE s.bot_id=b.id AND s.student_id=$2
-        ))
-      )
-    LIMIT 1
-    `,
-    [characterId, userId || null]
-  );
-  return (result.rows[0] as CharacterRow) || null;
-}
-
 export async function getOwnedCharacter(characterId: string, userId: string) {
   await ensureCharacterTopicTables();
   const result = await pool.query(
@@ -210,12 +188,11 @@ export async function getOwnedCharacter(characterId: string, userId: string) {
 }
 
 /**
- * 完整 Bot 存取規則：擁有者 / 公開 / 直接分享 / 群組分享（未被排除名單擋）。
- * 同 ask.ts 對話入口、GET /api/bots/:id 同一套規則，確保「傾得到就讀得到進度」。
+ * 全站唯一嘅 Bot 存取規則：擁有者 / 公開 / 直接分享 / 群組分享（未被排除名單擋）。
+ * 對話入口（ask.ts）、Bot 設定（GET /api/bots/:id）、知識點、對話、進度全部行呢個，
+ * 確保「傾得到就讀得到」。要改規則淨係改呢度。
  *
- * 同 getAccessibleCharacter 嘅分別：呢個包含群組分享同排除名單；
- * getAccessibleCharacter 只有擁有者 / 公開 / 直接分享（舊規則，唔好再喺新地方用）。
- * 排除名單只擋群組分享路徑——直接分享 / 公開仍然入得，同 ask.ts 一致。
+ * 排除名單只擋群組分享路徑——直接分享 / 公開仍然入得。
  *
  * 回 null = 唔存在 **或者** 冇權限，刻意唔區分：呼叫方一律當 404，
  * 唔會洩漏 bot 存唔存在。

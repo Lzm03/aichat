@@ -1502,62 +1502,37 @@ router.get("/:id", async (req, res) => {
   const { id } = req.params;
   try {
     await ensureQuizTables();
+    await ensurePlatformTables();
     const user = await optionalAuth(req);
-    const result = user
-      ? await pool.query(
-          `SELECT
-             bots.*,
-             q.id AS active_quiz_id,
-             q.title AS active_quiz_title,
-             qa.status AS active_quiz_attempt_status
-           FROM bots
-           LEFT JOIN LATERAL (
-             SELECT id, title
-             FROM quizzes
-             WHERE bot_id=bots.id AND status='published'
-             ORDER BY updated_at DESC, created_at DESC
-             LIMIT 1
-           ) q ON TRUE
-           LEFT JOIN LATERAL (
-             SELECT status
-             FROM quiz_attempts
-             WHERE quiz_id=q.id AND student_id=$2
-             ORDER BY updated_at DESC, created_at DESC
-             LIMIT 1
-           ) qa ON TRUE
-           WHERE bots.id=$1 AND (
-            owner_id=$2 OR is_visible=true OR EXISTS (
-              SELECT 1 FROM bot_student_shares s WHERE s.bot_id=bots.id AND s.student_id=$2
-            ) OR EXISTS (
-              SELECT 1
-              FROM bot_group_shares bg
-              JOIN student_group_members gm ON gm.group_id=bg.group_id
-              WHERE bg.bot_id=bots.id AND gm.student_id=$2
-                AND NOT EXISTS (
-                  SELECT 1 FROM bot_student_exclusions ex
-                  WHERE ex.bot_id=bots.id AND ex.student_id=$2
-                )
-            )
-          )`,
-          [id, user.id]
-        )
-      : await pool.query(
-          `SELECT
-             bots.*,
-             q.id AS active_quiz_id,
-             q.title AS active_quiz_title,
-             NULL::TEXT AS active_quiz_attempt_status
-           FROM bots
-           LEFT JOIN LATERAL (
-             SELECT id, title
-             FROM quizzes
-             WHERE bot_id=bots.id AND status='published'
-             ORDER BY updated_at DESC, created_at DESC
-             LIMIT 1
-           ) q ON TRUE
-           WHERE bots.id=$1 AND is_visible=true`,
-          [id]
-        );
+    // 存取閘：同對話入口（ask.ts）同一套規則，即 getAccessibleBot。
+    // 冇權限同唔存在一樣回 404，唔洩漏 bot 存唔存在；下面正式查詢唔再重寫一次條件。
+    const accessibleBot = await getAccessibleBot(id, user?.id || null);
+    if (!accessibleBot) return res.status(404).json({ error: "Bot not found" });
+
+    const result = await pool.query(
+      `SELECT
+         bots.*,
+         q.id AS active_quiz_id,
+         q.title AS active_quiz_title,
+         qa.status AS active_quiz_attempt_status
+       FROM bots
+       LEFT JOIN LATERAL (
+         SELECT id, title
+         FROM quizzes
+         WHERE bot_id=bots.id AND status='published'
+         ORDER BY updated_at DESC, created_at DESC
+         LIMIT 1
+       ) q ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT status
+         FROM quiz_attempts
+         WHERE quiz_id=q.id AND student_id=$2
+         ORDER BY updated_at DESC, created_at DESC
+         LIMIT 1
+       ) qa ON TRUE
+       WHERE bots.id=$1`,
+      [id, user?.id || null]
+    );
     if (result.rows.length === 0) return res.status(404).json({ error: "Bot not found" });
 
     res.json({

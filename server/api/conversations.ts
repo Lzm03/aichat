@@ -15,7 +15,7 @@ import {
 } from "../lib/conversations.ts";
 import {
   CharacterTopicError,
-  getAccessibleCharacter,
+  getAccessibleBot,
   resolveCharacterTopic,
 } from "../lib/character-topics.ts";
 
@@ -48,7 +48,7 @@ router.post("/", async (req, res) => {
     const botId = String(req.body?.botId || "").trim() || null;
     let topicId: string | null = null;
     if (botId) {
-      const character = await getAccessibleCharacter(botId, user.id);
+      const character = await getAccessibleBot(botId, user.id);
       if (!character) return res.status(404).json({ error: "Character not found" });
       const topic = await resolveCharacterTopic({
         characterId: botId,
@@ -107,7 +107,7 @@ router.patch("/:conversationId/topic", async (req, res) => {
     if (!topicId) return res.status(400).json({ error: "topicId is required" });
     const characterId = String(conversation.bot_id || "").trim();
     if (!characterId) return res.status(400).json({ error: "Conversation has no Character" });
-    const character = await getAccessibleCharacter(characterId, user.id);
+    const character = await getAccessibleBot(characterId, user.id);
     if (!character) return res.status(404).json({ error: "Character not found" });
     const topic = await resolveCharacterTopic({ characterId, requestedTopicId: topicId });
     if (!topic) return res.status(404).json({ error: "Topic not found" });

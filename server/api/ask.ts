@@ -31,7 +31,7 @@ import {
 import {
   CharacterTopicError,
   composeCharacterTopicPrompt,
-  getAccessibleCharacter,
+  getAccessibleBot,
   resolveCharacterTopic,
 } from "../lib/character-topics.ts";
 import {
@@ -1502,35 +1502,13 @@ async function resolveChatActor(req: Request, sharedBotId?: string, botId?: stri
       const normalizedSharedBotId = String(sharedBotId || "").trim();
       if (normalizedSharedBotId) {
         await ensurePlatformTables();
-        const access = await pool.query(
-          `SELECT b.owner_id,
-                  (b.owner_id=$2 OR b.is_visible=TRUE OR EXISTS (
-                    SELECT 1 FROM bot_student_shares s
-                    WHERE s.bot_id=b.id AND s.student_id=$2
-                  ) OR EXISTS (
-                    SELECT 1
-                    FROM bot_group_shares bg
-                    JOIN student_group_members gm ON gm.group_id=bg.group_id
-                    WHERE bg.bot_id=b.id AND gm.student_id=$2
-                      AND NOT EXISTS (
-                        SELECT 1 FROM bot_student_exclusions ex
-                        WHERE ex.bot_id=b.id AND ex.student_id=$2
-                      )
-                  )) AS allowed
-           FROM bots b WHERE b.id=$1 LIMIT 1`,
-          [normalizedSharedBotId, user.id]
-        );
-        if (!access.rowCount) {
+        const bot = await getAccessibleBot(normalizedSharedBotId, user.id);
+        if (!bot) {
           const error = new Error("shared bot not found");
           (error as any).status = 404;
           throw error;
         }
-        if (!access.rows[0].allowed) {
-          const error = new Error("you do not have access to this bot");
-          (error as any).status = 403;
-          throw error;
-        }
-        return { user, shared: access.rows[0].owner_id !== user.id, integration: false as const };
+        return { user, shared: bot.owner_id !== user.id, integration: false as const };
       }
       return { user, shared: false as const, integration: false as const };
     }
@@ -1544,16 +1522,10 @@ async function resolveChatActor(req: Request, sharedBotId?: string, botId?: stri
   }
 
   await ensurePlatformTables();
-  const result = await pool.query(
-    `SELECT owner_id
-     FROM bots
-     WHERE id=$1
-       AND is_visible=true
-       AND owner_id IS NOT NULL
-     LIMIT 1`,
-    [normalizedBotId]
-  );
-  const ownerId = String(result.rows[0]?.owner_id || "").trim();
+  // 未登入訪客：行公開路徑（同 getAccessibleBot 嘅 is_visible 分支一致）。
+  // owner_id 空（公開但冇主）一樣當 404，同原本條件等價。
+  const publicBot = await getAccessibleBot(normalizedBotId, null);
+  const ownerId = String(publicBot?.owner_id || "").trim();
   if (!ownerId) {
     const error = new Error("shared bot not found");
     (error as any).status = 404;
@@ -1902,7 +1874,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     // 知識庫原文，回覆後攞嚟計「已覆蓋知識點」狀態
     let characterKnowledgeBase = "";
     if (usageType === "chat_message" && normalizedBotId && normalizedBotId !== "default") {
-      const character = await getAccessibleCharacter(normalizedBotId, authUser.id);
+      const character = await getAccessibleBot(normalizedBotId, authUser.id);
       if (!character) return res.status(404).json({ error: "Character not found" });
       characterKnowledgeBase = character.knowledge_base || "";
       activeTopic = await resolveCharacterTopic({

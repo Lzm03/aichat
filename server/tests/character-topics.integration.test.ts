@@ -8,7 +8,7 @@ import {
   deleteCharacterTopic,
   ensureDefaultTopicForCharacter,
   ensureCharacterTopicTables,
-  getAccessibleCharacter,
+  getAccessibleBot,
   getCharacterTopic,
   listCharacterTopics,
   resolveCharacterTopic,
@@ -45,11 +45,49 @@ before(async () => {
       security_prompt TEXT,
       owner_id TEXT,
       is_visible BOOLEAN NOT NULL DEFAULT TRUE,
+      grade TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
   await pool.query(`
     CREATE TABLE bot_student_shares (
+      bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+      teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (bot_id, student_id)
+    )
+  `);
+  // getAccessibleBot 嘅群組分享路徑要用到呢三張表（真實 schema 由 platform-auth 建）
+  await pool.query(`
+    CREATE TABLE student_groups (
+      id TEXT PRIMARY KEY,
+      teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'class',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE student_group_members (
+      group_id TEXT NOT NULL REFERENCES student_groups(id) ON DELETE CASCADE,
+      student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (group_id, student_id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE bot_group_shares (
+      bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+      teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      group_id TEXT NOT NULL REFERENCES student_groups(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (bot_id, group_id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE bot_student_exclusions (
       bot_id TEXT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
       teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -73,7 +111,9 @@ before(async () => {
   await pool.query(
     `INSERT INTO users (id, full_name, email, role, password_hash)
      VALUES ('teacher_1','Teacher','teacher@example.test','teacher','test'),
-            ('student_1','Student','student@example.test','student','test')`
+            ('student_1','Student','student@example.test','student','test'),
+            ('group_student_1','Group Student','group_student@example.test','student','test'),
+            ('excluded_student_1','Excluded Student','excluded_student@example.test','student','test')`
   );
   await pool.query(
     `INSERT INTO bots (id, name, knowledge_base, security_prompt, owner_id, is_visible)
@@ -157,7 +197,7 @@ test("Topic lifecycle, limit, relationship validation, persistence, and legacy f
     (error: unknown) => error instanceof CharacterTopicError && error.code === "TOPIC_CHARACTER_MISMATCH"
   );
 
-  const character = await getAccessibleCharacter("chinese_teacher", "student_1");
+  const character = await getAccessibleBot("chinese_teacher", "student_1");
   assert.ok(character);
   const writingPrompt = composeCharacterTopicPrompt("CHARACTER_BASE", character!, writing);
   assert.match(writingPrompt, /WRITING_ONLY_INSTRUCTION/);
@@ -195,8 +235,47 @@ test("Topic lifecycle, limit, relationship validation, persistence, and legacy f
   );
   const legacyTopic = await resolveCharacterTopic({ characterId: "legacy_after_migration" });
   assert.equal(legacyTopic, null);
-  const legacyCharacter = await getAccessibleCharacter("legacy_after_migration", "teacher_1");
+  const legacyCharacter = await getAccessibleBot("legacy_after_migration", "teacher_1");
   assert.equal(composeCharacterTopicPrompt("LEGACY_BASE_PROMPT", legacyCharacter!, null), "LEGACY_BASE_PROMPT");
+
+  // 存取規則（getAccessibleBot）——全站唯一一套，改動呢度等於改所有入口
+  await pool.query(
+    `INSERT INTO bots (id, name, knowledge_base, security_prompt, owner_id, is_visible)
+     VALUES ('group_shared_character','Group Shared','GROUP_KNOWLEDGE','base safety','teacher_1',FALSE)`
+  );
+  await pool.query(
+    `INSERT INTO student_groups (id, teacher_id, name) VALUES ('group_1','teacher_1','Class 1')`
+  );
+  await pool.query(
+    `INSERT INTO student_group_members (group_id, student_id)
+     VALUES ('group_1','group_student_1'), ('group_1','excluded_student_1')`
+  );
+  await pool.query(
+    `INSERT INTO bot_group_shares (bot_id, teacher_id, group_id)
+     VALUES ('group_shared_character','teacher_1','group_1')`
+  );
+  await pool.query(
+    `INSERT INTO bot_student_exclusions (bot_id, teacher_id, student_id)
+     VALUES ('group_shared_character','teacher_1','excluded_student_1')`
+  );
+
+  assert.ok(await getAccessibleBot("group_shared_character", "teacher_1"), "擁有者入得");
+  assert.ok(await getAccessibleBot("group_shared_character", "group_student_1"), "群組分享學生入得");
+  assert.equal(
+    await getAccessibleBot("group_shared_character", "excluded_student_1"),
+    null,
+    "喺排除名單嘅學生唔入得"
+  );
+  assert.equal(
+    await getAccessibleBot("group_shared_character", "student_1"),
+    null,
+    "唔喺群組、非擁有者、非公開 → 唔入得"
+  );
+  assert.equal(
+    await getAccessibleBot("group_shared_character", null),
+    null,
+    "匿名對非公開 bot → 唔入得"
+  );
 
   const transactionClient = await pool.connect();
   let transactionOpen = false;
