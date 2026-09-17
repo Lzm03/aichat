@@ -474,7 +474,9 @@ router.get("/", requireAuth, async (req, res) => {
       [user?.id, user?.id]
     );
 
-    // 全班覆蓋：每隻 bot 有幾多知識點被「至少一個學生」覆蓋（跨對話累積）。
+    // 全班覆蓋：每隻 bot 有幾多知識點被名冊內學生覆蓋（跨對話累積）。
+    // 只計老師名冊（teacher_students）內嘅在學學生——老師測試自己隻 bot 都會寫
+    // 一行 bot_student_progress，唔過濾就會當佢係學生（口徑同 student-progress 一致）。
     const botIds = result.rows.map((row) => String(row.id));
     const coverageMap = new Map<string, { covered: number; total: number }>();
     // 當前知識點 id 集，用嚟同累積覆蓋 intersect。bot_student_progress 嘅寫入
@@ -488,8 +490,14 @@ router.get("/", requireAuth, async (req, res) => {
     }
     if (botIds.length) {
       const covResult = await pool.query(
-        `SELECT bot_id, covered_point_ids FROM bot_student_progress WHERE bot_id = ANY($1)`,
-        [botIds]
+        `SELECT bot_id, covered_point_ids FROM bot_student_progress
+         WHERE bot_id = ANY($1)
+           AND user_id IN (
+             SELECT ts.student_id FROM teacher_students ts
+             JOIN users u ON u.id = ts.student_id
+             WHERE ts.teacher_id = $2 AND u.status = 'active'
+           )`,
+        [botIds, user?.id]
       );
       const distinct = new Map<string, Set<string>>();
       for (const r of covResult.rows) {
@@ -1148,6 +1156,8 @@ router.get("/teacher/assessment-report", requireAuth, async (req, res) => {
 });
 
 // C3：老師「使用後總結」—— 每隻 Bot 每個知識點有幾多學生已掌握（跨對話累積）。
+// 只計老師名冊（teacher_students）內嘅在學學生：老師測試自己隻 bot 都會寫入
+// bot_student_progress / bot_conversation_states，唔過濾就會當佢係學生。
 router.get("/teacher/progress-overview", requireAuth, async (req, res) => {
   try {
     await ensurePlatformTables();
@@ -1171,8 +1181,14 @@ router.get("/teacher/progress-overview", requireAuth, async (req, res) => {
       const points = coreKnowledgePoints(String(row.knowledge_base || ""));
 
       const progressResult = await pool.query(
-        `SELECT covered_point_ids FROM bot_student_progress WHERE bot_id=$1`,
-        [botId]
+        `SELECT covered_point_ids FROM bot_student_progress
+         WHERE bot_id=$1
+           AND user_id IN (
+             SELECT ts.student_id FROM teacher_students ts
+             JOIN users u ON u.id = ts.student_id
+             WHERE ts.teacher_id = $2 AND u.status = 'active'
+           )`,
+        [botId, user.id]
       );
       const coveredCounts = new Map<string, number>();
       for (const p of progressResult.rows) {
@@ -1183,10 +1199,16 @@ router.get("/teacher/progress-overview", requireAuth, async (req, res) => {
       }
       const studentsWithProgress = progressResult.rows.length;
 
-      // 「常被跳過」：有幾多段對話喺 next_point 推唔動時跳走咗呢個點。
+      // 「常被跳過」：名冊內有幾多段對話喺 next_point 推唔動時跳走咗呢個點。
       const skipResult = await pool.query(
-        `SELECT skipped_point_ids FROM bot_conversation_states WHERE bot_id=$1`,
-        [botId]
+        `SELECT skipped_point_ids FROM bot_conversation_states
+         WHERE bot_id=$1
+           AND user_id IN (
+             SELECT ts.student_id FROM teacher_students ts
+             JOIN users u ON u.id = ts.student_id
+             WHERE ts.teacher_id = $2 AND u.status = 'active'
+           )`,
+        [botId, user.id]
       );
       const skipCounts = new Map<string, number>();
       for (const s of skipResult.rows) {
