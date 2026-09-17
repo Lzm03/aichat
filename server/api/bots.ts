@@ -1218,6 +1218,109 @@ router.get("/teacher/progress-overview", requireAuth, async (req, res) => {
   }
 });
 
+// 老師睇單一 Bot 嘅「每個學生掌握咗邊幾個知識點」（跨對話累積）。
+// progress-overview 只有全班聚合，做唔到 per-student；呢個 endpoint 補上
+// user_id 維度，同時供「班級知識覆蓋地圖」同「學生知識掌握」drawer 用。
+router.get("/teacher/student-progress", requireAuth, async (req, res) => {
+  try {
+    await ensurePlatformTables();
+    const user = getAuthUser(req);
+    if (!user || !["teacher", "admin"].includes(user.role)) {
+      return res.status(403).json({ error: "teacher account required" });
+    }
+
+    const botId = String(req.query.botId || "");
+    if (!botId) return res.status(400).json({ error: "missing botId" });
+
+    // 只准睇自己分享過嘅 Bot（同 progress-overview 同一道閘）
+    const botResult = await pool.query(
+      `SELECT b.id, b.knowledge_base
+       FROM bots b
+       JOIN bot_student_shares s ON s.bot_id = b.id
+       WHERE b.id=$1 AND s.teacher_id=$2
+       LIMIT 1`,
+      [botId, user.id]
+    );
+    if (!botResult.rows.length) return res.status(404).json({ error: "Bot not found" });
+
+    const points = coreKnowledgePoints(String(botResult.rows[0].knowledge_base || ""));
+    const validIds = new Set(points.map((point) => point.id));
+
+    const studentsResult = await pool.query(
+      `SELECT u.id, u.full_name, u.email
+       FROM teacher_students ts
+       JOIN users u ON u.id = ts.student_id
+       WHERE ts.teacher_id=$1 AND u.status='active'
+       ORDER BY u.full_name ASC, u.email ASC`,
+      [user.id]
+    );
+    const studentIds = studentsResult.rows.map((row) => String(row.id));
+
+    // 累積覆蓋（batched）。同當前知識點 intersect —— 寫入係 union、永不
+    // prune，老師改過知識點之後會有退役 id 留喺表度。
+    const coveredByStudent = new Map<string, string[]>();
+    const hasProgress = new Set<string>();
+    if (studentIds.length) {
+      const progressResult = await pool.query(
+        `SELECT user_id, covered_point_ids FROM bot_student_progress
+         WHERE bot_id=$1 AND user_id = ANY($2::text[])`,
+        [botId, studentIds]
+      );
+      for (const row of progressResult.rows) {
+        const studentId = String(row.user_id);
+        hasProgress.add(studentId);
+        const ids = Array.isArray(row.covered_point_ids)
+          ? row.covered_point_ids.map(String).filter((id) => validIds.has(id))
+          : [];
+        coveredByStudent.set(studentId, ids);
+      }
+    }
+
+    // 每人「目前學習」= 佢最新一段對話嘅 next_point_id。一個 query 攞晒，
+    // 喺 JS 度每 user 取第一行（updated_at DESC），同 /:botId/progress 一致。
+    const nextPointByStudent = new Map<string, { id: string; title: string }>();
+    if (studentIds.length) {
+      const stateResult = await pool.query(
+        `SELECT user_id, next_point_id FROM bot_conversation_states
+         WHERE bot_id=$1 AND user_id = ANY($2::text[])
+         ORDER BY updated_at DESC`,
+        [botId, studentIds]
+      );
+      for (const row of stateResult.rows) {
+        const studentId = String(row.user_id);
+        if (nextPointByStudent.has(studentId)) continue; // 只要最新嗰行
+        const point = points.find((item) => item.id === String(row.next_point_id || ""));
+        if (point) nextPointByStudent.set(studentId, { id: point.id, title: point.title });
+      }
+    }
+
+    return res.json({
+      botId,
+      total: points.length,
+      points: points.map((point) => ({
+        id: point.id,
+        tier: point.tier,
+        title: point.title,
+      })),
+      students: studentsResult.rows.map((row) => {
+        const studentId = String(row.id);
+        const coveredPointIds = coveredByStudent.get(studentId) || [];
+        return {
+          userId: studentId,
+          name: String(row.full_name || row.email || "學生"),
+          covered: coveredPointIds.length,
+          coveredPointIds,
+          hasProgressRow: hasProgress.has(studentId),
+          nextPoint: nextPointByStudent.get(studentId) || null,
+        };
+      }),
+    });
+  } catch (err) {
+    console.error("GET /teacher/student-progress Failed:", err);
+    return res.status(500).json({ error: "Failed to build student progress" });
+  }
+});
+
 /* -------------------- GET SINGLE BOT -------------------- */
 router.post("/precompute-sequences/all", async (req, res) => {
   const fps = Number(req.body?.fps || 25);
