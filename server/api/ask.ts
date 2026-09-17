@@ -44,6 +44,7 @@ import {
 } from "../../utils/chat-prompt.ts";
 import { normalizeUploadFilename } from "../../utils/uploadFilename.ts";
 import { combineExtractedFileText } from "../lib/knowledge-files.ts";
+import { KNOWLEDGE_EXTRACTION_SYSTEM_PROMPT } from "../lib/knowledge-extraction.ts";
 import {
   getAI,
   getVertexAccessToken,
@@ -1761,7 +1762,8 @@ router.post("/ask-file", requireAuth, upload.any(), async (req: Request, res: Re
     }
 
     const normalizedPromptText = combineExtractedFileText(nonEmptyParts, MAX_FILE_PROMPT_CHARS);
-    const systemPrompt: string = (req.body as any)?.systemPrompt || "";
+    // 抽取 prompt 只存在 server 端（IP 唔落前端 bundle / network）
+    const systemPrompt: string = KNOWLEDGE_EXTRACTION_SYSTEM_PROMPT;
     const reply = await askModelOnce(modelProvider, systemPrompt, normalizedPromptText);
     await consumeUserCredits(authUser!.id, "ask_file", 4, {
       fileNames: files.map((file) => file.originalname),
@@ -1797,9 +1799,11 @@ router.post("/ask-url", requireAuth, async (req: Request, res: Response) => {
   try {
     const authUser = getAuthUser(req);
     await assertUserCanSpend(authUser!.id, 2);
-    const { systemPrompt = "", url = "", modelProvider = "deepseek" } = req.body as any;
+    const { url = "", modelProvider = "deepseek" } = req.body as any;
     const selectedModelProvider = normalizeChatModelProvider(modelProvider);
     if (!url || typeof url !== "string") return res.status(400).json({ error: "缺少網址" });
+    // 抽取 prompt 只存在 server 端
+    const systemPrompt: string = KNOWLEDGE_EXTRACTION_SYSTEM_PROMPT;
     const targetUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
     let pageText = "";
     if (MOCK_UPSTREAM) {
@@ -1889,6 +1893,10 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
 
     let activeTopic = null as Awaited<ReturnType<typeof resolveCharacterTopic>>;
     let effectiveSystemPrompt = String(systemPrompt || "");
+    // 知識抽取（文字）走 server 端 prompt，唔理 client 傳嚟嘅 systemPrompt
+    if (usageType === "knowledge_extraction") {
+      effectiveSystemPrompt = KNOWLEDGE_EXTRACTION_SYSTEM_PROMPT;
+    }
     // 年級帶（L1 prompt 難度規則）；null = 未設定，唔套用難度規則
     let characterGradeBand: string | null = null;
     // 知識庫原文，回覆後攞嚟計「已覆蓋知識點」狀態
