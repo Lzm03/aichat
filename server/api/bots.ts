@@ -16,6 +16,7 @@ import { ensureQuizTables } from "./quizzes.ts";
 import {
   ensureDefaultTopicForCharacter,
   ensureCharacterTopicTables,
+  getAccessibleBot,
   syncInheritedTopicKnowledge,
 } from "../lib/character-topics.ts";
 import { ensureDefaultTeacherExperience } from "../lib/default-teacher-experience.ts";
@@ -879,12 +880,11 @@ router.get("/:botId/progress", requireAuth, async (req, res) => {
     const botId = String(req.params.botId || "");
     if (!botId) return res.status(400).json({ error: "missing botId" });
 
-    const botResult = await pool.query(
-      `SELECT id, name, knowledge_base FROM bots WHERE id=$1`,
-      [botId]
-    );
-    if (!botResult.rows.length) return res.status(404).json({ error: "Bot not found" });
-    const bot = botResult.rows[0];
+    // 存取閘：同對話入口（ask.ts）同一套規則——擁有者 / 公開 / 直接分享 /
+    // 群組分享（未被排除）。唔可以「知 bot id 就讀到知識點內容」，所以
+    // 冇權限同唔存在一樣回 404，唔洩漏 bot 存唔存在。
+    const bot = await getAccessibleBot(botId, user?.id);
+    if (!bot) return res.status(404).json({ error: "Bot not found" });
 
     const points = coreKnowledgePoints(String(bot.knowledge_base || ""));
     const coveredIds = await getStudentProgress(botId, user.id);
