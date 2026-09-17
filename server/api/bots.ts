@@ -943,7 +943,13 @@ router.get("/teacher/assessment-report", requireAuth, async (req, res) => {
       `SELECT s.student_id, b.id AS bot_id, b.name AS bot_name, b.knowledge_base, b.avatar_url AS bot_avatar_url
        FROM bot_student_shares s
        JOIN bots b ON b.id = s.bot_id
-       WHERE s.teacher_id=$1`,
+       LEFT JOIN LATERAL (
+         SELECT MAX(m.created_at) AS last_message_at
+         FROM bot_chat_messages m
+         WHERE m.bot_id = b.id AND m.teacher_id = s.teacher_id
+       ) lm ON TRUE
+       WHERE s.teacher_id=$1
+       ORDER BY lm.last_message_at DESC NULLS LAST, b.updated_at DESC`,
       [user.id]
     );
 

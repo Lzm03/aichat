@@ -2,7 +2,7 @@ import { uiText, uiTemplate, uiLocale } from '../../utils/uiI18n';
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from '../icons';
-import { Target, ArrowLeft, ChevronRight, AlertCircle, BookOpen, CheckCircle2, Sparkles, X, BarChart3, ChevronDown, MessageCircle, Search, Clock3 } from 'lucide-react';
+import { Target, ArrowLeft, ChevronRight, AlertCircle, BookOpen, CheckCircle2, Sparkles, X, BarChart3, ChevronDown, ChevronUp, MessageCircle, Search, Clock3 } from 'lucide-react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
 import { readAuthSession } from '../../utils/auth';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
@@ -106,6 +106,9 @@ const getMasteryTone = (mastery: number) => {
   return { label: '需要加強', color: 'rose', bar: 'bg-rose-500', soft: 'bg-rose-50 text-rose-700', ring: 'ring-rose-100' };
 };
 
+/** 能力追蹤報告 bot 列表預設顯示數量，超出部分靠「看更多」摺叠展開 */
+const MAX_VISIBLE_BOTS = 10;
+
 export const StudentLearningReportCard = () => {
   const currentRole = readAuthSession()?.user?.role;
   const canViewClassAssessmentDetail = currentRole === 'teacher' || currentRole === 'admin';
@@ -118,6 +121,7 @@ export const StudentLearningReportCard = () => {
   const [sharedBots, setSharedBots] = useState<SharedBotOption[]>([]);
   const [selectedBotId, setSelectedBotId] = useState('');
   const [studentProgressData, setStudentProgressData] = useState<StudentProgressPayload | null>(null);
+  const [showAllBots, setShowAllBots] = useState(false);
   const [interactionSummary, setInteractionSummary] = useState<{
     independentRate: number;
     assistedRate: number;
@@ -401,7 +405,7 @@ export const StudentLearningReportCard = () => {
               </div>
             </div>
             <div className="space-y-2 flex-1">
-              {sharedBots.length ? sharedBots.map((bot) => {
+              {sharedBots.length ? (showAllBots ? sharedBots : sharedBots.slice(0, MAX_VISIBLE_BOTS)).map((bot) => {
                 return (
                   <button
                     key={bot.id}
@@ -432,6 +436,18 @@ export const StudentLearningReportCard = () => {
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-[11px] text-slate-500">
                   {assessmentLoading ? uiText('正在同步能力追蹤資料…') : assessmentError ? uiText('暫時無法載入能力追蹤資料，請稍後再試。') : uiText('尚未分享 AI 夥伴給學生；分享後會在此累積真實互動資料。')}
                 </div>
+              )}
+              {sharedBots.length > MAX_VISIBLE_BOTS && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllBots((value) => !value)}
+                  className="flex w-full items-center justify-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-500 transition-colors hover:text-indigo-600"
+                >
+                  {showAllBots
+                    ? uiText("收起")
+                    : uiTemplate("看更多（還有 {0} 個）", String(sharedBots.length - MAX_VISIBLE_BOTS))}
+                  {showAllBots ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
               )}
             </div>
           </motion.div>

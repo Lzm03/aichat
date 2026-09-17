@@ -633,6 +633,7 @@ export const englishUi: Record<string, string> = {
   "🏅 勳章收藏": "🏅 Badge Collection",
   "已解鎖": "Unlocked",
   "收起": "Collapse",
+  "看更多（還有 {0} 個）": "Show more ({0} remaining)",
   "展開全部": "Expand All",
   "測試題": "Quiz",
   "未分類": "Uncategorized",
