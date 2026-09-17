@@ -477,9 +477,14 @@ router.get("/", requireAuth, async (req, res) => {
     // 全班覆蓋：每隻 bot 有幾多知識點被「至少一個學生」覆蓋（跨對話累積）。
     const botIds = result.rows.map((row) => String(row.id));
     const coverageMap = new Map<string, { covered: number; total: number }>();
+    // 當前知識點 id 集，用嚟同累積覆蓋 intersect。bot_student_progress 嘅寫入
+    // 係 jsonb union、永不 prune，老師改過知識點之後會有退役 id 留喺表度，
+    // 唔過濾就會出現 covered > total。
+    const validIdsByBot = new Map<string, Set<string>>();
     for (const row of result.rows) {
-      const total = coreKnowledgePoints(String(row.knowledge_base || "")).length;
-      coverageMap.set(String(row.id), { covered: 0, total });
+      const points = coreKnowledgePoints(String(row.knowledge_base || ""));
+      coverageMap.set(String(row.id), { covered: 0, total: points.length });
+      validIdsByBot.set(String(row.id), new Set(points.map((point) => point.id)));
     }
     if (botIds.length) {
       const covResult = await pool.query(
@@ -497,7 +502,8 @@ router.get("/", requireAuth, async (req, res) => {
       }
       for (const [botId, set] of distinct) {
         const m = coverageMap.get(botId);
-        if (m) m.covered = set.size;
+        const validIds = validIdsByBot.get(botId);
+        if (m && validIds) m.covered = [...set].filter((id) => validIds.has(id)).length;
       }
     }
 
@@ -836,8 +842,11 @@ router.get("/shared/with-me", requireAuth, async (req, res) => {
     }
     return res.json(rows.map((row) => {
       const knowledgeBase = String(row.knowledge_base || "");
-      const total = coreKnowledgePoints(knowledgeBase).length;
-      const covered = progressMap.get(String(row.id))?.length || 0;
+      const points = coreKnowledgePoints(knowledgeBase);
+      // 同當前知識點 intersect：bot_student_progress 係 union 寫入、永不 prune，
+      // 唔過濾就會出現 covered > total。（同 GET / 嘅班級覆蓋一樣道理）
+      const validIds = new Set(points.map((point) => point.id));
+      const covered = (progressMap.get(String(row.id)) || []).filter((id) => validIds.has(id)).length;
       return {
         ...toClient(row),
         teacherName: row.teacher_name || "",
@@ -845,7 +854,7 @@ router.get("/shared/with-me", requireAuth, async (req, res) => {
         hasPendingQuiz: Boolean(row.active_quiz_id) && row.active_quiz_attempt_status !== "completed",
         activeQuizId: row.active_quiz_id || "",
         activeQuizTitle: row.active_quiz_title || "",
-        progress: { covered, total },
+        progress: { covered, total: points.length },
       };
     }));
   } catch (err) {
