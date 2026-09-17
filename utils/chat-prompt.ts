@@ -167,6 +167,66 @@ export function parseKnowledgePoints(raw: string): KnowledgePoint[] {
   }
 }
 
+/** `kp_007` → 7；唔符合格式（自訂 id）回 0。 */
+function numericIdSuffix(id: unknown): number {
+  const match = /^kp_(\d+)$/.exec(String(id || ""));
+  return match ? Number(match[1]) : 0;
+}
+
+/** 由現有知識點算出下一個可用 id：max(數值後綴)+1，永不重用。 */
+export function nextKnowledgePointId(points: Array<{ id?: string }>): string {
+  const highest = points.reduce((max, point) => Math.max(max, numericIdSuffix(point.id)), 0);
+  return `kp_${String(highest + 1).padStart(3, "0")}`;
+}
+
+/**
+ * 重新生成知識點之後穩定 id，令舊覆蓋進度唔會對錯點。
+ *
+ * 背景：老師每次重新提取，LLM 都回一批新點。若照位重編 kp_001..kp_00N，
+ * bot_student_progress 入面嘅舊 id 就會指去完全唔同嘅知識點（位置撞 id），
+ * 學生會顯示「掌握咗從未學過嘅嘢」。
+ *
+ * 規則（依序）：
+ *   1. title（trim 後）同舊點一致 → 保留舊 id（改錯字／改內容都唔會清零進度）
+ *   2. 其餘 → 派新 id（max+1），永不重用已退役嘅號
+ *
+ * 刻意唔保留「點自己帶嘅 id」：提取路徑嘅 id 唔係 LLM 位置性編號（kp_001…）
+ * 就係 fallback 照行數生成，兩者都同內容無對應關係，保留只會製造同一個 bug。
+ */
+export function assignStableKnowledgePointIds<T extends { id?: string; title?: string }>(
+  points: T[],
+  previousPoints: Array<{ id?: string; title?: string }>
+): T[] {
+  const byTitle = new Map<string, string>();
+  for (const point of previousPoints) {
+    const title = String(point.title || "").trim();
+    if (title && point.id && !byTitle.has(title)) byTitle.set(title, String(point.id));
+  }
+
+  const used = new Set<string>();
+  // 新號一定要高過所有「舊點」嘅號：舊點就算已經退役，佢個號仍然帶住學生嘅
+  // 覆蓋紀錄，重用就會令進度對錯知識點。今批點自己嘅暫定 id 唔計 —— 佢哋
+  // 一係 LLM 位置性編號、一係 fallback 照行數生成，全部都唔會保留。
+  let highest = previousPoints.reduce(
+    (max, point) => Math.max(max, numericIdSuffix(point.id)),
+    0
+  );
+
+  return points.map((point) => {
+    const title = String(point.title || "").trim();
+    const inherited = title ? byTitle.get(title) : undefined;
+    let id: string;
+    if (inherited && !used.has(inherited)) {
+      id = inherited;
+    } else {
+      highest += 1;
+      id = `kp_${String(highest).padStart(3, "0")}`;
+    }
+    used.add(id);
+    return { ...point, id };
+  });
+}
+
 function inferLinguisticRhythm(personaProfile: string) {
   const speakingStyle = matchSection(personaProfile, "說話風格");
   if (speakingStyle) return `一句不超過 120 字；語氣風格為：${speakingStyle}。`;

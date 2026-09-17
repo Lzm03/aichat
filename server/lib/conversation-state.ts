@@ -164,6 +164,15 @@ export async function trackConversationState(input: {
       ? new Set<string>(previous.covered_point_ids)
       : new Set<string>(await getStudentProgress(input.botId, input.userId));
 
+    // 老師改過知識點之後，舊 id 可能已經退役（例如重新生成後 title 對唔上）。
+    // 呢啲 id 唔應該再入 conversation state / prompt：Covered_Points 會將佢哋
+    // 渲染成裸 id，而且 computeCoreCovered 由 seed 起步，會將佢哋當成已覆蓋
+    // 一路帶落去，令學生永遠唔會再被教嗰點。
+    const validIds = new Set(points.map((point) => point.id));
+    for (const id of [...previouslyCovered]) {
+      if (!validIds.has(id)) previouslyCovered.delete(id);
+    }
+
     // 只計「角色自己講過」嘅內容。學生講出知識點名字唔等於教過 ——
     // 2026-09-12 端到端測試實證：舊版將學生訊息一齊拼入嚟，學生問一句
     // 「榫卯係咩嚟㗎？」就即刻令 kp_001 標記已覆蓋，6 個知識點有 4 個

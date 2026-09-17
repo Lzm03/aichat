@@ -263,10 +263,10 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       const deepPoints = points.filter((point) => point.tier === "deep_understanding").slice(0, MAX_POINTS_PER_TIER);
       return [...basicFacts, ...deepPoints]
         .slice(0, MAX_KNOWLEDGE_POINTS)
-        .map((point, index) => ({
+        .map((point) => ({
           ...point,
           title: point.title?.trim() || createKnowledgeTitle(point.content, point.keywords),
-          id: `kp_${String(index + 1).padStart(3, "0")}`,
+          // 唔重編 id：呢條係載入路徑，存量 id 係權威來源，重編會令覆蓋進度對錯點
           core: point.core !== false,
         }));
     };

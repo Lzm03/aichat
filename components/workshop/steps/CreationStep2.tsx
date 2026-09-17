@@ -8,7 +8,7 @@ import { usePlatformDialog } from "../../../hooks/usePlatformDialog";
 import { PlatformDialog } from "../../system/PlatformDialog";
 import { SUBJECT_OPTIONS } from "../../../utils/subjects";
 import { GRADE_BANDS } from "../../../utils/grades";
-import { buildStoredKnowledgeBase } from "../../../utils/chat-prompt";
+import { assignStableKnowledgePointIds, buildStoredKnowledgeBase, nextKnowledgePointId } from "../../../utils/chat-prompt";
 import { TeachingSimulationPanel } from "./TeachingSimulationPanel";
 
 type UploadMethod = "file" | "url" | "text";
@@ -163,10 +163,11 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
     const basicFacts = points.filter((point) => point.tier === "basic_fact").slice(0, MAX_POINTS_PER_TIER);
     const deepPoints = points.filter((point) => point.tier === "deep_understanding").slice(0, MAX_POINTS_PER_TIER);
     const combined = [...basicFacts, ...deepPoints].slice(0, MAX_KNOWLEDGE_POINTS);
-    return combined.map((point, index) => ({
+    // 唔喺呢度重編 id：交俾 assignStableKnowledgePointIds 保留舊 id，
+    // 否則重新提取會令學生既有嘅覆蓋進度對錯知識點。
+    return combined.map((point) => ({
       ...point,
       title: point.title?.trim() || createKnowledgeTitle(point.content, point.keywords),
-      id: `kp_${String(index + 1).padStart(3, "0")}`,
     }));
   };
 
@@ -197,6 +198,13 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       core: point?.core !== false,
     };
   };
+
+  // 重新提取時用嚟配對舊 id 嘅「上一次知識點」。resetState 會清空
+  // knowledgePoints，所以要另外存一份，唔係重新提取就冇嘢可以配對。
+  const previousPointsRef = useRef<KnowledgePoint[]>(initialData?.knowledgePoints || []);
+  useEffect(() => {
+    if (knowledgePoints.length) previousPointsRef.current = knowledgePoints;
+  }, [knowledgePoints]);
 
   const resetState = () => {
     setFiles([]);
@@ -360,7 +368,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
     return data;
   };
 
-  const parseKnowledgeReply = (reply: string) => {
+  const parseKnowledgeReply = (reply: string, previousPoints: KnowledgePoint[] = []) => {
     let parsed: any = null;
     try {
       parsed = JSON.parse(reply);
@@ -376,9 +384,12 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
     }
 
     if (parsed && Array.isArray(parsed.knowledge_points)) {
-      const points = trimKnowledgePoints(parsed.knowledge_points
-        .map((point: any, index: number) => normalizeKnowledgePoint(point, index))
-        .filter(Boolean) as KnowledgePoint[]);
+      const points = assignStableKnowledgePointIds(
+        trimKnowledgePoints(parsed.knowledge_points
+          .map((point: any, index: number) => normalizeKnowledgePoint(point, index))
+          .filter(Boolean) as KnowledgePoint[]),
+        previousPoints
+      );
       const bg = String(parsed.character_background || parsed.characterBackground || "").trim()
         || "我會根據你提供的資料進行回答與整理。";
       return { bg, ks: buildKnowledgeSummary(points), points };
@@ -415,7 +426,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
     return {
       bg: reply.split("\n\n")[0]?.trim() || "我會根據你提供的資料進行回答與整理。",
       ks: buildKnowledgeSummary(cleanedLines),
-      points: cleanedLines,
+      points: assignStableKnowledgePointIds(cleanedLines, previousPoints),
     };
   };
 
@@ -448,7 +459,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       }
 
       const reply = result.reply || "";
-      const { bg, ks, points } = parseKnowledgeReply(reply);
+      const { bg, ks, points } = parseKnowledgeReply(reply, previousPointsRef.current);
 
       setCharacterBackground(bg);
       setKnowledgeSummary(ks);
@@ -533,7 +544,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       .filter(Boolean)
       .slice(0, 5);
     const nextPoint: KnowledgePoint = {
-      id: `kp_${String(knowledgePoints.length + 1).padStart(3, "0")}`,
+      // max+1 而唔係 length+1：刪咗中間嘅點之後 length 會細過最大號，會撞 id
+      id: nextKnowledgePointId(knowledgePoints),
       tier: newPointTier,
       title: newPointTitle.trim() || createKnowledgeTitle(content, keywords),
       content,
