@@ -919,6 +919,7 @@ export const englishUi: Record<string, string> = {
   "模擬請求失敗：": "Simulation request failed: ",
   "已覆蓋 {0}/{1} 知識點": "Covered {0}/{1} knowledge points",
   "學習進度": "Learning Progress",
+  "目前學習：{0}": "Learning now: {0}",
   "知識點掌握概覽": "Knowledge Mastery Overview",
   "跳過": "Skipped",
   "此知識點曾多次推唔動而被跳過": "This knowledge point was repeatedly skipped because it could not be advanced.",

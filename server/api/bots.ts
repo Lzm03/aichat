@@ -873,10 +873,24 @@ router.get("/:botId/progress", requireAuth, async (req, res) => {
     const coveredIds = await getStudentProgress(botId, user.id);
     const coveredSet = new Set(coveredIds);
 
+    // "目前學習"：最新一段對話嘅 next_point_id。跨對話會有少少滯後，
+    // 新對話第一輪回覆後就自癒。
+    let nextPoint: { id: string; title: string } | null = null;
+    const stateResult = await pool.query(
+      `SELECT next_point_id FROM bot_conversation_states WHERE bot_id=$1 AND user_id=$2 ORDER BY updated_at DESC LIMIT 1`,
+      [botId, user.id]
+    );
+    const nextPointId = stateResult.rows.length ? String(stateResult.rows[0].next_point_id || "") : "";
+    if (nextPointId) {
+      const point = points.find((item) => item.id === nextPointId);
+      if (point) nextPoint = { id: point.id, title: point.title };
+    }
+
     return res.json({
       botId,
       total: points.length,
       covered: points.filter((point) => coveredSet.has(point.id)).length,
+      nextPoint,
       coveredPointIds: coveredIds,
       points: points.map((point) => ({
         id: point.id,
