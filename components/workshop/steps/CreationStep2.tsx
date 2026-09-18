@@ -8,8 +8,20 @@ import { usePlatformDialog } from "../../../hooks/usePlatformDialog";
 import { PlatformDialog } from "../../system/PlatformDialog";
 import { SUBJECT_OPTIONS } from "../../../utils/subjects";
 import { GRADE_BANDS } from "../../../utils/grades";
-import { assignStableKnowledgePointIds, buildStoredKnowledgeBase, nextKnowledgePointId } from "../../../utils/chat-prompt";
+import { assignStableKnowledgePointIds, buildStoredKnowledgeBase, nextKnowledgePointId, parsePromptSource } from "../../../utils/chat-prompt";
 import { TeachingSimulationPanel } from "./TeachingSimulationPanel";
+import { TopicVersionTabs, type TopicVersionMeta } from "../topics/TopicVersionTabs";
+import { AssignmentModeDialog, type AssignmentMode } from "../topics/AssignmentModeDialog";
+import {
+  createCharacterTopic,
+  deleteCharacterTopic,
+  getCharacterTopic,
+  listCharacterTopics,
+  listTopicCategoryLabels,
+  saveTopicCategoryLabels,
+  updateCharacterTopic,
+} from "../../../utils/topic-api";
+import { MAX_CUSTOM_CATEGORY_LABELS } from "../../../utils/topic-categories";
 
 type UploadMethod = "file" | "url" | "text";
 type KnowledgeTier = "basic_fact" | "deep_understanding";
@@ -84,9 +96,13 @@ interface CreationStep2Props {
   botName?: string;
   /** 安全提示詞（教學模擬預覽用；唔影響儲存） */
   securityPrompt?: string;
+  /** 已發佈 Bot 嘅 id（編輯模式）；null = 新建模式（版本存本地，發布時先落庫） */
+  characterId?: string | null;
+  /** 版本列表 + 每版本知識點（供 CreationFlow 發布時建立話題） */
+  onVersionsChange?: (versions: Array<TopicVersionMeta & { points: KnowledgePoint[] }>) => void;
 }
 
-export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, afterKnowledgePointEditor, subject = "", onSubjectChange, grade = "", onGradeChange, botName = "", securityPrompt = "" }) => {
+export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, afterKnowledgePointEditor, subject = "", onSubjectChange, grade = "", onGradeChange, botName = "", securityPrompt = "", characterId = null, onVersionsChange }) => {
   const [uploadMethod, setUploadMethod] = useState<UploadMethod>("file");
   const modelProvider = "gemini";
   const [files, setFiles] = useState<File[]>([]);
@@ -121,7 +137,40 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
     originY: 0,
   });
   const graphViewportRef = useRef<HTMLDivElement | null>(null);
-  const { dialog, closeDialog, showAlert } = usePlatformDialog();
+  const { dialog, closeDialog, showAlert, showConfirm } = usePlatformDialog();
+
+  // --------------------------
+  // 🔥 主題版本（知識地圖 Tab 架構；docs/knowledge-map-topic-versions.md）
+  // --------------------------
+  const [versions, setVersions] = useState<TopicVersionMeta[]>([
+    { id: null, name: "版本一", category: "", isDefault: true },
+  ]);
+  const [activeVersionIndex, setActiveVersionIndex] = useState(0);
+  const [maxVersions, setMaxVersions] = useState(4);
+  const [customLabels, setCustomLabels] = useState<string[]>([]);
+  const [assignmentOpen, setAssignmentOpen] = useState(false);
+  const [assignmentFileNames, setAssignmentFileNames] = useState<string[]>([]);
+  const assignmentResolveRef = useRef<((mode: AssignmentMode | null) => void) | null>(null);
+  /** 每個版本嘅知識點（active 版本嘅權威來源係 knowledgePoints state） */
+  const pointsByVersionRef = useRef<Record<number, KnowledgePoint[]>>({});
+
+  const pointsOfVersion = (index: number) => pointsByVersionRef.current[index] ?? [];
+
+  const buildVersionKnowledgeContent = (points: KnowledgePoint[]) =>
+    `【知識點分級】\n${JSON.stringify(points, null, 2)}`;
+
+  useEffect(() => {
+    pointsByVersionRef.current[activeVersionIndex] = knowledgePoints;
+  }, [knowledgePoints, activeVersionIndex]);
+
+  useEffect(() => {
+    onVersionsChange?.(
+      versions.map((version, index) => ({
+        ...version,
+        points: index === activeVersionIndex ? knowledgePoints : pointsOfVersion(index),
+      }))
+    );
+  }, [versions, knowledgePoints, activeVersionIndex]);
 
   const baseUrl = import.meta.env.VITE_API_URL;
 
@@ -234,15 +283,87 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
     }
   }, [initialData?.characterBackground, initialData?.knowledgeSummary, initialData?.knowledgePoints]);
 
+  // 編輯模式：由話題 API 載入主題版本；新建模式：本地「版本一」。
+  useEffect(() => {
+    if (!characterId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { topics, maxTopics } = await listCharacterTopics(characterId);
+        if (cancelled) return;
+        setMaxVersions(maxTopics);
+        const loaded: TopicVersionMeta[] = topics
+          .slice()
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map((topic) => ({
+            id: topic.id,
+            name: topic.name,
+            category: topic.category || "",
+            isDefault: topic.isDefault,
+          }));
+        if (!loaded.length) return;
+        setVersions(loaded);
+        const details = await Promise.all(
+          topics.map((topic) => getCharacterTopic(characterId, topic.id).catch(() => null))
+        );
+        if (cancelled) return;
+        details.forEach((detail, index) => {
+          if (detail) {
+            pointsByVersionRef.current[index] = parsePromptSource({
+              knowledgeBase: detail.knowledgeContent,
+            }).knowledgePoints as unknown as KnowledgePoint[];
+          }
+        });
+        const defaultIndex = loaded.findIndex((version) => version.isDefault);
+        const firstIndex = defaultIndex >= 0 ? defaultIndex : 0;
+        setActiveVersionIndex(firstIndex);
+        const firstPoints = pointsOfVersion(firstIndex);
+        setKnowledgePoints(firstPoints);
+        setKnowledgeSummary(buildKnowledgeSummary(firstPoints));
+      } catch (error) {
+        console.warn("載入主題版本失敗：", error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [characterId]);
+
+  // 帳戶層自訂分類標籤（跨 Bot 共用）
+  useEffect(() => {
+    let cancelled = false;
+    listTopicCategoryLabels()
+      .then((data) => {
+        if (!cancelled) setCustomLabels(data.labels || []);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     if (!characterBackground.trim() && !knowledgeSummary.trim()) return;
+    // 主知識庫跟「默認版本」同步（覆蓋追蹤／無話題對話用默認版本）
+    const defaultIndex = versions.findIndex((version) => version.isDefault);
+    const effectivePoints =
+      defaultIndex >= 0
+        ? defaultIndex === activeVersionIndex
+          ? knowledgePoints
+          : pointsOfVersion(defaultIndex)
+        : knowledgePoints;
     const personaProfile = [
       `【性格特質】${personalityTraits.join("、") || "未設定"}`,
       `【説話風格】${speakingStyle}`,
       `【答題策略】${answerMode}`,
     ].join("\n");
-    onGenerated({ characterBackground, knowledgeSummary, personaProfile, knowledgePoints });
-  }, [personalityTraits, speakingStyle, answerMode, characterBackground, knowledgeSummary, knowledgePoints]);
+    onGenerated({
+      characterBackground,
+      knowledgeSummary: buildKnowledgeSummary(effectivePoints),
+      personaProfile,
+      knowledgePoints: effectivePoints,
+    });
+  }, [personalityTraits, speakingStyle, answerMode, characterBackground, knowledgePoints, versions, activeVersionIndex]);
 
   useEffect(() => {
     if (status !== "processing") return;
@@ -295,6 +416,20 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       body: form,
     });
 
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || "文件解析失敗");
+    return data;
+  };
+
+  /** 單檔提取（「各自獨立」／「加進現有版本」模式用） */
+  const processSingleFile = async (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("modelProvider", modelProvider);
+    const res = await fetch(`${baseUrl}/api/ask-file`, {
+      method: "POST",
+      body: form,
+    });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error || "文件解析失敗");
     return data;
@@ -419,6 +554,181 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   };
 
   // --------------------------
+  // 🔥 主題版本操作
+  // --------------------------
+  const persistVersionPatch = async (version: TopicVersionMeta, patch: Record<string, unknown>) => {
+    if (!characterId || !version.id) return;
+    try {
+      await updateCharacterTopic(characterId, version.id, patch as any);
+    } catch (error) {
+      console.warn("版本儲存失敗：", error);
+      showAlert({ title: uiText("儲存失敗"), message: (error as Error)?.message || uiText("版本儲存失敗，請稍後再試") });
+    }
+  };
+
+  const handleSelectVersion = async (index: number) => {
+    if (index === activeVersionIndex) return;
+    const current = versions[activeVersionIndex];
+    if (current?.id) {
+      await persistVersionPatch(current, { knowledgeContent: buildVersionKnowledgeContent(knowledgePoints) });
+    }
+    pointsByVersionRef.current[activeVersionIndex] = knowledgePoints;
+    setActiveVersionIndex(index);
+    const nextPoints = pointsOfVersion(index);
+    setKnowledgePoints(nextPoints);
+    setKnowledgeSummary(buildKnowledgeSummary(nextPoints));
+  };
+
+  const handleAddVersion = async () => {
+    if (versions.length >= maxVersions) return;
+    if (characterId) {
+      try {
+        const topic = await createCharacterTopic(characterId, {
+          name: `版本${versions.length + 1}`,
+          description: "",
+          systemPrompt: "",
+          knowledgeContent: "",
+          category: "單元課本",
+          isDefault: false,
+        });
+        const next = [...versions, { id: topic.id, name: topic.name, category: topic.category || "", isDefault: topic.isDefault }];
+        setVersions(next);
+        setActiveVersionIndex(next.length - 1);
+        setKnowledgePoints([]);
+        setKnowledgeSummary("");
+      } catch (error) {
+        showAlert({ title: uiText("無法新增版本"), message: (error as Error)?.message || uiText("每隻 Bot 最多 4 個主題版本") });
+      }
+      return;
+    }
+    const next = [...versions, { id: null, name: `版本${versions.length + 1}`, category: "", isDefault: false }];
+    setVersions(next);
+    setActiveVersionIndex(next.length - 1);
+    setKnowledgePoints([]);
+    setKnowledgeSummary("");
+  };
+
+  const handleRemoveVersion = async (index: number) => {
+    if (versions.length <= 1) return;
+    const version = versions[index];
+    const doRemove = async () => {
+      if (characterId && version.id) {
+        try {
+          const result = await deleteCharacterTopic(characterId, version.id);
+          const next = versions
+            .filter((_, itemIndex) => itemIndex !== index)
+            .map((item) => ({ ...item, isDefault: item.id === result.defaultTopicId }));
+          setVersions(next);
+        } catch (error) {
+          showAlert({ title: uiText("無法刪除版本"), message: (error as Error)?.message || uiText("刪除版本失敗，請稍後再試") });
+          return;
+        }
+      } else {
+        const removedDefault = version.isDefault;
+        const next = versions.filter((_, itemIndex) => itemIndex !== index);
+        if (removedDefault && next.length) next[0] = { ...next[0], isDefault: true };
+        setVersions(next);
+      }
+      // 清走被刪版本嘅知識點緩存，重新對位
+      const remaining = versions.filter((_, itemIndex) => itemIndex !== index);
+      const newPointsMap: Record<number, KnowledgePoint[]> = {};
+      remaining.forEach((item, itemIndex) => {
+        newPointsMap[itemIndex] = pointsByVersionRef.current[itemIndex >= index ? itemIndex + 1 : itemIndex] ?? [];
+      });
+      pointsByVersionRef.current = newPointsMap;
+      const nextIndex = Math.min(index, remaining.length - 1);
+      setActiveVersionIndex(nextIndex);
+      setKnowledgePoints(pointsOfVersion(nextIndex));
+      setKnowledgeSummary(buildKnowledgeSummary(pointsOfVersion(nextIndex)));
+    };
+    showConfirm({
+      title: uiText("刪除主題版本"),
+      message: uiText("刪除後呢個版本嘅知識點同學生覆蓋進度會一併移除，確定？"),
+      confirmText: uiText("刪除"),
+      onConfirm: doRemove,
+    });
+  };
+
+  const handleRenameVersion = async (index: number, name: string) => {
+    const next = versions.map((version, itemIndex) => (itemIndex === index ? { ...version, name } : version));
+    setVersions(next);
+    await persistVersionPatch(next[index], { name });
+  };
+
+  const handleCategoryChange = async (index: number, category: string) => {
+    const next = versions.map((version, itemIndex) => (itemIndex === index ? { ...version, category } : version));
+    setVersions(next);
+    await persistVersionPatch(next[index], { category });
+  };
+
+  const handleAddCustomLabel = async (label: string) => {
+    if (!label || customLabels.includes(label)) return;
+    if (customLabels.length >= MAX_CUSTOM_CATEGORY_LABELS) {
+      showAlert({ title: uiText("自訂標籤已滿"), message: uiText("最多 10 個自訂標籤，可先刪除唔再用嘅") });
+      return;
+    }
+    const next = [...customLabels, label];
+    setCustomLabels(next);
+    try {
+      await saveTopicCategoryLabels(next);
+    } catch (error) {
+      console.warn("自訂標籤儲存失敗：", error);
+    }
+  };
+
+  const handleSetDefault = async (index: number) => {
+    const next = versions.map((version, itemIndex) => ({ ...version, isDefault: itemIndex === index }));
+    setVersions(next);
+    await persistVersionPatch(next[index], { isDefault: true });
+  };
+
+  const handleReorder = async (from: number, to: number) => {
+    if (from === to) return;
+    const next = [...versions];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setVersions(next);
+    // 同步知識點緩存順序
+    const fromPoints = pointsByVersionRef.current[from] ?? [];
+    const newMap: Record<number, KnowledgePoint[]> = {};
+    next.forEach((_, itemIndex) => {
+      if (itemIndex < Math.min(from, to) || itemIndex > Math.max(from, to)) {
+        newMap[itemIndex] = pointsByVersionRef.current[itemIndex] ?? [];
+      } else if (itemIndex === to) {
+        newMap[itemIndex] = fromPoints;
+      } else {
+        newMap[itemIndex] = pointsByVersionRef.current[from < to ? itemIndex + 1 : itemIndex - 1] ?? [];
+      }
+    });
+    pointsByVersionRef.current = newMap;
+    setActiveVersionIndex(to);
+    if (characterId) {
+      next.forEach((version, itemIndex) => {
+        if (version.id) void persistVersionPatch(version, { sortOrder: itemIndex });
+      });
+    }
+  };
+
+  const mergeKnowledgePoints = (existing: KnowledgePoint[], incoming: KnowledgePoint[]) => {
+    const byTitle = new Map(existing.map((point) => [point.title.trim(), point]));
+    for (const point of incoming) {
+      const key = point.title.trim();
+      const current = byTitle.get(key);
+      if (current) {
+        byTitle.set(key, {
+          ...current,
+          content: point.content || current.content,
+          keywords: point.keywords.length ? point.keywords : current.keywords,
+          assessmentCriteria: point.assessmentCriteria || current.assessmentCriteria,
+        });
+      } else {
+        byTitle.set(key, point);
+      }
+    }
+    return Array.from(byTitle.values());
+  };
+
+  // --------------------------
   // 🔥 主解析流程
   // --------------------------
   const handleProcess = async () => {
@@ -437,31 +747,128 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           : "Text";
       setSourceLabel(nextSourceLabel);
 
-      let result;
+      const applySingle = (parsed: { bg: string; ks: string; points: KnowledgePoint[] }, name?: string) => {
+        setCharacterBackground(parsed.bg);
+        setKnowledgeSummary(parsed.ks);
+        setKnowledgePoints(parsed.points);
+        pointsByVersionRef.current[activeVersionIndex] = parsed.points;
+        // 空嘅「版本N」自動改用檔名
+        if (name && versions[activeVersionIndex]?.name.startsWith("版本")) {
+          void handleRenameVersion(activeVersionIndex, name);
+        }
+        setProgress(100);
+        setStatus("complete");
+        setActiveTab("map");
+      };
+
+      const appendVersions = async (results: Array<{ bg: string; ks: string; points: KnowledgePoint[]; name: string }>) => {
+        // 第一個結果填 active（空嘅話），其餘開新版本
+        const activeEmpty = pointsOfVersion(activeVersionIndex).length === 0 && !knowledgeSummary.trim();
+        const first = results[0];
+        let lastIndex = activeVersionIndex;
+        if (activeEmpty) {
+          applySingle({ bg: first.bg, ks: first.ks, points: first.points }, first.name);
+        } else {
+          await openNewVersionWith(first);
+        }
+        for (const extra of results.slice(1)) {
+          lastIndex = await openNewVersionWith(extra);
+        }
+        setActiveVersionIndex(lastIndex);
+        setProgress(100);
+        setStatus("complete");
+        setActiveTab("map");
+      };
+
+      const openNewVersionWith = async (entry: { bg: string; ks: string; points: KnowledgePoint[]; name: string }) => {
+        if (versions.length >= maxVersions) {
+          throw new Error(uiText("每隻 Bot 最多 4 個主題版本"));
+        }
+        if (characterId) {
+          const topic = await createCharacterTopic(characterId, {
+            name: entry.name || `版本${versions.length + 1}`,
+            description: "",
+            systemPrompt: "",
+            knowledgeContent: buildVersionKnowledgeContent(entry.points),
+            category: "單元課本",
+            isDefault: false,
+          });
+          const next = [...versions, { id: topic.id, name: topic.name, category: topic.category || "", isDefault: topic.isDefault }];
+          setVersions(next);
+          pointsByVersionRef.current[next.length - 1] = entry.points;
+          return next.length - 1;
+        }
+        const next = [...versions, { id: null, name: entry.name || `版本${versions.length + 1}`, category: "", isDefault: false }];
+        setVersions(next);
+        pointsByVersionRef.current[next.length - 1] = entry.points;
+        return next.length - 1;
+      };
+
       if (uploadMethod === "file" && files.length > 0) {
-        result = await processFiles(files);
-      } else if (uploadMethod === "url") {
+        if (files.length >= 2) {
+          // 分配方式對話框（提取開始前，唔燒 API）
+          const mode = await new Promise<AssignmentMode | null>((resolve) => {
+            assignmentResolveRef.current = resolve;
+            setAssignmentFileNames(files.map((file) => file.name));
+            setAssignmentOpen(true);
+          });
+          if (!mode) {
+            setStatus("idle");
+            setProgress(0);
+            return;
+          }
+          if (mode.kind === "each") {
+            const results = [];
+            for (const file of files) {
+              const result = await processSingleFile(file);
+              const parsed = parseKnowledgeReply(result.reply || "", previousPointsRef.current);
+              results.push({ ...parsed, name: file.name.replace(/\.[^.]+$/, "") });
+            }
+            await appendVersions(results);
+            return;
+          }
+          if (mode.kind === "merge-new") {
+            const result = await processFiles(files);
+            const parsed = parseKnowledgeReply(result.reply || "", previousPointsRef.current);
+            await appendVersions([{ ...parsed, name: files[0].name.replace(/\.[^.]+$/, "") }]);
+            return;
+          }
+          // merge-existing：逐檔提取 → 合併入揀咗嗰個版本
+          const targetIndex = mode.targetIndex;
+          let merged: KnowledgePoint[] = [...pointsOfVersion(targetIndex)];
+          for (const file of files) {
+            const result = await processSingleFile(file);
+            const parsed = parseKnowledgeReply(result.reply || "", merged);
+            merged = trimKnowledgePoints(mergeKnowledgePoints(merged, parsed.points));
+          }
+          pointsByVersionRef.current[targetIndex] = merged;
+          const target = versions[targetIndex];
+          if (target?.id) {
+            await persistVersionPatch(target, { knowledgeContent: buildVersionKnowledgeContent(merged) });
+          }
+          setActiveVersionIndex(targetIndex);
+          setKnowledgePoints(merged);
+          setKnowledgeSummary(buildKnowledgeSummary(merged));
+          setProgress(100);
+          setStatus("complete");
+          setActiveTab("map");
+          return;
+        }
+        const result = await processFiles(files);
+        const parsed = parseKnowledgeReply(result.reply || "", previousPointsRef.current);
+        applySingle(parsed, files[0].name.replace(/\.[^.]+$/, ""));
+        return;
+      }
+
+      let result;
+      if (uploadMethod === "url") {
         result = await processUrl(inputValue.trim());
       } else {
         result = await processText(inputValue.trim());
       }
-
       const reply = result.reply || "";
-      const { bg, ks, points } = parseKnowledgeReply(reply, previousPointsRef.current);
-
-      setCharacterBackground(bg);
-      setKnowledgeSummary(ks);
-      setKnowledgePoints(points);
-      const personaProfile = [
-        `【性格特質】${personalityTraits.join("、") || "未設定"}`,
-        `【説話風格】${speakingStyle}`,
-        `【答題策略】${answerMode}`,
-      ].join("\n");
-      onGenerated({ characterBackground: bg, knowledgeSummary: ks, personaProfile, knowledgePoints: points });
-      setProgress(100);
-      setStatus("complete");
-      // 抽取成功 → 自動跳去知識地圖，老師可以即刻檢查知識點
-      setActiveTab("map");
+      const parsed = parseKnowledgeReply(reply, previousPointsRef.current);
+      applySingle(parsed);
     } catch (error) {
       console.error("知識解析失敗:", error);
       setCharacterBackground("解析失敗，請重試。");
@@ -1423,6 +1830,20 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
 
       {activeTab === "map" && (
         <div className="space-y-8">
+          <TopicVersionTabs
+            versions={versions}
+            activeIndex={activeVersionIndex}
+            maxVersions={maxVersions}
+            customLabels={customLabels}
+            onSelect={(index) => void handleSelectVersion(index)}
+            onAdd={() => void handleAddVersion()}
+            onRemove={(index) => void handleRemoveVersion(index)}
+            onRename={(index, name) => void handleRenameVersion(index, name)}
+            onCategoryChange={(index, category) => void handleCategoryChange(index, category)}
+            onReorder={handleReorder}
+            onAddCustomLabel={(label) => void handleAddCustomLabel(label)}
+            onSetDefault={(index) => void handleSetDefault(index)}
+          />
           {status === "complete" ? renderStatus() : (
             <div className="flex flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-300 bg-slate-50/70 px-6 py-14 text-center">
               <p className="text-sm font-black text-slate-700">{uiText("尚未抽取知識點")}</p>
@@ -1432,6 +1853,23 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           )}
         </div>
       )}
+
+      <AssignmentModeDialog
+        open={assignmentOpen}
+        fileNames={assignmentFileNames}
+        existingVersionNames={versions.map((version) => version.name)}
+        maxVersions={maxVersions}
+        onConfirm={(mode) => {
+          setAssignmentOpen(false);
+          assignmentResolveRef.current?.(mode);
+          assignmentResolveRef.current = null;
+        }}
+        onCancel={() => {
+          setAssignmentOpen(false);
+          assignmentResolveRef.current?.(null);
+          assignmentResolveRef.current = null;
+        }}
+      />
 
       <PlatformDialog
         open={dialog.open}

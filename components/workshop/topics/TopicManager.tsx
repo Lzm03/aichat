@@ -1,4 +1,5 @@
 import { uiText, uiError } from '../../../utils/uiI18n';
+import { topicCategoryTone } from '../../../utils/topic-categories';
 import React, { useEffect, useState } from "react";
 import { BookOpen, Check, Loader2, Pencil, Plus, Star, Trash2 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -303,6 +304,9 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="truncate text-sm font-black text-slate-900">{topic.name}</h3>
+                        {topic.category ? (
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${topicCategoryTone(topic.category)}`}>{topic.category}</span>
+                        ) : null}
                         {topic.isDefault ? (
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-700">{uiText("預設")}</span>
                         ) : null}

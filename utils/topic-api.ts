@@ -60,3 +60,18 @@ export async function deleteCharacterTopic(characterId: string, topicId: string)
   });
   return parseJson<{ ok: true; deletedId: string; defaultTopicId: string }>(response);
 }
+
+/** 帳戶層自訂分類標籤（最多 10 個，跨 Bot 共用） */
+export async function listTopicCategoryLabels() {
+  const response = await fetch(`${API_BASE}/api/teacher/topic-category-labels`);
+  return parseJson<{ labels: string[] }>(response);
+}
+
+export async function saveTopicCategoryLabels(labels: string[]) {
+  const response = await fetch(`${API_BASE}/api/teacher/topic-category-labels`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ labels }),
+  });
+  return parseJson<{ labels: string[] }>(response);
+}

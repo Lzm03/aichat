@@ -157,7 +157,8 @@ function normalizeTopicInput(input: Record<string, unknown>, partial = false) {
     if (category.length > 40) throw new CharacterTopicError("Topic category must be 40 characters or fewer.");
     result.category = category;
   }
-  if (!partial || Object.prototype.hasOwnProperty.call(input, "sortOrder")) {
+  // sortOrder 係選填：冇傳就唔入 result（create 由 server 計 MAX+1；update 保留現值）
+  if (Object.prototype.hasOwnProperty.call(input, "sortOrder")) {
     const sortOrder = Number(input.sortOrder);
     if (!Number.isInteger(sortOrder) || sortOrder < 0) {
       throw new CharacterTopicError("Topic sortOrder must be a non-negative integer.");

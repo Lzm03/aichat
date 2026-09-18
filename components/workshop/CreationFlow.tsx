@@ -15,6 +15,12 @@ import { usePlatformDialog } from '../../hooks/usePlatformDialog';
 import { PlatformDialog } from '../system/PlatformDialog';
 import { buildChatSystemPrompt, buildStoredKnowledgeBase, parsePromptSource } from '../../utils/chat-prompt';
 import { TopicManager } from './topics/TopicManager';
+import type { TopicVersionMeta } from './topics/TopicVersionTabs';
+import {
+  createCharacterTopic,
+  listCharacterTopics,
+  updateCharacterTopic,
+} from '../../utils/topic-api';
 import { API_BASE } from '../../utils/api';
 import { useTeacherLang, type TeacherLang } from '../../utils/teacherI18n';
 import { subjectColorOf } from '../../utils/subjects';
@@ -247,6 +253,8 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
   const featureMap = new Map(featureEntitlements.map((item) => [item.key, item]));
   const previousVideoTaskStatusRef = React.useRef<string | null>(null);
+  /** 知識地圖主題版本（CreationStep2 回報；新建模式發布時落庫做話題） */
+  const versionsRef = React.useRef<Array<TopicVersionMeta & { points: KnowledgePoint[] }>>([]);
 
   const updateConfig = <K extends keyof typeof botConfig>(key: K, value: typeof botConfig[K]) => {
     setBotConfig((prev) => (Object.is(prev[key], value) ? prev : { ...prev, [key]: value }));
@@ -461,6 +469,48 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   const isAllStepsValid = firstInvalidStepIndex === -1;
   const canPublish = isAllStepsValid && videosReady;
 
+  /** 新建模式首次發布：將主題版本落庫做話題（每 Bot 最多 4 個）。 */
+  const syncVersionsToTopics = async (characterId: string) => {
+    const topicVersions = versionsRef.current;
+    if (!topicVersions.length) return;
+    const hasContent =
+      topicVersions.length > 1 || topicVersions.some((version) => version.points.length > 0);
+    if (!hasContent) return;
+    const versionContent = (points: KnowledgePoint[]) =>
+      `【知識點分級】\n${JSON.stringify(points, null, 2)}`;
+    try {
+      // ensureCharacterTopicTables 會為冇話題嘅 Bot 自動建立 legacy 話題——
+      // 將佢轉做版本一，其餘版本跟住建，唔會超 4 個上限亦唔會有重複內容。
+      const { topics } = await listCharacterTopics(characterId);
+      const legacy = topics.find((topic) => topic.id.startsWith("topic_legacy_"));
+      let remaining = topicVersions;
+      if (legacy) {
+        const first = topicVersions[0];
+        await updateCharacterTopic(characterId, legacy.id, {
+          name: first.name,
+          description: "",
+          systemPrompt: "",
+          knowledgeContent: versionContent(first.points),
+          category: first.category || "單元課本",
+          isDefault: true,
+        });
+        remaining = topicVersions.slice(1);
+      }
+      for (const version of remaining) {
+        await createCharacterTopic(characterId, {
+          name: version.name,
+          description: "",
+          systemPrompt: "",
+          knowledgeContent: versionContent(version.points),
+          category: version.category || "單元課本",
+          isDefault: version.isDefault,
+        });
+      }
+    } catch (error) {
+      console.warn("主題版本落庫失敗：", error);
+    }
+  };
+
   const handlePublish = async () => {
     if (!canPublish || isPublishing) return;
     setActionError("");
@@ -518,6 +568,10 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       if (!accessResponse.ok) {
         const accessPayload = await accessResponse.json().catch(() => null);
         throw new Error(accessPayload?.error || t("publishFailed"));
+      }
+      // 新建模式：主題版本落庫做話題（編輯模式嘅版本早已即時儲存）
+      if (!botId) {
+        await syncVersionsToTopics(String(savedBot?.id || newBot.id));
       }
       await refreshFeatureEntitlements();
       setBotConfig((prev) => ({
@@ -614,6 +668,10 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
               onGradeChange={(value) => updateConfig("grade", value)}
               botName={botConfig.name}
               securityPrompt={botConfig.securityPrompt}
+              characterId={String(botConfig.id || botId || "").trim() || null}
+              onVersionsChange={(topicVersions) => {
+                versionsRef.current = topicVersions;
+              }}
               afterKnowledgePointEditor={
                 <TopicManager characterId={String(botConfig.id || botId || "").trim() || null} />
               }

@@ -3,6 +3,8 @@ export type CharacterTopicSummary = {
   characterId: string;
   name: string;
   description: string;
+  /** 主題版本分類標籤（單元課本／補充講義／課外延伸／題庫對應 或自訂）；空 = 未分類 */
+  category: string;
   sortOrder: number;
   isDefault: boolean;
   createdAt: string;
@@ -19,5 +21,7 @@ export type CharacterTopicInput = {
   description: string;
   systemPrompt: string;
   knowledgeContent: string;
+  category?: string;
+  sortOrder?: number;
   isDefault: boolean;
 };
