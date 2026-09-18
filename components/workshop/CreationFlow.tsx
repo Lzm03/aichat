@@ -244,7 +244,10 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   const [botConfig, setBotConfig] = useState(loadBotConfig());
   const [isBotLoading, setIsBotLoading] = useState(Boolean(botId));
   const [botLoadError, setBotLoadError] = useState("");
-  const [currentStep, setCurrentStep] = useState(1);
+  // TEMP-DEMO: port-3100 preview starts at step 4 (knowledge map). Revert after the demo.
+  const [currentStep, setCurrentStep] = useState(() =>
+    typeof window !== "undefined" && window.location.port === "3100" ? 4 : 1
+  );
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [isPublishSuccessModalOpen, setIsPublishSuccessModalOpen] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -255,6 +258,59 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   const previousVideoTaskStatusRef = React.useRef<string | null>(null);
   /** 知識地圖主題版本（CreationStep2 回報；新建模式發布時落庫做話題） */
   const versionsRef = React.useRef<Array<TopicVersionMeta & { points: KnowledgePoint[] }>>([]);
+  /** CreationStep2 最新嘅背景／摘要（編輯模式手動改動後發佈要用） */
+  const step2ExtrasRef = React.useRef<{ characterBackground: string; knowledgeSummary: string }>({
+    characterBackground: "",
+    knowledgeSummary: "",
+  });
+
+  /**
+   * 手動新增／刪改嘅知識點只存在版本數據（versionsRef），唔會經 onGenerated 入
+   * botConfig.knowledgeBase——發佈同預覽都用默認版本嘅點重建主知識庫，
+   * 令學習報告（讀 bots.knowledge_base）同覆蓋追蹤同版本數據保持同一份來源。
+   */
+  const buildCurrentKnowledgeBase = () => {
+    const versions = versionsRef.current;
+    const defaultVersion = versions.find((version) => version.isDefault) || versions[0];
+    if (!defaultVersion) return botConfig.knowledgeBase;
+    const fallback = parsePromptSource({ knowledgeBase: botConfig.knowledgeBase });
+    const latest = step2ExtrasRef.current;
+    // 冇任何實際改動（legacy bot 直接發佈）就唔重寫，保住手寫摘要等原有內容
+    const pointsUnchanged =
+      defaultVersion.points.length === fallback.knowledgePoints.length &&
+      defaultVersion.points.every((point, index) => {
+        const other = fallback.knowledgePoints[index];
+        return (
+          point.id === other.id &&
+          point.title === other.title &&
+          point.content === other.content &&
+          point.tier === other.tier &&
+          Boolean(point.core) === Boolean(other.core) &&
+          JSON.stringify(point.keywords) === JSON.stringify(other.keywords) &&
+          (point.assessmentCriteria || "") === (other.assessmentCriteria || "")
+        );
+      });
+    const backgroundUnchanged = latest.characterBackground.trim() === fallback.characterBackground;
+    if (pointsUnchanged && backgroundUnchanged) return botConfig.knowledgeBase;
+    const summaryFromPoints = (points: KnowledgePoint[]) =>
+      points
+        .map((point) => {
+          const tierLabel = point.tier === "basic_fact" ? "基礎事實" : "深度理解";
+          const keywords = point.keywords.filter(Boolean).join("、");
+          const assessment = point.assessmentCriteria.trim();
+          const suffix = [keywords ? `關鍵詞：${keywords}` : "", assessment ? `評估：${assessment}` : ""]
+            .filter(Boolean)
+            .join("｜");
+          return `- [${tierLabel}] ${point.title.trim()}：${point.content.trim()}${suffix ? `（${suffix}）` : ""}`;
+        })
+        .join("\n");
+    return buildStoredKnowledgeBase({
+      characterBackground: latest.characterBackground.trim() || fallback.characterBackground,
+      knowledgeSummary: summaryFromPoints(defaultVersion.points),
+      knowledgePoints: defaultVersion.points,
+      personaProfile: fallback.personaProfile,
+    });
+  };
 
   const updateConfig = <K extends keyof typeof botConfig>(key: K, value: typeof botConfig[K]) => {
     setBotConfig((prev) => (Object.is(prev[key], value) ? prev : { ...prev, [key]: value }));
@@ -529,7 +585,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         background: botConfig.background,
         animation: botConfig.animation,
 
-        knowledgeBase: botConfig.knowledgeBase,
+        knowledgeBase: buildCurrentKnowledgeBase(),
         securityPrompt: botConfig.securityPrompt,
         grade: botConfig.grade || "",
 
@@ -669,8 +725,12 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
               botName={botConfig.name}
               securityPrompt={botConfig.securityPrompt}
               characterId={String(botConfig.id || botId || "").trim() || null}
-              onVersionsChange={(topicVersions) => {
-                versionsRef.current = topicVersions;
+              onVersionsChange={(state) => {
+                versionsRef.current = state.versions;
+                step2ExtrasRef.current = {
+                  characterBackground: state.characterBackground,
+                  knowledgeSummary: state.knowledgeSummary,
+                };
               }}
               afterKnowledgePointEditor={
                 <TopicManager characterId={String(botConfig.id || botId || "").trim() || null} />
@@ -709,7 +769,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
 const fullSystemPrompt = `
     ${buildChatSystemPrompt({
       roleName: botConfig.name,
-      knowledgeBase: botConfig.knowledgeBase,
+      knowledgeBase: buildCurrentKnowledgeBase(),
       securityPrompt: botConfig.securityPrompt,
     })}
 `.trim();

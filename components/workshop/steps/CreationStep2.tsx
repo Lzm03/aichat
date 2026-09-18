@@ -99,7 +99,11 @@ interface CreationStep2Props {
   /** 已發佈 Bot 嘅 id（編輯模式）；null = 新建模式（版本存本地，發布時先落庫） */
   characterId?: string | null;
   /** 版本列表 + 每版本知識點（供 CreationFlow 發布時建立話題） */
-  onVersionsChange?: (versions: Array<TopicVersionMeta & { points: KnowledgePoint[] }>) => void;
+  onVersionsChange?: (state: {
+    versions: Array<TopicVersionMeta & { points: KnowledgePoint[] }>;
+    characterBackground: string;
+    knowledgeSummary: string;
+  }) => void;
 }
 
 export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, afterKnowledgePointEditor, subject = "", onSubjectChange, grade = "", onGradeChange, botName = "", securityPrompt = "", characterId = null, onVersionsChange }) => {
@@ -185,13 +189,15 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   }, [knowledgePoints, activeVersionIndex]);
 
   useEffect(() => {
-    onVersionsChange?.(
-      versions.map((version, index) => ({
+    onVersionsChange?.({
+      versions: versions.map((version, index) => ({
         ...version,
         points: index === activeVersionIndex ? knowledgePoints : pointsOfVersion(index),
-      }))
-    );
-  }, [versions, knowledgePoints, activeVersionIndex]);
+      })),
+      characterBackground,
+      knowledgeSummary,
+    });
+  }, [versions, knowledgePoints, activeVersionIndex, characterBackground, knowledgeSummary]);
 
   const baseUrl = import.meta.env.VITE_API_URL;
 
