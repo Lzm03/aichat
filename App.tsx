@@ -35,6 +35,7 @@ import {
 import { DEFAULT_USER_PREFERENCES, getAppShellThemeClasses, normalizeUserPreferences, syncDarkClass } from './utils/userPreferences';
 import { useFeatureEntitlements } from './hooks/useFeatureEntitlements';
 import { setTeacherLang, useTeacherLang, type TeacherLang } from './utils/teacherI18n';
+import { preloadTeacherWorkspace } from './utils/teacher-data-cache';
 
 export type Page = 'dashboard' | 'workshop' | 'assessment' | 'learning' | 'students';
 
@@ -90,6 +91,11 @@ const App: React.FC = () => {
 
   // 在本地永遠視為已準備好，不檢查 window.aistudio
   const hasApiKey = true;
+
+  useEffect(() => {
+    if (!isSessionReady || !currentUser || !['teacher', 'admin'].includes(currentUser.role)) return;
+    void preloadTeacherWorkspace();
+  }, [currentUser, isSessionReady]);
 
   const renderCurrentPage = () => {
     switch (activePage) {

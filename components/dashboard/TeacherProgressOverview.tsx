@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Target, Users } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
 import { SafeAvatarImage } from '../shared/SafeAvatarImage';
+import { loadTeacherData, peekTeacherData } from '../../utils/teacher-data-cache';
 
 type PointProgress = {
   id: string;
@@ -21,20 +22,16 @@ type BotProgress = {
 };
 
 export const TeacherProgressOverview: React.FC = () => {
-  const [bots, setBots] = useState<BotProgress[]>([]);
-  const [loading, setLoading] = useState(false);
+  const cachedProgress = peekTeacherData<any>('/api/bots/teacher/progress-overview');
+  const [bots, setBots] = useState<BotProgress[]>(cachedProgress?.bots || []);
+  const [loading, setLoading] = useState(!cachedProgress);
   const [error, setError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    setLoading(!peekTeacherData('/api/bots/teacher/progress-overview'));
     setError('');
-    fetch(`${API_BASE}/api/bots/teacher/progress-overview`)
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data?.error || 'load failed');
-        return data;
-      })
+    loadTeacherData<any>('/api/bots/teacher/progress-overview')
       .then((data) => {
         if (cancelled) return;
         setBots(Array.isArray(data?.bots) ? data.bots : []);

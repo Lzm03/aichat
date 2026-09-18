@@ -935,15 +935,37 @@ router.get("/teacher/assessment-report", requireAuth, async (req, res) => {
     );
 
     const shareResult = await pool.query(
-      `SELECT s.student_id, b.id AS bot_id, b.name AS bot_name, b.knowledge_base, b.avatar_url AS bot_avatar_url
-       FROM bot_student_shares s
+      `WITH student_bot_access AS (
+         SELECT s.student_id, s.bot_id
+         FROM bot_student_shares s
+         WHERE s.teacher_id=$1
+
+         UNION
+
+         SELECT gm.student_id, bg.bot_id
+         FROM bot_group_shares bg
+         JOIN student_group_members gm ON gm.group_id=bg.group_id
+         WHERE bg.teacher_id=$1
+           AND NOT EXISTS (
+             SELECT 1 FROM bot_student_exclusions ex
+             WHERE ex.bot_id=bg.bot_id AND ex.teacher_id=bg.teacher_id AND ex.student_id=gm.student_id
+           )
+
+         UNION
+
+         SELECT qa.student_id, qa.bot_id
+         FROM quiz_attempts qa
+         JOIN quizzes q ON q.id=qa.quiz_id AND q.teacher_id=$1
+         JOIN teacher_students ts ON ts.student_id=qa.student_id AND ts.teacher_id=$1
+       )
+       SELECT s.student_id, b.id AS bot_id, b.name AS bot_name, b.knowledge_base, b.avatar_url AS bot_avatar_url
+       FROM student_bot_access s
        JOIN bots b ON b.id = s.bot_id
        LEFT JOIN LATERAL (
          SELECT MAX(m.created_at) AS last_message_at
          FROM bot_chat_messages m
-         WHERE m.bot_id = b.id AND m.teacher_id = s.teacher_id
+         WHERE m.bot_id = b.id AND m.teacher_id = $1
        ) lm ON TRUE
-       WHERE s.teacher_id=$1
        ORDER BY lm.last_message_at DESC NULLS LAST, b.updated_at DESC`,
       [user.id]
     );
