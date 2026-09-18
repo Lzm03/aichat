@@ -602,10 +602,23 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
   const mapConversationMessagesToChatMessages = React.useCallback(
     (historyMessages: ConversationMessage[]) => {
-      const restoredMessages: ChatMessage[] = historyMessages.map((message) => ({
-        role: message.role === "assistant" ? "bot" : message.role === "system" ? "event" : "user",
-        content: message.content,
-      }));
+      const supportedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+      const restoredMessages: ChatMessage[] = historyMessages.map((message) => {
+        const storedImages = Array.isArray(message.metadata?.images)
+          ? message.metadata.images
+              .map((image: any) => ({
+                mimeType: String(image?.mimeType || "").toLowerCase(),
+                data: String(image?.data || ""),
+              }))
+              .filter((image: any) => supportedMimeTypes.has(image.mimeType) && image.data)
+              .map((image: any) => `data:${image.mimeType};base64,${image.data}`)
+          : [];
+        return {
+          role: message.role === "assistant" ? "bot" : message.role === "system" ? "event" : "user",
+          content: message.content,
+          imagePreviews: storedImages,
+        } as ChatMessage;
+      });
       return restoredMessages.length
         ? restoredMessages
         : ([{ role: "bot", content: buildOpeningMessage() }] as ChatMessage[]);
@@ -2382,7 +2395,7 @@ const sendMessage = async (
       botId: botConfig.id,
       source,
       replyLanguage,
-      stream: false,
+      stream: !guidedMode && replyLanguage === "cantonese",
       teachingHint: guidedMode ? "continue" : "auto",
       usageType: "chat_message",
       sharedBotId: isSharedView ? botConfig.id : undefined,
@@ -2418,7 +2431,7 @@ const sendMessage = async (
     };
     const contentType = String(response.headers.get("content-type") || "");
 
-    if (contentType.includes("application/json") || modelProvider === "gemini") {
+    if (contentType.includes("application/json")) {
       const data = await response.json().catch(() => null);
       const nextConversationId = String(data?.conversationId || data?.conversation?.id || responseConversationId || "").trim();
       if (nextConversationId) {
@@ -2815,7 +2828,15 @@ const handleDeleteSelectedConversations = () => {
 };
 
 const appendChatImages = (files: FileList | File[]) => {
-  const nextFiles = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
+  const supportedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+  const allFiles = Array.from(files || []);
+  const nextFiles = allFiles.filter((file) => supportedMimeTypes.has(file.type.toLowerCase()));
+  if (allFiles.length > nextFiles.length) {
+    showAlert({
+      title: "圖片格式不支援",
+      message: "請上傳 JPEG、PNG 或 WebP 圖片。",
+    });
+  }
   if (!nextFiles.length) return;
   if (chatImages.length + nextFiles.length > 4) {
     showAlert({
@@ -4817,7 +4838,7 @@ const unlockAudioAndMic = async () => {
                       <input
                         ref={chatImageInputRef}
                         type="file"
-                        accept="image/*"
+                        accept="image/jpeg,image/png,image/webp"
                         multiple
                         className="hidden"
                         onChange={(event) => {
