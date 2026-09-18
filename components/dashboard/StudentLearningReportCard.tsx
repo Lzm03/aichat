@@ -8,6 +8,7 @@ import { readAuthSession } from '../../utils/auth';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { API_BASE } from '../../utils/api';
 import { SafeAvatarImage } from '../shared/SafeAvatarImage';
+import { loadTeacherData, peekTeacherData } from '../../utils/teacher-data-cache';
 
 type AssessmentRow = {
   id: string;
@@ -109,7 +110,14 @@ const getMasteryTone = (mastery: number) => {
 /** 能力追蹤報告 bot 列表預設顯示數量，超出部分靠「看更多」摺叠展開 */
 const MAX_VISIBLE_BOTS = 10;
 
+const normalizeSharedBots = (bots: any[]): SharedBotOption[] => bots.map((bot: any) => ({
+  id: String(bot.id || ''),
+  name: String(bot.name || 'AI Bot'),
+  avatarUrl: bot.avatarUrl || bot.avatar_url || '',
+})).filter((bot: SharedBotOption) => Boolean(bot.id));
+
 export const StudentLearningReportCard = () => {
+  const cachedAssessment = peekTeacherData<any>('/api/bots/teacher/assessment-report');
   const currentRole = readAuthSession()?.user?.role;
   const canViewClassAssessmentDetail = currentRole === 'teacher' || currentRole === 'admin';
   const [viewLevel, setViewLevel] = useState<'overview' | 'report'>('overview');
@@ -117,9 +125,9 @@ export const StudentLearningReportCard = () => {
   const [detailFilter, setDetailFilter] = useState<'all' | 'warning' | 'knowledge' | 'normal'>('all');
   const [selectedDetailStudent, setSelectedDetailStudent] = useState<any | null>(null);
   const [isRankingOpen, setIsRankingOpen] = useState(false);
-  const [assessmentRows, setAssessmentRows] = useState<AssessmentRow[]>([]);
-  const [sharedBots, setSharedBots] = useState<SharedBotOption[]>([]);
-  const [selectedBotId, setSelectedBotId] = useState('');
+  const [assessmentRows, setAssessmentRows] = useState<AssessmentRow[]>(cachedAssessment?.rows || []);
+  const [sharedBots, setSharedBots] = useState<SharedBotOption[]>(normalizeSharedBots(cachedAssessment?.sharedBots || []));
+  const [selectedBotId, setSelectedBotId] = useState(String(cachedAssessment?.selectedBotId || ''));
   const [studentProgressData, setStudentProgressData] = useState<StudentProgressPayload | null>(null);
   const [showAllBots, setShowAllBots] = useState(false);
   const [interactionSummary, setInteractionSummary] = useState<{
@@ -141,7 +149,7 @@ export const StudentLearningReportCard = () => {
     knowledge: 0,
     normal: 0,
   });
-  const [assessmentLoading, setAssessmentLoading] = useState(false);
+  const [assessmentLoading, setAssessmentLoading] = useState(!cachedAssessment);
   const [assessmentError, setAssessmentError] = useState('');
   const [rankingPriority, setRankingPriority] = useState<'active' | 'passive'>('active');
   const [assessmentSortDirection, setAssessmentSortDirection] = useState<'desc' | 'asc'>('desc');
@@ -246,10 +254,15 @@ export const StudentLearningReportCard = () => {
   useEffect(() => {
     if (!canViewClassAssessmentDetail) return;
     let cancelled = false;
-    setAssessmentLoading(true);
+    const query = selectedBotId ? `?botId=${encodeURIComponent(selectedBotId)}` : '';
+    const path = `/api/bots/teacher/assessment-report${query}`;
+    const cached = peekTeacherData<any>(path);
+    setAssessmentLoading(!cached);
     setAssessmentError('');
-    setSharedBots([]);
-    setAssessmentRows([]);
+    if (!cached) {
+      setSharedBots([]);
+      setAssessmentRows([]);
+    }
     setAssessmentCounts({ all: 0, warning: 0, knowledge: 0, normal: 0 });
     setChatRecords([]);
     setInteractionSummary({
@@ -259,21 +272,11 @@ export const StudentLearningReportCard = () => {
       averageBubbleDependency: 0,
       points: [],
     });
-    const query = selectedBotId ? `?botId=${encodeURIComponent(selectedBotId)}` : '';
-    fetch(`${API_BASE}/api/bots/teacher/assessment-report${query}`)
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data?.error || 'Failed to load assessment report');
-        return data;
-      })
+    loadTeacherData<any>(`/api/bots/teacher/assessment-report${query}`)
       .then((data) => {
         if (cancelled) return;
         if (Array.isArray(data?.sharedBots)) {
-          const nextSharedBots = data.sharedBots.map((bot: any) => ({
-            id: String(bot.id || ''),
-            name: String(bot.name || 'AI Bot'),
-            avatarUrl: bot.avatarUrl || bot.avatar_url || '',
-          })).filter((bot: SharedBotOption) => Boolean(bot.id));
+          const nextSharedBots = normalizeSharedBots(data.sharedBots);
           setSharedBots(nextSharedBots);
           if (!selectedBotId && data.sharedBots[0]?.id) {
             setSelectedBotId(String(data.sharedBots[0].id));
@@ -423,7 +426,7 @@ export const StudentLearningReportCard = () => {
                       </div>
                       <div className="min-w-0">
                         <h4 className="truncate text-sm font-black text-slate-900">{bot.name}</h4>
-                        <p className="mt-0.5 text-[10px] text-slate-500">{uiText("查看由實際對話累積的學習分析")}</p>
+                        <p className="mt-0.5 text-[10px] text-slate-500">{uiText("查看由實際對話與測驗累積的學習分析")}</p>
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">

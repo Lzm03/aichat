@@ -8,6 +8,7 @@ import { useTeacherLang } from '../utils/teacherI18n';
 import { API_BASE } from '../utils/api';
 import { subjectColorOf } from '../utils/subjects';
 import type { AiBot } from '../types';
+import { loadTeacherData, peekTeacherData } from '../utils/teacher-data-cache';
 
 import { LearningReportEntryCard } from '../components/dashboard/LearningReportEntryCard';
 import { DemoNotice } from '../components/system/DemoNotice';
@@ -82,13 +83,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenLearningReport,
 }) => {
   const teacherName = readAuthSession()?.user?.fullName?.trim() || uiText('老師');
-  const [bots, setBots] = useState<AiBot[]>([]);
-  const [botsLoading, setBotsLoading] = useState(true);
+  const cachedBots = peekTeacherData<AiBot[]>('/api/bots');
+  const [bots, setBots] = useState<AiBot[]>(cachedBots || []);
+  const [botsLoading, setBotsLoading] = useState(!cachedBots);
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/api/bots`)
-      .then((res) => res.json())
+    loadTeacherData<AiBot[]>('/api/bots')
       .then((data) => {
         if (cancelled) return;
         const bots = Array.isArray(data) ? (data as AiBot[]) : [];

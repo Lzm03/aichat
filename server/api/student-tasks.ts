@@ -2,6 +2,7 @@ import express from "express";
 import { pool } from "../db.ts";
 import { getAuthUser, requireAuth } from "../lib/platform-auth.ts";
 import { ensureQuizTables } from "./quizzes.ts";
+import { quizAudienceSql } from "../lib/quiz-audience.ts";
 
 const router = express.Router();
 let taskTablesReady: Promise<void> | null = null;
@@ -109,45 +110,58 @@ async function loadStudentTaskEvents(userId: string) {
 
   const [shareResult, quizResult] = await Promise.all([
     pool.query(
-      `SELECT
+      `WITH accessible_shares AS (
+         SELECT s.bot_id, s.teacher_id, s.created_at AS shared_at
+         FROM bot_student_shares s
+         WHERE s.student_id=$1
+
+         UNION ALL
+
+         SELECT bg.bot_id, bg.teacher_id, bg.created_at AS shared_at
+         FROM bot_group_shares bg
+         JOIN student_group_members gm ON gm.group_id=bg.group_id
+         WHERE gm.student_id=$1
+           AND NOT EXISTS (
+             SELECT 1 FROM bot_student_exclusions ex
+             WHERE ex.bot_id=bg.bot_id AND ex.student_id=$1
+           )
+       ), latest_shares AS (
+         SELECT bot_id, teacher_id, MAX(shared_at) AS shared_at
+         FROM accessible_shares
+         GROUP BY bot_id, teacher_id
+       )
+       SELECT
          s.bot_id,
-         s.created_at AS shared_at,
+         s.shared_at,
          b.name AS bot_name,
          b.subject,
          teacher.full_name AS teacher_name
-       FROM bot_student_shares s
+       FROM latest_shares s
        JOIN bots b ON b.id=s.bot_id
        JOIN users teacher ON teacher.id=s.teacher_id
-       WHERE s.student_id=$1
-         AND s.created_at >= NOW() - INTERVAL '3 days'
-       ORDER BY s.created_at DESC`,
+       WHERE s.shared_at >= NOW() - INTERVAL '3 days'
+       ORDER BY s.shared_at DESC`,
       [userId]
     ),
     pool.query(
       `SELECT
          q.id AS quiz_id,
          q.title AS quiz_title,
-         q.updated_at AS published_at,
+         COALESCE(q.published_at, q.updated_at) AS published_at,
          b.id AS bot_id,
          b.name AS bot_name,
          b.subject,
          teacher.full_name AS teacher_name
-       FROM bot_student_shares s
-       JOIN bots b ON b.id=s.bot_id
-       JOIN users teacher ON teacher.id=s.teacher_id
-       JOIN LATERAL (
-         SELECT id, title, updated_at
-         FROM quizzes
-         WHERE bot_id=b.id AND status='published'
-         ORDER BY updated_at DESC, created_at DESC
-         LIMIT 1
-       ) q ON TRUE
+       FROM quizzes q
+       JOIN bots b ON b.id=q.bot_id
+       JOIN users teacher ON teacher.id=q.teacher_id
        LEFT JOIN quiz_attempts attempt
-         ON attempt.quiz_id=q.id AND attempt.student_id=s.student_id
-       WHERE s.student_id=$1
+         ON attempt.quiz_id=q.id AND attempt.student_id=$1
+       WHERE q.status='published'
+         AND ${quizAudienceSql('q.bot_id', '$1')}
          AND COALESCE(attempt.status, 'pending') <> 'completed'
-         AND q.updated_at >= NOW() - INTERVAL '3 days'
-       ORDER BY q.updated_at DESC`,
+         AND COALESCE(q.published_at, q.updated_at) >= NOW() - INTERVAL '3 days'
+       ORDER BY COALESCE(q.published_at, q.updated_at) DESC`,
       [userId]
     ),
   ]);

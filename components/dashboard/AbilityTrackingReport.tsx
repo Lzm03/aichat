@@ -6,6 +6,7 @@ import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Responsi
 import { ArrowRight, ChevronRight, Target } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
 import { downloadAbilityReportCsv } from '../../utils/assessment-csv';
+import { loadTeacherData, peekTeacherData } from '../../utils/teacher-data-cache';
 
 // Bloom 六層級：固定順序 + 分類色（每層係獨立類別，顏色跟實體不跟排名）
 const BLOOM_LEVELS = [
@@ -60,19 +61,20 @@ const BloomRadarTooltip = ({ active, payload }: any) => {
 };
 
 export const AbilityTrackingReport: React.FC<AbilityTrackingReportProps> = ({ onCreateQuiz }) => {
+  const cachedClasses = peekTeacherData<any>('/api/bots/classes');
+  const cachedReport = peekTeacherData<any>('/api/teachers/me/ability-report?period=30d');
   const [period, setPeriod] = useState<'30d' | 'all'>('30d');
   const [classId, setClassId] = useState<string | null>(null);
-  const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
-  const [report, setReport] = useState<AbilityReport | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [classes, setClasses] = useState<{ id: string; name: string }[]>(cachedClasses?.classes || []);
+  const [report, setReport] = useState<AbilityReport | null>(cachedReport || null);
+  const [loading, setLoading] = useState(!cachedReport);
   const [error, setError] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
 
   // 班級列表（GET /api/bots/classes）；失敗時隱藏切換，預設全部學生
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/api/bots/classes`)
-      .then((res) => res.json())
+    loadTeacherData<any>('/api/bots/classes')
       .then((data) => {
         if (cancelled) return;
         const list = Array.isArray(data?.classes) ? data.classes : [];
@@ -88,11 +90,11 @@ export const AbilityTrackingReport: React.FC<AbilityTrackingReportProps> = ({ on
 
   const loadReport = () => {
     let cancelled = false;
-    setLoading(true);
-    setError(false);
     const classParam = classId ? `&classId=${encodeURIComponent(classId)}` : '';
-    fetch(`${API_BASE}/api/teachers/me/ability-report?period=${period}${classParam}`)
-      .then((res) => res.json())
+    const path = `/api/teachers/me/ability-report?period=${period}${classParam}`;
+    setLoading(!peekTeacherData(path));
+    setError(false);
+    loadTeacherData<any>(`/api/teachers/me/ability-report?period=${period}${classParam}`)
       .then((data) => {
         if (cancelled) return;
         const classLevels = Array.isArray(data?.classLevels) ? data.classLevels : [];

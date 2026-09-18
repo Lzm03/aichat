@@ -18,6 +18,7 @@ import { usePlatformDialog } from '../hooks/usePlatformDialog';
 import { PlatformDialog } from '../components/system/PlatformDialog';
 import type { PermissionGroup, PermissionStudent } from '../components/workshop/permissions/BotPermissionDrawer';
 import { API_BASE } from '../utils/api';
+import { invalidateTeacherData, loadTeacherData, peekTeacherData } from '../utils/teacher-data-cache';
 
 type StudentFormState = {
   fullName: string;
@@ -47,9 +48,10 @@ async function readApiResponse(response: Response, fallbackMessage: string) {
 }
 
 export const StudentManagementPage: React.FC = () => {
-  const [students, setStudents] = useState<PermissionStudent[]>([]);
-  const [groups, setGroups] = useState<PermissionGroup[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const cachedRoster = peekTeacherData<{ students?: PermissionStudent[]; groups?: PermissionGroup[] }>('/api/students');
+  const [students, setStudents] = useState<PermissionStudent[]>(cachedRoster?.students || []);
+  const [groups, setGroups] = useState<PermissionGroup[]>(cachedRoster?.groups || []);
+  const [isLoading, setIsLoading] = useState(!cachedRoster);
   const [isSaving, setIsSaving] = useState(false);
   const [studentForm, setStudentForm] = useState<StudentFormState>({ fullName: '', email: '' });
   const [groupForm, setGroupForm] = useState<GroupFormState>({ name: '' });
@@ -65,23 +67,18 @@ export const StudentManagementPage: React.FC = () => {
   const { dialog, closeDialog, showAlert, showConfirm } = usePlatformDialog();
 
   useEffect(() => {
-    const controller = new AbortController();
     const loadStudents = async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/students`, { cache: 'no-store', signal: controller.signal });
-        const data = await readApiResponse(response, '無法載入學生資料');
+        const data = await loadTeacherData<{ students?: PermissionStudent[]; groups?: PermissionGroup[] }>('/api/students');
         setStudents(Array.isArray(data.students) ? data.students : []);
         setGroups(Array.isArray(data.groups) ? data.groups : []);
       } catch (error) {
-        if ((error as Error).name !== 'AbortError') {
-          showAlert({ title: uiText('載入失敗'), message: (error as Error).message, tone: 'danger' });
-        }
+        showAlert({ title: uiText('載入失敗'), message: (error as Error).message, tone: 'danger' });
       } finally {
-        if (!controller.signal.aborted) setIsLoading(false);
+        setIsLoading(false);
       }
     };
     void loadStudents();
-    return () => controller.abort();
   }, [showAlert]);
 
   const assignedStudents = useMemo(
@@ -120,6 +117,7 @@ export const StudentManagementPage: React.FC = () => {
         body: JSON.stringify(studentForm),
       });
       const data = await readApiResponse(response, '無法建立學生帳戶');
+      invalidateTeacherData('/api/students');
       setStudents((current) => current.some((student) => student.id === data.student.id)
         ? current
         : [...current, data.student]);
@@ -150,6 +148,7 @@ export const StudentManagementPage: React.FC = () => {
           try {
             const response = await fetch(`${API_BASE}/api/students/${encodeURIComponent(studentId)}`, { method: 'DELETE' });
             await readApiResponse(response, '無法移除學生');
+            invalidateTeacherData('/api/students');
             setStudents((current) => current.filter((student) => student.id !== studentId));
             setGroups((current) =>
               current.map((group) => ({ ...group, studentIds: group.studentIds.filter((id) => id !== studentId) }))
@@ -175,6 +174,7 @@ export const StudentManagementPage: React.FC = () => {
         body: JSON.stringify({ name: groupForm.name.trim() }),
       });
       const data = await readApiResponse(response, '無法建立班級');
+      invalidateTeacherData('/api/students');
       setGroups((current) => [...current, data.group]);
       setGroupForm({ name: '' });
       setShowGroupForm(false);
@@ -197,6 +197,7 @@ export const StudentManagementPage: React.FC = () => {
           try {
             const response = await fetch(`${API_BASE}/api/students/groups/${encodeURIComponent(groupId)}`, { method: 'DELETE' });
             await readApiResponse(response, '無法刪除班級');
+            invalidateTeacherData('/api/students');
             setGroups((current) => current.filter((group) => group.id !== groupId));
             setStudents((current) =>
               current.map((student) => ({
@@ -219,6 +220,7 @@ export const StudentManagementPage: React.FC = () => {
       body: JSON.stringify({ groupIds }),
     });
     await readApiResponse(response, '無法更新學生班級');
+    invalidateTeacherData('/api/students');
     setStudents((current) =>
       current.map((student) => student.id === studentId ? { ...student, groupIds } : student)
     );
@@ -341,6 +343,7 @@ export const StudentManagementPage: React.FC = () => {
         body: JSON.stringify({ students: bulkRows }),
       });
       const data = await readApiResponse(response, '無法匯入學生');
+      invalidateTeacherData('/api/students');
       setStudents((current) => {
         const byId = new Map(current.map((student) => [student.id, student]));
         data.students.forEach((student: PermissionStudent) => byId.set(student.id, student));

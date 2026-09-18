@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart2, ChevronDown, ChevronRight, ChevronUp } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
+import { loadTeacherData, peekTeacherData } from '../../utils/teacher-data-cache';
 
 type QualitySummary = {
   id: string;
@@ -26,15 +27,15 @@ const MAX_VISIBLE_QUIZZES = 10;
 
 /** 評測質量總覽：測驗列表，點擊跳去智能評測並直開該測驗嘅質量分析 Drawer。 */
 export const AssessmentQualityList: React.FC<AssessmentQualityListProps> = ({ onOpenQuiz }) => {
-  const [summaries, setSummaries] = useState<QualitySummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedSummary = peekTeacherData<any>('/api/teachers/me/grading-summary');
+  const [summaries, setSummaries] = useState<QualitySummary[]>(cachedSummary?.quizzes || []);
+  const [loading, setLoading] = useState(!cachedSummary);
   const [showAllQuizzes, setShowAllQuizzes] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    fetch(`${API_BASE}/api/teachers/me/grading-summary`)
-      .then((res) => res.json())
+    setLoading(!peekTeacherData('/api/teachers/me/grading-summary'));
+    loadTeacherData<any>('/api/teachers/me/grading-summary')
       .then((data) => {
         if (cancelled) return;
         setSummaries(Array.isArray(data?.quizzes) ? data.quizzes : []);
