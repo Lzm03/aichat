@@ -5,9 +5,14 @@ import { spawn } from 'child_process';
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) throw new Error('DATABASE_URL missing');
 const pool = new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } });
+const loadTestPort = process.env.LOADTEST_PORT || '4000';
+const loadTestBaseUrl = `http://127.0.0.1:${loadTestPort}`;
+const loginConcurrency = Number(process.env.LOADTEST_LOGIN_CONCURRENCY || 100);
+const loginTotal = Number(process.env.LOADTEST_LOGIN_TOTAL || 1500);
+const skipFollowupSuites = /^(1|true|yes|on)$/i.test(String(process.env.LOADTEST_LOGIN_ONLY || ''));
 function hashPassword(password) { const salt = crypto.randomBytes(16).toString('hex'); const derived = crypto.scryptSync(password, salt, 64).toString('hex'); return `${salt}:${derived}`; }
 
-const env = { ...process.env, MOCK_UPSTREAM: 'true', MOCK_UPSTREAM_MIN_DELAY_MS: '300', MOCK_UPSTREAM_MAX_DELAY_MS: '2500', MOCK_UPSTREAM_FAILURE_RATE: '0.03' };
+const env = { ...process.env, PORT: loadTestPort, MOCK_UPSTREAM: 'true', MOCK_UPSTREAM_MIN_DELAY_MS: '300', MOCK_UPSTREAM_MAX_DELAY_MS: '2500', MOCK_UPSTREAM_FAILURE_RATE: '0.03' };
 const serverProc = spawn('npm', ['run', 'start'], { cwd: '/Users/liuzhiming/Desktop/aichat/server', env, stdio: ['ignore','pipe','pipe'] });
 let ready = false;
 serverProc.stdout.on('data', (d)=>{ if (d.toString().includes('Backend running at')) ready = true; });
@@ -23,12 +28,17 @@ try {
   await pool.query(`INSERT INTO users (id, full_name, email, role, avatar_url, preferences_json, password_hash, status, plan_name, monthly_credit_limit, credit_balance, credit_used, created_at, updated_at) VALUES ($1,$2,$3,'student',NULL,'{}'::jsonb,$4,'active','starter',200,200,0,NOW(),NOW()) ON CONFLICT (email) DO NOTHING`, [crypto.randomUUID(), 'Load Test User', email, hashPassword(password)]);
 
   await waitReady();
-  const loginSuite = await runLoad({name:'auth_login',concurrency:100,total:1500,task:async()=>{ const r=await fetch('http://127.0.0.1:4000/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})}); if(!r.ok) throw new Error(); await r.arrayBuffer(); }});
-  const login = await fetch('http://127.0.0.1:4000/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});
+  const loginSuite = await runLoad({name:'auth_login',concurrency:loginConcurrency,total:loginTotal,task:async()=>{ const r=await fetch(`${loadTestBaseUrl}/api/auth/login`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})}); if(!r.ok) throw new Error(); await r.arrayBuffer(); }});
+  if (skipFollowupSuites) {
+    console.log(JSON.stringify({results:[loginSuite]}, null, 2));
+    process.exitCode = 0;
+  } else {
+  const login = await fetch(`${loadTestBaseUrl}/api/auth/login`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});
   const token = (await login.json()).token;
-  const meSuite = await runLoad({name:'auth_me',concurrency:100,total:2500,task:async()=>{ const r=await fetch('http://127.0.0.1:4000/api/auth/me',{headers:{authorization:`Bearer ${token}`}}); if(!r.ok) throw new Error(); await r.arrayBuffer(); }});
-  const askSuite = await runLoad({name:'ask_mock_upstream',concurrency:100,total:1000,task:async(i)=>{ const r=await fetch('http://127.0.0.1:4000/api/ask',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({systemPrompt:'你是老师',userPrompt:`并发请求${i}`,stream:false,usageType:'chat_message',botId:'default',modelProvider:'gemini'})}); if(!r.ok) throw new Error(); await r.arrayBuffer(); }});
+  const meSuite = await runLoad({name:'auth_me',concurrency:100,total:2500,task:async()=>{ const r=await fetch(`${loadTestBaseUrl}/api/auth/me`,{headers:{authorization:`Bearer ${token}`}}); if(!r.ok) throw new Error(); await r.arrayBuffer(); }});
+  const askSuite = await runLoad({name:'ask_mock_upstream',concurrency:100,total:1000,task:async(i)=>{ const r=await fetch(`${loadTestBaseUrl}/api/ask`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({systemPrompt:'你是老师',userPrompt:`并发请求${i}`,stream:false,usageType:'general',botId:'default',modelProvider:'gemini'})}); if(!r.ok) throw new Error(); await r.arrayBuffer(); }});
   console.log(JSON.stringify({results:[loginSuite, meSuite, askSuite]}, null, 2));
+  }
 } finally {
   if (createdEmail) await pool.query('DELETE FROM users WHERE email=$1', [createdEmail]).catch(()=>{});
   await pool.end().catch(()=>{});

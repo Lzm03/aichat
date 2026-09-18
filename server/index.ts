@@ -34,6 +34,7 @@ import { pool, warmDatabasePool } from "./db.ts";
 import { uploadsDir } from "./lib/uploads-dir.ts";
 import { ensurePlatformTables, maybeAssignLegacyDataByEmail } from "./lib/platform-auth.ts";
 import { ensureCharacterTopicTables } from "./lib/character-topics.ts";
+import { getRequestConcurrencyState, requestConcurrencyGate } from "./lib/request-concurrency.ts";
 
 const app = express();
 const allowedOrigins = new Set(
@@ -68,7 +69,6 @@ app.use(
   })
 );
 
-app.use(express.json({ limit: "20mb" }));
 app.get("/", (_req, res) => {
   res.status(200).send("ok");
 });
@@ -81,8 +81,11 @@ app.get("/api/health", (_req, res) => {
     maintenance,
     now: new Date().toISOString(),
     version: process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || "dev",
+    concurrency: getRequestConcurrencyState(),
   });
 });
+app.use(requestConcurrencyGate);
+app.use(express.json({ limit: "20mb" }));
 app.get("/api/media-proxy", async (req, res) => {
   const rawUrl = typeof req.query.url === "string" ? req.query.url.trim() : "";
   if (!rawUrl) {

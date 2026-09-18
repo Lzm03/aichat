@@ -83,10 +83,15 @@ export function hashPassword(password: string) {
   return `${salt}:${derived}`;
 }
 
-export function verifyPassword(password: string, storedHash: string) {
+export async function verifyPassword(password: string, storedHash: string) {
   const [salt, expected] = storedHash.split(":");
   if (!salt || !expected) return false;
-  const actual = crypto.scryptSync(password, salt, 64);
+  const actual = await new Promise<Buffer>((resolve, reject) => {
+    crypto.scrypt(password, salt, 64, (error, derivedKey) => {
+      if (error) reject(error);
+      else resolve(derivedKey);
+    });
+  });
   const expectedBuffer = Buffer.from(expected, "hex");
   if (actual.length !== expectedBuffer.length) return false;
   return crypto.timingSafeEqual(actual, expectedBuffer);
