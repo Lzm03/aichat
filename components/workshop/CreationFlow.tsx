@@ -32,8 +32,8 @@ type KnowledgePoint = {
   core: boolean;
 };
 
-const MAX_KNOWLEDGE_POINTS = 26;
-const MAX_POINTS_PER_TIER = 13;
+const MAX_KNOWLEDGE_POINTS = 20;
+const MAX_POINTS_PER_TIER = 10;
 
 type VideoStudioTask = {
   id: string;
