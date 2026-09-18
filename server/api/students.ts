@@ -33,8 +33,10 @@ function normalizeStudentInput(input: any): StudentInput | null {
   return { fullName, email };
 }
 
-function createTemporaryPassword() {
-  return `Cr!${crypto.randomBytes(9).toString("base64url")}`;
+export const DEFAULT_STUDENT_INITIAL_PASSWORD = "00000000";
+
+export function createStudentInitialPassword() {
+  return DEFAULT_STUDENT_INITIAL_PASSWORD;
 }
 
 async function findOrCreateStudent(client: any, input: StudentInput) {
@@ -58,7 +60,7 @@ async function findOrCreateStudent(client: any, input: StudentInput) {
       throw error;
     }
   } else {
-    temporaryPassword = createTemporaryPassword();
+    temporaryPassword = createStudentInitialPassword();
     result = await client.query(
       `INSERT INTO users (
          id, full_name, email, role, avatar_url, preferences_json, password_hash,
