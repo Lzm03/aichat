@@ -41,6 +41,7 @@ import {
 import {
   buildChatReplyLanguageRule,
   buildChatSystemPrompt,
+  parseAnswerMode,
 } from "../../utils/chat-prompt.ts";
 import { normalizeUploadFilename } from "../../utils/uploadFilename.ts";
 import { combineExtractedFileText } from "../lib/knowledge-files.ts";
@@ -1758,6 +1759,9 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
     let characterGradeBand: string | null = null;
     // 知識庫原文，回覆後攞嚟計「已覆蓋知識點」狀態
     let characterKnowledgeBase = "";
+    // P1 按話題計進度：有活躍話題就用話題知識做追蹤來源，否則用主知識庫
+    let trackingKnowledgeBase = "";
+    let trackingAnswerMode = "";
     if (usageType === "chat_message" && normalizedBotId && normalizedBotId !== "default") {
       const character = await getAccessibleBot(normalizedBotId, authUser.id);
       if (!character) return res.status(404).json({ error: "Character not found" });
@@ -1774,6 +1778,13 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
           activeTopic.id
         );
       }
+      // P1 按話題計進度：對話揀咗主題版本，覆蓋追蹤用該版本嘅知識點，
+      // 唔係主知識庫。答題模式由主知識庫（角色對話策略）解析。
+      trackingKnowledgeBase =
+        activeTopic && String(activeTopic.knowledge_content || "").trim()
+          ? activeTopic.knowledge_content
+          : characterKnowledgeBase;
+      trackingAnswerMode = parseAnswerMode(characterKnowledgeBase);
       characterGradeBand = character.grade || null;
       // 後台實錄嘅對話狀態（已覆蓋知識點／下一步目標）——有就注入，冇就用模型自估
       const conversationState = activeConversation
@@ -1782,6 +1793,9 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
       const characterBasePrompt = buildChatSystemPrompt({
         roleName: character.name,
         knowledgeBase: character.knowledge_base || "",
+        // P1 按話題計進度：教學目標（Target_Knowledge_Points）跟活躍話題版本，
+        // 同追蹤／Covered_Points 同一來源，唔會教默認版本嘅點。
+        targetKnowledgeBase: activeTopic?.knowledge_content || undefined,
         securityPrompt: character.security_prompt || "",
         gradeBand: characterGradeBand,
         conversationState: conversationState
@@ -2192,7 +2206,8 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
           botId: normalizedBotId,
           userId: authUser.id,
           conversationId: activeConversation.id,
-          knowledgeBase: characterKnowledgeBase,
+          knowledgeBase: trackingKnowledgeBase,
+          answerModeOverride: trackingAnswerMode,
           recentMessages: recentChatMessages,
           reply,
         }).catch((error) =>
@@ -2259,7 +2274,8 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
         botId: normalizedBotId,
         userId: authUser.id,
         conversationId: activeConversation.id,
-        knowledgeBase: characterKnowledgeBase,
+        knowledgeBase: trackingKnowledgeBase,
+        answerModeOverride: trackingAnswerMode,
         recentMessages: recentChatMessages,
         reply: streamedReply,
       }).catch((error) =>

@@ -22,6 +22,9 @@ export type ConversationStateInput = {
 type PromptCompilerInput = {
   roleName?: string;
   knowledgeBase?: string;
+  /** 教學目標知識來源（話題版本內容）；冇提供就用 knowledgeBase 自己嘅【知識點分級】。
+   *  角色身份／背景／摘要仍然由 knowledgeBase 提供。 */
+  targetKnowledgeBase?: string;
   securityPrompt?: string;
   /** 年級帶（P1 / P2-P3 / P4-P6 / S1-S3 / S4-S6）；未設定則不加難度規則 */
   gradeBand?: string | null;
@@ -350,11 +353,15 @@ export function buildChatSystemPrompt(input: PromptCompilerInput) {
     roleName: input.roleName,
     knowledgeBase: input.knowledgeBase,
   });
+  // 話題版本活躍時，教學目標用話題知識；身份／背景仍然由主知識庫提供。
+  const targetParsed = input.targetKnowledgeBase
+    ? parsePromptSource({ knowledgeBase: input.targetKnowledgeBase })
+    : parsed;
 
   // 教學目標只計 core 知識點，同覆蓋追蹤 / next_point / 進度 UI 同一集。
   // 非 core 點仍然喺【人物知識庫摘要】文字入面做背景知識，只係唔再係必教目標
   // —— 否則 bot 會教一啲永遠唔會出現喺進度分母嘅知識點。
-  const corePoints = parsed.knowledgePoints.filter((point) => point.core !== false);
+  const corePoints = targetParsed.knowledgePoints.filter((point) => point.core !== false);
   const targetKnowledgeGraph = corePoints.length
     ? corePoints
         .map((point) => ({
