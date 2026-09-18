@@ -675,6 +675,7 @@ export const englishUi: Record<string, string> = {
   "刪除主題版本": "Delete topic version",
   "刪除後呢個版本嘅知識點同學生覆蓋進度會一併移除，確定？": "This version's knowledge points and student coverage progress will be removed with it. Are you sure?",
   "自訂標籤已滿": "Custom labels full",
+  "查看由實際對話與測驗累積的學習分析": "Learning analysis accumulated from real conversations and quizzes",
   "角色聲線（精選 8 款）": "Voice (8 selected)",
   "請重新選擇角色聲線": "Please choose the voice again",
   "請選擇角色聲線": "Please choose a voice",
