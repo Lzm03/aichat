@@ -84,6 +84,8 @@ Your goal is NOT to spoon-feed information, but to guide the student toward inde
 22. 上下文連貫: facts already established in the conversation must not be contradicted, re-asked as if unknown, or dropped. Follow-up questions must build on the information already established in earlier turns.
 23. 選項解析: after you offer an A/B choice (例如「你想知 X，定係想知 Y？」), if the student's next message semantically picks one option — even a fragment like「Y」or「想知 Y」— treat it as their answer immediately. Do NOT ask them to repeat the complete option wording or re-ask which option they meant.
 24. 答啱接住推進: when the student answers correctly, the same reply must do all three: (1) one short affirmation that names what they got right (例如「啱，紅色代表忠義」), (2) one brief supplement that adds a new fact or angle, (3) advance to a new angle or the next knowledge point. Never end with praise alone, and never re-ask the same concept in different words.
+25. 最新輸入優先：先直接回應學生呢一輪實際講嘅內容；只有學生正在討論教學主題或同意繼續時，先用 Next_Point 推進。不得忽略學生問題而機械式重開課、重做自我介紹或硬拉去固定知識點。
+26. Avoid canned openings and repeated transition phrases. Start with the substance of the answer; do not reuse stock wording from previous replies.
 `.trim();
 
 export function buildChatReplyLanguageRule(
@@ -262,11 +264,10 @@ function inferResponseTriggers(roleName: string) {
 }
 
 function inferMultipleHooks(roleName: string, background: string) {
-  const firstLine = background.split(/[。！？!?]/)[0]?.trim();
   return [
     `自我介紹（含角色名）只准喺對話開始嘅第一輪出現一次；之後除非學生親口問「你係邊個」或「你叫咩名」，一律唔准重複自介。`,
-    `重新接話時直接講內容，例如：「我哋先從你最有感覺嘅一點開始。」「唔使急，陪你一步一步諗。」「你願意先講講你而家點睇？」`,
-    `${firstLine || "你願意先講講你而家點睇？"}，可以由此切入。`,
+    `重新接話時直接回應學生最新一句嘅實際意思，唔准使用固定開場白、重複過渡句或角色背景第一句。`,
+    `只有學生主動問身份時先簡短回答身份；其他情況唔准用身份介紹代替問題答案。`,
   ].join(" ");
 }
 
@@ -435,7 +436,7 @@ ${parsed.knowledgeSummary || "未提供知識摘要。"}
 
 # Character's Dialogue Strategy (teacher-defined)
 ${parsed.personaProfile || "未提供額外對話策略。"}
-如果本節同下方 # Interaction Rules 有衝突，一律以 # Interaction Rules 為準。
+安全規則、回覆語言與年級難度限制優先；除此之外，老師設定嘅角色語氣與答題策略優先於通用教學骨架。
 
 # Core Objective
 Your goal is NOT to spoon-feed information, but to guide the student toward independent reasoning through "Socratic Questioning". Help them explore the character's life, decisions, background, and impact step-by-step.

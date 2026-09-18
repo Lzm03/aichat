@@ -1,8 +1,7 @@
 "use client";
 
 import { uiText, uiTemplate } from '../../../utils/uiI18n';
-import { useTeacherLang } from '../../../utils/teacherI18n';
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import { Icons } from "../../icons";
 import VideoStudioModal from "../VideoStudioModal";
 import { SequencePngPlayer } from "../SequencePngPlayer";
@@ -77,361 +76,150 @@ const StepMediaPreview = ({ src }: { src: string }) => {
   );
 };
 
-// ============ 聲線工具 ============
-const getPinyin = (str: string) =>
-  str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-const voiceNameMap: Record<string, string> = {
-  "專業男主持": "專業男主持",
-  "俊朗男友": "陽光男聲",
-  "可愛男童": "可愛男童",
-  "抒情男聲": "温和男聲",
-  "播報男聲": "播報男聲",
-  "活潑男聲": "活潑男聲",
-  "温潤男聲": "温潤男聲",
-  "電台男主播": "電台男主播",
-  "聰明男童": "聰明男童",
-  "專業女主持": "專業女主持",
-  "可愛女孩": "可愛女孩",
-  "善良女聲": "温柔女聲",
-  "少女音色": "少女音色",
-  "少女音色-beta": "少女音色（測試）",
-  "成熟女性音色": "成熟女性音色",
-  "成熟女性音色-beta": "成熟女性音色（測試）",
-  "新聞女聲": "新聞女聲",
-  "清脆少女": "清脆少女",
-  "温暖少女": "温暖少女",
-  "温柔女聲": "温柔女聲",
-  "甜美女聲": "甜美女聲",
+type CuratedVoice = {
+  label: string;
+  sourceNames: string[];
+  gender: "male" | "female";
+  ageGroup: "adult" | "senior" | "child";
 };
 
-const localizeVoiceName = (name: string) => {
-  if (!name) return "未命名聲線";
-  if (voiceNameMap[name]) return voiceNameMap[name];
-
-  // 英文名稱做基礎本地化
-  let n = name;
-  n = n.replace(/male/gi, "男聲");
-  n = n.replace(/female/gi, "女聲");
-  n = n.replace(/boy/gi, "男童");
-  n = n.replace(/girl/gi, "女孩");
-  n = n.replace(/news/gi, "新聞");
-  n = n.replace(/host/gi, "主持");
-  n = n.replace(/warm/gi, "温暖");
-  n = n.replace(/soft/gi, "柔和");
-  n = n.replace(/sweet/gi, "甜美");
-  n = n.replace(/cartoon|anime/gi, "卡通");
-  n = n.replace(/\bbeta\b/gi, "（測試）");
-  // 只保留繁中可讀內容，移除殘留英文/數字
-  n = n.replace(/[A-Za-z0-9_-]+/g, "").replace(/\s+/g, " ").trim();
-  return n || "標準聲線";
-};
+// Keep the workshop choices intentionally small and recognisable. The source
+// names are MiniMax names; the labels are the stable names teachers see.
+const CURATED_VOICES: CuratedVoice[] = [
+  { label: "穩重男主持", sourceNames: ["专业男主持", "專業男主持"], gender: "male", ageGroup: "adult" },
+  { label: "溫潤男老師", sourceNames: ["温润男声", "溫潤男聲"], gender: "male", ageGroup: "adult" },
+  { label: "專業女主持", sourceNames: ["专业女主持", "專業女主持"], gender: "female", ageGroup: "adult" },
+  { label: "溫柔女老師", sourceNames: ["温柔女声", "溫柔女聲"], gender: "female", ageGroup: "adult" },
+  { label: "開朗老爺爺", sourceNames: ["搞笑大爷", "搞笑大爺"], gender: "male", ageGroup: "senior" },
+  { label: "慈祥老奶奶", sourceNames: ["花甲奶奶"], gender: "female", ageGroup: "senior" },
+  { label: "活潑小男孩", sourceNames: ["可爱男童", "可愛男童"], gender: "male", ageGroup: "child" },
+  { label: "甜美小女孩", sourceNames: ["可爱女孩", "可愛女孩"], gender: "female", ageGroup: "child" },
+];
 
 // ============ 聲線選擇組件 ============
 const VoiceSelect = ({ voices, selected, onSelect }: any) => {
-  const lang = useTeacherLang();
-  const displayVoice = (voice: any) => {
-    if (lang !== 'en') return voice.displayName;
-    const translated = uiText(voice.voice_name || voice.displayName);
-    return /[\u3400-\u9fff]/.test(translated) ? `Voice ${voice.voice_id}` : translated;
-  };
-  const [keyword, setKeyword] = useState("");
-  const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
-  const [ageFilter, setAgeFilter] = useState<
-    "all" | "child" | "teen" | "youth" | "adult" | "mature" | "senior"
-  >("all");
-
-  const detectGender = (name: string) => {
-    const n = (name || "").toLowerCase();
-    const maleHit =
-      /男|male|boy|man|先生|阿叔|爸爸|叔|伯|哥哥/.test(n);
-    const femaleHit =
-      /女|female|girl|woman|女士|媽媽|姐姐|妹妹|少女|女性/.test(n);
-
-    if (maleHit && !femaleHit) return "male" as const;
-    if (femaleHit && !maleHit) return "female" as const;
-    return "other" as const;
-  };
-
-  const tagOf = (name: string) => {
-    if (name.includes("主持") || name.includes("播報") || name.includes("新聞")) return "formal";
-    if (name.includes("温") || name.includes("柔")) return "warm";
-    if (name.includes("可愛") || name.includes("童") || name.includes("少女")) return "youth";
-    if (name.includes("活潑") || name.includes("清脆")) return "bright";
-    if (name.includes("成熟")) return "mature";
-    if (name.includes("卡通")) return "cartoon";
-    return "general";
-  };
-
-  const detectAgeGroup = (name: string) => {
-    const n = (name || "").toLowerCase();
-    if (/兒童|童|男童|女孩|小朋友|kid|child/.test(n)) return "child" as const;
-    if (/少年|少女|teen|student/.test(n)) return "teen" as const;
-    if (/青年|年輕|youth|young/.test(n)) return "youth" as const;
-    if (/長者|老人|老年|耆英|elder|elderly|senior|old|grandpa|grandma|grandfather|grandmother|老伯|阿伯|阿公|阿婆|爺爺|奶奶/.test(n)) return "senior" as const;
-    if (/成熟|成熟女性|adult/.test(n)) return "mature" as const;
-    if (/主持|播報|新聞|電台|男聲|女聲|professional/.test(n)) return "adult" as const;
-    return "adult" as const;
-  };
-
-  const ageLabelMap = {
-    child: "兒童",
-    teen: "青少年",
-    youth: "青年",
-    adult: "成人",
-    mature: "成熟",
-    senior: "長者",
-  } as const;
-
-  const sortByDiverseTag = (list: any[]) => {
-    return [...list].sort((a: any, b: any) => {
-      const t1 = tagOf(a.displayName);
-      const t2 = tagOf(b.displayName);
-      if (t1 !== t2) return t1.localeCompare(t2);
-      return getPinyin(a.displayName).localeCompare(getPinyin(b.displayName));
-    });
-  };
-
-  const normalizeVoice = (v: any) => {
-    const displayName = localizeVoiceName(v.voice_name || "");
-    const rawName = `${v.voice_name || ""}`;
-    const rawId = `${v.voice_id || ""}`;
-    const raw = `${displayName} ${rawName} ${rawId}`;
-    const lower = raw.toLowerCase();
-
-    return {
-      ...v,
-      displayName,
-      gender: detectGender(raw),
-      ageGroup: detectAgeGroup(raw),
-      searchText: lower,
-    };
-  };
-
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const normalized = useMemo(() => {
-    const sorted = (voices || [])
-      .map(normalizeVoice)
-      .sort((a: any, b: any) =>
-        getPinyin(a.displayName).localeCompare(getPinyin(b.displayName))
-      );
+    const available = voices || [];
 
-    // 名稱唯一化：避免「標準聲線」大量重複
-    const nameCount: Record<string, number> = {};
-    return sorted.map((v: any) => {
-      const base = v.displayName || "標準聲線";
-      const count = (nameCount[base] || 0) + 1;
-      nameCount[base] = count;
-      return {
-        ...v,
-        displayName: count === 1 ? base : `${base}（${count}）`,
-      };
+    return CURATED_VOICES.flatMap((choice) => {
+      const match = available.find((voice: any) => {
+        const sourceName = `${voice.voice_name || voice.name || ""}`.trim();
+        return choice.sourceNames.includes(sourceName);
+      });
+      if (!match) return [];
+      return [{
+        ...match,
+        displayName: choice.label,
+        gender: choice.gender,
+        ageGroup: choice.ageGroup,
+      }];
     });
   }, [voices]);
 
-  const filtered = useMemo(() => {
-    const kw = keyword.trim().toLowerCase();
-    const base = normalized.filter((v: any) => {
-      if (!v.searchText.includes(kw) && !displayVoice(v).toLowerCase().includes(kw)) return false;
-      if (ageFilter === "all") return true;
-      return v.ageGroup === ageFilter;
-    });
-    const male = base.filter((v: any) => v.gender === "male");
-    const female = base.filter((v: any) => v.gender === "female");
-    const other = base.filter((v: any) => v.gender === "other");
-
-    if (genderFilter === "male") {
-      return { male: sortByDiverseTag(male), female: [], other: [], usedSeniorFallback: false };
-    }
-    if (genderFilter === "female") {
-      return { male: [], female: sortByDiverseTag(female), other: [], usedSeniorFallback: false };
-    }
-
-    const noSeniorResultInAll =
-      ageFilter === "senior" && male.length === 0 && female.length === 0 && other.length === 0;
-
-    if (noSeniorResultInAll) {
-      const matureBackup = normalized.filter((v: any) => v.ageGroup === "mature");
-      const adultBackup = normalized.filter((v: any) => v.ageGroup === "adult");
-      const backup = sortByDiverseTag([...matureBackup, ...adultBackup]).slice(0, 20);
-      return {
-        male: backup.filter((v: any) => v.gender === "male"),
-        female: backup.filter((v: any) => v.gender === "female"),
-        other: backup.filter((v: any) => v.gender === "other"),
-        usedSeniorFallback: true,
-      };
-    }
-
-    // 全部頁完整展示：男/女/其他分區，避免遺漏
-    return {
-      male: sortByDiverseTag(male),
-      female: sortByDiverseTag(female),
-      other: sortByDiverseTag(other),
-      usedSeniorFallback: false,
-    };
-  }, [normalized, genderFilter, keyword, ageFilter, lang]);
-
   const selectedVoice = normalized.find((v: any) => v.voice_id === selected);
+  const voiceMeta = (voice: any) => ({
+    gender: voice.gender === "male" ? "男聲" : "女聲",
+    age: voice.ageGroup === "senior" ? "長者" : voice.ageGroup === "child" ? "童聲" : "成人",
+  });
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setIsOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isOpen]);
 
   return (
-    <div className="w-full space-y-3">
-      <div className="bg-slate-100 p-1 rounded-xl grid grid-cols-3 gap-1">
-        <button
-          type="button"
-          onClick={() => setGenderFilter("all")}
-          className={`py-2 text-sm rounded-lg font-semibold ${
-            genderFilter === "all" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-600"
-          }`}
-        >{uiText("全部")}</button>
-        <button
-          type="button"
-          onClick={() => setGenderFilter("male")}
-          className={`py-2 text-sm rounded-lg font-semibold ${
-            genderFilter === "male" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-600"
-          }`}
-        >{uiText("男聲")}</button>
-        <button
-          type="button"
-          onClick={() => setGenderFilter("female")}
-          className={`py-2 text-sm rounded-lg font-semibold ${
-            genderFilter === "female" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-600"
-          }`}
-        >{uiText("女聲")}</button>
+    <div ref={menuRef} className="relative w-full space-y-2">
+      <span className="block text-xs font-semibold tracking-wide text-slate-500">
+        {uiText("角色聲線（精選 8 款）")}
+      </span>
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((open) => !open)}
+        className={`group flex w-full items-center justify-between rounded-2xl border bg-white px-4 py-3.5 text-left transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-indigo-100 ${
+          isOpen
+            ? "border-indigo-400 shadow-[0_10px_30px_rgba(79,70,229,0.12)]"
+            : "border-slate-200 shadow-sm hover:border-indigo-300 hover:shadow-md"
+        }`}
+      >
+        <span className="flex min-w-0 items-center gap-3">
+          <span className={`h-9 w-1 shrink-0 rounded-full ${selectedVoice ? "bg-indigo-500" : "bg-slate-300"}`} />
+          <span className="min-w-0">
+            <span className={`block truncate text-sm font-semibold ${selectedVoice ? "text-slate-800" : "text-slate-500"}`}>
+              {selectedVoice?.displayName || (selected ? uiText("請重新選擇角色聲線") : uiText("請選擇角色聲線"))}
+            </span>
+            <span className="mt-0.5 block text-xs text-slate-400">
+              {selectedVoice
+                ? `${uiText(voiceMeta(selectedVoice).gender)} · ${uiText(voiceMeta(selectedVoice).age)}`
+                : uiText("每款聲線均標示性別與年齡")}
+            </span>
+          </span>
+        </span>
+        <Icons.down className={`h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${isOpen ? "rotate-180 text-indigo-500" : "group-hover:text-indigo-500"}`} />
+      </button>
+
+      <div
+        role="listbox"
+        aria-label={uiText("角色聲線（精選 8 款）")}
+        className={`absolute left-0 right-0 z-30 mt-2 origin-top overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_50px_rgba(15,23,42,0.16)] transition-all duration-200 ${
+          isOpen ? "visible translate-y-0 scale-100 opacity-100" : "invisible -translate-y-1 scale-[0.98] opacity-0"
+        }`}
+      >
+        <div className="grid max-h-72 grid-cols-2 gap-1 overflow-y-auto pr-1">
+          {normalized.map((voice: any) => {
+            const active = voice.voice_id === selectedVoice?.voice_id;
+            const meta = voiceMeta(voice);
+            return (
+              <button
+                key={voice.voice_id}
+                type="button"
+                role="option"
+                aria-selected={active}
+                onClick={() => {
+                  onSelect(voice.voice_id);
+                  setIsOpen(false);
+                }}
+                className={`flex min-w-0 items-center justify-between rounded-xl px-3 py-2.5 text-left transition-colors ${
+                  active
+                    ? "bg-indigo-50 text-indigo-700"
+                    : "text-slate-700 hover:bg-slate-50 hover:text-indigo-600"
+                }`}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold">{voice.displayName}</span>
+                  <span className={`mt-1 flex items-center gap-1.5 text-[11px] ${active ? "text-indigo-500" : "text-slate-400"}`}>
+                    <span>{uiText(meta.gender)}</span>
+                    <span className="text-slate-300">·</span>
+                    <span>{uiText(meta.age)}</span>
+                  </span>
+                </span>
+                {active && <Icons.success className="ml-2 h-4 w-4 shrink-0 text-indigo-500" />}
+              </button>
+            );
+          })}
+        </div>
       </div>
-
-      {ageFilter === "senior" && (
-        <p className="text-xs text-slate-500">{uiText("建議先使用「全部」查看長者音色，之後再用關鍵字細篩。")}</p>
-      )}
-
-      <input
-        type="text"
-        value={keyword}
-        onChange={(e) => setKeyword(e.target.value)}
-        placeholder={uiText("搜尋聲線（名稱或關鍵字）")}
-        className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-300"
-      />
-
-      <div className="flex flex-wrap gap-2">
-        {[
-          { key: "all", label: "全部年齡" },
-          { key: "child", label: "兒童" },
-          { key: "teen", label: "青少年" },
-          { key: "youth", label: "青年" },
-          { key: "adult", label: "成人" },
-          { key: "mature", label: "成熟" },
-          { key: "senior", label: "長者" },
-        ].map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => setAgeFilter(item.key as typeof ageFilter)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border ${
-              ageFilter === item.key
-                ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-                : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-            }`}
-          >
-            {uiText(item.label)}
-          </button>
-        ))}
-      </div>
-
-      <div className="border rounded-xl bg-white max-h-60 overflow-y-auto">
-        {filtered.usedSeniorFallback && (
-          <div className="px-3 py-2 text-xs text-amber-700 bg-amber-50 border-b border-amber-100">{uiText("目前供應商未提供明確「長者」標記聲線，已自動顯示較成熟的替代音色。")}</div>
-        )}
-        {filtered.male.length === 0 && filtered.female.length === 0 && filtered.other.length === 0 ? (
-          <div className="p-4 text-sm text-slate-500">{uiText("找不到符合的聲線，請換個關鍵字。")}</div>
-        ) : (
-          <div className="p-2 space-y-3">
-            {filtered.male.length > 0 && (
-              <div>
-                <div className="px-2 py-1 text-xs font-semibold text-slate-500">{uiText("男聲")}</div>
-                <div className="space-y-1">
-                  {filtered.male.map((v: any) => {
-                    const active = selected === v.voice_id;
-                    return (
-                      <button
-                        key={v.voice_id}
-                        type="button"
-                        onClick={() => onSelect(v.voice_id)}
-                        className={`w-full text-left px-3 py-2 rounded-lg border transition ${
-                          active
-                            ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-                            : "bg-white border-transparent hover:bg-slate-50"
-                        }`}
-                      >
-                        <div className="text-sm font-medium">{displayVoice(v)}</div>
-                        <div className="text-[11px] text-slate-500 mt-0.5">
-                          {uiText(ageLabelMap[v.ageGroup as keyof typeof ageLabelMap]) || uiText("成人")}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {filtered.female.length > 0 && (
-              <div>
-                <div className="px-2 py-1 text-xs font-semibold text-slate-500">{uiText("女聲")}</div>
-                <div className="space-y-1">
-                  {filtered.female.map((v: any) => {
-                    const active = selected === v.voice_id;
-                    return (
-                      <button
-                        key={v.voice_id}
-                        type="button"
-                        onClick={() => onSelect(v.voice_id)}
-                        className={`w-full text-left px-3 py-2 rounded-lg border transition ${
-                          active
-                            ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-                            : "bg-white border-transparent hover:bg-slate-50"
-                        }`}
-                      >
-                        <div className="text-sm font-medium">{displayVoice(v)}</div>
-                        <div className="text-[11px] text-slate-500 mt-0.5">
-                          {uiText(ageLabelMap[v.ageGroup as keyof typeof ageLabelMap]) || uiText("成人")}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {genderFilter === "all" && filtered.other.length > 0 && (
-              <div>
-                <div className="px-2 py-1 text-xs font-semibold text-slate-500">{uiText("其他聲線")}</div>
-                <div className="space-y-1">
-                  {filtered.other.map((v: any) => {
-                    const active = selected === v.voice_id;
-                    return (
-                      <button
-                        key={v.voice_id}
-                        type="button"
-                        onClick={() => onSelect(v.voice_id)}
-                        className={`w-full text-left px-3 py-2 rounded-lg border transition ${
-                          active
-                            ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-                            : "bg-white border-transparent hover:bg-slate-50"
-                        }`}
-                      >
-                        <div className="text-sm font-medium">{displayVoice(v)}</div>
-                        <div className="text-[11px] text-slate-500 mt-0.5">
-                          {uiText(ageLabelMap[v.ageGroup as keyof typeof ageLabelMap]) || uiText("成人")}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="text-xs text-slate-500">{uiText("已選擇：")}{selectedVoice ? displayVoice(selectedVoice) : uiText("未選擇聲線")}
-      </div>
+      <p className="text-xs text-slate-500">
+        {selectedVoice
+          ? `${uiText("已選擇：")}${selectedVoice.displayName}`
+          : selected
+            ? uiText("原有聲線不在精選名單，請從 8 個角色聲線重新選擇。")
+            : uiText("男聲、女聲、長者及少年／童聲各 2 款。")}
+      </p>
     </div>
   );
 };

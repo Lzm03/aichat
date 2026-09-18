@@ -46,12 +46,24 @@ import { normalizeUploadFilename } from "../../utils/uploadFilename.ts";
 import { combineExtractedFileText } from "../lib/knowledge-files.ts";
 import { KNOWLEDGE_EXTRACTION_SYSTEM_PROMPT } from "../lib/knowledge-extraction.ts";
 import {
+  GEMINI_STABLE_TEMPERATURE,
+  GEMINI_TEXT_MODEL,
   getAI,
   getVertexAccessToken,
   getVertexAIConfig,
   isVertexAIEnabled,
 } from "../lib/gemini-server.ts";
+import { takeVertexSseData } from "../lib/vertex-sse.ts";
+import {
+  buildGeminiContents,
+  normalizeGeminiImages,
+  summarizeGeminiContents,
+  SUPPORTED_GEMINI_IMAGE_MIME_TYPES,
+  type GeminiHistoryMessage,
+  type GeminiImageInput,
+} from "../lib/gemini-content.ts";
 const isDebugLogEnabled = process.env.LOG_LEVEL === "debug";
+const shouldLogGeminiPayload = process.env.NODE_ENV === "development" || isDebugLogEnabled;
 
 const require = createRequire(import.meta.url);
 const pdfParse = require("pdf-parse");
@@ -99,10 +111,7 @@ async function maybeMockModelReply(userPrompt: string): Promise<string | null> {
 }
 
 type TeachingTaskType = "email";
-type ChatImageInput = {
-  mimeType: string;
-  data: string;
-};
+type ChatImageInput = GeminiImageInput;
 type TeachingSessionRow = {
   id: string;
   user_id: string;
@@ -360,60 +369,18 @@ function buildTeachingGuide(stepIndex: number, mode: "step" | "example", state: 
   ].filter(Boolean).join("\n");
 }
 
-async function askDeepSeek(systemPrompt: string, userPrompt: string, onToken: (token: string) => void) {
-  const requestBody = {
-    model: "deepseek-chat",
-    stream: true,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-  };
-  const r = await fetchDeepSeekWithRetry(requestBody);
-
-  const decoder = new TextDecoder();
-  for await (const chunk of r.body as any) {
-    const text = decoder.decode(chunk);
-    const lines = text.split("\n");
-    for (const line of lines) {
-      if (!line.startsWith("data:")) continue;
-      const json = line.replace("data:", "").trim();
-      if (json === "[DONE]") return;
-      try {
-        const data = JSON.parse(json);
-        const token = data?.choices?.[0]?.delta?.content;
-        if (token) onToken(token);
-      } catch {}
-    }
-  }
-}
-
-async function askDeepSeekOnce(systemPrompt: string, userPrompt: string): Promise<string> {
-  const r = await fetchDeepSeekWithRetry({
-    model: "deepseek-chat",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-  });
-
-  if (!r.ok) throw new Error((await r.text()) || "DeepSeek request failed");
-  const data: any = await r.json();
-  return data?.choices?.[0]?.message?.content || "";
-}
-
 function extractChatImages(req: Request): ChatImageInput[] {
   const files = ((req.files as Express.Multer.File[] | undefined) || []).filter(Boolean);
-  return files
-    .filter((file) => String(file.mimetype || "").startsWith("image/"))
+  return normalizeGeminiImages(files
+    .filter((file) => SUPPORTED_GEMINI_IMAGE_MIME_TYPES.includes(file.mimetype as any))
     .slice(0, MAX_CHAT_IMAGE_COUNT)
     .map((file) => ({
       mimeType: file.mimetype,
       data: file.buffer.toString("base64"),
-    }));
+    })));
 }
 
-type ChatModelProvider = "deepseek" | "gemini";
+type ChatModelProvider = "gemini";
 type SuggestedReply = {
   tier: "L1" | "L2" | "L3";
   label: string;
@@ -432,14 +399,15 @@ type DialogueQuestionType =
 type RecentChatMessage = {
   role: "user" | "bot";
   content: string;
+  images?: ChatImageInput[];
 };
 
 function normalizeChatModelProvider(input: unknown): ChatModelProvider {
-  return String(input || "").trim().toLowerCase() === "gemini" ? "gemini" : "deepseek";
+  return "gemini";
 }
 
 function getDialogueEnhancementProvider(fallbackProvider: ChatModelProvider): ChatModelProvider {
-  const configured = normalizeChatModelProvider(process.env.DIALOGUE_HINT_MODEL_PROVIDER || "deepseek");
+  const configured = normalizeChatModelProvider(process.env.DIALOGUE_HINT_MODEL_PROVIDER || fallbackProvider);
   return configured || fallbackProvider;
 }
 
@@ -448,22 +416,6 @@ function sanitizeChatHistoryContent(input: string) {
     .replace(/\r/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-}
-
-function buildContextualUserPrompt(userPrompt: string, recentMessages: RecentChatMessage[]) {
-  const normalizedPrompt = String(userPrompt || "").trim();
-  if (!recentMessages.length) return normalizedPrompt;
-  const transcript = recentMessages
-    .map((message) => `${message.role === "user" ? "學生" : "老師"}：${sanitizeChatHistoryContent(message.content)}`)
-    .filter(Boolean)
-    .join("\n");
-  if (!transcript) return normalizedPrompt;
-  return [
-    "以下是最近對話，請延續上下文作答；若學生已回應上一個問題，請自然進入下一個問題；若未回應，也不要機械式重複同一句追問。",
-    transcript,
-    "",
-    `學生最新一句：${normalizedPrompt}`,
-  ].join("\n");
 }
 
 function normalizeStreamFlag(input: unknown): boolean {
@@ -1055,8 +1007,13 @@ function normalizeRecentMessages(input: unknown): RecentChatMessage[] {
             ? "user"
             : "";
       const content = String(item?.content || "").trim();
-      if (!role || !content) return null;
-      return { role, content };
+      const images = normalizeGeminiImages(item?.images || item?.metadata?.images);
+      if (!role || (!content && images.length === 0)) return null;
+      return {
+        role,
+        content,
+        images,
+      };
     })
     .filter(Boolean)
     .slice(-8) as RecentChatMessage[];
@@ -1066,13 +1023,22 @@ async function askGemini(
   systemPrompt: string,
   userPrompt: string,
   onToken: (token: string) => void,
-  images: ChatImageInput[] = []
+  images: ChatImageInput[] = [],
+  history: GeminiHistoryMessage[] = []
 ) {
+  const contents = buildGeminiContents(userPrompt, images, history);
+  if (shouldLogGeminiPayload) {
+    const summary = summarizeGeminiContents(contents);
+    console.log("[Gemini] model=%s", GEMINI_TEXT_MODEL);
+    console.log("[Gemini] multimodal=%s", summary.multimodal);
+    console.log("[Gemini] images=%s", summary.images);
+    console.log("[Gemini] mimeTypes=%s", summary.mimeTypes.join(",") || "none");
+  }
   if (isVertexAIEnabled()) {
     const { project, location } = getVertexAIConfig();
     const accessToken = await getVertexAccessToken();
     const response = await fetch(
-      `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/gemini-2.5-flash:streamGenerateContent?alt=sse`,
+      `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/${GEMINI_TEXT_MODEL}:streamGenerateContent?alt=sse`,
       {
         method: "POST",
         headers: {
@@ -1080,24 +1046,15 @@ async function askGemini(
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [
-                { text: userPrompt },
-                ...images.map((image) => ({
-                  inlineData: {
-                    mimeType: image.mimeType,
-                    data: image.data,
-                  },
-                })),
-              ],
-            },
-          ],
+          contents,
           systemInstruction: {
             parts: [{ text: systemPrompt }],
           },
+          generationConfig: {
+            temperature: GEMINI_STABLE_TEMPERATURE,
+          },
         }),
+        signal: AbortSignal.timeout(Math.max(1000, Number(process.env.VERTEX_REQUEST_TIMEOUT_MS || 60000))),
       }
     );
 
@@ -1108,17 +1065,9 @@ async function askGemini(
     const decoder = new TextDecoder();
     let buffer = "";
     const consumeBuffer = () => {
-      let boundary = buffer.indexOf("\n\n");
-      while (boundary >= 0) {
-        const rawEvent = buffer.slice(0, boundary);
-        buffer = buffer.slice(boundary + 2);
-
-        const payload = rawEvent
-          .split("\n")
-          .filter((line) => line.startsWith("data:"))
-          .map((line) => line.slice(5).trim())
-          .join("");
-
+      const parsedEvents = takeVertexSseData(buffer);
+      buffer = parsedEvents.rest;
+      for (const payload of parsedEvents.data) {
         if (payload) {
           const parsed: any = JSON.parse(payload);
           const text = parsed?.candidates?.[0]?.content?.parts
@@ -1126,8 +1075,6 @@ async function askGemini(
             .join("") || "";
           if (text) onToken(text);
         }
-
-        boundary = buffer.indexOf("\n\n");
       }
     };
 
@@ -1159,23 +1106,11 @@ async function askGemini(
 
   const ai = getAI();
   const stream = await ai.models.generateContentStream({
-    model: "gemini-2.5-flash",
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { text: userPrompt },
-          ...images.map((image) => ({
-            inlineData: {
-              mimeType: image.mimeType,
-              data: image.data,
-            },
-          })),
-        ],
-      },
-    ],
+    model: GEMINI_TEXT_MODEL,
+    contents,
     config: {
       systemInstruction: systemPrompt,
+      temperature: GEMINI_STABLE_TEMPERATURE,
     },
   });
 
@@ -1185,12 +1120,25 @@ async function askGemini(
   }
 }
 
-async function askGeminiOnce(systemPrompt: string, userPrompt: string, images: ChatImageInput[] = []): Promise<string> {
+async function askGeminiOnce(
+  systemPrompt: string,
+  userPrompt: string,
+  images: ChatImageInput[] = [],
+  history: GeminiHistoryMessage[] = []
+): Promise<string> {
+  const contents = buildGeminiContents(userPrompt, images, history);
+  if (shouldLogGeminiPayload) {
+    const summary = summarizeGeminiContents(contents);
+    console.log("[Gemini] model=%s", GEMINI_TEXT_MODEL);
+    console.log("[Gemini] multimodal=%s", summary.multimodal);
+    console.log("[Gemini] images=%s", summary.images);
+    console.log("[Gemini] mimeTypes=%s", summary.mimeTypes.join(",") || "none");
+  }
   if (isVertexAIEnabled()) {
     const { project, location } = getVertexAIConfig();
     const accessToken = await getVertexAccessToken();
     const response = await fetch(
-      `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/gemini-2.5-flash:generateContent`,
+      `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/${GEMINI_TEXT_MODEL}:generateContent`,
       {
         method: "POST",
         headers: {
@@ -1198,24 +1146,15 @@ async function askGeminiOnce(systemPrompt: string, userPrompt: string, images: C
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [
-                { text: userPrompt },
-                ...images.map((image) => ({
-                  inlineData: {
-                    mimeType: image.mimeType,
-                    data: image.data,
-                  },
-                })),
-              ],
-            },
-          ],
+          contents,
           systemInstruction: {
             parts: [{ text: systemPrompt }],
           },
+          generationConfig: {
+            temperature: GEMINI_STABLE_TEMPERATURE,
+          },
         }),
+        signal: AbortSignal.timeout(Math.max(1000, Number(process.env.VERTEX_REQUEST_TIMEOUT_MS || 60000))),
       }
     );
 
@@ -1229,23 +1168,11 @@ async function askGeminiOnce(systemPrompt: string, userPrompt: string, images: C
 
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { text: userPrompt },
-          ...images.map((image) => ({
-            inlineData: {
-              mimeType: image.mimeType,
-              data: image.data,
-            },
-          })),
-        ],
-      },
-    ],
+    model: GEMINI_TEXT_MODEL,
+    contents,
     config: {
       systemInstruction: systemPrompt,
+      temperature: GEMINI_STABLE_TEMPERATURE,
     },
   });
 
@@ -1256,12 +1183,10 @@ async function askModelOnce(
   provider: ChatModelProvider,
   systemPrompt: string,
   userPrompt: string,
-  images: ChatImageInput[] = []
+  images: ChatImageInput[] = [],
+  history: GeminiHistoryMessage[] = []
 ): Promise<string> {
-  if (provider === "gemini") {
-    return askGeminiOnce(systemPrompt, userPrompt, images);
-  }
-  return askDeepSeekOnce(systemPrompt, userPrompt);
+  return askGeminiOnce(systemPrompt, userPrompt, images, history);
 }
 
 const CJK_CHARACTER_PATTERN = /[\u3400-\u9fff]/;
@@ -1298,12 +1223,10 @@ async function askModelStream(
   systemPrompt: string,
   userPrompt: string,
   onToken: (token: string) => void,
-  images: ChatImageInput[] = []
+  images: ChatImageInput[] = [],
+  history: GeminiHistoryMessage[] = []
 ) {
-  if (provider === "gemini") {
-    return askGemini(systemPrompt, userPrompt, onToken, images);
-  }
-  return askDeepSeek(systemPrompt, userPrompt, onToken);
+  return askGemini(systemPrompt, userPrompt, onToken, images, history);
 }
 
 function remapModelProviderError(error: unknown) {
@@ -1330,44 +1253,6 @@ function remapModelProviderError(error: unknown) {
     return new Error("Gemini 目前請改走 Vertex AI；若仍看到地區限制，表示請求尚未使用到 Vertex AI 憑證。");
   }
   return error;
-}
-
-async function fetchDeepSeekWithRetry(body: Record<string, unknown>, retries = 2) {
-  let lastError: unknown;
-
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
-    try {
-      const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok && response.status >= 500 && attempt < retries) {
-        await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
-        continue;
-      }
-
-      return response;
-    } catch (error: any) {
-      lastError = error;
-      const code = String(error?.code || "");
-      const shouldRetry =
-        attempt < retries &&
-        (code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ECONNREFUSED");
-
-      if (!shouldRetry) {
-        throw error;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error("DeepSeek request failed");
 }
 
 async function extractTextFromPDF(buffer: Buffer): Promise<string> {
@@ -1691,7 +1576,7 @@ ${draft}
   "nextAction": "...",
   "pass": true
 }`;
-  const raw = await askDeepSeekOnce(evalSystem, evalUser);
+  const raw = await askGeminiOnce(evalSystem, evalUser);
   try {
     const parsed = JSON.parse(raw);
     return {
@@ -1771,7 +1656,7 @@ router.post("/ask-url", requireAuth, async (req: Request, res: Response) => {
   try {
     const authUser = getAuthUser(req);
     await assertUserCanSpend(authUser!.id, 2);
-    const { url = "", modelProvider = "deepseek" } = req.body as any;
+    const { url = "", modelProvider = "gemini" } = req.body as any;
     const selectedModelProvider = normalizeChatModelProvider(modelProvider);
     if (!url || typeof url !== "string") return res.status(400).json({ error: "缺少網址" });
     // 抽取 prompt 只存在 server 端
@@ -1805,7 +1690,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
       usageType = "general",
       botId = "default",
       sharedBotId = "",
-      modelProvider = "deepseek",
+      modelProvider = "gemini",
       mode = "",
       source = "direct",
       conversationId = "",
@@ -1969,9 +1854,9 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
       allRecent.map((message) => ({
         role: message.role === "assistant" || message.role === "bot" ? "bot" : "user",
         content: sanitizeChatHistoryContent(String(message.content || "")),
+        images: normalizeGeminiImages((message as any)?.images || (message as any)?.metadata?.images),
       }))
     );
-    const contextualPrompt = buildContextualUserPrompt(debouncedPrompt, recentChatMessages);
     const active = actor.shared ? null : await getActiveTeachingSession(authUser.id, normalizedBotId);
 
     const ensureActiveConversation = async () => {
@@ -2000,7 +1885,11 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
         role: "user",
         content: normalizedPrompt,
         messageType: "normal",
-        metadata: { replyLanguage: normalizedReplyLanguage, topicId: activeTopic?.id || null },
+        metadata: {
+          replyLanguage: normalizedReplyLanguage,
+          topicId: activeTopic?.id || null,
+          images: chatImages,
+        },
       });
       await updateConversationPreview(conversation.id, authUser.id, normalizedPrompt);
       const maybeRenamed = await updateConversationTitleFromFirstMessage(conversation.id, authUser.id);
@@ -2256,7 +2145,13 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
         if (isDebugLogEnabled) console.log("[ask] requesting model reply");
         reply =
           (await maybeMockModelReply(normalizedPrompt)) ??
-          (await askModelOnce(selectedModelProvider, effectiveSystemPrompt, contextualPrompt, chatImages));
+          (await askModelOnce(
+            selectedModelProvider,
+            effectiveSystemPrompt,
+            debouncedPrompt,
+            chatImages,
+            recentChatMessages
+          ));
         if (normalizedReplyLanguage === "mandarin" && !usesClassicalChineseStyle) {
           reply = await askModelOnce(
             selectedModelProvider,
@@ -2329,10 +2224,10 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
         streamedReply = mocked;
         res.write(`data:${mocked}\n\n`);
       } else {
-        await askModelStream(selectedModelProvider, effectiveSystemPrompt, contextualPrompt, (token: string) => {
+        await askModelStream(selectedModelProvider, effectiveSystemPrompt, debouncedPrompt, (token: string) => {
           streamedReply += token;
           res.write(`data:${token}\n\n`);
-        }, chatImages);
+        }, chatImages, recentChatMessages);
       }
     } catch (error) {
       throw remapModelProviderError(error);

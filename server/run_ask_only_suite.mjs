@@ -15,7 +15,7 @@ try {
   const login=await fetch('http://127.0.0.1:4000/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});
   const token=(await login.json()).token;
   let ok=0,fail=0;const lat=[];let idx=0;const total=1000,concurrency=100;
-  const w=async()=>{for(;;){const i=idx++; if(i>=total)return; const t0=performance.now(); try{const r=await fetch('http://127.0.0.1:4000/api/ask',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({systemPrompt:'你是老师',userPrompt:`并发请求${i}`,stream:false,usageType:'general',botId:'default',modelProvider:'deepseek'})}); if(!r.ok) throw new Error(String(r.status)); await r.arrayBuffer(); lat.push(performance.now()-t0); ok++;}catch{fail++;}}};
+  const w=async()=>{for(;;){const i=idx++; if(i>=total)return; const t0=performance.now(); try{const r=await fetch('http://127.0.0.1:4000/api/ask',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({systemPrompt:'你是老师',userPrompt:`并发请求${i}`,stream:false,usageType:'general',botId:'default',modelProvider:'gemini'})}); if(!r.ok) throw new Error(String(r.status)); await r.arrayBuffer(); lat.push(performance.now()-t0); ok++;}catch{fail++;}}};
   const s=performance.now(); await Promise.all(Array.from({length:concurrency},w)); const d=(performance.now()-s)/1000; lat.sort((a,b)=>a-b); const p=x=>lat[Math.min(lat.length-1,Math.floor(lat.length*x))]||0;
   console.log(JSON.stringify({name:'ask_mock_upstream',concurrency,total,ok,fail,error_rate:+((fail/total)*100).toFixed(2),rps:+(total/d).toFixed(2),p50_ms:+p(0.5).toFixed(2),p95_ms:+p(0.95).toFixed(2),p99_ms:+p(0.99).toFixed(2)},null,2));
 } finally {

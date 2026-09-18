@@ -34,6 +34,7 @@ import { pool, warmDatabasePool } from "./db.ts";
 import { uploadsDir } from "./lib/uploads-dir.ts";
 import { ensurePlatformTables, maybeAssignLegacyDataByEmail } from "./lib/platform-auth.ts";
 import { ensureCharacterTopicTables } from "./lib/character-topics.ts";
+import { getRequestConcurrencyState, requestConcurrencyGate } from "./lib/request-concurrency.ts";
 
 const app = express();
 const allowedOrigins = new Set(
@@ -48,13 +49,27 @@ const allowedOrigins = new Set(
   ].filter(Boolean)
 );
 
+function isLocalDevelopmentOrigin(origin: string) {
+  try {
+    const url = new URL(origin);
+    return (
+      url.protocol === "http:" &&
+      (url.hostname === "localhost" ||
+        url.hostname === "127.0.0.1" ||
+        url.hostname.endsWith(".localhost"))
+    );
+  } catch {
+    return false;
+  }
+}
+
 // CORS: allow localhost plus configured production frontends.
 app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
 
-      if (origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:"))
+      if (isLocalDevelopmentOrigin(origin))
         return callback(null, true);
 
       if (allowedOrigins.has(origin))
@@ -64,11 +79,11 @@ app.use(
     },
     methods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
     allowedHeaders: "Content-Type,Authorization",
+    exposedHeaders: "X-Conversation-Id",
     credentials: true,
   })
 );
 
-app.use(express.json({ limit: "20mb" }));
 app.get("/", (_req, res) => {
   res.status(200).send("ok");
 });
@@ -81,8 +96,11 @@ app.get("/api/health", (_req, res) => {
     maintenance,
     now: new Date().toISOString(),
     version: process.env.APP_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || "dev",
+    concurrency: getRequestConcurrencyState(),
   });
 });
+app.use(requestConcurrencyGate);
+app.use(express.json({ limit: "20mb" }));
 app.get("/api/media-proxy", async (req, res) => {
   const rawUrl = typeof req.query.url === "string" ? req.query.url.trim() : "";
   if (!rawUrl) {

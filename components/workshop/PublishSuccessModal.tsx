@@ -1,6 +1,6 @@
 import { uiText, uiTemplate, uiError } from '../../utils/uiI18n';
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   X,
   Send,
@@ -171,6 +171,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   onDelete,
   isSharedView = false,
 }) => {
+  const prefersReducedMotion = useReducedMotion();
   if (!botConfig) return null;
 
   const {
@@ -338,7 +339,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [guidedMode, setGuidedMode] = useState(false);
   const [guidedStepIndex, setGuidedStepIndex] = useState(0);
   const [guidedTotalSteps, setGuidedTotalSteps] = useState(0);
-  const [modelProvider, setModelProvider] = useState<"deepseek" | "gemini">("deepseek");
+  const modelProvider = "gemini";
   const [replyLanguage, setReplyLanguage] = useState<ReplyLanguage>(() => {
     if (typeof window === "undefined") return "cantonese";
     const saved = window.localStorage.getItem(`bot-reply-language:${botConfig.id}`);
@@ -347,7 +348,6 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       : "cantonese";
   });
   const [translatedOpeningMessage, setTranslatedOpeningMessage] = useState("");
-  const [showModelMenu, setShowModelMenu] = useState(false);
   const [activeQuiz, setActiveQuiz] = useState<ActiveQuizSummary | null>(null);
   const [activeQuizAttempt, setActiveQuizAttempt] = useState<ActiveQuizAttempt | null>(null);
   const [quizUiState, setQuizUiState] = useState<"hidden" | "banner" | "prompt" | "later" | "taking" | "result">("hidden");
@@ -602,10 +602,23 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
   const mapConversationMessagesToChatMessages = React.useCallback(
     (historyMessages: ConversationMessage[]) => {
-      const restoredMessages: ChatMessage[] = historyMessages.map((message) => ({
-        role: message.role === "assistant" ? "bot" : message.role === "system" ? "event" : "user",
-        content: message.content,
-      }));
+      const supportedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+      const restoredMessages: ChatMessage[] = historyMessages.map((message) => {
+        const storedImages = Array.isArray(message.metadata?.images)
+          ? message.metadata.images
+              .map((image: any) => ({
+                mimeType: String(image?.mimeType || "").toLowerCase(),
+                data: String(image?.data || ""),
+              }))
+              .filter((image: any) => supportedMimeTypes.has(image.mimeType) && image.data)
+              .map((image: any) => `data:${image.mimeType};base64,${image.data}`)
+          : [];
+        return {
+          role: message.role === "assistant" ? "bot" : message.role === "system" ? "event" : "user",
+          content: message.content,
+          imagePreviews: storedImages,
+        } as ChatMessage;
+      });
       return restoredMessages.length
         ? restoredMessages
         : ([{ role: "bot", content: buildOpeningMessage() }] as ChatMessage[]);
@@ -807,10 +820,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     const handleClick = (event: MouseEvent) => {
       const target = event.target as Node;
       if (!(target instanceof Node)) return;
-      if ((target as HTMLElement).closest?.("[data-model-menu-root='publish-chat']")) return;
       if ((target as HTMLElement).closest?.("[data-top-menu-root='publish-preview']")) return;
       if ((target as HTMLElement).closest?.("[data-topic-selector-root='publish-chat']")) return;
-      setShowModelMenu(false);
       setShowTopMenu(false);
       setIsTopicSelectorOpen(false);
     };
@@ -2384,10 +2395,7 @@ const sendMessage = async (
       botId: botConfig.id,
       source,
       replyLanguage,
-      stream:
-        !guidedMode &&
-        modelProvider !== "gemini" &&
-        replyLanguage === "cantonese",
+      stream: !guidedMode && replyLanguage === "cantonese",
       teachingHint: guidedMode ? "continue" : "auto",
       usageType: "chat_message",
       sharedBotId: isSharedView ? botConfig.id : undefined,
@@ -2423,7 +2431,7 @@ const sendMessage = async (
     };
     const contentType = String(response.headers.get("content-type") || "");
 
-    if (contentType.includes("application/json") || modelProvider === "gemini") {
+    if (contentType.includes("application/json")) {
       const data = await response.json().catch(() => null);
       const nextConversationId = String(data?.conversationId || data?.conversation?.id || responseConversationId || "").trim();
       if (nextConversationId) {
@@ -2820,7 +2828,15 @@ const handleDeleteSelectedConversations = () => {
 };
 
 const appendChatImages = (files: FileList | File[]) => {
-  const nextFiles = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
+  const supportedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+  const allFiles = Array.from(files || []);
+  const nextFiles = allFiles.filter((file) => supportedMimeTypes.has(file.type.toLowerCase()));
+  if (allFiles.length > nextFiles.length) {
+    showAlert({
+      title: "圖片格式不支援",
+      message: "請上傳 JPEG、PNG 或 WebP 圖片。",
+    });
+  }
   if (!nextFiles.length) return;
   if (chatImages.length + nextFiles.length > 4) {
     showAlert({
@@ -3615,6 +3631,10 @@ const unlockAudioAndMic = async () => {
   const characterLayerClass = `absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
     stageViewMode === "upper" ? "object-top" : ""
   }`;
+  const stageCaptionMessages = messages
+    .map((message, index) => ({ ...message, index }))
+    .filter((message) => message.role !== "event" && message.content.trim())
+    .slice(-6);
 
   if (!isOpen) return null;
 
@@ -4201,6 +4221,86 @@ const unlockAudioAndMic = async () => {
               )}
             </div>
 
+            <AnimatePresence initial={false}>
+              {!chatPanelOpen && (stageCaptionMessages.length > 0 || (isListening && inputText.trim())) ? (
+                <motion.div
+                  key="stage-voice-captions"
+                  className="pointer-events-none absolute inset-x-4 bottom-24 z-[19] flex max-h-[62%] flex-col justify-end gap-3 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent_0%,black_16%,black_100%)] md:inset-x-8 md:bottom-28"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  {stageCaptionMessages.map((message, messagePosition) => {
+                    const isUser = message.role === "user";
+                    const isActive = !prefersReducedMotion && messagePosition === stageCaptionMessages.length - 1 && (
+                      (isUser && isListening) || (!isUser && botState === "speaking")
+                    );
+                    const visibleCaption = message.content.trim().slice(0, 96);
+                    return (
+                      <motion.div
+                        key={`${message.role}-${message.index}`}
+                        layout
+                        initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 44, scale: prefersReducedMotion ? 1 : 0.94 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -28, scale: 0.96 }}
+                        transition={{ type: "spring", stiffness: 250, damping: 24 }}
+                        className={`flex ${isUser ? "justify-end pl-[20%] md:pl-[70%]" : "justify-start pr-[20%] md:pr-[70%]"}`}
+                      >
+                        <div
+                          className={`max-w-[80%] break-words rounded-[1.2rem] border px-3.5 py-2 text-[13px] font-semibold leading-5 shadow-[0_14px_40px_rgba(0,0,0,0.24)] backdrop-blur-xl md:max-w-full md:text-sm ${
+                            isUser
+                              ? "rounded-br-md border-sky-200/35 bg-sky-500/78 text-white"
+                              : "rounded-bl-md border-white/25 bg-black/52 text-white"
+                          }`}
+                        >
+                          <span className="sr-only">{isUser ? uiText("你說") : botName}：</span>
+                          <span aria-hidden="true">
+                            {Array.from(visibleCaption).map((character, characterIndex) => (
+                              <motion.span
+                                key={`${message.index}-${characterIndex}`}
+                                className="inline-block whitespace-pre"
+                                animate={isActive ? {
+                                  y: [0, -3.5, 0],
+                                  rotate: [0, characterIndex % 2 === 0 ? -1.2 : 1.2, 0],
+                                } : { y: 0, rotate: 0 }}
+                                transition={isActive ? {
+                                  duration: 0.62,
+                                  delay: (characterIndex % 10) * 0.045,
+                                  repeat: Infinity,
+                                  repeatDelay: 1.35,
+                                  ease: "easeInOut",
+                                } : { duration: 0.2 }}
+                              >
+                                {character}
+                              </motion.span>
+                            ))}
+                          </span>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                  {isListening && inputText.trim() ? (
+                    <motion.div
+                      key="live-stt-caption"
+                      initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 34, scale: prefersReducedMotion ? 1 : 0.94 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -24 }}
+                      className="flex justify-end pl-[20%] md:pl-[70%]"
+                    >
+                      <div className="max-w-[80%] break-words rounded-[1.2rem] rounded-br-md border border-sky-200/45 bg-sky-500/82 px-3.5 py-2 text-[13px] font-semibold leading-5 text-white shadow-[0_14px_40px_rgba(0,0,0,0.24)] backdrop-blur-xl md:max-w-full md:text-sm">
+                        {inputText}
+                        <motion.span
+                          className="ml-1 inline-block h-4 w-[2px] rounded-full bg-white/80 align-middle"
+                          animate={prefersReducedMotion ? { opacity: 0.8 } : { opacity: [0.25, 1, 0.25] }}
+                          transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.9, repeat: Infinity }}
+                        />
+                      </div>
+                    </motion.div>
+                  ) : null}
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+
             <div
               className={`absolute bottom-4 left-1/2 z-20 -translate-x-1/2 transition-all duration-300 ${
                 chatPanelOpen ? "pointer-events-none opacity-0" : "pointer-events-auto opacity-100"
@@ -4219,42 +4319,6 @@ const unlockAudioAndMic = async () => {
                 >
                   <Mic size={18} />
                 </button>
-                <div className="flex h-12 min-w-[118px] max-w-[168px] items-center justify-center rounded-[22px] bg-black/45 px-4 text-white/80 backdrop-blur-md">
-                  {botState === "thinking" ? (
-                    <div className="flex items-center gap-1.5">
-                      {Array.from({ length: 3 }).map((_, idx) => (
-                        <span
-                          key={idx}
-                          className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-bounce"
-                          style={{ animationDelay: `${idx * 0.16}s` }}
-                        />
-                      ))}
-                    </div>
-                  ) : isListening ? (
-                    <div className="flex h-5 items-center gap-[3px]">
-                      {Array.from({ length: 11 }).map((_, idx) => {
-                        const mid = Math.abs(5 - idx);
-                        const baseHeight = Math.max(6, 14 - mid * 1.4);
-                        const lift = Math.max(0, voiceLevel * (10 - mid * 0.9));
-                        return (
-                          <span
-                            key={idx}
-                            className="w-[3px] rounded-full bg-white/90 transition-[height] duration-75"
-                            style={{
-                              height: `${Math.max(4, Math.round(baseHeight + lift))}px`,
-                            }}
-                          />
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5">
-                      {Array.from({ length: 9 }).map((_, idx) => (
-                        <span key={idx} className="h-1 w-1 rounded-full bg-white/85" />
-                      ))}
-                    </div>
-                  )}
-                </div>
                 <button
                   onClick={() => {
                     void captureStagePhoto();
@@ -4746,43 +4810,6 @@ const unlockAudioAndMic = async () => {
                     {uiText(voiceLimitMessage)}
                   </div>
                 )}
-                <div className="mb-2 flex items-center">
-                  <div className="relative" data-model-menu-root="publish-chat">
-                  <button
-                    type="button"
-                    onClick={() => setShowModelMenu((prev) => !prev)}
-                    disabled={shouldDisableRegularChat}
-                    className="flex items-center gap-2 rounded-full border border-[#e1d4bf] bg-white/92 px-3 py-1.5 text-xs font-medium text-[#4b3f31] shadow-sm transition hover:bg-[#fffaf1] disabled:cursor-not-allowed disabled:opacity-45"
-                  >
-                      <span>{modelProvider === "deepseek" ? "DeepSeek" : "Gemini"}</span>
-                      <ChevronDown size={14} className={`transition-transform ${showModelMenu ? "rotate-180" : ""}`} />
-                    </button>
-                    {showModelMenu ? (
-                      <div className="absolute bottom-full left-0 z-20 mb-2 min-w-[116px] overflow-hidden rounded-2xl border border-[#e5d8c3] bg-[#fffaf1] shadow-[0_14px_28px_rgba(36,27,18,0.12)]">
-                        {(["deepseek", "gemini"] as const).map((option) => {
-                          const active = modelProvider === option;
-                          return (
-                            <button
-                              key={option}
-                              type="button"
-                              onClick={() => {
-                                setModelProvider(option);
-                                setShowModelMenu(false);
-                              }}
-                              className={`flex w-full items-center px-3 py-2 text-left text-sm transition ${
-                                active
-                                  ? "bg-[#f4e7d3] font-semibold text-[#2d2115]"
-                                  : "text-[#5f5141] hover:bg-[#f9efe1]"
-                              }`}
-                            >
-                              <span>{option === "deepseek" ? "DeepSeek" : "Gemini"}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
                 {chatImagePreviews.length ? (
                   <div className="mb-2 flex flex-wrap gap-2">
                     {chatImagePreviews.map((src, index) => (
@@ -4811,7 +4838,7 @@ const unlockAudioAndMic = async () => {
                       <input
                         ref={chatImageInputRef}
                         type="file"
-                        accept="image/*"
+                        accept="image/jpeg,image/png,image/webp"
                         multiple
                         className="hidden"
                         onChange={(event) => {
