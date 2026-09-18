@@ -1,6 +1,6 @@
 import { uiText, uiTemplate, uiError } from '../../utils/uiI18n';
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   X,
   Send,
@@ -171,6 +171,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   onDelete,
   isSharedView = false,
 }) => {
+  const prefersReducedMotion = useReducedMotion();
   if (!botConfig) return null;
 
   const {
@@ -3609,6 +3610,10 @@ const unlockAudioAndMic = async () => {
   const characterLayerClass = `absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
     stageViewMode === "upper" ? "object-top" : ""
   }`;
+  const stageCaptionMessages = messages
+    .map((message, index) => ({ ...message, index }))
+    .filter((message) => message.role !== "event" && message.content.trim())
+    .slice(-2);
 
   if (!isOpen) return null;
 
@@ -4195,6 +4200,86 @@ const unlockAudioAndMic = async () => {
               )}
             </div>
 
+            <AnimatePresence initial={false}>
+              {!chatPanelOpen && (stageCaptionMessages.length > 0 || (isListening && inputText.trim())) ? (
+                <motion.div
+                  key="stage-voice-captions"
+                  className="pointer-events-none absolute inset-x-4 bottom-24 z-[19] flex max-h-[58%] flex-col justify-end gap-3 overflow-hidden md:inset-x-8 md:bottom-28"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  {stageCaptionMessages.map((message, messagePosition) => {
+                    const isUser = message.role === "user";
+                    const isActive = !prefersReducedMotion && messagePosition === stageCaptionMessages.length - 1 && (
+                      (isUser && isListening) || (!isUser && botState === "speaking")
+                    );
+                    const visibleCaption = message.content.trim().slice(0, 96);
+                    return (
+                      <motion.div
+                        key={`${message.role}-${message.index}`}
+                        layout
+                        initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 44, scale: prefersReducedMotion ? 1 : 0.94 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -28, scale: 0.96 }}
+                        transition={{ type: "spring", stiffness: 250, damping: 24 }}
+                        className={`flex ${isUser ? "justify-end pl-[20%] md:pl-[70%]" : "justify-start pr-[20%] md:pr-[70%]"}`}
+                      >
+                        <div
+                          className={`max-w-[80%] break-words rounded-[1.2rem] border px-3.5 py-2 text-[13px] font-semibold leading-5 shadow-[0_14px_40px_rgba(0,0,0,0.24)] backdrop-blur-xl md:max-w-full md:text-sm ${
+                            isUser
+                              ? "rounded-br-md border-sky-200/35 bg-sky-500/78 text-white"
+                              : "rounded-bl-md border-white/25 bg-black/52 text-white"
+                          }`}
+                        >
+                          <span className="sr-only">{isUser ? uiText("你說") : botName}：</span>
+                          <span aria-hidden="true">
+                            {Array.from(visibleCaption).map((character, characterIndex) => (
+                              <motion.span
+                                key={`${message.index}-${characterIndex}`}
+                                className="inline-block whitespace-pre"
+                                animate={isActive ? {
+                                  y: [0, -3.5, 0],
+                                  rotate: [0, characterIndex % 2 === 0 ? -1.2 : 1.2, 0],
+                                } : { y: 0, rotate: 0 }}
+                                transition={isActive ? {
+                                  duration: 0.62,
+                                  delay: (characterIndex % 10) * 0.045,
+                                  repeat: Infinity,
+                                  repeatDelay: 1.35,
+                                  ease: "easeInOut",
+                                } : { duration: 0.2 }}
+                              >
+                                {character}
+                              </motion.span>
+                            ))}
+                          </span>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                  {isListening && inputText.trim() ? (
+                    <motion.div
+                      key="live-stt-caption"
+                      initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 34, scale: prefersReducedMotion ? 1 : 0.94 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -24 }}
+                      className="flex justify-end pl-[20%] md:pl-[70%]"
+                    >
+                      <div className="max-w-[80%] break-words rounded-[1.2rem] rounded-br-md border border-sky-200/45 bg-sky-500/82 px-3.5 py-2 text-[13px] font-semibold leading-5 text-white shadow-[0_14px_40px_rgba(0,0,0,0.24)] backdrop-blur-xl md:max-w-full md:text-sm">
+                        {inputText}
+                        <motion.span
+                          className="ml-1 inline-block h-4 w-[2px] rounded-full bg-white/80 align-middle"
+                          animate={prefersReducedMotion ? { opacity: 0.8 } : { opacity: [0.25, 1, 0.25] }}
+                          transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.9, repeat: Infinity }}
+                        />
+                      </div>
+                    </motion.div>
+                  ) : null}
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+
             <div
               className={`absolute bottom-4 left-1/2 z-20 -translate-x-1/2 transition-all duration-300 ${
                 chatPanelOpen ? "pointer-events-none opacity-0" : "pointer-events-auto opacity-100"
@@ -4213,9 +4298,10 @@ const unlockAudioAndMic = async () => {
                 >
                   <Mic size={18} />
                 </button>
-                <div className="flex h-12 min-w-[118px] max-w-[168px] items-center justify-center rounded-[22px] bg-black/45 px-4 text-white/80 backdrop-blur-md">
+                <div className="flex h-12 min-w-[148px] max-w-[196px] items-center justify-center rounded-[22px] border border-white/15 bg-black/45 px-4 text-white/90 shadow-lg backdrop-blur-md">
                   {botState === "thinking" ? (
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2 text-xs font-semibold">
+                      <span>{uiText("正在回覆")}</span>
                       {Array.from({ length: 3 }).map((_, idx) => (
                         <span
                           key={idx}
@@ -4225,7 +4311,9 @@ const unlockAudioAndMic = async () => {
                       ))}
                     </div>
                   ) : isListening ? (
-                    <div className="flex h-5 items-center gap-[3px]">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-xs font-semibold">{uiText("正在聆聽")}</span>
+                      <div className="flex h-5 items-center gap-[3px]">
                       {Array.from({ length: 11 }).map((_, idx) => {
                         const mid = Math.abs(5 - idx);
                         const baseHeight = Math.max(6, 14 - mid * 1.4);
@@ -4240,12 +4328,12 @@ const unlockAudioAndMic = async () => {
                           />
                         );
                       })}
+                      </div>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-1.5">
-                      {Array.from({ length: 9 }).map((_, idx) => (
-                        <span key={idx} className="h-1 w-1 rounded-full bg-white/85" />
-                      ))}
+                    <div className="flex items-center gap-2 text-xs font-semibold">
+                      <Mic size={14} />
+                      <span>{uiText("點擊說話")}</span>
                     </div>
                   )}
                 </div>
