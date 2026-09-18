@@ -7,8 +7,14 @@
  *
  * Scenarios (kept minimal to save tokens):
  *   S1  self-intro only once
- *   S2  info-before-question rhythm
+ *   S2  info-before-question rhythm + semantic question judge
  *   S3  affirm-then-correct misconception
+ *   S7  context continuity
+ *   S8  choice resolution
+ *   S9  correct answer → advance
+ *   S10 unknown escalation
+ *   S11 disengagement / re-engagement
+ *   S12 topic switching
  *   S4  opening message language (Cantonese senior + English teacher)
  */
 import dotenv from "dotenv";
@@ -90,9 +96,10 @@ function pickApiTarget(): ApiTarget | null {
 async function callChatApi(
   target: ApiTarget,
   messages: Array<{ role: string; content: string }>,
-  model?: string
+  model?: string,
+  maxTokens = 8000
 ) {
-  const body: any = { messages, stream: false, max_tokens: 8000 };
+  const body: any = { messages, stream: false, max_tokens: maxTokens };
   body.model = model || (target.kind === "deepseek" ? "deepseek-chat" : target.model);
   const res = await fetch(target.url, {
     method: "POST",
@@ -199,7 +206,7 @@ type PersonaOverride = {
   knowledgeBase?: string;
   securityPrompt?: string;
   grade?: string | null;
-  turns?: { S1?: string[]; S2?: string[]; S3?: string[]; S5?: string[]; S6?: string[] };
+  turns?: { S1?: string[]; S2?: string[]; S3?: string[]; S5?: string[]; S6?: string[]; S7?: string[]; S8?: string[]; S9?: string[]; S10?: string[]; S11?: string[]; S12?: string[] };
   checks?: {
     infoKeywords?: string[];
     affirmMarkers?: string[];
@@ -234,6 +241,12 @@ const DEFAULT_TURNS = {
   S3: ["關公塊紅臉就係代表憤怒同正義"],
   S5: ["我想問下黑色臉譜代表咩？"],
   S6: ["傾咗咁耐，我哋仲有咩可以學？"],
+  S7: ["紅色臉譜代表咩？", "你頭先講紅色代表忠義，我想再問白色代表咩？", "咁黑色呢？"],
+  S8: ["如果要你帶我學，你可以畀我兩個選項先揀一樣嗎？", "通常用咩色嗰個先。"],
+  S9: ["點解變臉可以表達角色轉變？", "因為可以快速換臉譜，令觀眾感受到角色情緒同性格轉變。", "明白。"],
+  S10: ["我唔知。", "都係唔知。", "真係唔知呀。"],
+  S11: ["嗯。", "唔想答。", "好啦，我想繼續學。"],
+  S12: ["紅色臉譜代表咩？", "我突然想轉去講英文學習。", "算啦，返嚟講川劇變臉。"],
 };
 
 async function runChatTurns(system: string, userTurns: string[]) {
@@ -250,6 +263,109 @@ async function runChatTurns(system: string, userTurns: string[]) {
 
 function qCount(text: string) {
   return (text.match(/？|\?/g) || []).length;
+}
+
+/* ------------------------- deterministic + semantic judge ------------------------- */
+
+type DialogueTurn = { user: string; bot: string };
+
+type QuestionAnalysis = {
+  asksQuestion: boolean;
+  questionCount: number;
+  questionType: "none" | "open" | "choice" | "recall" | "explanation" | "mixed";
+};
+
+type DialogueJudgeResult = {
+  answeredPreviousQuestion: boolean;
+  recognizedChoice: "A" | "B" | null;
+  repeatedConcept: boolean;
+  advancedTopic: boolean;
+  introducedUnsupportedPremise: boolean;
+  respectedUnknown: boolean;
+  respectedDisengagement: boolean;
+  followedTopicSwitch: boolean;
+  asksQuestion: boolean;
+  questionCount: number;
+  questionType: QuestionAnalysis["questionType"];
+  explanation: string;
+};
+
+type JudgeBatchResult = {
+  questions: QuestionAnalysis[];
+  dialogue: DialogueJudgeResult;
+};
+
+type SemanticJudgeRubric = {
+  scenario: string;
+  focus: string[];
+};
+
+function extractJson(text: string): unknown {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const candidate = fenced?.[1] || text;
+  const first = candidate.indexOf("{");
+  const last = candidate.lastIndexOf("}");
+  if (first >= 0 && last > first) return JSON.parse(candidate.slice(first, last + 1));
+  throw new Error(`semantic judge did not return JSON: ${text.slice(0, 300)}`);
+}
+
+async function semanticJudge(log: DialogueTurn[], rubric: SemanticJudgeRubric): Promise<JudgeBatchResult> {
+  const transcript = log
+    .map((t, i) => `第${i + 1}輪\n學生：${t.user}\nBot：${t.bot}`)
+    .join("\n\n");
+
+  const system = `你係「對話品質 Semantic Judge」，只負責判斷 Bot 回覆是否符合對話規則。\n\n` +
+    `重要：問題識別必須以語意為準，唔可以靠固定粵語問句詞典。\n` +
+    `只要 Bot 語意上要求學生作答、猜測、選擇、解釋、描述觀察、表達看法或回憶內容，就視為 asksQuestion=true。\n` +
+    `自然粵語可以用任何問法，例如「你諗下」、「估下啦」、「你又點睇」、「你會揀邊樣」、「你仲記唔記得」；唔要求固定句式。\n` +
+    `questionCount 係語意上的問題數量，不要只數問號。若一句有兩個獨立要求作答嘅問題，計 2。\n` +
+    `choice 只有當 Bot 明確提供 A/B（或兩個清楚可選項）而學生其後作出選擇時先判定。\n` +
+    `repeatedConcept=true 代表 Bot 實質上再次要求學生回答已經回答過、或已經明確表示不知道嘅同一概念；單純補充同一知識唔算。\n` +
+    `introducedUnsupportedPremise=true 代表 Bot 把對話/知識庫冇支持嘅事當成已知事實，或者無中生有地聲稱「你頭先講過」而實際冇講。\n` +
+    `respectedUnknown=true 代表學生表示不知道後，Bot 有降低難度、直接解釋、提供提示/答案，且冇無限重問同一概念。\n` +
+    `respectedDisengagement=true 代表學生明確唔想答/唔想繼續時，Bot 冇逼問，而係降低壓力、提供退出/轉話題空間。\n` +
+    `followedTopicSwitch=true 代表學生明確轉換話題後，Bot 有跟隨新話題，而唔係繼續原題。\n` +
+    `只輸出 JSON，不要 Markdown，不要額外解釋。`;
+
+  const user = JSON.stringify({ rubric, transcript }, null, 2);
+  const response = await callChatApi(target, [
+    { role: "system", content: system },
+    { role: "user", content: user },
+  ], undefined, 1800);
+  const parsed: any = extractJson(response.content);
+
+  const questions = Array.isArray(parsed?.questions) ? parsed.questions : [];
+  if (questions.length !== log.length) {
+    throw new Error(`semantic judge questions length ${questions.length} != turns ${log.length}`);
+  }
+  const dialogue: DialogueJudgeResult = {
+    answeredPreviousQuestion: Boolean(parsed?.dialogue?.answeredPreviousQuestion),
+    recognizedChoice: parsed?.dialogue?.recognizedChoice === "A" || parsed?.dialogue?.recognizedChoice === "B"
+      ? parsed.dialogue.recognizedChoice
+      : null,
+    repeatedConcept: Boolean(parsed?.dialogue?.repeatedConcept),
+    advancedTopic: Boolean(parsed?.dialogue?.advancedTopic),
+    introducedUnsupportedPremise: Boolean(parsed?.dialogue?.introducedUnsupportedPremise),
+    respectedUnknown: Boolean(parsed?.dialogue?.respectedUnknown),
+    respectedDisengagement: Boolean(parsed?.dialogue?.respectedDisengagement),
+    followedTopicSwitch: Boolean(parsed?.dialogue?.followedTopicSwitch),
+    asksQuestion: Boolean(parsed?.dialogue?.asksQuestion),
+    questionCount: Number(parsed?.dialogue?.questionCount || 0),
+    questionType: ["none", "open", "choice", "recall", "explanation", "mixed"].includes(parsed?.dialogue?.questionType)
+      ? parsed.dialogue.questionType
+      : "none",
+    explanation: String(parsed?.dialogue?.explanation || ""),
+  };
+  return {
+    questions: questions.map((q: any) => ({
+      asksQuestion: Boolean(q?.asksQuestion),
+      questionCount: Math.max(0, Number(q?.questionCount || 0)),
+      questionType: ["none", "open", "choice", "recall", "explanation", "mixed"].includes(q?.questionType)
+        ? q.questionType
+        : "none",
+    })),
+    dialogue,
+  };
 }
 
 /* --------------------------------- checks -------------------------------- */
@@ -281,26 +397,31 @@ function checkS1(log: Array<{ user: string; bot: string }>, name: string): Check
   ];
 }
 
-function checkS2(log: Array<{ user: string; bot: string }>, infoKeywords: string[]): CheckResult[] {
+async function checkS2(log: DialogueTurn[], infoKeywords: string[]): Promise<CheckResult[]> {
   const kw = infoKeywords.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
   const infoPattern = new RegExp(`(${kw})`);
-  // A question may end without "？" when output is cut or spoken-style, so also
-  // detect question lead-in words.
-  const askWords = /(你估|你覺得|考下你|邊個|邊樣|你想|知唔知|點解|係唔係)/;
+  const judged = await semanticJudge(log, {
+    scenario: "S2：訊息先行、自然提問",
+    focus: [
+      "每輪先提供與學生問題相關嘅實質資訊",
+      "如果有提問，只可以有一條語意上的問題",
+      "提問可以係自然粵語，唔應依賴固定問句詞",
+    ],
+  });
+
   return log.map((t, i) => {
     const hasInfo = infoPattern.test(t.bot);
-    const hasQuestion = qCount(t.bot) >= 1 || askWords.test(t.bot);
-    const singleQ = qCount(t.bot) <= 1;
-    // Info is always required; a question is optional, but if asked it must be single.
-    const pass = hasInfo && singleQ;
+    const q = judged.questions[i];
+    const deterministicSingleQ = qCount(t.bot) <= 1;
+    const semanticSingleQ = q.questionCount <= 1;
+    const pass = hasInfo && deterministicSingleQ && semanticSingleQ;
     return {
-      label: `S2 第${i + 1}輪：每輪有資訊（問可選，問只一條）`,
+      label: `S2 第${i + 1}輪：有資訊 + 最多一條語意問題`,
       pass,
-      detail: `資訊:${hasInfo ? "有" : "冇"} 問句:${hasQuestion ? "有" : "冇"} 問號數:${qCount(t.bot)}`,
+      detail: `資訊:${hasInfo ? "有" : "冇"} 語意提問:${q.asksQuestion ? "有" : "冇"} 語意問題數:${q.questionCount} 問號:${qCount(t.bot)} 類型:${q.questionType}` ,
     };
   });
 }
-
 function checkS3(
   log: Array<{ user: string; bot: string }>,
   affirmMarkers: string[],
@@ -375,6 +496,25 @@ function checkS6(log: Array<{ user: string; bot: string }>, nextPointKeywords: s
   ];
 }
 
+function checkSemanticScenario(
+  label: string,
+  judge: JudgeBatchResult,
+  rules: Array<{ suffix: string; pass: boolean; detail: string }>
+): CheckResult[] {
+  return rules.map((r) => ({ label: `${label}${r.suffix}`, pass: r.pass, detail: r.detail }));
+}
+
+async function runSemanticScenario(
+  id: string,
+  label: string,
+  log: DialogueTurn[],
+  focus: string[],
+  rules: (j: JudgeBatchResult) => Array<{ suffix: string; pass: boolean; detail: string }>
+): Promise<CheckResult[]> {
+  const judge = await semanticJudge(log, { scenario: id, focus });
+  return checkSemanticScenario(label, judge, rules(judge));
+}
+
 function checkS4Opening(
   label: string,
   text: string,
@@ -410,7 +550,7 @@ if (!target) {
 }
 installOpenRouterShim(target);
 
-const only = process.argv.slice(2).map((a) => String(a).toUpperCase()).filter((a) => /^S\d$/.test(a));
+const only = process.argv.slice(2).map((a) => String(a).toUpperCase()).filter((a) => /^S(?:[1-9]|1[0-2])$/.test(a));
 const run = (id: string) => only.length === 0 || only.includes(id);
 
 const override = loadPersonaOverride();
@@ -426,6 +566,12 @@ const turns = {
   S3: override?.turns?.S3 || DEFAULT_TURNS.S3,
   S5: override?.turns?.S5 || DEFAULT_TURNS.S5,
   S6: override?.turns?.S6 || DEFAULT_TURNS.S6,
+  S7: override?.turns?.S7 || DEFAULT_TURNS.S7,
+  S8: override?.turns?.S8 || DEFAULT_TURNS.S8,
+  S9: override?.turns?.S9 || DEFAULT_TURNS.S9,
+  S10: override?.turns?.S10 || DEFAULT_TURNS.S10,
+  S11: override?.turns?.S11 || DEFAULT_TURNS.S11,
+  S12: override?.turns?.S12 || DEFAULT_TURNS.S12,
 };
 const checkConfig = {
   infoKeywords: override?.checks?.infoKeywords || DEFAULT_INFO_KEYWORDS,
@@ -456,7 +602,7 @@ const summary: Array<{ label: string; pass: boolean }> = [];
 async function main() {
   out(`Bot prompt rules test — ${new Date().toISOString()}`);
   out(`API target: ${target.kind}${target.kind === "openrouter" ? " (deepseek via OpenRouter)" : ""}`);
-  out(`Scenarios: ${only.length ? only.join(", ") : "S1 S2 S3 S4 S5 S6"}`);
+  out(`Scenarios: ${only.length ? only.join(", ") : "S1 S2 S3 S4 S5 S6 S7 S8 S9 S10 S11 S12"}`);
   if (override) {
     out(`Persona override: bot-prompt-test-persona.json（${persona.name}，grade=${persona.grade || "未設定"}）`);
   }
@@ -485,7 +631,7 @@ async function main() {
       out(`學生：${t.user}`);
       out(`Bot：${t.bot}`);
     });
-    for (const c of checkS2(log, checkConfig.infoKeywords)) {
+    for (const c of await checkS2(log, checkConfig.infoKeywords)) {
       summary.push({ label: c.label, pass: c.pass });
       out(`${c.pass ? "PASS" : "FAIL"}  ${c.label} ｜ ${c.detail}`);
     }
@@ -547,6 +693,77 @@ async function main() {
     }
     line();
   }
+
+  const runAndReportSemantic = async (
+    id: string,
+    title: string,
+    scenarioTurns: string[],
+    focus: string[],
+    makeChecks: (j: JudgeBatchResult) => Array<{ suffix: string; pass: boolean; detail: string }>
+  ) => {
+    if (!run(id)) return;
+    out(`【${id} ${title}】`);
+    const log = await runChatTurns(systemPrompt, scenarioTurns);
+    log.forEach((t, i) => {
+      out(`--- 第${i + 1}輪 ---`);
+      out(`學生：${t.user}`);
+      out(`Bot：${t.bot}`);
+    });
+    const checks = await runSemanticScenario(id, id, log, focus, makeChecks);
+    const hardQuestionChecks: CheckResult[] = log.map((t, i) => ({
+      label: `${id} q${i + 1} 最多一條硬性問號限制`,
+      pass: qCount(t.bot) <= 1,
+      detail: `問號數:${qCount(t.bot)}`,
+    }));
+    for (const c of [...checks, ...hardQuestionChecks]) {
+      summary.push({ label: c.label, pass: c.pass });
+      out(`${c.pass ? "PASS" : "FAIL"}  ${c.label} ｜ ${c.detail}`);
+    }
+    line();
+  };
+
+  await runAndReportSemantic("S7", "上下文連貫：唔可以失憶/自相矛盾", turns.S7,
+    ["理解上一輪已提供嘅事實", "回答追問時沿用同一上下文", "不可把未發生嘅對話當成已發生"],
+    (j) => [
+      { suffix: "a 上下文冇失憶", pass: j.dialogue.answeredPreviousQuestion || !j.dialogue.introducedUnsupportedPremise, detail: `上下文回應:${j.dialogue.answeredPreviousQuestion ? "有" : "弱"}` },
+      { suffix: "b 冇無中生有前提", pass: !j.dialogue.introducedUnsupportedPremise, detail: j.dialogue.introducedUnsupportedPremise ? "發明咗未發生嘅前提 ❌" : "冇發明對話前提" },
+    ]);
+
+  await runAndReportSemantic("S8", "選項解析：學生揀咗 B 就當答案", turns.S8,
+    ["如果 Bot 提供 A/B 選擇，學生後一句要按語意視為選擇答案", "唔可以因為學生冇重複完整選項句子而忽略答案"],
+    (j) => [
+      { suffix: "a 正確解析學生選擇", pass: j.dialogue.recognizedChoice === "B", detail: `Semantic Judge 判定:${j.dialogue.recognizedChoice || "未識別"}` },
+      { suffix: "b 冇重問已選選項", pass: !j.dialogue.repeatedConcept, detail: j.dialogue.repeatedConcept ? "重問同一選擇概念 ❌" : "冇重問同一選擇" },
+    ]);
+
+  await runAndReportSemantic("S9", "答啱之後推進：唔可以原地重問", turns.S9,
+    ["學生已經明確回答後，Bot 應承認答案並補充，然後推進新知識/新角度", "唔應再次要求學生回答同一概念"],
+    (j) => [
+      { suffix: "a 答案有被接住", pass: j.dialogue.answeredPreviousQuestion, detail: j.dialogue.answeredPreviousQuestion ? "有接住學生答案" : "未見接住上一問題答案 ❌" },
+      { suffix: "b 冇重複概念", pass: !j.dialogue.repeatedConcept, detail: j.dialogue.repeatedConcept ? "重問同一概念 ❌" : "冇重問同一概念" },
+      { suffix: "c 有推進", pass: j.dialogue.advancedTopic, detail: j.dialogue.advancedTopic ? "有推進到下一層" : "未見明顯推進 ❌" },
+    ]);
+
+  await runAndReportSemantic("S10", "不知道升級：唔可以無限 Socratic 重問", turns.S10,
+    ["學生連續表示不知道時，應降低難度、提示或直接解釋", "不可無限重問同一知識點"],
+    (j) => [
+      { suffix: "a 有尊重不知道", pass: j.dialogue.respectedUnknown, detail: j.dialogue.respectedUnknown ? "有降級/解釋" : "仍然逼學生猜 ❌" },
+      { suffix: "b 冇循環重問", pass: !j.dialogue.repeatedConcept, detail: j.dialogue.repeatedConcept ? "出現循環重問 ❌" : "冇循環重問" },
+    ]);
+
+  await runAndReportSemantic("S11", "唔想答：先尊重狀態，再提供低壓選擇", turns.S11,
+    ["學生明確表示唔想答時，不應施壓或繼續逼答", "可以簡短回應並提供繼續/轉話題等低壓選擇"],
+    (j) => [
+      { suffix: "a 尊重唔想答", pass: j.dialogue.respectedDisengagement, detail: j.dialogue.respectedDisengagement ? "有尊重學生狀態" : "未見尊重狀態 ❌" },
+      { suffix: "b 冇重複逼問", pass: !j.dialogue.repeatedConcept, detail: j.dialogue.repeatedConcept ? "仍然逼答同一概念 ❌" : "冇重複逼問" },
+    ]);
+
+  await runAndReportSemantic("S12", "明確轉題：跟住學生新話題", turns.S12,
+    ["學生明確要求轉換話題時，下一輪應跟隨新話題", "學生再轉回原題時，先跟返原題", "不可強行把舊問題塞返去"],
+    (j) => [
+      { suffix: "a 跟隨轉題", pass: j.dialogue.followedTopicSwitch, detail: j.dialogue.followedTopicSwitch ? "有跟新話題" : "未跟隨新話題 ❌" },
+      { suffix: "b 冇無理拉回舊題", pass: !j.dialogue.introducedUnsupportedPremise, detail: j.dialogue.introducedUnsupportedPremise ? "有不合理前提 ❌" : "冇無理新增前提" },
+    ]);
 
   if (run("S4")) {
     out("【S4 開場白語言跟角色人設】");
