@@ -46,6 +46,8 @@ import { normalizeUploadFilename } from "../../utils/uploadFilename.ts";
 import { combineExtractedFileText } from "../lib/knowledge-files.ts";
 import { KNOWLEDGE_EXTRACTION_SYSTEM_PROMPT } from "../lib/knowledge-extraction.ts";
 import {
+  GEMINI_STABLE_TEMPERATURE,
+  GEMINI_TEXT_MODEL,
   getAI,
   getVertexAccessToken,
   getVertexAIConfig,
@@ -360,48 +362,6 @@ function buildTeachingGuide(stepIndex: number, mode: "step" | "example", state: 
   ].filter(Boolean).join("\n");
 }
 
-async function askDeepSeek(systemPrompt: string, userPrompt: string, onToken: (token: string) => void) {
-  const requestBody = {
-    model: "deepseek-chat",
-    stream: true,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-  };
-  const r = await fetchDeepSeekWithRetry(requestBody);
-
-  const decoder = new TextDecoder();
-  for await (const chunk of r.body as any) {
-    const text = decoder.decode(chunk);
-    const lines = text.split("\n");
-    for (const line of lines) {
-      if (!line.startsWith("data:")) continue;
-      const json = line.replace("data:", "").trim();
-      if (json === "[DONE]") return;
-      try {
-        const data = JSON.parse(json);
-        const token = data?.choices?.[0]?.delta?.content;
-        if (token) onToken(token);
-      } catch {}
-    }
-  }
-}
-
-async function askDeepSeekOnce(systemPrompt: string, userPrompt: string): Promise<string> {
-  const r = await fetchDeepSeekWithRetry({
-    model: "deepseek-chat",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-  });
-
-  if (!r.ok) throw new Error((await r.text()) || "DeepSeek request failed");
-  const data: any = await r.json();
-  return data?.choices?.[0]?.message?.content || "";
-}
-
 function extractChatImages(req: Request): ChatImageInput[] {
   const files = ((req.files as Express.Multer.File[] | undefined) || []).filter(Boolean);
   return files
@@ -413,7 +373,7 @@ function extractChatImages(req: Request): ChatImageInput[] {
     }));
 }
 
-type ChatModelProvider = "deepseek" | "gemini";
+type ChatModelProvider = "gemini";
 type SuggestedReply = {
   tier: "L1" | "L2" | "L3";
   label: string;
@@ -435,11 +395,11 @@ type RecentChatMessage = {
 };
 
 function normalizeChatModelProvider(input: unknown): ChatModelProvider {
-  return String(input || "").trim().toLowerCase() === "gemini" ? "gemini" : "deepseek";
+  return "gemini";
 }
 
 function getDialogueEnhancementProvider(fallbackProvider: ChatModelProvider): ChatModelProvider {
-  const configured = normalizeChatModelProvider(process.env.DIALOGUE_HINT_MODEL_PROVIDER || "deepseek");
+  const configured = normalizeChatModelProvider(process.env.DIALOGUE_HINT_MODEL_PROVIDER || fallbackProvider);
   return configured || fallbackProvider;
 }
 
@@ -1072,7 +1032,7 @@ async function askGemini(
     const { project, location } = getVertexAIConfig();
     const accessToken = await getVertexAccessToken();
     const response = await fetch(
-      `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/gemini-2.5-flash:streamGenerateContent?alt=sse`,
+      `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/${GEMINI_TEXT_MODEL}:streamGenerateContent?alt=sse`,
       {
         method: "POST",
         headers: {
@@ -1096,6 +1056,9 @@ async function askGemini(
           ],
           systemInstruction: {
             parts: [{ text: systemPrompt }],
+          },
+          generationConfig: {
+            temperature: GEMINI_STABLE_TEMPERATURE,
           },
         }),
       }
@@ -1159,7 +1122,7 @@ async function askGemini(
 
   const ai = getAI();
   const stream = await ai.models.generateContentStream({
-    model: "gemini-2.5-flash",
+    model: GEMINI_TEXT_MODEL,
     contents: [
       {
         role: "user",
@@ -1176,6 +1139,7 @@ async function askGemini(
     ],
     config: {
       systemInstruction: systemPrompt,
+      temperature: GEMINI_STABLE_TEMPERATURE,
     },
   });
 
@@ -1190,7 +1154,7 @@ async function askGeminiOnce(systemPrompt: string, userPrompt: string, images: C
     const { project, location } = getVertexAIConfig();
     const accessToken = await getVertexAccessToken();
     const response = await fetch(
-      `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/gemini-2.5-flash:generateContent`,
+      `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/${GEMINI_TEXT_MODEL}:generateContent`,
       {
         method: "POST",
         headers: {
@@ -1215,6 +1179,9 @@ async function askGeminiOnce(systemPrompt: string, userPrompt: string, images: C
           systemInstruction: {
             parts: [{ text: systemPrompt }],
           },
+          generationConfig: {
+            temperature: GEMINI_STABLE_TEMPERATURE,
+          },
         }),
       }
     );
@@ -1229,7 +1196,7 @@ async function askGeminiOnce(systemPrompt: string, userPrompt: string, images: C
 
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: GEMINI_TEXT_MODEL,
     contents: [
       {
         role: "user",
@@ -1246,6 +1213,7 @@ async function askGeminiOnce(systemPrompt: string, userPrompt: string, images: C
     ],
     config: {
       systemInstruction: systemPrompt,
+      temperature: GEMINI_STABLE_TEMPERATURE,
     },
   });
 
@@ -1258,10 +1226,7 @@ async function askModelOnce(
   userPrompt: string,
   images: ChatImageInput[] = []
 ): Promise<string> {
-  if (provider === "gemini") {
-    return askGeminiOnce(systemPrompt, userPrompt, images);
-  }
-  return askDeepSeekOnce(systemPrompt, userPrompt);
+  return askGeminiOnce(systemPrompt, userPrompt, images);
 }
 
 const CJK_CHARACTER_PATTERN = /[\u3400-\u9fff]/;
@@ -1300,10 +1265,7 @@ async function askModelStream(
   onToken: (token: string) => void,
   images: ChatImageInput[] = []
 ) {
-  if (provider === "gemini") {
-    return askGemini(systemPrompt, userPrompt, onToken, images);
-  }
-  return askDeepSeek(systemPrompt, userPrompt, onToken);
+  return askGemini(systemPrompt, userPrompt, onToken, images);
 }
 
 function remapModelProviderError(error: unknown) {
@@ -1330,44 +1292,6 @@ function remapModelProviderError(error: unknown) {
     return new Error("Gemini 目前請改走 Vertex AI；若仍看到地區限制，表示請求尚未使用到 Vertex AI 憑證。");
   }
   return error;
-}
-
-async function fetchDeepSeekWithRetry(body: Record<string, unknown>, retries = 2) {
-  let lastError: unknown;
-
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
-    try {
-      const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok && response.status >= 500 && attempt < retries) {
-        await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
-        continue;
-      }
-
-      return response;
-    } catch (error: any) {
-      lastError = error;
-      const code = String(error?.code || "");
-      const shouldRetry =
-        attempt < retries &&
-        (code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ECONNREFUSED");
-
-      if (!shouldRetry) {
-        throw error;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error("DeepSeek request failed");
 }
 
 async function extractTextFromPDF(buffer: Buffer): Promise<string> {
@@ -1691,7 +1615,7 @@ ${draft}
   "nextAction": "...",
   "pass": true
 }`;
-  const raw = await askDeepSeekOnce(evalSystem, evalUser);
+  const raw = await askGeminiOnce(evalSystem, evalUser);
   try {
     const parsed = JSON.parse(raw);
     return {
@@ -1771,7 +1695,7 @@ router.post("/ask-url", requireAuth, async (req: Request, res: Response) => {
   try {
     const authUser = getAuthUser(req);
     await assertUserCanSpend(authUser!.id, 2);
-    const { url = "", modelProvider = "deepseek" } = req.body as any;
+    const { url = "", modelProvider = "gemini" } = req.body as any;
     const selectedModelProvider = normalizeChatModelProvider(modelProvider);
     if (!url || typeof url !== "string") return res.status(400).json({ error: "缺少網址" });
     // 抽取 prompt 只存在 server 端
@@ -1805,7 +1729,7 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
       usageType = "general",
       botId = "default",
       sharedBotId = "",
-      modelProvider = "deepseek",
+      modelProvider = "gemini",
       mode = "",
       source = "direct",
       conversationId = "",

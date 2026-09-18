@@ -50,50 +50,6 @@ function normalizeProvider(
   };
 }
 
-async function fetchDeepSeek(): Promise<ProviderUsage> {
-  const key = process.env.DEEPSEEK_API_KEY?.trim();
-  if (!key) {
-    return normalizeProvider("DeepSeek", "warning", {
-      message: "Missing DEEPSEEK_API_KEY",
-    });
-  }
-
-  try {
-    const res = await fetch("https://api.deepseek.com/user/balance", {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-    });
-    const json: any = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      return normalizeProvider("DeepSeek", "error", {
-        message: `HTTP ${res.status}`,
-        raw: json,
-      });
-    }
-
-    const infos = json?.balance_infos || json?.data?.balance_infos || [];
-    const first = Array.isArray(infos) ? infos[0] : null;
-    const totalBalance = num(first?.total_balance);
-    const granted = num(first?.granted_balance) ?? 0;
-    const toppedUp = num(first?.topped_up_balance) ?? 0;
-    const remaining = totalBalance ?? granted + toppedUp;
-
-    return normalizeProvider("DeepSeek", "ok", {
-      remaining,
-      total: totalBalance,
-      unit: first?.currency || "USD",
-      raw: json,
-    });
-  } catch (e) {
-    return normalizeProvider("DeepSeek", "error", {
-      message: e instanceof Error ? e.message : "request failed",
-    });
-  }
-}
-
 async function fetchXAI(): Promise<ProviderUsage> {
   const managementKey = process.env.XAI_MANAGEMENT_KEY?.trim();
   const teamId = process.env.XAI_TEAM_ID?.trim();
@@ -471,13 +427,12 @@ function withMinimaxEstimatedFallback(provider: ProviderUsage): ProviderUsage {
 }
 
 router.get("/token-usage", async (_req, res) => {
-  const [deepseek, minimax, xai, video] = await Promise.all([
-    fetchDeepSeek(),
+  const [minimax, xai, video] = await Promise.all([
     fetchMinimax(),
     fetchXAI(),
     fetchVideoBgRemover(),
   ]);
-  const providers = [deepseek, withMinimaxEstimatedFallback(minimax), xai, video];
+  const providers = [withMinimaxEstimatedFallback(minimax), xai, video];
 
   const connected = providers.filter((p) => p.status === "ok").length;
   return res.json({

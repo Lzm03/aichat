@@ -27,7 +27,7 @@ try {
   const login = await fetch('http://127.0.0.1:4000/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});
   const token = (await login.json()).token;
   const meSuite = await runLoad({name:'auth_me',concurrency:100,total:2500,task:async()=>{ const r=await fetch('http://127.0.0.1:4000/api/auth/me',{headers:{authorization:`Bearer ${token}`}}); if(!r.ok) throw new Error(); await r.arrayBuffer(); }});
-  const askSuite = await runLoad({name:'ask_mock_upstream',concurrency:100,total:1000,task:async(i)=>{ const r=await fetch('http://127.0.0.1:4000/api/ask',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({systemPrompt:'你是老师',userPrompt:`并发请求${i}`,stream:false,usageType:'chat_message',botId:'default',modelProvider:'deepseek'})}); if(!r.ok) throw new Error(); await r.arrayBuffer(); }});
+  const askSuite = await runLoad({name:'ask_mock_upstream',concurrency:100,total:1000,task:async(i)=>{ const r=await fetch('http://127.0.0.1:4000/api/ask',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({systemPrompt:'你是老师',userPrompt:`并发请求${i}`,stream:false,usageType:'chat_message',botId:'default',modelProvider:'gemini'})}); if(!r.ok) throw new Error(); await r.arrayBuffer(); }});
   console.log(JSON.stringify({results:[loginSuite, meSuite, askSuite]}, null, 2));
 } finally {
   if (createdEmail) await pool.query('DELETE FROM users WHERE email=$1', [createdEmail]).catch(()=>{});

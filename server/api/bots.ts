@@ -22,6 +22,11 @@ import {
 import { ensureDefaultTeacherExperience } from "../lib/default-teacher-experience.ts";
 import { getStudentProgress } from "../lib/conversation-state.ts";
 import { parsePromptSource } from "../../utils/chat-prompt.ts";
+import {
+  GEMINI_STABLE_TEMPERATURE,
+  GEMINI_TEXT_MODEL,
+  getAI,
+} from "../lib/gemini-server.ts";
 
 const router = express.Router();
 type SequenceVideoEntry = { key: "idle" | "thinking" | "talking"; url: string };
@@ -56,11 +61,6 @@ function fallbackOpeningMessage(name: string) {
 }
 
 export async function generateOpeningMessage(bot: any) {
-  const apiKey = String(process.env.DEEPSEEK_API_KEY || "").trim();
-  if (!apiKey) {
-    return fallbackOpeningMessage(String(bot?.name || ""));
-  }
-
   const name = String(bot?.name || "").trim() || "AI 助手";
   const characterContext = [bot?.knowledge_base, bot?.security_prompt]
     .filter(Boolean)
@@ -87,25 +87,16 @@ ${characterContext || "（未提供）"}
 `.trim();
 
   try {
-    const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: GEMINI_TEXT_MODEL,
+      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+      config: {
+        systemInstruction: systemPrompt,
+        temperature: GEMINI_STABLE_TEMPERATURE,
       },
-      body: JSON.stringify({
-        model: "deepseek-chat",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-      }),
     });
-    if (!response.ok) {
-      return fallbackOpeningMessage(name);
-    }
-    const data: any = await response.json().catch(() => null);
-    const text = String(data?.choices?.[0]?.message?.content || "").replace(/\s+/g, " ").trim();
+    const text = String(response.text || "").replace(/\s+/g, " ").trim();
     if (text) return text;
     return fallbackOpeningMessage(name);
   } catch {

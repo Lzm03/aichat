@@ -20,12 +20,12 @@ try{
   const low=[];
   const me=await fetch('http://127.0.0.1:4000/api/auth/me',{headers:{authorization:`Bearer ${token}`}}); low.push({api:'me',status:me.status});
   const voices=await fetch('http://127.0.0.1:4000/api/voices'); low.push({api:'voices',status:voices.status});
-  const ask=await fetch('http://127.0.0.1:4000/api/ask',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({systemPrompt:'你是老师',userPrompt:'测试',stream:false,usageType:'general',botId:'default',modelProvider:'deepseek'})}); low.push({api:'ask',status:ask.status});
+  const ask=await fetch('http://127.0.0.1:4000/api/ask',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({systemPrompt:'你是老师',userPrompt:'测试',stream:false,usageType:'general',botId:'default',modelProvider:'gemini'})}); low.push({api:'ask',status:ask.status});
   const tts=await fetch('http://127.0.0.1:4000/api/tts',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({text:'hello',voiceId:'mock-voice-1',usageType:'chat_voice'})}); low.push({api:'tts',status:tts.status});
-  const askUrl=await fetch('http://127.0.0.1:4000/api/ask-url',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({systemPrompt:'总结',url:'https://example.com',modelProvider:'deepseek'})}); low.push({api:'ask-url',status:askUrl.status});
+  const askUrl=await fetch('http://127.0.0.1:4000/api/ask-url',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({systemPrompt:'总结',url:'https://example.com',modelProvider:'gemini'})}); low.push({api:'ask-url',status:askUrl.status});
 
   const r1=await runLoad('auth_me',100,1200,async()=>{const r=await fetch('http://127.0.0.1:4000/api/auth/me',{headers:{authorization:`Bearer ${token}`}}); if(!r.ok) throw 1; await r.arrayBuffer();});
-  const r2=await runLoad('ask_mock',100,600,async(i)=>{const r=await fetch('http://127.0.0.1:4000/api/ask',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({systemPrompt:'你是老师',userPrompt:`Q${i}`,stream:false,usageType:'general',botId:'default',modelProvider:'deepseek'})}); if(!r.ok) throw 1; await r.arrayBuffer();});
+  const r2=await runLoad('ask_mock',100,600,async(i)=>{const r=await fetch('http://127.0.0.1:4000/api/ask',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({systemPrompt:'你是老师',userPrompt:`Q${i}`,stream:false,usageType:'general',botId:'default',modelProvider:'gemini'})}); if(!r.ok) throw 1; await r.arrayBuffer();});
   const r3=await runLoad('tts_mock',30,120,async(i)=>{const r=await fetch('http://127.0.0.1:4000/api/tts',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({text:`hello ${i}`,voiceId:'mock-voice-1',usageType:'chat_voice'})}); if(!r.ok) throw 1; await r.arrayBuffer();});
 
   console.log(JSON.stringify({phase:'mock_suite',low,r:[r1,r2,r3]},null,2));
