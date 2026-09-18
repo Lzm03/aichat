@@ -231,7 +231,8 @@ export async function ensurePlatformTables() {
         ADD COLUMN IF NOT EXISTS preferences_json JSONB NOT NULL DEFAULT '{}'::jsonb,
         ADD COLUMN IF NOT EXISTS monthly_credit_limit INTEGER NOT NULL DEFAULT ${DEFAULT_MONTHLY_CREDIT_LIMIT},
         ADD COLUMN IF NOT EXISTS credit_balance INTEGER NOT NULL DEFAULT ${DEFAULT_MONTHLY_CREDIT_LIMIT},
-        ADD COLUMN IF NOT EXISTS credit_used INTEGER NOT NULL DEFAULT 0;
+        ADD COLUMN IF NOT EXISTS credit_used INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS topic_category_labels JSONB NOT NULL DEFAULT '[]'::jsonb;
       `);
       await pool.query(`
         CREATE TABLE IF NOT EXISTS usage_events (

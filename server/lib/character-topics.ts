@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import type { PoolClient } from "pg";
 import { pool } from "../db.ts";
+import { parseKnowledgePoints } from "../../utils/chat-prompt.ts";
 
 export const MAX_TOPICS_PER_CHARACTER = 4;
 export const TOPIC_LIMIT_MESSAGE = "Each character can have a maximum of 4 Topics.";
@@ -12,6 +13,8 @@ export type CharacterTopicRow = {
   description: string;
   system_prompt: string;
   knowledge_content: string;
+  /** 主題版本分類標籤（如 單元課本／補充講義／課外延伸／題庫對應 或自訂）；空 = 未分類 */
+  category: string;
   sort_order: number;
   is_default: boolean;
   inherits_legacy_knowledge: boolean;
@@ -55,6 +58,7 @@ export async function ensureCharacterTopicTables() {
           description TEXT NOT NULL DEFAULT '',
           system_prompt TEXT NOT NULL DEFAULT '',
           knowledge_content TEXT NOT NULL DEFAULT '',
+          category TEXT NOT NULL DEFAULT '',
           sort_order INTEGER NOT NULL DEFAULT 0,
           is_default BOOLEAN NOT NULL DEFAULT FALSE,
           inherits_legacy_knowledge BOOLEAN NOT NULL DEFAULT FALSE,
@@ -64,7 +68,8 @@ export async function ensureCharacterTopicTables() {
       `);
       await pool.query(`
         ALTER TABLE character_topics
-        ADD COLUMN IF NOT EXISTS inherits_legacy_knowledge BOOLEAN NOT NULL DEFAULT FALSE
+        ADD COLUMN IF NOT EXISTS inherits_legacy_knowledge BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT ''
       `);
       await pool.query(`
         CREATE INDEX IF NOT EXISTS character_topics_character_sort_idx
@@ -147,6 +152,18 @@ function normalizeTopicInput(input: Record<string, unknown>, partial = false) {
     if (knowledgeContent.length > 100000) throw new CharacterTopicError("Topic knowledge must be 100,000 characters or fewer.");
     result.knowledgeContent = knowledgeContent;
   }
+  if (!partial || Object.prototype.hasOwnProperty.call(input, "category")) {
+    const category = String(input.category || "").trim();
+    if (category.length > 40) throw new CharacterTopicError("Topic category must be 40 characters or fewer.");
+    result.category = category;
+  }
+  if (!partial || Object.prototype.hasOwnProperty.call(input, "sortOrder")) {
+    const sortOrder = Number(input.sortOrder);
+    if (!Number.isInteger(sortOrder) || sortOrder < 0) {
+      throw new CharacterTopicError("Topic sortOrder must be a non-negative integer.");
+    }
+    result.sortOrder = sortOrder;
+  }
   if (!partial || Object.prototype.hasOwnProperty.call(input, "isDefault")) {
     result.isDefault = Boolean(input.isDefault);
   }
@@ -155,6 +172,8 @@ function normalizeTopicInput(input: Record<string, unknown>, partial = false) {
     description?: string;
     systemPrompt?: string;
     knowledgeContent?: string;
+    category?: string;
+    sortOrder?: number;
     isDefault?: boolean;
   };
 }
@@ -165,6 +184,7 @@ export function mapCharacterTopicRow(row: CharacterTopicRow, includeDetails = fa
     characterId: row.character_id,
     name: row.name,
     description: row.description,
+    category: String(row.category || ""),
     sortOrder: Number(row.sort_order || 0),
     isDefault: Boolean(row.is_default),
     createdAt: new Date(row.created_at).toISOString(),
@@ -274,9 +294,9 @@ export async function createCharacterTopic(characterId: string, rawInput: Record
       `
       INSERT INTO character_topics (
         id, character_id, name, description, system_prompt,
-        knowledge_content, sort_order, is_default, inherits_legacy_knowledge
+        knowledge_content, category, sort_order, is_default, inherits_legacy_knowledge
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,FALSE)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,FALSE)
       RETURNING *
       `,
       [
@@ -286,6 +306,7 @@ export async function createCharacterTopic(characterId: string, rawInput: Record
         input.description || "",
         input.systemPrompt || "",
         input.knowledgeContent || "",
+        input.category || "",
         Number(countResult.rows[0]?.max_sort ?? -1) + 1,
         shouldBeDefault,
       ]
@@ -353,8 +374,10 @@ export async function updateCharacterTopic(
         description=$4,
         system_prompt=$5,
         knowledge_content=$6,
-        is_default=$7,
-        inherits_legacy_knowledge=$8,
+        category=$7,
+        sort_order=$8,
+        is_default=$9,
+        inherits_legacy_knowledge=$10,
         updated_at=NOW()
       WHERE id=$1 AND character_id=$2
       RETURNING *
@@ -366,6 +389,8 @@ export async function updateCharacterTopic(
         input.description ?? current.description,
         input.systemPrompt ?? current.system_prompt,
         nextKnowledgeContent,
+        input.category ?? current.category,
+        input.sortOrder ?? current.sort_order,
         nextDefault,
         knowledgeWasEdited ? false : current.inherits_legacy_knowledge,
       ]
@@ -523,11 +548,22 @@ export function composeCharacterTopicPrompt(
   topic: CharacterTopicRow | null
 ) {
   if (!topic) return characterBasePrompt;
-  const topicKnowledge =
-    topic.inherits_legacy_knowledge &&
-    String(topic.knowledge_content || "").trim() === String(character.knowledge_base || "").trim()
-      ? "（沿用上方角色知識設定）"
-      : String(topic.knowledge_content || "").trim() || "（未提供額外主題知識）";
+  const rawKnowledge = String(topic.knowledge_content || "").trim();
+  const topicKnowledge = (() => {
+    if (topic.inherits_legacy_knowledge && rawKnowledge === String(character.knowledge_base || "").trim()) {
+      return "（沿用上方角色知識設定）";
+    }
+    if (!rawKnowledge) return "（未提供額外主題知識）";
+    // 主題版本知識以【知識點分級】JSON 儲存時，轉做可讀清單注入 prompt
+    const pointsRaw = rawKnowledge.match(/【知識點分級】\s*([\s\S]*?)(?=\n【[^\n]+】|$)/)?.[1]?.trim() || "";
+    const points = pointsRaw.startsWith("[") ? parseKnowledgePoints(pointsRaw) : [];
+    if (points.length) {
+      return points
+        .map((point) => `- [${point.tier === "basic_fact" ? "基礎事實" : "深度理解"}] ${point.title}：${point.content}`)
+        .join("\n");
+    }
+    return rawKnowledge;
+  })();
   return `${characterBasePrompt}
 
 # Current Topic (server-selected)
