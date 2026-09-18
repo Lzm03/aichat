@@ -602,10 +602,23 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
 
   const mapConversationMessagesToChatMessages = React.useCallback(
     (historyMessages: ConversationMessage[]) => {
-      const restoredMessages: ChatMessage[] = historyMessages.map((message) => ({
-        role: message.role === "assistant" ? "bot" : message.role === "system" ? "event" : "user",
-        content: message.content,
-      }));
+      const supportedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+      const restoredMessages: ChatMessage[] = historyMessages.map((message) => {
+        const storedImages = Array.isArray(message.metadata?.images)
+          ? message.metadata.images
+              .map((image: any) => ({
+                mimeType: String(image?.mimeType || "").toLowerCase(),
+                data: String(image?.data || ""),
+              }))
+              .filter((image: any) => supportedMimeTypes.has(image.mimeType) && image.data)
+              .map((image: any) => `data:${image.mimeType};base64,${image.data}`)
+          : [];
+        return {
+          role: message.role === "assistant" ? "bot" : message.role === "system" ? "event" : "user",
+          content: message.content,
+          imagePreviews: storedImages,
+        } as ChatMessage;
+      });
       return restoredMessages.length
         ? restoredMessages
         : ([{ role: "bot", content: buildOpeningMessage() }] as ChatMessage[]);
@@ -2382,7 +2395,7 @@ const sendMessage = async (
       botId: botConfig.id,
       source,
       replyLanguage,
-      stream: false,
+      stream: !guidedMode && replyLanguage === "cantonese",
       teachingHint: guidedMode ? "continue" : "auto",
       usageType: "chat_message",
       sharedBotId: isSharedView ? botConfig.id : undefined,
@@ -2418,7 +2431,7 @@ const sendMessage = async (
     };
     const contentType = String(response.headers.get("content-type") || "");
 
-    if (contentType.includes("application/json") || modelProvider === "gemini") {
+    if (contentType.includes("application/json")) {
       const data = await response.json().catch(() => null);
       const nextConversationId = String(data?.conversationId || data?.conversation?.id || responseConversationId || "").trim();
       if (nextConversationId) {
@@ -2815,7 +2828,15 @@ const handleDeleteSelectedConversations = () => {
 };
 
 const appendChatImages = (files: FileList | File[]) => {
-  const nextFiles = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
+  const supportedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+  const allFiles = Array.from(files || []);
+  const nextFiles = allFiles.filter((file) => supportedMimeTypes.has(file.type.toLowerCase()));
+  if (allFiles.length > nextFiles.length) {
+    showAlert({
+      title: "圖片格式不支援",
+      message: "請上傳 JPEG、PNG 或 WebP 圖片。",
+    });
+  }
   if (!nextFiles.length) return;
   if (chatImages.length + nextFiles.length > 4) {
     showAlert({
@@ -3613,7 +3634,7 @@ const unlockAudioAndMic = async () => {
   const stageCaptionMessages = messages
     .map((message, index) => ({ ...message, index }))
     .filter((message) => message.role !== "event" && message.content.trim())
-    .slice(-2);
+    .slice(-6);
 
   if (!isOpen) return null;
 
@@ -4204,7 +4225,7 @@ const unlockAudioAndMic = async () => {
               {!chatPanelOpen && (stageCaptionMessages.length > 0 || (isListening && inputText.trim())) ? (
                 <motion.div
                   key="stage-voice-captions"
-                  className="pointer-events-none absolute inset-x-4 bottom-24 z-[19] flex max-h-[58%] flex-col justify-end gap-3 overflow-hidden md:inset-x-8 md:bottom-28"
+                  className="pointer-events-none absolute inset-x-4 bottom-24 z-[19] flex max-h-[62%] flex-col justify-end gap-3 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent_0%,black_16%,black_100%)] md:inset-x-8 md:bottom-28"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
@@ -4298,45 +4319,6 @@ const unlockAudioAndMic = async () => {
                 >
                   <Mic size={18} />
                 </button>
-                <div className="flex h-12 min-w-[148px] max-w-[196px] items-center justify-center rounded-[22px] border border-white/15 bg-black/45 px-4 text-white/90 shadow-lg backdrop-blur-md">
-                  {botState === "thinking" ? (
-                    <div className="flex items-center gap-2 text-xs font-semibold">
-                      <span>{uiText("正在回覆")}</span>
-                      {Array.from({ length: 3 }).map((_, idx) => (
-                        <span
-                          key={idx}
-                          className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-bounce"
-                          style={{ animationDelay: `${idx * 0.16}s` }}
-                        />
-                      ))}
-                    </div>
-                  ) : isListening ? (
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-xs font-semibold">{uiText("正在聆聽")}</span>
-                      <div className="flex h-5 items-center gap-[3px]">
-                      {Array.from({ length: 11 }).map((_, idx) => {
-                        const mid = Math.abs(5 - idx);
-                        const baseHeight = Math.max(6, 14 - mid * 1.4);
-                        const lift = Math.max(0, voiceLevel * (10 - mid * 0.9));
-                        return (
-                          <span
-                            key={idx}
-                            className="w-[3px] rounded-full bg-white/90 transition-[height] duration-75"
-                            style={{
-                              height: `${Math.max(4, Math.round(baseHeight + lift))}px`,
-                            }}
-                          />
-                        );
-                      })}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-xs font-semibold">
-                      <Mic size={14} />
-                      <span>{uiText("點擊說話")}</span>
-                    </div>
-                  )}
-                </div>
                 <button
                   onClick={() => {
                     void captureStagePhoto();
@@ -4856,7 +4838,7 @@ const unlockAudioAndMic = async () => {
                       <input
                         ref={chatImageInputRef}
                         type="file"
-                        accept="image/*"
+                        accept="image/jpeg,image/png,image/webp"
                         multiple
                         className="hidden"
                         onChange={(event) => {

@@ -53,7 +53,16 @@ import {
   getVertexAIConfig,
   isVertexAIEnabled,
 } from "../lib/gemini-server.ts";
+import {
+  buildGeminiContents,
+  normalizeGeminiImages,
+  summarizeGeminiContents,
+  SUPPORTED_GEMINI_IMAGE_MIME_TYPES,
+  type GeminiHistoryMessage,
+  type GeminiImageInput,
+} from "../lib/gemini-content.ts";
 const isDebugLogEnabled = process.env.LOG_LEVEL === "debug";
+const shouldLogGeminiPayload = process.env.NODE_ENV === "development" || isDebugLogEnabled;
 
 const require = createRequire(import.meta.url);
 const pdfParse = require("pdf-parse");
@@ -101,10 +110,7 @@ async function maybeMockModelReply(userPrompt: string): Promise<string | null> {
 }
 
 type TeachingTaskType = "email";
-type ChatImageInput = {
-  mimeType: string;
-  data: string;
-};
+type ChatImageInput = GeminiImageInput;
 type TeachingSessionRow = {
   id: string;
   user_id: string;
@@ -364,13 +370,13 @@ function buildTeachingGuide(stepIndex: number, mode: "step" | "example", state: 
 
 function extractChatImages(req: Request): ChatImageInput[] {
   const files = ((req.files as Express.Multer.File[] | undefined) || []).filter(Boolean);
-  return files
-    .filter((file) => String(file.mimetype || "").startsWith("image/"))
+  return normalizeGeminiImages(files
+    .filter((file) => SUPPORTED_GEMINI_IMAGE_MIME_TYPES.includes(file.mimetype as any))
     .slice(0, MAX_CHAT_IMAGE_COUNT)
     .map((file) => ({
       mimeType: file.mimetype,
       data: file.buffer.toString("base64"),
-    }));
+    })));
 }
 
 type ChatModelProvider = "gemini";
@@ -392,6 +398,7 @@ type DialogueQuestionType =
 type RecentChatMessage = {
   role: "user" | "bot";
   content: string;
+  images?: ChatImageInput[];
 };
 
 function normalizeChatModelProvider(input: unknown): ChatModelProvider {
@@ -408,22 +415,6 @@ function sanitizeChatHistoryContent(input: string) {
     .replace(/\r/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-}
-
-function buildContextualUserPrompt(userPrompt: string, recentMessages: RecentChatMessage[]) {
-  const normalizedPrompt = String(userPrompt || "").trim();
-  if (!recentMessages.length) return normalizedPrompt;
-  const transcript = recentMessages
-    .map((message) => `${message.role === "user" ? "學生" : "老師"}：${sanitizeChatHistoryContent(message.content)}`)
-    .filter(Boolean)
-    .join("\n");
-  if (!transcript) return normalizedPrompt;
-  return [
-    "以下是最近對話，請延續上下文作答；若學生已回應上一個問題，請自然進入下一個問題；若未回應，也不要機械式重複同一句追問。",
-    transcript,
-    "",
-    `學生最新一句：${normalizedPrompt}`,
-  ].join("\n");
 }
 
 function normalizeStreamFlag(input: unknown): boolean {
@@ -1015,8 +1006,13 @@ function normalizeRecentMessages(input: unknown): RecentChatMessage[] {
             ? "user"
             : "";
       const content = String(item?.content || "").trim();
-      if (!role || !content) return null;
-      return { role, content };
+      const images = normalizeGeminiImages(item?.images || item?.metadata?.images);
+      if (!role || (!content && images.length === 0)) return null;
+      return {
+        role,
+        content,
+        images,
+      };
     })
     .filter(Boolean)
     .slice(-8) as RecentChatMessage[];
@@ -1026,8 +1022,17 @@ async function askGemini(
   systemPrompt: string,
   userPrompt: string,
   onToken: (token: string) => void,
-  images: ChatImageInput[] = []
+  images: ChatImageInput[] = [],
+  history: GeminiHistoryMessage[] = []
 ) {
+  const contents = buildGeminiContents(userPrompt, images, history);
+  if (shouldLogGeminiPayload) {
+    const summary = summarizeGeminiContents(contents);
+    console.log("[Gemini] model=%s", GEMINI_TEXT_MODEL);
+    console.log("[Gemini] multimodal=%s", summary.multimodal);
+    console.log("[Gemini] images=%s", summary.images);
+    console.log("[Gemini] mimeTypes=%s", summary.mimeTypes.join(",") || "none");
+  }
   if (isVertexAIEnabled()) {
     const { project, location } = getVertexAIConfig();
     const accessToken = await getVertexAccessToken();
@@ -1040,20 +1045,7 @@ async function askGemini(
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [
-                { text: userPrompt },
-                ...images.map((image) => ({
-                  inlineData: {
-                    mimeType: image.mimeType,
-                    data: image.data,
-                  },
-                })),
-              ],
-            },
-          ],
+          contents,
           systemInstruction: {
             parts: [{ text: systemPrompt }],
           },
@@ -1123,20 +1115,7 @@ async function askGemini(
   const ai = getAI();
   const stream = await ai.models.generateContentStream({
     model: GEMINI_TEXT_MODEL,
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { text: userPrompt },
-          ...images.map((image) => ({
-            inlineData: {
-              mimeType: image.mimeType,
-              data: image.data,
-            },
-          })),
-        ],
-      },
-    ],
+    contents,
     config: {
       systemInstruction: systemPrompt,
       temperature: GEMINI_STABLE_TEMPERATURE,
@@ -1149,7 +1128,20 @@ async function askGemini(
   }
 }
 
-async function askGeminiOnce(systemPrompt: string, userPrompt: string, images: ChatImageInput[] = []): Promise<string> {
+async function askGeminiOnce(
+  systemPrompt: string,
+  userPrompt: string,
+  images: ChatImageInput[] = [],
+  history: GeminiHistoryMessage[] = []
+): Promise<string> {
+  const contents = buildGeminiContents(userPrompt, images, history);
+  if (shouldLogGeminiPayload) {
+    const summary = summarizeGeminiContents(contents);
+    console.log("[Gemini] model=%s", GEMINI_TEXT_MODEL);
+    console.log("[Gemini] multimodal=%s", summary.multimodal);
+    console.log("[Gemini] images=%s", summary.images);
+    console.log("[Gemini] mimeTypes=%s", summary.mimeTypes.join(",") || "none");
+  }
   if (isVertexAIEnabled()) {
     const { project, location } = getVertexAIConfig();
     const accessToken = await getVertexAccessToken();
@@ -1162,20 +1154,7 @@ async function askGeminiOnce(systemPrompt: string, userPrompt: string, images: C
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [
-                { text: userPrompt },
-                ...images.map((image) => ({
-                  inlineData: {
-                    mimeType: image.mimeType,
-                    data: image.data,
-                  },
-                })),
-              ],
-            },
-          ],
+          contents,
           systemInstruction: {
             parts: [{ text: systemPrompt }],
           },
@@ -1197,20 +1176,7 @@ async function askGeminiOnce(systemPrompt: string, userPrompt: string, images: C
   const ai = getAI();
   const response = await ai.models.generateContent({
     model: GEMINI_TEXT_MODEL,
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { text: userPrompt },
-          ...images.map((image) => ({
-            inlineData: {
-              mimeType: image.mimeType,
-              data: image.data,
-            },
-          })),
-        ],
-      },
-    ],
+    contents,
     config: {
       systemInstruction: systemPrompt,
       temperature: GEMINI_STABLE_TEMPERATURE,
@@ -1224,9 +1190,10 @@ async function askModelOnce(
   provider: ChatModelProvider,
   systemPrompt: string,
   userPrompt: string,
-  images: ChatImageInput[] = []
+  images: ChatImageInput[] = [],
+  history: GeminiHistoryMessage[] = []
 ): Promise<string> {
-  return askGeminiOnce(systemPrompt, userPrompt, images);
+  return askGeminiOnce(systemPrompt, userPrompt, images, history);
 }
 
 const CJK_CHARACTER_PATTERN = /[\u3400-\u9fff]/;
@@ -1263,9 +1230,10 @@ async function askModelStream(
   systemPrompt: string,
   userPrompt: string,
   onToken: (token: string) => void,
-  images: ChatImageInput[] = []
+  images: ChatImageInput[] = [],
+  history: GeminiHistoryMessage[] = []
 ) {
-  return askGemini(systemPrompt, userPrompt, onToken, images);
+  return askGemini(systemPrompt, userPrompt, onToken, images, history);
 }
 
 function remapModelProviderError(error: unknown) {
@@ -1893,9 +1861,9 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
       allRecent.map((message) => ({
         role: message.role === "assistant" || message.role === "bot" ? "bot" : "user",
         content: sanitizeChatHistoryContent(String(message.content || "")),
+        images: normalizeGeminiImages((message as any)?.images || (message as any)?.metadata?.images),
       }))
     );
-    const contextualPrompt = buildContextualUserPrompt(debouncedPrompt, recentChatMessages);
     const active = actor.shared ? null : await getActiveTeachingSession(authUser.id, normalizedBotId);
 
     const ensureActiveConversation = async () => {
@@ -1924,7 +1892,11 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
         role: "user",
         content: normalizedPrompt,
         messageType: "normal",
-        metadata: { replyLanguage: normalizedReplyLanguage, topicId: activeTopic?.id || null },
+        metadata: {
+          replyLanguage: normalizedReplyLanguage,
+          topicId: activeTopic?.id || null,
+          images: chatImages,
+        },
       });
       await updateConversationPreview(conversation.id, authUser.id, normalizedPrompt);
       const maybeRenamed = await updateConversationTitleFromFirstMessage(conversation.id, authUser.id);
@@ -2180,7 +2152,13 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
         if (isDebugLogEnabled) console.log("[ask] requesting model reply");
         reply =
           (await maybeMockModelReply(normalizedPrompt)) ??
-          (await askModelOnce(selectedModelProvider, effectiveSystemPrompt, contextualPrompt, chatImages));
+          (await askModelOnce(
+            selectedModelProvider,
+            effectiveSystemPrompt,
+            debouncedPrompt,
+            chatImages,
+            recentChatMessages
+          ));
         if (normalizedReplyLanguage === "mandarin" && !usesClassicalChineseStyle) {
           reply = await askModelOnce(
             selectedModelProvider,
@@ -2253,10 +2231,10 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
         streamedReply = mocked;
         res.write(`data:${mocked}\n\n`);
       } else {
-        await askModelStream(selectedModelProvider, effectiveSystemPrompt, contextualPrompt, (token: string) => {
+        await askModelStream(selectedModelProvider, effectiveSystemPrompt, debouncedPrompt, (token: string) => {
           streamedReply += token;
           res.write(`data:${token}\n\n`);
-        }, chatImages);
+        }, chatImages, recentChatMessages);
       }
     } catch (error) {
       throw remapModelProviderError(error);
