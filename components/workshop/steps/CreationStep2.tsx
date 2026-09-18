@@ -88,8 +88,7 @@ interface CreationStep2Props {
 
 export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, afterKnowledgePointEditor, subject = "", onSubjectChange, grade = "", onGradeChange, botName = "", securityPrompt = "" }) => {
   const [uploadMethod, setUploadMethod] = useState<UploadMethod>("file");
-  const [modelProvider, setModelProvider] = useState<"deepseek" | "gemini">("deepseek");
-  const [showModelMenu, setShowModelMenu] = useState(false);
+  const modelProvider = "gemini";
   const [files, setFiles] = useState<File[]>([]);
   const [inputValue, setInputValue] = useState("");
 
@@ -234,17 +233,6 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       setActiveTab("map");
     }
   }, [initialData?.characterBackground, initialData?.knowledgeSummary, initialData?.knowledgePoints]);
-
-  useEffect(() => {
-    const handleClick = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (!(target instanceof Node)) return;
-      if ((target as HTMLElement).closest?.("[data-model-menu-root='knowledge-feed']")) return;
-      setShowModelMenu(false);
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
 
   useEffect(() => {
     if (!characterBackground.trim() && !knowledgeSummary.trim()) return;
@@ -1398,37 +1386,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
             <p className="text-sm font-bold text-slate-800">{uiText("知識提取模型")}</p>
             <p className="mt-1 text-xs text-slate-500">{uiText("提取前可先選擇要使用的模型")}</p>
           </div>
-          <div className="relative" data-model-menu-root="knowledge-feed">
-            <button
-              type="button"
-              onClick={() => setShowModelMenu((prev) => !prev)}
-              className="flex items-center gap-2 rounded-full border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm"
-            >
-              <span>{modelProvider === "deepseek" ? "DeepSeek" : "Gemini"}</span>
-              <span className={`transition-transform ${showModelMenu ? "rotate-180" : ""}`}>⌄</span>
-            </button>
-            {showModelMenu ? (
-              <div className="absolute right-0 top-full z-20 mt-2 min-w-[128px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
-                {(["deepseek", "gemini"] as const).map((option) => {
-                  const active = modelProvider === option;
-                  return (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => {
-                        setModelProvider(option);
-                        setShowModelMenu(false);
-                      }}
-                      className={`flex w-full items-center px-3 py-2 text-left text-sm ${
-                        active ? "bg-slate-100 font-semibold text-slate-900" : "text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      <span>{option === "deepseek" ? "DeepSeek" : "Gemini"}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
+          <div className="rounded-full border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm">
+            Gemini
           </div>
         </div>
       )}

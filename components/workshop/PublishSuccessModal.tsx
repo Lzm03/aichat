@@ -338,7 +338,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [guidedMode, setGuidedMode] = useState(false);
   const [guidedStepIndex, setGuidedStepIndex] = useState(0);
   const [guidedTotalSteps, setGuidedTotalSteps] = useState(0);
-  const [modelProvider, setModelProvider] = useState<"deepseek" | "gemini">("deepseek");
+  const modelProvider = "gemini";
   const [replyLanguage, setReplyLanguage] = useState<ReplyLanguage>(() => {
     if (typeof window === "undefined") return "cantonese";
     const saved = window.localStorage.getItem(`bot-reply-language:${botConfig.id}`);
@@ -347,7 +347,6 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       : "cantonese";
   });
   const [translatedOpeningMessage, setTranslatedOpeningMessage] = useState("");
-  const [showModelMenu, setShowModelMenu] = useState(false);
   const [activeQuiz, setActiveQuiz] = useState<ActiveQuizSummary | null>(null);
   const [activeQuizAttempt, setActiveQuizAttempt] = useState<ActiveQuizAttempt | null>(null);
   const [quizUiState, setQuizUiState] = useState<"hidden" | "banner" | "prompt" | "later" | "taking" | "result">("hidden");
@@ -807,10 +806,8 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     const handleClick = (event: MouseEvent) => {
       const target = event.target as Node;
       if (!(target instanceof Node)) return;
-      if ((target as HTMLElement).closest?.("[data-model-menu-root='publish-chat']")) return;
       if ((target as HTMLElement).closest?.("[data-top-menu-root='publish-preview']")) return;
       if ((target as HTMLElement).closest?.("[data-topic-selector-root='publish-chat']")) return;
-      setShowModelMenu(false);
       setShowTopMenu(false);
       setIsTopicSelectorOpen(false);
     };
@@ -2384,10 +2381,7 @@ const sendMessage = async (
       botId: botConfig.id,
       source,
       replyLanguage,
-      stream:
-        !guidedMode &&
-        modelProvider !== "gemini" &&
-        replyLanguage === "cantonese",
+      stream: false,
       teachingHint: guidedMode ? "continue" : "auto",
       usageType: "chat_message",
       sharedBotId: isSharedView ? botConfig.id : undefined,
@@ -4746,43 +4740,6 @@ const unlockAudioAndMic = async () => {
                     {uiText(voiceLimitMessage)}
                   </div>
                 )}
-                <div className="mb-2 flex items-center">
-                  <div className="relative" data-model-menu-root="publish-chat">
-                  <button
-                    type="button"
-                    onClick={() => setShowModelMenu((prev) => !prev)}
-                    disabled={shouldDisableRegularChat}
-                    className="flex items-center gap-2 rounded-full border border-[#e1d4bf] bg-white/92 px-3 py-1.5 text-xs font-medium text-[#4b3f31] shadow-sm transition hover:bg-[#fffaf1] disabled:cursor-not-allowed disabled:opacity-45"
-                  >
-                      <span>{modelProvider === "deepseek" ? "DeepSeek" : "Gemini"}</span>
-                      <ChevronDown size={14} className={`transition-transform ${showModelMenu ? "rotate-180" : ""}`} />
-                    </button>
-                    {showModelMenu ? (
-                      <div className="absolute bottom-full left-0 z-20 mb-2 min-w-[116px] overflow-hidden rounded-2xl border border-[#e5d8c3] bg-[#fffaf1] shadow-[0_14px_28px_rgba(36,27,18,0.12)]">
-                        {(["deepseek", "gemini"] as const).map((option) => {
-                          const active = modelProvider === option;
-                          return (
-                            <button
-                              key={option}
-                              type="button"
-                              onClick={() => {
-                                setModelProvider(option);
-                                setShowModelMenu(false);
-                              }}
-                              className={`flex w-full items-center px-3 py-2 text-left text-sm transition ${
-                                active
-                                  ? "bg-[#f4e7d3] font-semibold text-[#2d2115]"
-                                  : "text-[#5f5141] hover:bg-[#f9efe1]"
-                              }`}
-                            >
-                              <span>{option === "deepseek" ? "DeepSeek" : "Gemini"}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
                 {chatImagePreviews.length ? (
                   <div className="mb-2 flex flex-wrap gap-2">
                     {chatImagePreviews.map((src, index) => (

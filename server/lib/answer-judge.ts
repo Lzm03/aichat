@@ -1,13 +1,17 @@
 /**
- * 平價 LLM 判斷（D4）：判斷學生喺近期對話入面「答啱咗邊啲教學目標（core）知識點」。
+ * Gemini LLM 判斷（D4）：判斷學生喺近期對話入面「答啱咗邊啲教學目標（core）知識點」。
  *
  * 取代字串匹配嘅「學生證據」嗰半 —— 字串匹配只捉到「學生提過 keyword」，
  * 捉唔到「答啱」定「答錯」，亦捉唔到「用自己說話答啱但冇用 keyword」。
- * 呢度用 DeepSeek（平價）做一次判斷 call，輸出結構化 JSON。
+ * 呢度用 Gemini 低溫做一次判斷 call，輸出結構化 JSON。
  *
  * 節流策略（每 3 輪 + 免費預濾）係純函數，方便單測；真正接線喺 step 3。
  */
 import type { KnowledgePoint } from "../../utils/chat-prompt.ts";
+import {
+  GEMINI_TEXT_MODEL,
+  getAI,
+} from "./gemini-server.ts";
 
 /** 每幾多輪先跑一次判斷（跟小結節奏，唔好每輪都打 LLM） */
 export const JUDGE_INTERVAL_TURNS = 3;
@@ -101,30 +105,23 @@ export async function judgeStudentAnswers(input: {
   points: KnowledgePoint[];
   turns: Array<{ role: "student" | "bot"; content: string }>;
 }): Promise<Set<string> | null> {
-  const apiKey = String(process.env.DEEPSEEK_API_KEY || "").trim();
-  if (!apiKey || !input.points.length || !input.turns.length) {
+  if (!input.points.length || !input.turns.length) {
     return null;
   }
 
   try {
-    const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "deepseek-chat",
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: GEMINI_TEXT_MODEL,
+      contents: [
+        { role: "user", parts: [{ text: buildJudgeUserPrompt(input.points, input.turns) }] },
+      ],
+      config: {
+        systemInstruction: JUDGE_SYSTEM_PROMPT,
         temperature: 0,
-        messages: [
-          { role: "system", content: JUDGE_SYSTEM_PROMPT },
-          { role: "user", content: buildJudgeUserPrompt(input.points, input.turns) },
-        ],
-      }),
+      },
     });
-    if (!response.ok) return null;
-    const data: any = await response.json().catch(() => null);
-    const text = String(data?.choices?.[0]?.message?.content || "").trim();
+    const text = String(response.text || "").trim();
     if (!text) return null;
     return new Set(parseDemonstrated(text));
   } catch {

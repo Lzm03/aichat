@@ -22,7 +22,7 @@ async function askBotReply(systemPrompt: string, userPrompt: string): Promise<st
       systemPrompt,
       userPrompt,
       stream: false,
-      modelProvider: 'deepseek',
+      modelProvider: 'gemini',
     }),
   });
   const raw = await response.text();

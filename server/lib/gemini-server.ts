@@ -7,6 +7,9 @@ import path from "path";
 const CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 let injectedCredentialsPath: string | null = null;
 
+export const GEMINI_TEXT_MODEL = String(process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash").trim();
+export const GEMINI_STABLE_TEMPERATURE = Number(process.env.GEMINI_TEMPERATURE || 0.2);
+
 function ensureGoogleCredentialsFromEnv() {
   const inlineJson = String(process.env.GCP_SERVICE_ACCOUNT_JSON || "").trim();
   if (!inlineJson) return;
