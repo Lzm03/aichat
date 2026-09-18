@@ -147,7 +147,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   // 🔥 主題版本（知識地圖 Tab 架構；docs/knowledge-map-topic-versions.md）
   // --------------------------
   const [versions, setVersions] = useState<TopicVersionMeta[]>([
-    { id: null, name: "版本一", category: "", isDefault: true },
+    { id: null, name: "主題一", category: "", isDefault: true },
   ]);
   const [activeVersionIndex, setActiveVersionIndex] = useState(0);
   const [maxVersions, setMaxVersions] = useState(4);
@@ -589,7 +589,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       await updateCharacterTopic(characterId, version.id, patch as any);
     } catch (error) {
       console.warn("版本儲存失敗：", error);
-      showAlert({ title: uiText("儲存失敗"), message: (error as Error)?.message || uiText("版本儲存失敗，請稍後再試") });
+      showAlert({ title: uiText("儲存失敗"), message: (error as Error)?.message || uiText("主題儲存失敗，請稍後再試") });
     }
   };
 
@@ -617,7 +617,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
     if (characterId) {
       try {
         const topic = await createCharacterTopic(characterId, {
-          name: `版本${versions.length + 1}`,
+          name: `主題${versions.length + 1}`,
           description: "",
           systemPrompt: "",
           knowledgeContent: "",
@@ -630,11 +630,11 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
         setKnowledgePoints([]);
         setKnowledgeSummary("");
       } catch (error) {
-        showAlert({ title: uiText("無法新增版本"), message: (error as Error)?.message || uiText("每隻 Bot 最多 4 個主題版本") });
+        showAlert({ title: uiText("無法新增主題"), message: (error as Error)?.message || uiText("最多 4 個主題") });
       }
       return;
     }
-    const next = [...versions, { id: null, name: `版本${versions.length + 1}`, category: "", isDefault: false }];
+    const next = [...versions, { id: null, name: `主題${versions.length + 1}`, category: "", isDefault: false }];
     setVersions(next);
     setActiveVersionIndex(next.length - 1);
     setKnowledgePoints([]);
@@ -653,7 +653,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
             .map((item) => ({ ...item, isDefault: item.id === result.defaultTopicId }));
           setVersions(next);
         } catch (error) {
-          showAlert({ title: uiText("無法刪除版本"), message: (error as Error)?.message || uiText("刪除版本失敗，請稍後再試") });
+          showAlert({ title: uiText("無法刪除主題"), message: (error as Error)?.message || uiText("刪除主題失敗，請稍後再試") });
           return;
         }
       } else {
@@ -675,8 +675,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       setKnowledgeSummary(buildKnowledgeSummary(pointsOfVersion(nextIndex)));
     };
     showConfirm({
-      title: uiText("刪除主題版本"),
-      message: uiText("刪除後呢個版本嘅知識點同學生覆蓋進度會一併移除，確定？"),
+      title: uiText("刪除主題"),
+      message: uiText("刪除後呢個主題嘅知識點同相關學習進度會一併移除，確定？"),
       confirmText: uiText("刪除"),
       onConfirm: doRemove,
     });
@@ -795,7 +795,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
         setKnowledgePoints(parsed.points);
         pointsByVersionRef.current[activeVersionIndex] = parsed.points;
         // 空嘅「版本N」自動改用檔名
-        if (name && target?.name.startsWith("版本")) {
+        if (name && target?.name.startsWith("主題")) {
           void handleRenameVersion(activeVersionIndex, name);
         }
         // 編輯模式即刻寫庫（之前要等切 tab 先 persist，容易丟失）
@@ -835,11 +835,11 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
 
       const openNewVersionWith = async (entry: { bg: string; ks: string; points: KnowledgePoint[]; name: string }) => {
         if (versions.length >= maxVersions) {
-          throw new Error(uiText("每隻 Bot 最多 4 個主題版本"));
+          throw new Error(uiText("最多 4 個主題"));
         }
         if (characterId) {
           const topic = await createCharacterTopic(characterId, {
-            name: entry.name || `版本${versions.length + 1}`,
+            name: entry.name || `主題${versions.length + 1}`,
             description: "",
             systemPrompt: "",
             knowledgeContent: buildVersionKnowledgeContent(entry.points),
@@ -851,7 +851,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           pointsByVersionRef.current[next.length - 1] = entry.points;
           return next.length - 1;
         }
-        const next = [...versions, { id: null, name: entry.name || `版本${versions.length + 1}`, category: "", isDefault: false }];
+        const next = [...versions, { id: null, name: entry.name || `主題${versions.length + 1}`, category: "", isDefault: false }];
         setVersions(next);
         pointsByVersionRef.current[next.length - 1] = entry.points;
         return next.length - 1;
@@ -881,7 +881,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
               results.push({ ...parsed, name: file.name.replace(/\.[^.]+$/, "") });
             }
             const created = await appendVersions(results);
-            showCompletionFeedback(created, uiTemplate("已建立 {0} 個主題分頁", created.length));
+            showCompletionFeedback(created, uiTemplate("開咗 {0} 個新主題", created.length));
             return;
           }
           if (mode.kind === "merge-new") {
@@ -889,12 +889,12 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
             const result = await processFiles(files);
             const parsed = parseKnowledgeReply(result.reply || "", previousPointsRef.current);
             const created = await appendVersions([{ ...parsed, name: entryName }]);
-            showCompletionFeedback(created, uiTemplate("已合併成新版本「{0}」", entryName || versions[activeVersionIndex]?.name || ""));
+            showCompletionFeedback(created, uiTemplate("已合併成新主題「{0}」", entryName || versions[activeVersionIndex]?.name || ""));
             return;
           }
           if (mode.kind === "replace-active") {
             const baseName = files[0].name.replace(/\.[^.]+$/, "");
-            const wasPlaceholder = versions[activeVersionIndex]?.name.startsWith("版本");
+            const wasPlaceholder = versions[activeVersionIndex]?.name.startsWith("主題");
             const result = await processFiles(files);
             const parsed = parseKnowledgeReply(result.reply || "", previousPointsRef.current);
             applySingle(parsed, baseName);
@@ -922,15 +922,15 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           setProgress(100);
           setStatus("complete");
           setActiveTab("map");
-          showCompletionFeedback([targetIndex], uiTemplate("已合併入「{0}」", target?.name || uiText("現有版本")));
+          showCompletionFeedback([targetIndex], uiTemplate("已加入「{0}」", target?.name || uiText("現有主題")));
           return;
         }
         const baseName = files[0].name.replace(/\.[^.]+$/, "");
-        const wasPlaceholder = versions[activeVersionIndex]?.name.startsWith("版本");
+        const wasPlaceholder = versions[activeVersionIndex]?.name.startsWith("主題");
         const result = await processFiles(files);
         const parsed = parseKnowledgeReply(result.reply || "", previousPointsRef.current);
         applySingle(parsed, baseName);
-        showCompletionFeedback([activeVersionIndex], uiTemplate("已填入「{0}」", wasPlaceholder ? baseName : versions[activeVersionIndex]?.name || baseName));
+        showCompletionFeedback([activeVersionIndex], uiTemplate("已放入「{0}」", wasPlaceholder ? baseName : versions[activeVersionIndex]?.name || baseName));
         return;
       }
 
@@ -942,9 +942,9 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       }
       const reply = result.reply || "";
       const parsed = parseKnowledgeReply(reply, previousPointsRef.current);
-      const activeName = versions[activeVersionIndex]?.name || "版本一";
+      const activeName = versions[activeVersionIndex]?.name || "主題一";
       applySingle(parsed);
-      showCompletionFeedback([activeVersionIndex], uiTemplate("已填入「{0}」", activeName));
+      showCompletionFeedback([activeVersionIndex], uiTemplate("已放入「{0}」", activeName));
     } catch (error) {
       console.error("知識解析失敗:", error);
       setCharacterBackground("解析失敗，請重試。");
@@ -1114,7 +1114,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           }}
         />
       </label>
-      <p className="mt-3 text-xs text-slate-500">{uiText("支援 PDF、DOC、DOCX；多個檔案可各自開分頁或合成一個（每隻 Bot 最多 4 個分頁）")}</p>
+      <p className="mt-3 text-xs text-slate-500">{uiText("支援 PDF、DOC、DOCX，可以一次揀幾個檔案。上傳後會問你想點分主題，最多 4 個。")}</p>
       {files.length > 0 ? (
         <div className="mt-4 w-full max-w-xl rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
           <p className="font-semibold text-slate-700">{uiText("已選擇 ")}{files.length}{uiText(" 個文件")}</p>
@@ -1138,7 +1138,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
             onClick={handleProcess}
             className="mt-3 w-full rounded-lg bg-indigo-600 px-4 py-2.5 font-bold text-white transition hover:bg-indigo-700"
           >
-            {uiText("開始解析 ")}{files.length}{uiText(" 個文件")}
+            {uiText("開始整理 ")}{files.length}{uiText(" 個文件")}
           </button>
         </div>
       ) : null}
@@ -1163,7 +1163,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           <button
             onClick={handleProcess}
             className="px-4 py-2 rounded-lg bg-indigo-600 text-white"
-          >{uiText("解析")}</button>
+          >{uiText("整理")}</button>
         </div>
       );
     }
@@ -1174,13 +1174,13 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           rows={5}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
-          placeholder={uiText("貼上需要解析的內容…")}
+          placeholder={uiText("貼上需要整理嘅內容…")}
           className="w-full p-4 border rounded-lg"
         />
         <button
           onClick={handleProcess}
           className="w-full py-2 rounded-lg bg-indigo-600 text-white"
-        >{uiText("解析")}</button>
+        >{uiText("整理")}</button>
       </div>
     );
   };
@@ -1191,16 +1191,16 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   const renderStatus = () => {
     if (status === "processing") {
       const steps = [
-        { label: "資料解析", pct: 30 },
-        { label: "重點抽取", pct: 60 },
-        { label: "索引建立", pct: 85 },
-        { label: "入庫完成", pct: 100 },
+        { label: "讀取教材", pct: 30 },
+        { label: "整理重點", pct: 60 },
+        { label: "生成知識點", pct: 85 },
+        { label: "整理完成", pct: 100 },
       ];
       const isDone = (pct: number) => progress >= pct;
       return (
         <div className="space-y-4">
           <div className="rounded-2xl border bg-gradient-to-br from-slate-50 to-blue-50 p-5">
-            <h4 className="text-lg font-bold text-slate-800 mb-4">{uiText("正在為您提取知識庫內容...")}</h4>
+            <h4 className="text-lg font-bold text-slate-800 mb-4">{uiText("正在為您整理教材內容...")}</h4>
             <div className="grid gap-4 md:grid-cols-[1fr_260px]">
               <div className="rounded-xl bg-white p-4 border shadow-sm">
                 <div className="flex items-center justify-between mb-3">
@@ -1231,9 +1231,9 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
               <div className="rounded-xl bg-white p-4 border shadow-sm">
                 <p className="text-sm font-semibold text-slate-700 mb-2">{uiText("實時處理日誌")}</p>
                 <div className="space-y-1.5 text-xs text-slate-500">
-                  <p>{uiText("• 內容載入中...")}</p>
-                  <p>{uiText("• 正在解析段落結構...")}</p>
-                  <p>{uiText("• 正在抽取知識重點...")}</p>
+                  <p>{uiText("• 正在讀取內容...")}</p>
+                  <p>{uiText("• 正在整理段落結構...")}</p>
+                  <p>{uiText("• 正在整理知識重點...")}</p>
                   <p>• 1-2 mins remaining</p>
                 </div>
               </div>
@@ -1288,8 +1288,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
                   type="button"
                   onClick={resetState}
                   className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
-                  aria-label={uiText("清除並重新提取知識")}
-                  title={uiText("重新提取")}
+                  aria-label={uiText("清除並重新整理知識")}
+                  title={uiText("重新整理")}
                 >
                   <Icons.delete className="h-4 w-4" />
                 </button>
@@ -1879,8 +1879,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       {status === "idle" && (
         <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4">
           <div>
-            <p className="text-sm font-bold text-slate-800">{uiText("知識提取模型")}</p>
-            <p className="mt-1 text-xs text-slate-500">{uiText("提取前可先選擇要使用的模型")}</p>
+            <p className="text-sm font-bold text-slate-800">{uiText("AI 模型")}</p>
+            <p className="mt-1 text-xs text-slate-500">{uiText("整理前可以揀用邊個 AI 模型")}</p>
           </div>
           <div className="rounded-full border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm">
             Gemini
@@ -1908,7 +1908,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       {status === "complete" ? (
         <div className="space-y-4">
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5 text-center">
-            <p className="text-sm font-bold text-emerald-800">{uiText("知識點已抽取完成")}</p>
+            <p className="text-sm font-bold text-emerald-800">{uiText("知識點已整理完成")}</p>
             <p className="mt-1 text-xs text-emerald-700">{uiText("可以到「知識地圖」檢查知識點及調整教學目標。")}</p>
             <button type="button" onClick={() => setActiveTab("map")} className="mt-3 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-700">{uiText("前往知識地圖")}</button>
           </div>
@@ -1948,8 +1948,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           />
           {status === "complete" ? renderStatus() : (
             <div className="flex flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-300 bg-slate-50/70 px-6 py-14 text-center">
-              <p className="text-sm font-black text-slate-700">{uiText("尚未抽取知識點")}</p>
-              <p className="mt-1 max-w-md text-xs leading-5 text-slate-500">{uiText("請先到「教材來源」上傳教材並開始解析，抽取完成後知識點會顯示在這裡。")}</p>
+              <p className="text-sm font-black text-slate-700">{uiText("未有知識點")}</p>
+              <p className="mt-1 max-w-md text-xs leading-5 text-slate-500">{uiText("先上傳教材，AI 會幫你整理出要教嘅知識點，整理好就會喺呢度顯示。")}</p>
               <button type="button" onClick={() => setActiveTab("source")} className="mt-4 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-indigo-700">{uiText("前往教材來源")}</button>
             </div>
           )}

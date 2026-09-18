@@ -123,7 +123,7 @@ export const TopicVersionTabs: React.FC<TopicVersionTabsProps> = ({
             ) : (
               <span
                 className={`max-w-[9rem] truncate text-xs font-black ${selected ? "text-indigo-700" : "text-slate-700"}`}
-                title={uiText("雙擊改名")}
+                title={uiText("連按兩下改名")}
                 onDoubleClick={(event) => {
                   event.stopPropagation();
                   setEditingIndex(index);
@@ -210,7 +210,7 @@ export const TopicVersionTabs: React.FC<TopicVersionTabsProps> = ({
 
             <button
               type="button"
-              title={uiText("設為默認版本")}
+              title={uiText("設為首選主題")}
               onClick={(event) => {
                 event.stopPropagation();
                 onSetDefault(index);
@@ -222,7 +222,7 @@ export const TopicVersionTabs: React.FC<TopicVersionTabsProps> = ({
             {versions.length > 1 ? (
               <button
                 type="button"
-                title={uiText("刪除版本")}
+                title={uiText("刪除主題")}
                 onClick={(event) => {
                   event.stopPropagation();
                   onRemove(index);
@@ -252,11 +252,11 @@ export const TopicVersionTabs: React.FC<TopicVersionTabsProps> = ({
         type="button"
         onClick={onAdd}
         disabled={!canAdd}
-        title={canAdd ? uiText("新增主題版本") : uiText("每隻 Bot 最多 4 個主題版本")}
+        title={canAdd ? uiText("新增主題") : uiText("最多 4 個主題")}
         className="inline-flex min-h-9 items-center gap-1 rounded-xl border border-dashed border-slate-300 px-3 py-2 text-xs font-bold text-slate-500 transition hover:border-indigo-300 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-40"
       >
         <Plus className="h-3.5 w-3.5" />
-        {uiText("新增版本")}
+        {uiText("新增主題")}
       </button>
     </div>
   );

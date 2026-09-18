@@ -96,15 +96,15 @@ export const AssignmentModeDialog: React.FC<AssignmentModeDialogProps> = ({
   const previewTabs = () => {
     const fileTab = (name: string) => name.replace(/\.[^.]+$/, "").slice(0, 8);
     if (effectiveMode === "replace-active") {
-      const activeName = existingVersionNames[activeVersionIndex ?? 0] || uiText("當前版本");
-      return `${activeName} ← ${uiText("新檔")}`;
+      const activeName = existingVersionNames[activeVersionIndex ?? 0] || uiText("目前主題");
+      return `${activeName} ← ${uiText("新檔案")}`;
     }
     const shown =
       effectiveMode === "each"
         ? [...existingVersionNames.slice(0, 2), ...fileNames.map(fileTab)]
         : effectiveMode === "merge-new"
-          ? [...existingVersionNames.slice(0, 2), fileTab(fileNames[0] || "") || uiText("新版本")]
-          : [...existingVersionNames.slice(0, 2), `${existingVersionNames[targetIndex] || uiText("現有版本")} ＋${count}`];
+          ? [...existingVersionNames.slice(0, 2), fileTab(fileNames[0] || "") || uiText("新主題")]
+          : [...existingVersionNames.slice(0, 2), `${existingVersionNames[targetIndex] || uiText("現有主題")} ＋${count}`];
     const slots = effectiveMode === "each" ? eachSlots : effectiveMode === "merge-new" ? 1 : 0;
     const hidden = effectiveExisting + slots - shown.length;
     return [...shown, hidden > 0 ? `＋${hidden}…` : ""].filter(Boolean).join("][");
@@ -142,8 +142,8 @@ export const AssignmentModeDialog: React.FC<AssignmentModeDialogProps> = ({
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-lg font-black text-slate-900">{uiTemplate("開始解析前：呢 {0} 個檔案想點整理？", count)}</h3>
-                <p className="mt-1 text-xs text-slate-500">{uiText("唔同主題建議分開；同一主題嘅多個檔案可以合成一個版本")}</p>
+                <h3 className="text-lg font-black text-slate-900">{uiTemplate("呢 {0} 個檔案，想點分主題？", count)}</h3>
+                <p className="mt-1 text-xs text-slate-500">{uiText("唔同主題分開教會清晰啲；同一個主題嘅幾份資料可以放埋一齊")}</p>
               </div>
               <button type="button" onClick={onCancel} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
                 <X className="h-4 w-4" />
@@ -154,11 +154,11 @@ export const AssignmentModeDialog: React.FC<AssignmentModeDialogProps> = ({
               <button type="button" disabled={!eachEnabled} onClick={() => setMode("each")}
                 className={`rounded-2xl border p-4 text-left transition ${OPTION_TONE(eachEnabled, effectiveMode === "each")}`}>
                 <Files className="h-5 w-5 text-indigo-500" />
-                <p className="mt-2 text-sm font-black text-slate-800">{singleFile ? uiText("開新版本") : uiText("各自獨立")}</p>
-                <p className="mt-0.5 text-[11px] leading-4 text-slate-500">{singleFile ? uiText("新開一個版本，檔名做版本名") : uiText("每檔一個版本")}</p>
-                <p className="mt-1.5 text-[10px] leading-4 text-slate-400">{singleFile ? uiText("例：新主題獨立一個 tab") : uiText("例：語法課＋閱讀課分開教")}</p>
+                <p className="mt-2 text-sm font-black text-slate-800">{singleFile ? uiText("開新主題") : uiText("各自獨立")}</p>
+                <p className="mt-0.5 text-[11px] leading-4 text-slate-500">{singleFile ? uiText("開一個新主題，用檔案名做主題名") : uiText("每個檔案成為一個主題")}</p>
+                <p className="mt-1.5 text-[10px] leading-4 text-slate-400">{singleFile ? uiText("例：第二課同第一課分開教") : uiText("例：語法課＋閱讀課分開教")}</p>
                 <p className={`mt-2 text-[11px] font-black ${eachEnabled ? "text-emerald-600" : "text-rose-500"}`}>
-                  {uiTemplate("佔 {0} 個位", eachSlots)}{eachEnabled ? " ✓" : ` ✕ ${uiText("超上限")}`}
+                  {uiTemplate("開 {0} 個主題", eachSlots)}{eachEnabled ? " ✓" : ` ✕ ${uiText("太多")}`}
                 </p>
               </button>
 
@@ -166,20 +166,20 @@ export const AssignmentModeDialog: React.FC<AssignmentModeDialogProps> = ({
                 <button type="button" onClick={() => setMode("replace-active")}
                   className={`rounded-2xl border p-4 text-left transition ${OPTION_TONE(true, effectiveMode === "replace-active")}`}>
                   <RefreshCcw className="h-5 w-5 text-rose-500" />
-                  <p className="mt-2 text-sm font-black text-slate-800">{uiText("覆蓋當前版本")}</p>
-                  <p className="mt-0.5 text-[11px] leading-4 text-slate-500">{uiText("重新解析，取代目前打開嘅 tab 內容")}</p>
+                  <p className="mt-2 text-sm font-black text-slate-800">{uiText("取代目前主題")}</p>
+                  <p className="mt-0.5 text-[11px] leading-4 text-slate-500">{uiText("用新檔案重新整理呢個主題，原有內容會冇咗")}</p>
                   <p className="mt-1.5 text-[10px] leading-4 text-slate-400">{uiText("例：用新教材更新同一個單元")}</p>
-                  <p className="mt-2 text-[11px] font-black text-emerald-600">{uiText("佔 0 個位")} ✓</p>
+                  <p className="mt-2 text-[11px] font-black text-emerald-600">{uiText("唔開新主題")} ✓</p>
                 </button>
               ) : (
                 <button type="button" disabled={!mergeNewEnabled} onClick={() => setMode("merge-new")}
                   className={`rounded-2xl border p-4 text-left transition ${OPTION_TONE(mergeNewEnabled, effectiveMode === "merge-new")}`}>
                   <FolderInput className="h-5 w-5 text-emerald-500" />
-                  <p className="mt-2 text-sm font-black text-slate-800">{uiText("合成一個新版本")}</p>
-                  <p className="mt-0.5 text-[11px] leading-4 text-slate-500">{uiText("所有檔案一齊做一次提取")}</p>
+                  <p className="mt-2 text-sm font-black text-slate-800">{uiText("合併成一個主題")}</p>
+                  <p className="mt-0.5 text-[11px] leading-4 text-slate-500">{uiText("幾份檔案一齊整理")}</p>
                   <p className="mt-1.5 text-[10px] leading-4 text-slate-400">{uiText("例：5 個英語情境合成一課")}</p>
                   <p className={`mt-2 text-[11px] font-black ${mergeNewEnabled ? "text-emerald-600" : "text-rose-500"}`}>
-                    {uiText("佔 1 個位")}{mergeNewEnabled ? " ✓" : ` ✕ ${uiText("超上限")}`}
+                    {uiTemplate("開 {0} 個主題", 1)}{mergeNewEnabled ? " ✓" : ` ✕ ${uiText("太多")}`}
                   </p>
                 </button>
               )}
@@ -187,8 +187,8 @@ export const AssignmentModeDialog: React.FC<AssignmentModeDialogProps> = ({
               <button type="button" disabled={!mergeExistingEnabled} onClick={() => setMode("merge-existing")}
                 className={`rounded-2xl border p-4 text-left transition ${OPTION_TONE(mergeExistingEnabled, effectiveMode === "merge-existing")}`}>
                 <FileText className="h-5 w-5 text-amber-500" />
-                <p className="mt-2 text-sm font-black text-slate-800">{uiText("加進現有版本")}</p>
-                <p className="mt-0.5 text-[11px] leading-4 text-slate-500">{uiText("補充材料入已有 tab")}</p>
+                <p className="mt-2 text-sm font-black text-slate-800">{uiText("加入現有主題")}</p>
+                <p className="mt-0.5 text-[11px] leading-4 text-slate-500">{uiText("補充資料入已有主題")}</p>
                 <div className="mt-2" onClick={(event) => event.stopPropagation()}>
                   <select
                     value={targetIndex}
@@ -202,13 +202,13 @@ export const AssignmentModeDialog: React.FC<AssignmentModeDialogProps> = ({
                   </select>
                 </div>
                 <p className={`mt-2 text-[11px] font-black ${mergeExistingEnabled ? "text-emerald-600" : "text-slate-400"}`}>
-                  {uiText("佔 0 個位")}{mergeExistingEnabled ? " ✓" : ""}
+                  {uiText("唔開新主題")}{mergeExistingEnabled ? " ✓" : ""}
                 </p>
               </button>
             </div>
 
             <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3">
-              <p className="text-[11px] font-bold text-slate-400">{uiText("結果預覽（跟住上面揀咗嘅即時變）")}</p>
+              <p className="text-[11px] font-bold text-slate-400">{uiText("揀咗嘅分法會變成咁：")}</p>
               <p className="mt-1.5 flex flex-wrap gap-1 text-[11px] font-black text-slate-700">
                 {previewTabs().split("][").map((tab, index) => (
                   <span key={index} className="rounded-lg border border-slate-200 bg-white px-2 py-1">{tab.replace(/^\[|\]$/g, "")}</span>
@@ -216,12 +216,12 @@ export const AssignmentModeDialog: React.FC<AssignmentModeDialogProps> = ({
               </p>
               {effectiveMode === "each" && !eachEnabled ? (
                 <p className="mt-2 text-[11px] font-black text-rose-500">
-                  {uiTemplate("⚠ 每隻 Bot 最多 {0} 個版本——呢個揀法會超上限，請揀「合成」或減少檔案", maxVersions)}
+                  {uiTemplate("⚠ 最多只可以有 {0} 個主題，請揀「合併」或者減少檔案", maxVersions)}
                 </p>
               ) : null}
               {effectiveMode === "replace-active" ? (
                 <p className="mt-2 text-[11px] font-black text-rose-500">
-                  {uiText("⚠ 當前分頁嘅原有知識點會被清走，確定先好繼續")}
+                  {uiText("⚠ 目前主題嘅原有知識點會冇咗，確定先好繼續")}
                 </p>
               ) : null}
             </div>
@@ -232,7 +232,7 @@ export const AssignmentModeDialog: React.FC<AssignmentModeDialogProps> = ({
               </button>
               <button type="button" onClick={confirm} disabled={!enabledOf(effectiveMode)}
                 className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-indigo-700 disabled:opacity-50">
-                {uiText("開始解析")}
+                {uiText("開始整理")}
               </button>
             </div>
           </motion.div>

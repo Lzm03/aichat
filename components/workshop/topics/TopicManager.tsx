@@ -224,14 +224,14 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
         <div className="flex items-start gap-4">
           <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">04</span>
           <div>
-            <h2 className="text-xl font-black tracking-tight text-slate-950">{uiText("主題版本")}</h2>
+            <h2 className="text-xl font-black tracking-tight text-slate-950">{uiText("主題")}</h2>
             <p className="mt-1 text-sm leading-6 text-slate-500">{uiText("發布角色後，可為不同教學情境建立獨立主題。")}</p>
           </div>
         </div>
         <div className="mt-6 flex items-start gap-3 rounded-2xl bg-indigo-50 px-4 py-4 text-indigo-900">
           <BookOpen className="mt-0.5 h-5 w-5 shrink-0" />
           <div>
-            <h3 className="text-sm font-bold">{uiText("主題版本會在角色首次發布後啟用")}</h3>
+            <h3 className="text-sm font-bold">{uiText("主題功能會在角色首次發布後啟用")}</h3>
             <p className="mt-1 text-xs leading-5 text-indigo-700">{uiText("目前先完成角色的基礎知識；發布後再次編輯，即可新增最多四個獨立主題。")}</p>
           </div>
         </div>
@@ -249,7 +249,7 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
         <div className="flex items-start gap-4">
           <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">04</span>
           <div>
-            <h2 className="text-xl font-black tracking-tight text-slate-950">{uiText("主題版本")}</h2>
+            <h2 className="text-xl font-black tracking-tight text-slate-950">{uiText("主題")}</h2>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">{uiText("身份與説話風格保持一致；每個主題擁有獨立提示與背景知識。")}</p>
           </div>
         </div>
