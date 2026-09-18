@@ -142,6 +142,8 @@ export async function trackConversationState(input: {
   userId: string;
   conversationId: string;
   knowledgeBase: string;
+  /** 答題模式覆寫：知識來源係話題內容（冇【答題策略】節）時，由主知識庫傳入 */
+  answerModeOverride?: string;
   recentMessages: Array<{ role: string; content: string }>;
   reply: string;
 }) {
@@ -193,7 +195,7 @@ export async function trackConversationState(input: {
 
     // 覆蓋判定跟 bot 答題策略：直接給答案 = 角色講過就算；
     // 引導後再回答 / 不直接給答案 = 角色教咗 AND 學生答到先算。
-    const answerMode = parseAnswerMode(input.knowledgeBase);
+    const answerMode = input.answerModeOverride || parseAnswerMode(input.knowledgeBase);
     const strictCoverage = answerMode !== "直接給答案";
 
     // 學生證據：strict mode 下每 JUDGE_INTERVAL_TURNS 輪跑一次 LLM 判斷（D4），

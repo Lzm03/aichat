@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS character_topics (
   description TEXT NOT NULL DEFAULT '',
   system_prompt TEXT NOT NULL DEFAULT '',
   knowledge_content TEXT NOT NULL DEFAULT '',
+  category TEXT NOT NULL DEFAULT '',
   sort_order INTEGER NOT NULL DEFAULT 0,
   is_default BOOLEAN NOT NULL DEFAULT FALSE,
   inherits_legacy_knowledge BOOLEAN NOT NULL DEFAULT FALSE,

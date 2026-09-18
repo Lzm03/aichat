@@ -21,6 +21,7 @@ import conversationsRoute from "./api/conversations.ts";
 import studentTasksRoute, { ensureStudentTaskTables } from "./api/student-tasks.ts";
 import studentsRoute from "./api/students.ts";
 import characterTopicsRoute from "./api/character-topics.ts";
+import topicCategoryLabelsRoute from "./api/topic-category-labels.ts";
 import quizzesRoute, { ensureQuizTables } from "./api/quizzes.ts";
 import removeBgRoute from "./api/removeBgvideo.ts";
 import uploadImageRoute from "./api/upload-image.ts";
@@ -146,6 +147,7 @@ app.get("/api/media-proxy", async (req, res) => {
   }
 });
 app.use("/api/bots/:characterId/topics", characterTopicsRoute);
+app.use("/api/teacher/topic-category-labels", topicCategoryLabelsRoute);
 app.use("/api/bots", botsRoute);
 app.use("/api/integrations/modo", modoIntegrationRoute);
 app.use("/api/school-avatar-requests", schoolAvatarRequestsRoute);

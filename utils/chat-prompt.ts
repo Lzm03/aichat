@@ -22,6 +22,9 @@ export type ConversationStateInput = {
 type PromptCompilerInput = {
   roleName?: string;
   knowledgeBase?: string;
+  /** 教學目標知識來源（話題版本內容）；冇提供就用 knowledgeBase 自己嘅【知識點分級】。
+   *  角色身份／背景／摘要仍然由 knowledgeBase 提供。 */
+  targetKnowledgeBase?: string;
   securityPrompt?: string;
   /** 年級帶（P1 / P2-P3 / P4-P6 / S1-S3 / S4-S6）；未設定則不加難度規則 */
   gradeBand?: string | null;
@@ -81,8 +84,11 @@ Your goal is NOT to spoon-feed information, but to guide the student toward inde
 19. 相近概念唔准混為一談（例如「變臉」係快速換臉譜嘅技巧，「臉譜」係面上嘅色彩圖案）。學生混淆時，用一句話幫佢分清定義。
 20. 推進對話（Advance）：如果 # Input Context 提供咗 Covered_Points 同 Next_Point，推進問題必須圍繞 Next_Point，嚴禁再問 Covered_Points 內已覆蓋嘅知識點；冇提供就按對話歷史自行判斷。總之唔准重複問學生已經答過嘅問題，唔准「鬼打牆」。
 21. If you do not know, admit uncertainty honestly while preserving the role voice.
-22. 最新輸入優先：先直接回應學生呢一輪實際講嘅內容；只有學生正在討論教學主題或同意繼續時，先用 Next_Point 推進。不得忽略學生問題而機械式重開課、重做自我介紹或硬拉去固定知識點。
-23. Avoid canned openings and repeated transition phrases. Start with the substance of the answer; do not reuse stock wording from previous replies.
+22. 上下文連貫: facts already established in the conversation must not be contradicted, re-asked as if unknown, or dropped. Follow-up questions must build on the information already established in earlier turns.
+23. 選項解析: after you offer an A/B choice (例如「你想知 X，定係想知 Y？」), if the student's next message semantically picks one option — even a fragment like「Y」or「想知 Y」— treat it as their answer immediately. Do NOT ask them to repeat the complete option wording or re-ask which option they meant.
+24. 答啱接住推進: when the student answers correctly, the same reply must do all three: (1) one short affirmation that names what they got right (例如「啱，紅色代表忠義」), (2) one brief supplement that adds a new fact or angle, (3) advance to a new angle or the next knowledge point. Never end with praise alone, and never re-ask the same concept in different words.
+25. 最新輸入優先：先直接回應學生呢一輪實際講嘅內容；只有學生正在討論教學主題或同意繼續時，先用 Next_Point 推進。不得忽略學生問題而機械式重開課、重做自我介紹或硬拉去固定知識點。
+26. Avoid canned openings and repeated transition phrases. Start with the substance of the answer; do not reuse stock wording from previous replies.
 `.trim();
 
 export function buildChatReplyLanguageRule(
@@ -140,7 +146,7 @@ function matchPersonaProfile(source: string) {
   // 必須喺度切走，唔可以當成角色策略一部分，否則會重複注入。
   return (
     source.match(
-      /【角色對話策略】\s*([\s\S]*?)(?=\s*【(?:不知道邏輯|收尾儀式)】|\n請根據「人物背景設定」|$)/i
+      /【角色對話策略】\s*([\s\S]*?)(?=\s*【(?:不知道邏輯|收尾儀式|製作備註)】|\n請根據「人物背景設定」|$)/i
     )?.[1]?.trim() || ""
   );
 }
@@ -347,11 +353,15 @@ export function buildChatSystemPrompt(input: PromptCompilerInput) {
     roleName: input.roleName,
     knowledgeBase: input.knowledgeBase,
   });
+  // 話題版本活躍時，教學目標用話題知識；身份／背景仍然由主知識庫提供。
+  const targetParsed = input.targetKnowledgeBase
+    ? parsePromptSource({ knowledgeBase: input.targetKnowledgeBase })
+    : parsed;
 
   // 教學目標只計 core 知識點，同覆蓋追蹤 / next_point / 進度 UI 同一集。
   // 非 core 點仍然喺【人物知識庫摘要】文字入面做背景知識，只係唔再係必教目標
   // —— 否則 bot 會教一啲永遠唔會出現喺進度分母嘅知識點。
-  const corePoints = parsed.knowledgePoints.filter((point) => point.core !== false);
+  const corePoints = targetParsed.knowledgePoints.filter((point) => point.core !== false);
   const targetKnowledgeGraph = corePoints.length
     ? corePoints
         .map((point) => ({
