@@ -325,6 +325,10 @@ async function semanticJudge(log: DialogueTurn[], rubric: SemanticJudgeRubric): 
     `respectedUnknown=true 代表學生表示不知道後，Bot 有降低難度、直接解釋、提供提示/答案，且冇無限重問同一概念。\n` +
     `respectedDisengagement=true 代表學生明確唔想答/唔想繼續時，Bot 冇逼問，而係降低壓力、提供退出/轉話題空間。\n` +
     `followedTopicSwitch=true 代表學生明確轉換話題後，Bot 有跟隨新話題，而唔係繼續原題。\n` +
+    `\n` +
+    `輸出格式（必須嚴格遵守，直接輸出以下結構嘅 JSON，唔好加任何其他鍵）：\n` +
+    `{"questions":[{"asksQuestion":false,"questionCount":0,"questionType":"none"},...],"dialogue":{"answeredPreviousQuestion":false,"recognizedChoice":null,"repeatedConcept":false,"advancedTopic":false,"introducedUnsupportedPremise":false,"respectedUnknown":false,"respectedDisengagement":false,"followedTopicSwitch":false,"asksQuestion":false,"questionCount":0,"questionType":"none","explanation":""}}\n` +
+    `questions 必須同對話輪數一致，每輪一個元素；questionType 只可以係 none/open/choice/recall/explanation/opinion/observation/comparison/prediction/mixed 其中之一；recognizedChoice 只可以係 "A"/"B"/null。\n` +
     `只輸出 JSON，不要 Markdown，不要額外解釋。`;
 
   const user = JSON.stringify({ rubric, transcript }, null, 2);
