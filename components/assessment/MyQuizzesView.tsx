@@ -51,7 +51,7 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
   const [publishedLoaded, setPublishedLoaded] = useState(false);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   const [detailQuiz, setDetailQuiz] = useState<PublishedQuizSummary | null>(null);
-  const [detailInitialTab, setDetailInitialTab] = useState<DrawerTab>('preview');
+  const [detailInitialTab, setDetailInitialTab] = useState<DrawerTab>('results');
   const deepLinkAttempted = useRef(false);
   const { dialog, closeDialog, showAlert } = usePlatformDialog();
 
@@ -220,7 +220,7 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
                 key={item.id}
                 whileHover={{ y: -4 }}
                 onClick={() => {
-                  setDetailInitialTab('preview');
+                  setDetailInitialTab('results');
                   setDetailQuiz(item);
                 }}
                 className="bg-white rounded-[24px] p-6 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] border border-slate-100 cursor-pointer flex flex-col h-full transition-shadow hover:shadow-[0_20px_25px_-5px_rgba(0,0,0,0.1)]"

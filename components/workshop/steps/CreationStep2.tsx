@@ -8,6 +8,8 @@ import { usePlatformDialog } from "../../../hooks/usePlatformDialog";
 import { PlatformDialog } from "../../system/PlatformDialog";
 import { SUBJECT_OPTIONS } from "../../../utils/subjects";
 import { GRADE_BANDS } from "../../../utils/grades";
+import { assignStableKnowledgePointIds, buildStoredKnowledgeBase, nextKnowledgePointId } from "../../../utils/chat-prompt";
+import { TeachingSimulationPanel } from "./TeachingSimulationPanel";
 
 type UploadMethod = "file" | "url" | "text";
 type KnowledgeTier = "basic_fact" | "deep_understanding";
@@ -25,6 +27,36 @@ type KnowledgePoint = {
 
 const MAX_KNOWLEDGE_POINTS = 20;
 const MAX_POINTS_PER_TIER = 10;
+
+const SECTION_TABS = [
+  { id: "source", label: "教材來源" },
+  { id: "map", label: "知識地圖" },
+  { id: "teaching", label: "教學方式" },
+] as const;
+
+type SectionTabId = (typeof SECTION_TABS)[number]["id"];
+
+/** 三種回答模式：名稱沿用現有答案值，不改 storage contract */
+const ANSWER_MODE_OPTIONS = [
+  {
+    mode: "直接給答案",
+    description: "適合快速認識大量知識點",
+    detail: "Bot 會先完整講解答案，學生不需要先回答。",
+    coverage: "Bot 講解過即記錄",
+  },
+  {
+    mode: "引導後再回答",
+    description: "Bot 先提示，學生回答後再補充",
+    detail: "Bot 會先提供線索，再讓學生嘗試回答。",
+    coverage: "學生答到才記錄",
+  },
+  {
+    mode: "不直接給答案",
+    description: "適合深度思考與討論",
+    detail: "Bot 只提供問題和提示，不直接公布答案。",
+    coverage: "學生自行表達理解才記錄",
+  },
+] as const;
 
 interface CreationStep2Props {
   onGenerated: (data: {
@@ -48,9 +80,13 @@ interface CreationStep2Props {
   /** 年級帶（選填）；留空 = 沿用預設回覆難度 */
   grade?: string;
   onGradeChange?: (grade: string) => void;
+  /** Bot 名稱（教學模擬預覽用；唔影響儲存） */
+  botName?: string;
+  /** 安全提示詞（教學模擬預覽用；唔影響儲存） */
+  securityPrompt?: string;
 }
 
-export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, afterKnowledgePointEditor, subject = "", onSubjectChange, grade = "", onGradeChange }) => {
+export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, afterKnowledgePointEditor, subject = "", onSubjectChange, grade = "", onGradeChange, botName = "", securityPrompt = "" }) => {
   const [uploadMethod, setUploadMethod] = useState<UploadMethod>("file");
   const [modelProvider, setModelProvider] = useState<"deepseek" | "gemini">("deepseek");
   const [showModelMenu, setShowModelMenu] = useState(false);
@@ -60,6 +96,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   const [status, setStatus] = useState<"idle" | "processing" | "complete">(
     "idle"
   );
+  const [activeTab, setActiveTab] = useState<SectionTabId>("source");
   const [viewMode, setViewMode] = useState<"graph" | "list">("graph");
 
   const [characterBackground, setCharacterBackground] = useState(initialData?.characterBackground || "");
@@ -89,52 +126,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
 
   const baseUrl = import.meta.env.VITE_API_URL;
 
-  // --------------------------
-  // ⭐ 系統提示詞（深度分析 PDF）
-  // --------------------------
-  const defaultSystemPrompt = `
-你是一個專業的教育內容結構化專家。你要閱讀用戶提供的文本、網址或文件內容，為一個可對話的教學角色抽取知識，並按認知層級分級。
-
-【任務要求】
-1. 先生成「人物背景設定」：
-- 用第一人稱書寫
-- 3 到 6 句
-- 要自然、有角色感，不逐字照抄原文
-
-2. 再生成最多 20 個核心知識點，並分成兩個層級：
-- 盡量保持 "basic_fact" 10 個、"deep_understanding" 10 個
-- "basic_fact"：客觀事實、時間、地點、定義、名稱，偏向記憶與識別
-- "deep_understanding"：動機、因果、背景、影響、評價，偏向分析與解釋
-
-3. 每個知識點都要包含：
-- id：kp_001 這類遞增編號
-- tier：只能是 "basic_fact" 或 "deep_understanding"
-- title：8 到 14 個字的知識主題，不要直接複製完整長句
-- content：知識點內容
-- keywords：3 到 5 個關鍵詞；每個至少 2 個字，必須有辨識度（專有名詞、具體事物或術語，例如「榫卯」「應縣木塔」），禁止使用「觀察」「自然」「街名」這類任何主題都適用的泛用詞；要挑角色自己會在對話中使用的詞
-- assessment_criteria：一句可用於判斷學生是否掌握的標準
-- core：固定 true（全部知識點都係教學目標，老師可之後自行調整）
-
-【輸出要求】
-只能輸出合法 JSON，不能輸出 Markdown，不能輸出解釋。
-JSON 必須符合以下結構：
-{
-  "character_name": "角色名",
-  "character_background": "第一人稱背景設定",
-  "knowledge_points": [
-    {
-      "id": "kp_001",
-      "tier": "basic_fact",
-      "title": "知識主題",
-      "content": "知識點內容",
-      "keywords": ["關鍵詞1", "關鍵詞2"],
-      "assessment_criteria": "評估標準",
-      "core": true
-    }
-  ]
-}
-`;
-  const [systemPrompt, setSystemPrompt] = useState(defaultSystemPrompt);
+  // 知識提取 prompt 已搬去 server 端（server/lib/knowledge-extraction.ts），
+  // 前端唔再持有呢段 IP，亦唔會經 network 傳出去。
 
   const buildKnowledgeSummary = (points: KnowledgePoint[]) =>
     points
@@ -170,10 +163,11 @@ JSON 必須符合以下結構：
     const basicFacts = points.filter((point) => point.tier === "basic_fact").slice(0, MAX_POINTS_PER_TIER);
     const deepPoints = points.filter((point) => point.tier === "deep_understanding").slice(0, MAX_POINTS_PER_TIER);
     const combined = [...basicFacts, ...deepPoints].slice(0, MAX_KNOWLEDGE_POINTS);
-    return combined.map((point, index) => ({
+    // 唔喺呢度重編 id：交俾 assignStableKnowledgePointIds 保留舊 id，
+    // 否則重新提取會令學生既有嘅覆蓋進度對錯知識點。
+    return combined.map((point) => ({
       ...point,
       title: point.title?.trim() || createKnowledgeTitle(point.content, point.keywords),
-      id: `kp_${String(index + 1).padStart(3, "0")}`,
     }));
   };
 
@@ -205,6 +199,13 @@ JSON 必須符合以下結構：
     };
   };
 
+  // 重新提取時用嚟配對舊 id 嘅「上一次知識點」。resetState 會清空
+  // knowledgePoints，所以要另外存一份，唔係重新提取就冇嘢可以配對。
+  const previousPointsRef = useRef<KnowledgePoint[]>(initialData?.knowledgePoints || []);
+  useEffect(() => {
+    if (knowledgePoints.length) previousPointsRef.current = knowledgePoints;
+  }, [knowledgePoints]);
+
   const resetState = () => {
     setFiles([]);
     setInputValue("");
@@ -216,13 +217,21 @@ JSON 必須符合以下結構：
     setSourceLabel("");
   };
 
+  // 只喺第一次載入到已有知識內容時自動跳去「知識地圖」；
+  // 之後老師改任何設定（性格／說話風格／回答模式等）都會觸發 initialData
+  // 重跑，冇呢個 guard 就會被強制跳走。
+  const didAutoOpenMapRef = useRef(false);
+
   useEffect(() => {
     setCharacterBackground(initialData?.characterBackground || "");
     setKnowledgeSummary(initialData?.knowledgeSummary || "");
     setKnowledgePoints(normalizeKnowledgePoints(initialData?.knowledgePoints || []));
-    if (initialData?.characterBackground || initialData?.knowledgeSummary) {
+    if ((initialData?.characterBackground || initialData?.knowledgeSummary) && !didAutoOpenMapRef.current) {
+      didAutoOpenMapRef.current = true;
       setStatus("complete");
       setProgress(100);
+      // 已有知識內容（編輯舊 Bot）→ 直接開知識地圖，唔使再由教材來源行一次
+      setActiveTab("map");
     }
   }, [initialData?.characterBackground, initialData?.knowledgeSummary, initialData?.knowledgePoints]);
 
@@ -291,7 +300,6 @@ JSON 必須符合以下結構：
     nextFiles.forEach((file) => {
       form.append("file", file);
     });
-    form.append("systemPrompt", systemPrompt);
     form.append("modelProvider", modelProvider);
 
     const res = await fetch(`${baseUrl}/api/ask-file`, {
@@ -312,10 +320,10 @@ JSON 必須符合以下結構：
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        systemPrompt,
         userPrompt: content,
         stream: false,
         modelProvider,
+        usageType: "knowledge_extraction",
       }),
     });
 
@@ -340,7 +348,6 @@ JSON 必須符合以下結構：
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        systemPrompt,
         url,
         modelProvider,
       }),
@@ -361,7 +368,7 @@ JSON 必須符合以下結構：
     return data;
   };
 
-  const parseKnowledgeReply = (reply: string) => {
+  const parseKnowledgeReply = (reply: string, previousPoints: KnowledgePoint[] = []) => {
     let parsed: any = null;
     try {
       parsed = JSON.parse(reply);
@@ -377,9 +384,12 @@ JSON 必須符合以下結構：
     }
 
     if (parsed && Array.isArray(parsed.knowledge_points)) {
-      const points = trimKnowledgePoints(parsed.knowledge_points
-        .map((point: any, index: number) => normalizeKnowledgePoint(point, index))
-        .filter(Boolean) as KnowledgePoint[]);
+      const points = assignStableKnowledgePointIds(
+        trimKnowledgePoints(parsed.knowledge_points
+          .map((point: any, index: number) => normalizeKnowledgePoint(point, index))
+          .filter(Boolean) as KnowledgePoint[]),
+        previousPoints
+      );
       const bg = String(parsed.character_background || parsed.characterBackground || "").trim()
         || "我會根據你提供的資料進行回答與整理。";
       return { bg, ks: buildKnowledgeSummary(points), points };
@@ -416,7 +426,7 @@ JSON 必須符合以下結構：
     return {
       bg: reply.split("\n\n")[0]?.trim() || "我會根據你提供的資料進行回答與整理。",
       ks: buildKnowledgeSummary(cleanedLines),
-      points: cleanedLines,
+      points: assignStableKnowledgePointIds(cleanedLines, previousPoints),
     };
   };
 
@@ -449,7 +459,7 @@ JSON 必須符合以下結構：
       }
 
       const reply = result.reply || "";
-      const { bg, ks, points } = parseKnowledgeReply(reply);
+      const { bg, ks, points } = parseKnowledgeReply(reply, previousPointsRef.current);
 
       setCharacterBackground(bg);
       setKnowledgeSummary(ks);
@@ -462,6 +472,8 @@ JSON 必須符合以下結構：
       onGenerated({ characterBackground: bg, knowledgeSummary: ks, personaProfile, knowledgePoints: points });
       setProgress(100);
       setStatus("complete");
+      // 抽取成功 → 自動跳去知識地圖，老師可以即刻檢查知識點
+      setActiveTab("map");
     } catch (error) {
       console.error("知識解析失敗:", error);
       setCharacterBackground("解析失敗，請重試。");
@@ -532,7 +544,8 @@ JSON 必須符合以下結構：
       .filter(Boolean)
       .slice(0, 5);
     const nextPoint: KnowledgePoint = {
-      id: `kp_${String(knowledgePoints.length + 1).padStart(3, "0")}`,
+      // max+1 而唔係 length+1：刪咗中間嘅點之後 length 會細過最大號，會撞 id
+      id: nextKnowledgePointId(knowledgePoints),
       tier: newPointTier,
       title: newPointTitle.trim() || createKnowledgeTitle(content, keywords),
       content,
@@ -815,7 +828,17 @@ JSON 必須符合以下結構：
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
             <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-              <h3 className="mb-3 text-sm font-black text-slate-800">{uiText("人物背景設定")}</h3>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="text-sm font-black text-slate-800">{uiText("人物背景設定")}</h3>
+                <button
+                  type="button"
+                  onClick={() => setCharacterBackground("")}
+                  disabled={!characterBackground.trim()}
+                  className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold text-rose-500 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {uiText("清除")}
+                </button>
+              </div>
               <textarea
                 rows={6}
                 value={characterBackground}
@@ -825,7 +848,17 @@ JSON 必須符合以下結構：
               <p className="mt-2 text-xs text-slate-400">{uiText("可直接修改，內容會自動保存到角色 Prompt。")}</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-              <h3 className="mb-3 text-sm font-black text-slate-800">{uiText("知識庫摘要")}</h3>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="text-sm font-black text-slate-800">{uiText("知識庫摘要")}</h3>
+                <button
+                  type="button"
+                  onClick={() => setKnowledgeSummary("")}
+                  disabled={!knowledgeSummary.trim()}
+                  className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold text-rose-500 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {uiText("清除")}
+                </button>
+              </div>
               <textarea
                 rows={6}
                 value={knowledgeSummary}
@@ -1163,10 +1196,49 @@ JSON 必須符合以下結構：
   };
 
   // --------------------------
+  // 🔧 教學模擬預覽：用目前畫面設定即時砌知識庫（只讀，唔會儲存）
+  // --------------------------
+  const simulationKnowledgeBase = buildStoredKnowledgeBase({
+    characterBackground,
+    knowledgeSummary,
+    knowledgePoints,
+    personaProfile: [
+      `【性格特質】${personalityTraits.join("、") || "未設定"}`,
+      `【説話風格】${speakingStyle}`,
+      `【答題策略】${answerMode}`,
+    ].join("\n"),
+  });
+
+  // --------------------------
   // 🔧 Final Render
   // --------------------------
   return (
-    <div className="space-y-10 animate-fade-in">
+    <div className="space-y-8 animate-fade-in">
+      {/* 內部三段導覽：教材來源／知識地圖／教學方式 */}
+      <div className="flex w-fit rounded-2xl border border-slate-200 bg-slate-100 p-1">
+        {SECTION_TABS.map((tab) => {
+          const active = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-black transition ${
+                active ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {uiText(tab.label)}
+              {tab.id === "map" && knowledgePoints.length > 0 ? (
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${active ? "bg-indigo-100 text-indigo-600" : "bg-slate-200 text-slate-500"}`}>
+                  {knowledgePoints.length}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+
+      {activeTab === "teaching" && (
       <section id="character-foundation" className="scroll-mt-36">
         <div className="flex items-start gap-4">
           <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">01</span>
@@ -1254,49 +1326,72 @@ JSON 必須符合以下結構：
               </button>
             ))}
           </div>
-        <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
-          <div>
-            <p className="mb-3 text-xs font-bold text-slate-700">{uiText("説話風格")}</p>
-            <div className="flex flex-wrap gap-2">
-              {["文言文", "西洋", "口語", "引導式", "正式", "親切對話", "簡潔"].map((style) => (
-                <button
-                  key={style}
-                  type="button"
-                  onClick={() => setSpeakingStyle(style)}
-                  className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-                    speakingStyle === style
-                      ? "border-indigo-600 bg-indigo-600 text-white shadow-sm"
-                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
-                  }`}
-                >
-                  {uiText(style)}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <p className="mb-3 text-xs font-bold text-slate-700">{uiText("回答模式")}</p>
-            <div className="flex flex-wrap gap-2">
-              {["直接給答案", "引導後再回答", "不直接給答案"].map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setAnswerMode(mode)}
-                  className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-                    answerMode === mode
-                      ? "border-indigo-600 bg-indigo-600 text-white shadow-sm"
-                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
-                  }`}
-                >
-                  {uiText(mode)}
-                </button>
-              ))}
-            </div>
+        <div className="mt-6">
+          <p className="mb-3 text-xs font-bold text-slate-700">{uiText("説話風格")}</p>
+          <div className="flex flex-wrap gap-2">
+            {["文言文", "西洋", "口語", "引導式", "正式", "親切對話", "簡潔"].map((style) => (
+              <button
+                key={style}
+                type="button"
+                onClick={() => setSpeakingStyle(style)}
+                className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                  speakingStyle === style
+                    ? "border-indigo-600 bg-indigo-600 text-white shadow-sm"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                }`}
+              >
+                {uiText(style)}
+              </button>
+            ))}
           </div>
         </div>
+
+        <div className="mt-6">
+          <p className="mb-1 text-xs font-bold text-slate-700">{uiText("回答模式")}</p>
+          <p className="mb-3 text-xs leading-5 text-slate-500">{uiText("回答模式決定 Bot 怎樣教，亦決定幾時記錄學習進度。")}</p>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            {ANSWER_MODE_OPTIONS.map((option) => {
+              const active = answerMode === option.mode;
+              return (
+                <button
+                  key={option.mode}
+                  type="button"
+                  onClick={() => setAnswerMode(option.mode)}
+                  aria-pressed={active}
+                  className={`flex h-full flex-col items-start gap-2 rounded-2xl border p-4 text-left transition ${
+                    active
+                      ? "border-indigo-600 bg-indigo-50/60 shadow-sm ring-2 ring-indigo-100"
+                      : "border-slate-200 bg-white hover:border-indigo-200 hover:bg-slate-50"
+                  }`}
+                >
+                  <span className="flex w-full items-center gap-2">
+                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-black ${
+                      active ? "border-indigo-600 bg-indigo-600 text-white" : "border-slate-300 text-transparent"
+                    }`}>✓</span>
+                    <span className="text-sm font-black text-slate-900">{uiText(option.mode)}</span>
+                  </span>
+                  <span className="text-xs font-bold text-slate-600">{uiText(option.description)}</span>
+                  <span className="text-[11px] leading-5 text-slate-500">{uiText(option.detail)}</span>
+                  <span className={`mt-auto rounded-md px-2 py-1 text-[10px] font-bold ${
+                    active ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-500"
+                  }`}>{uiText(option.coverage)}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <TeachingSimulationPanel
+          knowledgeBase={simulationKnowledgeBase}
+          securityPrompt={securityPrompt}
+          botName={botName}
+        />
         </div>
       </section>
+      )}
 
+      {activeTab === "source" && (
+        <div className="space-y-8">
       {status === "idle" && (
         <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4">
           <div>
@@ -1338,37 +1433,6 @@ JSON 必須符合以下結構：
         </div>
       )}
 
-      {status === "idle" && (
-        <details className="group rounded-2xl border border-slate-200 bg-white">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
-            <div>
-              <p className="text-sm font-bold text-slate-800">{uiText("自定義知識提取 Prompt")}</p>
-              <p className="mt-1 text-xs text-slate-500">{uiText("可修改 AI 如何閱讀文件、整理角色背景及知識點。")}</p>
-            </div>
-            <span className="text-xs font-bold text-indigo-600 group-open:hidden">{uiText("展開編輯")}</span>
-            <span className="hidden text-xs font-bold text-indigo-600 group-open:inline">{uiText("收起")}</span>
-          </summary>
-          <div className="border-t border-slate-100 p-4">
-            <textarea
-              rows={12}
-              value={systemPrompt}
-              onChange={(event) => setSystemPrompt(event.target.value)}
-              className="w-full resize-y rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs leading-6 text-slate-700 outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
-            />
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <p className="text-xs text-slate-400">{uiText("此 Prompt 會同時套用於 PDF、DOC、DOCX、網址及文字內容。")}</p>
-              <button
-                type="button"
-                onClick={() => setSystemPrompt(defaultSystemPrompt)}
-                className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
-              >
-                {uiText("恢復預設")}
-              </button>
-            </div>
-          </div>
-        </details>
-      )}
-
       {/* Upload method tabs */}
       {status === "idle" && (
         <div className="bg-slate-100 p-1 rounded-xl flex items-center">
@@ -1386,7 +1450,30 @@ JSON 必須符合以下結構：
         </div>
       )}
 
-      <div className="min-h-[180px]">{renderStatus()}</div>
+      {status === "complete" ? (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5 text-center">
+          <p className="text-sm font-bold text-emerald-800">{uiText("知識點已抽取完成")}</p>
+          <p className="mt-1 text-xs text-emerald-700">{uiText("可以到「知識地圖」檢查知識點及調整教學目標。")}</p>
+          <button type="button" onClick={() => setActiveTab("map")} className="mt-3 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-700">{uiText("前往知識地圖")}</button>
+        </div>
+      ) : (
+        <div className="min-h-[180px]">{renderStatus()}</div>
+      )}
+        </div>
+      )}
+
+      {activeTab === "map" && (
+        <div className="space-y-8">
+          {status === "complete" ? renderStatus() : (
+            <div className="flex flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-300 bg-slate-50/70 px-6 py-14 text-center">
+              <p className="text-sm font-black text-slate-700">{uiText("尚未抽取知識點")}</p>
+              <p className="mt-1 max-w-md text-xs leading-5 text-slate-500">{uiText("請先到「教材來源」上傳教材並開始解析，抽取完成後知識點會顯示在這裡。")}</p>
+              <button type="button" onClick={() => setActiveTab("source")} className="mt-4 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-indigo-700">{uiText("前往教材來源")}</button>
+            </div>
+          )}
+        </div>
+      )}
+
       <PlatformDialog
         open={dialog.open}
         title={dialog.title}

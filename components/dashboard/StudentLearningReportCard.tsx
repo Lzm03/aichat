@@ -1,13 +1,12 @@
-import { uiText, uiLocale } from '../../utils/uiI18n';
+import { uiText, uiTemplate, uiLocale } from '../../utils/uiI18n';
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from '../icons';
-import { Target, ArrowLeft, ChevronRight, AlertCircle, BookOpen, CheckCircle2, Sparkles, X, BarChart3, ChevronDown, MessageCircle, Search, Clock3 } from 'lucide-react';
+import { Target, ArrowLeft, ChevronRight, AlertCircle, BookOpen, CheckCircle2, Sparkles, X, BarChart3, ChevronDown, ChevronUp, MessageCircle, Search, Clock3 } from 'lucide-react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
 import { readAuthSession } from '../../utils/auth';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { API_BASE } from '../../utils/api';
-import { parsePromptSource } from '../../utils/chat-prompt';
 import { SafeAvatarImage } from '../shared/SafeAvatarImage';
 
 type AssessmentRow = {
@@ -47,13 +46,32 @@ type SharedBotOption = {
   id: string;
   name: string;
   avatarUrl?: string;
-  knowledgeBase?: string;
 };
 
-type KnowledgePoint = {
-  label: string;
-  score: number;
-  completed: boolean;
+type KnowledgeTier = 'basic_fact' | 'deep_understanding';
+
+/** GET /api/bots/teacher/student-progress 嘅回應（真覆蓋數據，非估算） */
+type StudentProgressPoint = {
+  id: string;
+  tier: KnowledgeTier;
+  title: string;
+};
+
+type StudentProgressEntry = {
+  userId: string;
+  name: string;
+  covered: number;
+  coveredPointIds: string[];
+  /** bot_student_progress 有冇呢個學生嘅 row —— 覆蓋地圖嘅分母用 */
+  hasProgressRow: boolean;
+  nextPoint: { id: string; title: string } | null;
+};
+
+type StudentProgressPayload = {
+  botId: string;
+  total: number;
+  points: StudentProgressPoint[];
+  students: StudentProgressEntry[];
 };
 
 type InteractionPoint = {
@@ -88,20 +106,8 @@ const getMasteryTone = (mastery: number) => {
   return { label: '需要加強', color: 'rose', bar: 'bg-rose-500', soft: 'bg-rose-50 text-rose-700', ring: 'ring-rose-100' };
 };
 
-const trackingToneConfig = {
-  green: {
-    dot: 'bg-emerald-400 shadow-[0_0_0_3px_rgba(16,185,129,0.12)]',
-    badge: 'bg-emerald-50 text-emerald-700',
-    border: 'border-emerald-100',
-    fill: 'from-emerald-500 to-emerald-400',
-  },
-  blue: {
-    dot: 'bg-indigo-500 shadow-[0_0_0_3px_rgba(99,102,241,0.12)]',
-    badge: 'bg-indigo-50 text-indigo-700',
-    border: 'border-indigo-100',
-    fill: 'from-indigo-500 to-sky-400',
-  },
-} as const;
+/** 能力追蹤報告 bot 列表預設顯示數量，超出部分靠「看更多」摺叠展開 */
+const MAX_VISIBLE_BOTS = 10;
 
 export const StudentLearningReportCard = () => {
   const currentRole = readAuthSession()?.user?.role;
@@ -114,7 +120,8 @@ export const StudentLearningReportCard = () => {
   const [assessmentRows, setAssessmentRows] = useState<AssessmentRow[]>([]);
   const [sharedBots, setSharedBots] = useState<SharedBotOption[]>([]);
   const [selectedBotId, setSelectedBotId] = useState('');
-  const [knowledgePoints, setKnowledgePoints] = useState<KnowledgePoint[]>([]);
+  const [studentProgressData, setStudentProgressData] = useState<StudentProgressPayload | null>(null);
+  const [showAllBots, setShowAllBots] = useState(false);
   const [interactionSummary, setInteractionSummary] = useState<{
     independentRate: number;
     assistedRate: number;
@@ -176,83 +183,33 @@ export const StudentLearningReportCard = () => {
     filteredChatRecords.find((record) => record.studentId === selectedChatStudentId) ||
     filteredChatRecords[0] ||
     null;
-  const selectedBotKnowledge = useMemo(() => {
-    const parsed = parsePromptSource({
-      roleName: selectedBot?.name,
-      knowledgeBase: selectedBot?.knowledgeBase || '',
-    });
-    const basicPoints = parsed.knowledgePoints.filter((item) => item.tier === 'basic_fact');
-    const deepPoints = parsed.knowledgePoints.filter((item) => item.tier === 'deep_understanding');
-    const backgroundSummary = parsed.characterBackground || parsed.knowledgeSummary || '目前尚未提供角色知識庫摘要。';
-    const buildItem = (
-      level: string,
-      state: string,
-      note: string,
-      title: string,
-      tone: keyof typeof trackingToneConfig,
-      width: number
-    ) => ({ level, state, note, title, tone, width });
-    const outputRank: Record<string, number> = { L0: 0, L1: 1, L2: 2, L3: 3 };
-    const currentRank = outputRank[selectedDetailStudent?.output || 'L0'] ?? 0;
-    const studentMastery = Number(selectedDetailStudent?.mastery || 0);
-    const resolveStudentProgress = (levelRank: number) => {
-      const gap = Math.max(0, currentRank - levelRank);
-      const ahead = Math.max(0, levelRank - currentRank);
-      let width = 0;
-      if (gap > 0) {
-        width = studentMastery + gap * 8;
-      } else if (ahead === 0) {
-        width = studentMastery - (levelRank === 3 ? 8 : 0);
-      } else {
-        const baseFactor = levelRank === 1 ? 0.78 : levelRank === 2 ? 0.62 : 0.38;
-        width = studentMastery * baseFactor;
-      }
-      return Math.max(8, Math.min(100, Math.round(width)));
-    };
-    const resolveState = (width: number) => {
-      if (width >= 95) return '已掌握';
-      if (width >= 70) return '接近掌握';
-      if (width >= 40) return '進行中';
-      return '待加強';
-    };
-    const summary = [
-      basicPoints[0]
-        ? (() => {
-            const width = resolveStudentProgress(1);
-            return buildItem('L1 基礎事實', resolveState(width), basicPoints[0].assessmentCriteria || '可直接回憶基本資料', basicPoints[0].title, 'green', width);
-          })()
-        : buildItem('L1 基礎事實', '待加強', '請在角色知識庫中補充知識點分級', '目前尚未偵測到可用的基礎事實知識點', 'green', 12),
-      deepPoints[0]
-        ? (() => {
-            const width = resolveStudentProgress(2);
-            return buildItem('L2 理解關聯', resolveState(width), deepPoints[0].assessmentCriteria || '能把事實串成因果', deepPoints[0].title, 'green', width);
-          })()
-        : buildItem('L2 理解關聯', '待加強', '請在角色知識庫中補充知識點分級', '目前尚未偵測到可用的理解關聯知識點', 'green', 12),
-      deepPoints[1]
-        ? (() => {
-            const width = resolveStudentProgress(3);
-            return buildItem('L3 深度遷移', resolveState(width), deepPoints[1].assessmentCriteria || '已能跨段落建立關聯', deepPoints[1].title, 'blue', width);
-          })()
-        : buildItem('L3 深度遷移', '待加強', '請在角色知識庫中補充知識點分級', '目前尚未偵測到可用的深度遷移知識點', 'blue', 12),
-    ];
-    return { roleName: parsed.roleName || selectedBot?.name || '共享 Bot', backgroundSummary, basicPoints, deepPoints, summary };
-  }, [selectedBot, selectedDetailStudent?.output, selectedDetailStudent?.mastery]);
-  const selectedStudentLevel = selectedDetailStudent?.output || 'L0';
-  const selectedStudentMastery = Number(selectedDetailStudent?.mastery || 0);
-  const getStudentLevelWidth = (level: 'L1 基礎事實' | 'L2 理解關聯' | 'L3 深度遷移') => {
-    const outputRank: Record<string, number> = { L0: 0, L1: 1, L2: 2, L3: 3 };
-    const currentRank = outputRank[selectedStudentLevel] ?? 0;
-    if (level === 'L1 基礎事實') {
-      if (currentRank >= 1) return Math.min(100, Math.max(18, selectedStudentMastery + 18));
-      return Math.max(12, Math.min(55, Math.round(selectedStudentMastery * 0.7)));
-    }
-    if (level === 'L2 理解關聯') {
-      if (currentRank >= 2) return Math.min(100, Math.max(22, selectedStudentMastery + 8));
-      return Math.max(12, Math.min(70, Math.round(selectedStudentMastery * 0.8)));
-    }
-    if (currentRank >= 3) return Math.min(100, Math.max(28, selectedStudentMastery + 2));
-    return Math.max(12, Math.min(72, Math.round(selectedStudentMastery * 0.55)));
-  };
+  // 學生 drawer 嘅知識點：真覆蓋數據（同對話 strip 浮層同一份 bot_student_progress），
+  // 唔再由 mastery 一個數字估算。
+  const selectedStudentProgress = useMemo(() => {
+    const studentId = selectedDetailStudent?.studentId;
+    if (!studentId || !studentProgressData) return null;
+    return studentProgressData.students.find((student) => student.userId === String(studentId)) || null;
+  }, [studentProgressData, selectedDetailStudent?.studentId]);
+  const knowledgeTierGroups = useMemo(() => {
+    if (!studentProgressData) return [];
+    const covered = new Set(selectedStudentProgress?.coveredPointIds || []);
+    return ([
+      { tier: 'basic_fact' as const, label: '基礎事實', level: 'L1' },
+      { tier: 'deep_understanding' as const, label: '深度理解', level: 'L2/L3' },
+    ])
+      .map(({ tier, label, level }) => {
+        const points = studentProgressData.points.filter((point) => point.tier === tier);
+        return {
+          tier,
+          label,
+          level,
+          points: points.map((point) => ({ ...point, covered: covered.has(point.id) })),
+          coveredCount: points.filter((point) => covered.has(point.id)).length,
+          total: points.length,
+        };
+      })
+      .filter((group) => group.total > 0);
+  }, [studentProgressData, selectedStudentProgress]);
   const inputRate = interactionSummary.independentRate || 0;
   const assistedRate = interactionSummary.assistedRate || 0;
   const aiModeInsight = (() => {
@@ -267,11 +224,23 @@ export const StudentLearningReportCard = () => {
     }
     return '本堂課整體互動剛好平衡。學生直接回應與系統引導各佔一半，表示當前知識點能同時支撐自主輸出與適度提示，適合維持目前難度並觀察後續走向。';
   })();
-  const topicNodes = knowledgePoints.length
-    ? knowledgePoints
-    : [
-        { label: '知識點', score: 0, completed: false },
-      ];
+  // 覆蓋地圖：每點 % = 覆蓋咗嗰點嘅學生數 ÷ 有進度紀錄嘅學生數。
+  // 分母用 hasProgressRow（同 progress-overview 嘅 studentsWithProgress 同一口徑），
+  // 唔係全班人數 —— 未傾過偈嘅學生冇資料，計入分母會令所有點永遠偏低。
+  const topicNodes = useMemo(() => {
+    if (!studentProgressData) return [];
+    const roster = studentProgressData.students.filter((student) => student.hasProgressRow);
+    return studentProgressData.points.map((point) => {
+      const coveredStudents = roster.filter((student) => student.coveredPointIds.includes(point.id)).length;
+      return {
+        id: point.id,
+        label: point.title,
+        score: roster.length ? Math.round((coveredStudents / roster.length) * 100) : 0,
+        completed: roster.length > 0 && coveredStudents === roster.length,
+        hasData: roster.length > 0,
+      };
+    });
+  }, [studentProgressData]);
   const botAvatarFallback = 'https://api.dicebear.com/9.x/bottts/svg?seed=Chopreality';
 
   useEffect(() => {
@@ -282,7 +251,6 @@ export const StudentLearningReportCard = () => {
     setSharedBots([]);
     setAssessmentRows([]);
     setAssessmentCounts({ all: 0, warning: 0, knowledge: 0, normal: 0 });
-    setKnowledgePoints([]);
     setChatRecords([]);
     setInteractionSummary({
       independentRate: 0,
@@ -305,7 +273,6 @@ export const StudentLearningReportCard = () => {
             id: String(bot.id || ''),
             name: String(bot.name || 'AI Bot'),
             avatarUrl: bot.avatarUrl || bot.avatar_url || '',
-            knowledgeBase: bot.knowledgeBase || bot.knowledge_base || '',
           })).filter((bot: SharedBotOption) => Boolean(bot.id));
           setSharedBots(nextSharedBots);
           if (!selectedBotId && data.sharedBots[0]?.id) {
@@ -325,9 +292,6 @@ export const StudentLearningReportCard = () => {
             knowledge: Number(data.counts.knowledge || 0),
             normal: Number(data.counts.normal || 0),
           });
-        }
-        if (Array.isArray(data?.knowledgePoints)) {
-          setKnowledgePoints(data.knowledgePoints);
         }
         if (Array.isArray(data?.chatRecords)) {
           setChatRecords(data.chatRecords);
@@ -351,6 +315,37 @@ export const StudentLearningReportCard = () => {
         if (!cancelled) setAssessmentLoading(false);
       });
 
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewClassAssessmentDetail, selectedBotId]);
+
+  // 真覆蓋數據（bot_student_progress）：班級知識覆蓋地圖同學生 drawer 都用佢。
+  // 同 assessment-report 嗰套關鍵詞 metric 分開 —— 嗰個量度嘅係「課堂提及度」。
+  useEffect(() => {
+    if (!canViewClassAssessmentDetail || !selectedBotId) {
+      setStudentProgressData(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`${API_BASE}/api/bots/teacher/student-progress?botId=${encodeURIComponent(selectedBotId)}`)
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || 'Failed to load student progress');
+        return data;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setStudentProgressData({
+          botId: String(data?.botId || ''),
+          total: Number(data?.total || 0),
+          points: Array.isArray(data?.points) ? data.points : [],
+          students: Array.isArray(data?.students) ? data.students : [],
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setStudentProgressData(null);
+      });
     return () => {
       cancelled = true;
     };
@@ -410,7 +405,7 @@ export const StudentLearningReportCard = () => {
               </div>
             </div>
             <div className="space-y-2 flex-1">
-              {sharedBots.length ? sharedBots.map((bot) => {
+              {sharedBots.length ? (showAllBots ? sharedBots : sharedBots.slice(0, MAX_VISIBLE_BOTS)).map((bot) => {
                 return (
                   <button
                     key={bot.id}
@@ -441,6 +436,18 @@ export const StudentLearningReportCard = () => {
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-[11px] text-slate-500">
                   {assessmentLoading ? uiText('正在同步能力追蹤資料…') : assessmentError ? uiText('暫時無法載入能力追蹤資料，請稍後再試。') : uiText('尚未分享 AI 夥伴給學生；分享後會在此累積真實互動資料。')}
                 </div>
+              )}
+              {sharedBots.length > MAX_VISIBLE_BOTS && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllBots((value) => !value)}
+                  className="flex w-full items-center justify-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-500 transition-colors hover:text-indigo-600"
+                >
+                  {showAllBots
+                    ? uiText("收起")
+                    : uiTemplate("看更多（還有 {0} 個）", String(sharedBots.length - MAX_VISIBLE_BOTS))}
+                  {showAllBots ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
               )}
             </div>
           </motion.div>
@@ -506,17 +513,21 @@ export const StudentLearningReportCard = () => {
                     <p className="mt-0.5 text-[10px] font-semibold text-slate-400">{uiText("展示全班各知識點的集體解鎖進度")}</p>
                   </div>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-                  {topicNodes.map((item) => (
-                    <div key={item.label} className="flex flex-col items-center rounded-2xl border border-transparent p-1 text-center">
-                      <div className={`flex h-12 w-12 items-center justify-center rounded-full text-sm font-black ${item.completed ? 'bg-indigo-500 text-white' : 'bg-amber-100 text-amber-700'}`}>
-                        {item.completed ? '✓' : '!'}
+                {topicNodes.length ? (
+                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                    {topicNodes.map((item) => (
+                      <div key={item.id} className="flex flex-col items-center rounded-2xl border border-transparent p-1 text-center">
+                        <div className={`flex h-12 w-12 items-center justify-center rounded-full text-sm font-black ${item.completed ? 'bg-indigo-500 text-white' : 'bg-amber-100 text-amber-700'}`}>
+                          {item.completed ? '✓' : '!'}
+                        </div>
+                        <div className="mt-2 text-[10px] font-black text-slate-700">{item.label}</div>
+                        <div className="mt-1 text-xs font-black text-indigo-500">{item.hasData ? `${item.score}%` : '—'}</div>
                       </div>
-                      <div className="mt-2 text-[10px] font-black text-slate-700">{uiText(item.label)}</div>
-                      <div className="mt-1 text-xs font-black text-indigo-500">{item.score}%</div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 rounded-2xl bg-slate-50 px-3 py-4 text-center text-[11px] font-semibold text-slate-500">{uiText("尚未有學生與這個角色對話，還沒有可顯示的知識點覆蓋數據。")}</p>
+                )}
               </div>
 
               <div className="rounded-2xl border border-slate-100 bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
@@ -1058,41 +1069,46 @@ export const StudentLearningReportCard = () => {
                                 </div>
                               </div>
 
-                              <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                              <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
                                 <div className="flex items-center justify-between">
                                   <div>
-                                    <h4 className="text-[11px] font-black text-slate-900">{uiText("知識掌握分層")}</h4>
-                                    <p className="mt-1 text-[10px] font-medium text-slate-500">{uiText("依據目前角色「")}{selectedBotKnowledge.roleName}{uiText("」的知識庫內容自動整理。")}</p>
+                                    <h4 className="text-[11px] font-black text-slate-900">{uiText("知識點掌握")}</h4>
+                                    <p className="mt-1 text-[10px] font-medium text-slate-500">{uiTemplate("依據目前角色「{0}」的實際對話覆蓋紀錄。", selectedBot?.name || uiText('共享 Bot'))}</p>
                                   </div>
-                                  <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-slate-500 shadow-sm">L1 → L3</span>
+                                  <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-black text-indigo-700">
+                                    {selectedStudentProgress ? `${selectedStudentProgress.covered}/${studentProgressData?.total ?? 0}` : '—'}
+                                  </span>
                                 </div>
-                                <p className="mt-3 text-[11px] leading-relaxed text-slate-600">{selectedBotKnowledge.backgroundSummary}</p>
-                              </div>
+                                {selectedStudentProgress?.nextPoint ? (
+                                  <p className="mt-3 text-[10px] font-semibold text-slate-500">{uiTemplate("目前學習：{0}", selectedStudentProgress.nextPoint.title)}</p>
+                                ) : null}
 
-                              {selectedBotKnowledge.summary.map((item) => (
-                                <div key={item.level} className={`rounded-2xl border bg-white p-4 shadow-sm ${trackingToneConfig[item.tone].border}`}>
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                      <h4 className="text-[11px] font-black text-slate-900">【{uiText(item.level)}】</h4>
-                                      <p className="mt-1 text-[10px] font-medium text-slate-500">{uiText(item.note)}</p>
-                                    </div>
-                                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${trackingToneConfig[item.tone].badge}`}>
-                                      {uiText(item.state)}
-                                    </span>
+                                {knowledgeTierGroups.length ? (
+                                  <div className="mt-3 space-y-3">
+                                    {knowledgeTierGroups.map((group) => (
+                                      <div key={group.tier}>
+                                        <div className="mb-1 flex items-center justify-between text-[10px] font-black text-slate-500">
+                                          <span>{uiText(group.label)} ({group.level})</span>
+                                          <span className="text-slate-700">{group.coveredCount}/{group.total}</span>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                                          {group.points.map((point) => (
+                                            <span
+                                              key={point.id}
+                                              className={`flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-[10px] font-semibold ${point.covered ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-400'}`}
+                                            >
+                                              <span className={`shrink-0 text-[11px] leading-none ${point.covered ? 'text-emerald-500' : 'text-slate-300'}`}>{point.covered ? '✓' : '○'}</span>
+                                              <span className="truncate">{point.title}</span>
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))}
                                   </div>
-                                  <div className="mt-3 flex items-start gap-2.5">
-                                    <span className={`mt-1 h-2.5 w-2.5 rounded-full ${trackingToneConfig[item.tone].dot}`} />
-                                    <div>
-                                      <p className="text-[11px] font-bold text-slate-800">
-                                        {item.title}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                                    <div className={`h-full rounded-full bg-gradient-to-r ${trackingToneConfig[item.tone].fill}`} style={{ width: `${getStudentLevelWidth(item.level as 'L1 基礎事實' | 'L2 理解關聯' | 'L3 深度遷移')}%` }} />
-                                  </div>
-                                </div>
-                              ))}
+                                ) : (
+                                  <p className="mt-3 rounded-xl bg-slate-50 px-3 py-3 text-[11px] font-semibold text-slate-500">{uiText("這位學生還沒有與這個角色累積可顯示的知識點紀錄。")}</p>
+                                )}
+                              </div>
                             </div>
                           </>
                         );

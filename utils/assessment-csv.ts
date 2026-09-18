@@ -1,4 +1,4 @@
-import { uiText, uiLocale } from './uiI18n';
+import { uiText } from './uiI18n';
 
 type AssessmentAnswer = {
   questionIndex?: number;
@@ -16,6 +16,8 @@ type AssessmentAnswer = {
 
 type AssessmentStudent = {
   name?: string;
+  account?: string;
+  className?: string;
   submittedAt?: string;
   status?: string;
   score?: number;
@@ -25,15 +27,45 @@ type AssessmentStudent = {
 };
 
 type AssessmentExport = {
-  quiz?: { title?: string };
+  quiz?: { title?: string; publishedAt?: string };
   students?: AssessmentStudent[];
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  pending_grading: '待批改',
-  pending_confirm: '待確認',
-  completed: '已完成',
-};
+/** 布魯姆六層級，順序即等級數字：1=記憶 … 6=創造 */
+const BLOOM_LEVEL_LABELS = ['記憶', '理解', '應用', '分析', '評價', '創造'];
+
+/**
+ * 學生嘅布魯姆層級評分 = 最高答啱嘅題目層級（數字 + 中文名）；
+ * 冇答啱任何題 → null。CSV 匯出用。
+ */
+export function computeBloomLevel(
+  answers: Array<{ cognitiveLevel?: string; isCorrect?: boolean }> | undefined | null
+): { level: number; label: string } | null {
+  let bestIndex = -1;
+  for (const answer of answers || []) {
+    const index = BLOOM_LEVEL_LABELS.indexOf(String(answer?.cognitiveLevel || ''));
+    if (index < 0 || !answer?.isCorrect) continue;
+    if (index > bestIndex) bestIndex = index;
+  }
+  return bestIndex >= 0 ? { level: bestIndex + 1, label: BLOOM_LEVEL_LABELS[bestIndex] } : null;
+}
+
+/**
+ * 六層布魯姆逐層統計（答啱數/題數），成績結果卡嘅 mini chip 用。
+ * 順序跟 BLOOM_LEVEL_LABELS：記憶 → 創造。
+ */
+export function computeBloomBreakdown(
+  answers: Array<{ cognitiveLevel?: string; isCorrect?: boolean }> | undefined | null
+): Array<{ label: string; correct: number; total: number }> {
+  const stats = BLOOM_LEVEL_LABELS.map((label) => ({ label, correct: 0, total: 0 }));
+  for (const answer of answers || []) {
+    const index = BLOOM_LEVEL_LABELS.indexOf(String(answer?.cognitiveLevel || ''));
+    if (index < 0) continue;
+    stats[index].total += 1;
+    if (answer?.isCorrect) stats[index].correct += 1;
+  }
+  return stats;
+}
 
 const csvCell = (value: unknown) => {
   const text = value == null ? '' : String(value);
@@ -43,46 +75,40 @@ const csvCell = (value: unknown) => {
 const safeFilename = (value: string) =>
   value.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim() || '評測結果';
 
+/** Excel 友善日期：本地時區 YYYY-MM-DD */
+const formatLocalDate = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
+/**
+ * 批改成果 CSV：每學生一行，欄位 [學生姓名, 班級, 測驗日期, 思維層級評分, 最終分數, 答對率]，
+ * 保留 UTF-8 BOM + CRLF，可直接用 Excel 開啟提交科組。
+ */
 export function downloadAssessmentResultsCsv(data: AssessmentExport | null | undefined) {
   const students = Array.isArray(data?.students) ? data.students : [];
   if (!students.length) return false;
 
-  const headers = [
-    '測驗', '學生', '提交時間', '批改狀態', '總得分', '總分', '得分百分比',
-    '題號', '題型', '布魯姆層級', '題目', '學生答案', '正確答案',
-    'AI 分數', '教師最終分數', '題目滿分', '是否正確', 'AI 評語', '異常標記',
-  ];
+  const headers = ['學生姓名', '班級', '測驗日期', '思維層級評分', '最終分數', '答對率'];
   const quizTitle = String(data?.quiz?.title || uiText('未命名測驗'));
-  const rows = students.flatMap((student) => {
-    const answers = Array.isArray(student.answers) && student.answers.length ? student.answers : [{}];
-    const totalPoints = Number(student.totalPoints || 0);
-    const score = Number(student.score || 0);
-    const percent = totalPoints > 0 ? Number(((score / totalPoints) * 100).toFixed(1)) : 0;
-    const submittedAt = student.submittedAt
-      ? new Date(student.submittedAt).toLocaleString(uiLocale(), { hour12: false })
-      : '';
+  const quizDate = data?.quiz?.publishedAt ? formatLocalDate(data.quiz.publishedAt) : '';
 
-    return answers.map((answer, index) => [
-      quizTitle,
+  const rows = students.map((student) => {
+    const answers = Array.isArray(student.answers) ? student.answers : [];
+    const answeredCount = answers.length;
+    const correctCount = answers.filter((answer) => answer.isCorrect).length;
+    const correctRate = answeredCount > 0 ? Number(((correctCount / answeredCount) * 100).toFixed(1)) : '';
+    const bloom = computeBloomLevel(answers);
+    return [
       student.name || uiText('學生'),
-      submittedAt,
-      uiText(STATUS_LABELS[String(student.status || '')] || student.status || ''),
-      score,
-      totalPoints,
-      percent,
-      Number(answer.questionIndex ?? index) + 1,
-      uiText(answer.type || ''),
-      uiText(answer.cognitiveLevel || ''),
-      answer.question || '',
-      answer.studentAnswer || '',
-      answer.correctAnswer || '',
-      Number(answer.aiScore || 0),
-      Number(answer.score || 0),
-      Number(answer.maxScore || 0),
-      uiText(answer.isCorrect ? '是' : '否'),
-      answer.feedback || '',
-      Array.isArray(student.anomalyFlags) ? student.anomalyFlags.join('、') : '',
-    ]);
+      student.className || '',
+      quizDate,
+      bloom ? `L${bloom.level} ${bloom.label}` : '—',
+      answeredCount ? Number(student.score || 0) : '',
+      correctRate,
+    ];
   });
 
   const csv = `\uFEFF${[headers.map(uiText), ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n')}`;
@@ -118,7 +144,7 @@ type AbilityExport = {
   students?: AbilityExportStudent[];
 };
 
-const BLOOM_CSV_LABELS = ['記憶', '理解', '應用', '分析', '評價', '創造'];
+const BLOOM_CSV_LABELS = BLOOM_LEVEL_LABELS;
 const BLOOM_CSV_KEYS = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'];
 
 /** Export the Bloom ability report (class aggregate + per-student recent/past series). */

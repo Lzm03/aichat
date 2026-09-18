@@ -4,7 +4,7 @@ import {
   MAX_TOPICS_PER_CHARACTER,
   createCharacterTopic,
   deleteCharacterTopic,
-  getAccessibleCharacter,
+  getAccessibleBot,
   getCharacterTopic,
   getOwnedCharacter,
   listCharacterTopics,
@@ -35,7 +35,7 @@ router.get("/", async (req, res) => {
   try {
     const characterId = getCharacterId(req);
     const user = await optionalAuth(req);
-    const character = await getAccessibleCharacter(characterId, user?.id || null);
+    const character = await getAccessibleBot(characterId, user?.id || null);
     if (!character) return res.status(404).json({ error: "Character not found" });
     const topics = await listCharacterTopics(characterId);
     return res.json({

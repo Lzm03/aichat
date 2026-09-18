@@ -1,7 +1,7 @@
-import { uiText } from '../../utils/uiI18n';
+import { uiText, uiTemplate } from '../../utils/uiI18n';
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart2, ChevronRight } from 'lucide-react';
+import { BarChart2, ChevronDown, ChevronRight, ChevronUp } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
 
 type QualitySummary = {
@@ -21,10 +21,14 @@ type AssessmentQualityListProps = {
   onOpenQuiz: (quizId: string) => void;
 };
 
+/** 評測質量總覽預設顯示數量，超出部分靠「看更多」摺叠展開 */
+const MAX_VISIBLE_QUIZZES = 10;
+
 /** 評測質量總覽：測驗列表，點擊跳去智能評測並直開該測驗嘅質量分析 Drawer。 */
 export const AssessmentQualityList: React.FC<AssessmentQualityListProps> = ({ onOpenQuiz }) => {
   const [summaries, setSummaries] = useState<QualitySummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAllQuizzes, setShowAllQuizzes] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,7 +65,7 @@ export const AssessmentQualityList: React.FC<AssessmentQualityListProps> = ({ on
         <div className="flex-1 min-h-[200px] flex items-center justify-center text-sm font-semibold text-slate-400">{uiText("正在載入…")}</div>
       ) : summaries.length ? (
         <div className="space-y-3 flex-1">
-          {summaries.map((summary) => {
+          {(showAllQuizzes ? summaries : summaries.slice(0, MAX_VISIBLE_QUIZZES)).map((summary) => {
             const avg = Number(summary.averageScore || 0).toFixed(1);
             return (
               <motion.button
@@ -88,6 +92,18 @@ export const AssessmentQualityList: React.FC<AssessmentQualityListProps> = ({ on
               </motion.button>
             );
           })}
+          {summaries.length > MAX_VISIBLE_QUIZZES && (
+            <button
+              type="button"
+              onClick={() => setShowAllQuizzes((value) => !value)}
+              className="flex w-full items-center justify-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-500 transition-colors hover:text-indigo-600"
+            >
+              {showAllQuizzes
+                ? uiText("收起")
+                : uiTemplate("看更多（還有 {0} 個）", String(summaries.length - MAX_VISIBLE_QUIZZES))}
+              {showAllQuizzes ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+          )}
         </div>
       ) : (
         <div className="flex-1 min-h-[200px] flex items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white text-sm font-semibold text-slate-400">

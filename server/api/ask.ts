@@ -31,7 +31,7 @@ import {
 import {
   CharacterTopicError,
   composeCharacterTopicPrompt,
-  getAccessibleCharacter,
+  getAccessibleBot,
   resolveCharacterTopic,
 } from "../lib/character-topics.ts";
 import {
@@ -44,6 +44,7 @@ import {
 } from "../../utils/chat-prompt.ts";
 import { normalizeUploadFilename } from "../../utils/uploadFilename.ts";
 import { combineExtractedFileText } from "../lib/knowledge-files.ts";
+import { KNOWLEDGE_EXTRACTION_SYSTEM_PROMPT } from "../lib/knowledge-extraction.ts";
 import {
   getAI,
   getVertexAccessToken,
@@ -1501,35 +1502,13 @@ async function resolveChatActor(req: Request, sharedBotId?: string, botId?: stri
       const normalizedSharedBotId = String(sharedBotId || "").trim();
       if (normalizedSharedBotId) {
         await ensurePlatformTables();
-        const access = await pool.query(
-          `SELECT b.owner_id,
-                  (b.owner_id=$2 OR b.is_visible=TRUE OR EXISTS (
-                    SELECT 1 FROM bot_student_shares s
-                    WHERE s.bot_id=b.id AND s.student_id=$2
-                  ) OR EXISTS (
-                    SELECT 1
-                    FROM bot_group_shares bg
-                    JOIN student_group_members gm ON gm.group_id=bg.group_id
-                    WHERE bg.bot_id=b.id AND gm.student_id=$2
-                      AND NOT EXISTS (
-                        SELECT 1 FROM bot_student_exclusions ex
-                        WHERE ex.bot_id=b.id AND ex.student_id=$2
-                      )
-                  )) AS allowed
-           FROM bots b WHERE b.id=$1 LIMIT 1`,
-          [normalizedSharedBotId, user.id]
-        );
-        if (!access.rowCount) {
+        const bot = await getAccessibleBot(normalizedSharedBotId, user.id);
+        if (!bot) {
           const error = new Error("shared bot not found");
           (error as any).status = 404;
           throw error;
         }
-        if (!access.rows[0].allowed) {
-          const error = new Error("you do not have access to this bot");
-          (error as any).status = 403;
-          throw error;
-        }
-        return { user, shared: access.rows[0].owner_id !== user.id, integration: false as const };
+        return { user, shared: bot.owner_id !== user.id, integration: false as const };
       }
       return { user, shared: false as const, integration: false as const };
     }
@@ -1543,16 +1522,10 @@ async function resolveChatActor(req: Request, sharedBotId?: string, botId?: stri
   }
 
   await ensurePlatformTables();
-  const result = await pool.query(
-    `SELECT owner_id
-     FROM bots
-     WHERE id=$1
-       AND is_visible=true
-       AND owner_id IS NOT NULL
-     LIMIT 1`,
-    [normalizedBotId]
-  );
-  const ownerId = String(result.rows[0]?.owner_id || "").trim();
+  // 未登入訪客：行公開路徑（同 getAccessibleBot 嘅 is_visible 分支一致）。
+  // owner_id 空（公開但冇主）一樣當 404，同原本條件等價。
+  const publicBot = await getAccessibleBot(normalizedBotId, null);
+  const ownerId = String(publicBot?.owner_id || "").trim();
   if (!ownerId) {
     const error = new Error("shared bot not found");
     (error as any).status = 404;
@@ -1761,7 +1734,8 @@ router.post("/ask-file", requireAuth, upload.any(), async (req: Request, res: Re
     }
 
     const normalizedPromptText = combineExtractedFileText(nonEmptyParts, MAX_FILE_PROMPT_CHARS);
-    const systemPrompt: string = (req.body as any)?.systemPrompt || "";
+    // 抽取 prompt 只存在 server 端（IP 唔落前端 bundle / network）
+    const systemPrompt: string = KNOWLEDGE_EXTRACTION_SYSTEM_PROMPT;
     const reply = await askModelOnce(modelProvider, systemPrompt, normalizedPromptText);
     await consumeUserCredits(authUser!.id, "ask_file", 4, {
       fileNames: files.map((file) => file.originalname),
@@ -1797,9 +1771,11 @@ router.post("/ask-url", requireAuth, async (req: Request, res: Response) => {
   try {
     const authUser = getAuthUser(req);
     await assertUserCanSpend(authUser!.id, 2);
-    const { systemPrompt = "", url = "", modelProvider = "deepseek" } = req.body as any;
+    const { url = "", modelProvider = "deepseek" } = req.body as any;
     const selectedModelProvider = normalizeChatModelProvider(modelProvider);
     if (!url || typeof url !== "string") return res.status(400).json({ error: "缺少網址" });
+    // 抽取 prompt 只存在 server 端
+    const systemPrompt: string = KNOWLEDGE_EXTRACTION_SYSTEM_PROMPT;
     const targetUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
     let pageText = "";
     if (MOCK_UPSTREAM) {
@@ -1889,12 +1865,16 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
 
     let activeTopic = null as Awaited<ReturnType<typeof resolveCharacterTopic>>;
     let effectiveSystemPrompt = String(systemPrompt || "");
+    // 知識抽取（文字）走 server 端 prompt，唔理 client 傳嚟嘅 systemPrompt
+    if (usageType === "knowledge_extraction") {
+      effectiveSystemPrompt = KNOWLEDGE_EXTRACTION_SYSTEM_PROMPT;
+    }
     // 年級帶（L1 prompt 難度規則）；null = 未設定，唔套用難度規則
     let characterGradeBand: string | null = null;
     // 知識庫原文，回覆後攞嚟計「已覆蓋知識點」狀態
     let characterKnowledgeBase = "";
     if (usageType === "chat_message" && normalizedBotId && normalizedBotId !== "default") {
-      const character = await getAccessibleCharacter(normalizedBotId, authUser.id);
+      const character = await getAccessibleBot(normalizedBotId, authUser.id);
       if (!character) return res.status(404).json({ error: "Character not found" });
       characterKnowledgeBase = character.knowledge_base || "";
       activeTopic = await resolveCharacterTopic({

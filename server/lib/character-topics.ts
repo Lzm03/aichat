@@ -177,44 +177,52 @@ export function mapCharacterTopicRow(row: CharacterTopicRow, includeDetails = fa
   return mapped;
 }
 
-export async function getAccessibleCharacter(characterId: string, userId?: string | null) {
-  await ensureCharacterTopicTables();
-  const result = await pool.query(
-    `
-    SELECT b.id, b.name, b.knowledge_base, b.security_prompt, b.owner_id, b.is_visible, b.grade
-    FROM bots b
-    WHERE b.id=$1
-      AND (
-        b.is_visible=TRUE
-        OR ($2::TEXT IS NOT NULL AND b.owner_id=$2)
-        OR ($2::TEXT IS NOT NULL AND EXISTS (
-          SELECT 1 FROM bot_student_shares s
-          WHERE s.bot_id=b.id AND s.student_id=$2
-        ))
-        OR ($2::TEXT IS NOT NULL AND EXISTS (
-          SELECT 1
-          FROM bot_group_shares bg
-          JOIN student_group_members gm ON gm.group_id=bg.group_id
-          WHERE bg.bot_id=b.id AND gm.student_id=$2
-            AND NOT EXISTS (
-              SELECT 1 FROM bot_student_exclusions ex
-              WHERE ex.bot_id=b.id AND ex.student_id=$2
-            )
-        ))
-      )
-    LIMIT 1
-    `,
-    [characterId, userId || null]
-  );
-  return (result.rows[0] as CharacterRow) || null;
-}
-
 export async function getOwnedCharacter(characterId: string, userId: string) {
   await ensureCharacterTopicTables();
   const result = await pool.query(
     `SELECT id, name, knowledge_base, security_prompt, owner_id, is_visible, grade
      FROM bots WHERE id=$1 AND owner_id=$2 LIMIT 1`,
     [characterId, userId]
+  );
+  return (result.rows[0] as CharacterRow) || null;
+}
+
+/**
+ * 全站唯一嘅 Bot 存取規則：擁有者 / 公開 / 直接分享 / 群組分享（未被排除名單擋）。
+ * 對話入口（ask.ts）、Bot 設定（GET /api/bots/:id）、知識點、對話、進度全部行呢個，
+ * 確保「傾得到就讀得到」。要改規則淨係改呢度。
+ *
+ * 排除名單只擋群組分享路徑——直接分享 / 公開仍然入得。
+ *
+ * 回 null = 唔存在 **或者** 冇權限，刻意唔區分：呼叫方一律當 404，
+ * 唔會洩漏 bot 存唔存在。
+ * 呼叫方要自己確保 platform tables 已建（見 ensurePlatformTables）。
+ */
+export async function getAccessibleBot(characterId: string, userId?: string | null) {
+  const result = await pool.query(
+    `SELECT b.id, b.name, b.knowledge_base, b.security_prompt, b.owner_id, b.is_visible, b.grade
+     FROM bots b
+     WHERE b.id=$1
+       AND (
+         b.is_visible=TRUE
+         OR ($2::TEXT IS NOT NULL AND b.owner_id=$2)
+         OR ($2::TEXT IS NOT NULL AND EXISTS (
+           SELECT 1 FROM bot_student_shares s
+           WHERE s.bot_id=b.id AND s.student_id=$2
+         ))
+         OR ($2::TEXT IS NOT NULL AND EXISTS (
+           SELECT 1
+           FROM bot_group_shares bg
+           JOIN student_group_members gm ON gm.group_id=bg.group_id
+           WHERE bg.bot_id=b.id AND gm.student_id=$2
+             AND NOT EXISTS (
+               SELECT 1 FROM bot_student_exclusions ex
+               WHERE ex.bot_id=b.id AND ex.student_id=$2
+             )
+         ))
+       )
+     LIMIT 1`,
+    [characterId, userId || null]
   );
   return (result.rows[0] as CharacterRow) || null;
 }

@@ -16,6 +16,7 @@ import { ensureQuizTables } from "./quizzes.ts";
 import {
   ensureDefaultTopicForCharacter,
   ensureCharacterTopicTables,
+  getAccessibleBot,
   syncInheritedTopicKnowledge,
 } from "../lib/character-topics.ts";
 import { ensureDefaultTeacherExperience } from "../lib/default-teacher-experience.ts";
@@ -474,17 +475,30 @@ router.get("/", requireAuth, async (req, res) => {
       [user?.id, user?.id]
     );
 
-    // 全班覆蓋：每隻 bot 有幾多知識點被「至少一個學生」覆蓋（跨對話累積）。
+    // 全班覆蓋：每隻 bot 有幾多知識點被名冊內學生覆蓋（跨對話累積）。
+    // 只計老師名冊（teacher_students）內嘅在學學生——老師測試自己隻 bot 都會寫
+    // 一行 bot_student_progress，唔過濾就會當佢係學生（口徑同 student-progress 一致）。
     const botIds = result.rows.map((row) => String(row.id));
     const coverageMap = new Map<string, { covered: number; total: number }>();
+    // 當前知識點 id 集，用嚟同累積覆蓋 intersect。bot_student_progress 嘅寫入
+    // 係 jsonb union、永不 prune，老師改過知識點之後會有退役 id 留喺表度，
+    // 唔過濾就會出現 covered > total。
+    const validIdsByBot = new Map<string, Set<string>>();
     for (const row of result.rows) {
-      const total = coreKnowledgePoints(String(row.knowledge_base || "")).length;
-      coverageMap.set(String(row.id), { covered: 0, total });
+      const points = coreKnowledgePoints(String(row.knowledge_base || ""));
+      coverageMap.set(String(row.id), { covered: 0, total: points.length });
+      validIdsByBot.set(String(row.id), new Set(points.map((point) => point.id)));
     }
     if (botIds.length) {
       const covResult = await pool.query(
-        `SELECT bot_id, covered_point_ids FROM bot_student_progress WHERE bot_id = ANY($1)`,
-        [botIds]
+        `SELECT bot_id, covered_point_ids FROM bot_student_progress
+         WHERE bot_id = ANY($1)
+           AND user_id IN (
+             SELECT ts.student_id FROM teacher_students ts
+             JOIN users u ON u.id = ts.student_id
+             WHERE ts.teacher_id = $2 AND u.status = 'active'
+           )`,
+        [botIds, user?.id]
       );
       const distinct = new Map<string, Set<string>>();
       for (const r of covResult.rows) {
@@ -497,7 +511,8 @@ router.get("/", requireAuth, async (req, res) => {
       }
       for (const [botId, set] of distinct) {
         const m = coverageMap.get(botId);
-        if (m) m.covered = set.size;
+        const validIds = validIdsByBot.get(botId);
+        if (m && validIds) m.covered = [...set].filter((id) => validIds.has(id)).length;
       }
     }
 
@@ -840,8 +855,11 @@ router.get("/shared/with-me", requireAuth, async (req, res) => {
     }
     return res.json(rows.map((row) => {
       const knowledgeBase = String(row.knowledge_base || "");
-      const total = coreKnowledgePoints(knowledgeBase).length;
-      const covered = progressMap.get(String(row.id))?.length || 0;
+      const points = coreKnowledgePoints(knowledgeBase);
+      // 同當前知識點 intersect：bot_student_progress 係 union 寫入、永不 prune，
+      // 唔過濾就會出現 covered > total。（同 GET / 嘅班級覆蓋一樣道理）
+      const validIds = new Set(points.map((point) => point.id));
+      const covered = (progressMap.get(String(row.id)) || []).filter((id) => validIds.has(id)).length;
       return {
         ...toClient(row),
         teacherName: row.teacher_name || "",
@@ -849,7 +867,7 @@ router.get("/shared/with-me", requireAuth, async (req, res) => {
         hasPendingQuiz: Boolean(row.active_quiz_id) && row.active_quiz_attempt_status !== "completed",
         activeQuizId: row.active_quiz_id || "",
         activeQuizTitle: row.active_quiz_title || "",
-        progress: { covered, total },
+        progress: { covered, total: points.length },
       };
     }));
   } catch (err) {
@@ -866,21 +884,34 @@ router.get("/:botId/progress", requireAuth, async (req, res) => {
     const botId = String(req.params.botId || "");
     if (!botId) return res.status(400).json({ error: "missing botId" });
 
-    const botResult = await pool.query(
-      `SELECT id, name, knowledge_base FROM bots WHERE id=$1`,
-      [botId]
-    );
-    if (!botResult.rows.length) return res.status(404).json({ error: "Bot not found" });
-    const bot = botResult.rows[0];
+    // 存取閘：同對話入口（ask.ts）同一套規則——擁有者 / 公開 / 直接分享 /
+    // 群組分享（未被排除）。唔可以「知 bot id 就讀到知識點內容」，所以
+    // 冇權限同唔存在一樣回 404，唔洩漏 bot 存唔存在。
+    const bot = await getAccessibleBot(botId, user?.id);
+    if (!bot) return res.status(404).json({ error: "Bot not found" });
 
     const points = coreKnowledgePoints(String(bot.knowledge_base || ""));
     const coveredIds = await getStudentProgress(botId, user.id);
     const coveredSet = new Set(coveredIds);
 
+    // "目前學習"：最新一段對話嘅 next_point_id。跨對話會有少少滯後，
+    // 新對話第一輪回覆後就自癒。
+    let nextPoint: { id: string; title: string } | null = null;
+    const stateResult = await pool.query(
+      `SELECT next_point_id FROM bot_conversation_states WHERE bot_id=$1 AND user_id=$2 ORDER BY updated_at DESC LIMIT 1`,
+      [botId, user.id]
+    );
+    const nextPointId = stateResult.rows.length ? String(stateResult.rows[0].next_point_id || "") : "";
+    if (nextPointId) {
+      const point = points.find((item) => item.id === nextPointId);
+      if (point) nextPoint = { id: point.id, title: point.title };
+    }
+
     return res.json({
       botId,
       total: points.length,
       covered: points.filter((point) => coveredSet.has(point.id)).length,
+      nextPoint,
       coveredPointIds: coveredIds,
       points: points.map((point) => ({
         id: point.id,
@@ -916,7 +947,13 @@ router.get("/teacher/assessment-report", requireAuth, async (req, res) => {
       `SELECT s.student_id, b.id AS bot_id, b.name AS bot_name, b.knowledge_base, b.avatar_url AS bot_avatar_url
        FROM bot_student_shares s
        JOIN bots b ON b.id = s.bot_id
-       WHERE s.teacher_id=$1`,
+       LEFT JOIN LATERAL (
+         SELECT MAX(m.created_at) AS last_message_at
+         FROM bot_chat_messages m
+         WHERE m.bot_id = b.id AND m.teacher_id = s.teacher_id
+       ) lm ON TRUE
+       WHERE s.teacher_id=$1
+       ORDER BY lm.last_message_at DESC NULLS LAST, b.updated_at DESC`,
       [user.id]
     );
 
@@ -1129,6 +1166,8 @@ router.get("/teacher/assessment-report", requireAuth, async (req, res) => {
 });
 
 // C3：老師「使用後總結」—— 每隻 Bot 每個知識點有幾多學生已掌握（跨對話累積）。
+// 只計老師名冊（teacher_students）內嘅在學學生：老師測試自己隻 bot 都會寫入
+// bot_student_progress / bot_conversation_states，唔過濾就會當佢係學生。
 router.get("/teacher/progress-overview", requireAuth, async (req, res) => {
   try {
     await ensurePlatformTables();
@@ -1152,8 +1191,14 @@ router.get("/teacher/progress-overview", requireAuth, async (req, res) => {
       const points = coreKnowledgePoints(String(row.knowledge_base || ""));
 
       const progressResult = await pool.query(
-        `SELECT covered_point_ids FROM bot_student_progress WHERE bot_id=$1`,
-        [botId]
+        `SELECT covered_point_ids FROM bot_student_progress
+         WHERE bot_id=$1
+           AND user_id IN (
+             SELECT ts.student_id FROM teacher_students ts
+             JOIN users u ON u.id = ts.student_id
+             WHERE ts.teacher_id = $2 AND u.status = 'active'
+           )`,
+        [botId, user.id]
       );
       const coveredCounts = new Map<string, number>();
       for (const p of progressResult.rows) {
@@ -1164,10 +1209,16 @@ router.get("/teacher/progress-overview", requireAuth, async (req, res) => {
       }
       const studentsWithProgress = progressResult.rows.length;
 
-      // 「常被跳過」：有幾多段對話喺 next_point 推唔動時跳走咗呢個點。
+      // 「常被跳過」：名冊內有幾多段對話喺 next_point 推唔動時跳走咗呢個點。
       const skipResult = await pool.query(
-        `SELECT skipped_point_ids FROM bot_conversation_states WHERE bot_id=$1`,
-        [botId]
+        `SELECT skipped_point_ids FROM bot_conversation_states
+         WHERE bot_id=$1
+           AND user_id IN (
+             SELECT ts.student_id FROM teacher_students ts
+             JOIN users u ON u.id = ts.student_id
+             WHERE ts.teacher_id = $2 AND u.status = 'active'
+           )`,
+        [botId, user.id]
       );
       const skipCounts = new Map<string, number>();
       for (const s of skipResult.rows) {
@@ -1196,6 +1247,109 @@ router.get("/teacher/progress-overview", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("GET /teacher/progress-overview Failed:", err);
     return res.status(500).json({ error: "Failed to build progress overview" });
+  }
+});
+
+// 老師睇單一 Bot 嘅「每個學生掌握咗邊幾個知識點」（跨對話累積）。
+// progress-overview 只有全班聚合，做唔到 per-student；呢個 endpoint 補上
+// user_id 維度，同時供「班級知識覆蓋地圖」同「學生知識掌握」drawer 用。
+router.get("/teacher/student-progress", requireAuth, async (req, res) => {
+  try {
+    await ensurePlatformTables();
+    const user = getAuthUser(req);
+    if (!user || !["teacher", "admin"].includes(user.role)) {
+      return res.status(403).json({ error: "teacher account required" });
+    }
+
+    const botId = String(req.query.botId || "");
+    if (!botId) return res.status(400).json({ error: "missing botId" });
+
+    // 只准睇自己分享過嘅 Bot（同 progress-overview 同一道閘）
+    const botResult = await pool.query(
+      `SELECT b.id, b.knowledge_base
+       FROM bots b
+       JOIN bot_student_shares s ON s.bot_id = b.id
+       WHERE b.id=$1 AND s.teacher_id=$2
+       LIMIT 1`,
+      [botId, user.id]
+    );
+    if (!botResult.rows.length) return res.status(404).json({ error: "Bot not found" });
+
+    const points = coreKnowledgePoints(String(botResult.rows[0].knowledge_base || ""));
+    const validIds = new Set(points.map((point) => point.id));
+
+    const studentsResult = await pool.query(
+      `SELECT u.id, u.full_name, u.email
+       FROM teacher_students ts
+       JOIN users u ON u.id = ts.student_id
+       WHERE ts.teacher_id=$1 AND u.status='active'
+       ORDER BY u.full_name ASC, u.email ASC`,
+      [user.id]
+    );
+    const studentIds = studentsResult.rows.map((row) => String(row.id));
+
+    // 累積覆蓋（batched）。同當前知識點 intersect —— 寫入係 union、永不
+    // prune，老師改過知識點之後會有退役 id 留喺表度。
+    const coveredByStudent = new Map<string, string[]>();
+    const hasProgress = new Set<string>();
+    if (studentIds.length) {
+      const progressResult = await pool.query(
+        `SELECT user_id, covered_point_ids FROM bot_student_progress
+         WHERE bot_id=$1 AND user_id = ANY($2::text[])`,
+        [botId, studentIds]
+      );
+      for (const row of progressResult.rows) {
+        const studentId = String(row.user_id);
+        hasProgress.add(studentId);
+        const ids = Array.isArray(row.covered_point_ids)
+          ? row.covered_point_ids.map(String).filter((id) => validIds.has(id))
+          : [];
+        coveredByStudent.set(studentId, ids);
+      }
+    }
+
+    // 每人「目前學習」= 佢最新一段對話嘅 next_point_id。一個 query 攞晒，
+    // 喺 JS 度每 user 取第一行（updated_at DESC），同 /:botId/progress 一致。
+    const nextPointByStudent = new Map<string, { id: string; title: string }>();
+    if (studentIds.length) {
+      const stateResult = await pool.query(
+        `SELECT user_id, next_point_id FROM bot_conversation_states
+         WHERE bot_id=$1 AND user_id = ANY($2::text[])
+         ORDER BY updated_at DESC`,
+        [botId, studentIds]
+      );
+      for (const row of stateResult.rows) {
+        const studentId = String(row.user_id);
+        if (nextPointByStudent.has(studentId)) continue; // 只要最新嗰行
+        const point = points.find((item) => item.id === String(row.next_point_id || ""));
+        if (point) nextPointByStudent.set(studentId, { id: point.id, title: point.title });
+      }
+    }
+
+    return res.json({
+      botId,
+      total: points.length,
+      points: points.map((point) => ({
+        id: point.id,
+        tier: point.tier,
+        title: point.title,
+      })),
+      students: studentsResult.rows.map((row) => {
+        const studentId = String(row.id);
+        const coveredPointIds = coveredByStudent.get(studentId) || [];
+        return {
+          userId: studentId,
+          name: String(row.full_name || row.email || "學生"),
+          covered: coveredPointIds.length,
+          coveredPointIds,
+          hasProgressRow: hasProgress.has(studentId),
+          nextPoint: nextPointByStudent.get(studentId) || null,
+        };
+      }),
+    });
+  } catch (err) {
+    console.error("GET /teacher/student-progress Failed:", err);
+    return res.status(500).json({ error: "Failed to build student progress" });
   }
 });
 
@@ -1358,62 +1512,37 @@ router.get("/:id", async (req, res) => {
   const { id } = req.params;
   try {
     await ensureQuizTables();
+    await ensurePlatformTables();
     const user = await optionalAuth(req);
-    const result = user
-      ? await pool.query(
-          `SELECT
-             bots.*,
-             q.id AS active_quiz_id,
-             q.title AS active_quiz_title,
-             qa.status AS active_quiz_attempt_status
-           FROM bots
-           LEFT JOIN LATERAL (
-             SELECT id, title
-             FROM quizzes
-             WHERE bot_id=bots.id AND status='published'
-             ORDER BY updated_at DESC, created_at DESC
-             LIMIT 1
-           ) q ON TRUE
-           LEFT JOIN LATERAL (
-             SELECT status
-             FROM quiz_attempts
-             WHERE quiz_id=q.id AND student_id=$2
-             ORDER BY updated_at DESC, created_at DESC
-             LIMIT 1
-           ) qa ON TRUE
-           WHERE bots.id=$1 AND (
-            owner_id=$2 OR is_visible=true OR EXISTS (
-              SELECT 1 FROM bot_student_shares s WHERE s.bot_id=bots.id AND s.student_id=$2
-            ) OR EXISTS (
-              SELECT 1
-              FROM bot_group_shares bg
-              JOIN student_group_members gm ON gm.group_id=bg.group_id
-              WHERE bg.bot_id=bots.id AND gm.student_id=$2
-                AND NOT EXISTS (
-                  SELECT 1 FROM bot_student_exclusions ex
-                  WHERE ex.bot_id=bots.id AND ex.student_id=$2
-                )
-            )
-          )`,
-          [id, user.id]
-        )
-      : await pool.query(
-          `SELECT
-             bots.*,
-             q.id AS active_quiz_id,
-             q.title AS active_quiz_title,
-             NULL::TEXT AS active_quiz_attempt_status
-           FROM bots
-           LEFT JOIN LATERAL (
-             SELECT id, title
-             FROM quizzes
-             WHERE bot_id=bots.id AND status='published'
-             ORDER BY updated_at DESC, created_at DESC
-             LIMIT 1
-           ) q ON TRUE
-           WHERE bots.id=$1 AND is_visible=true`,
-          [id]
-        );
+    // 存取閘：同對話入口（ask.ts）同一套規則，即 getAccessibleBot。
+    // 冇權限同唔存在一樣回 404，唔洩漏 bot 存唔存在；下面正式查詢唔再重寫一次條件。
+    const accessibleBot = await getAccessibleBot(id, user?.id || null);
+    if (!accessibleBot) return res.status(404).json({ error: "Bot not found" });
+
+    const result = await pool.query(
+      `SELECT
+         bots.*,
+         q.id AS active_quiz_id,
+         q.title AS active_quiz_title,
+         qa.status AS active_quiz_attempt_status
+       FROM bots
+       LEFT JOIN LATERAL (
+         SELECT id, title
+         FROM quizzes
+         WHERE bot_id=bots.id AND status='published'
+         ORDER BY updated_at DESC, created_at DESC
+         LIMIT 1
+       ) q ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT status
+         FROM quiz_attempts
+         WHERE quiz_id=q.id AND student_id=$2
+         ORDER BY updated_at DESC, created_at DESC
+         LIMIT 1
+       ) qa ON TRUE
+       WHERE bots.id=$1`,
+      [id, user?.id || null]
+    );
     if (result.rows.length === 0) return res.status(404).json({ error: "Bot not found" });
 
     res.json({

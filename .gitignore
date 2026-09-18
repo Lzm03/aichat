@@ -17,6 +17,7 @@ dist/
 !/tests/speech-playback.test.mjs
 !/tests/ui-i18n.test.mjs
 !/tests/ui-i18n.browser.cjs
+!/tests/knowledge-point-ids.test.mjs
 .playwright-cli/
 output/playwright/
 

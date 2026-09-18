@@ -172,7 +172,7 @@ function renderFormattedMessage(text: string) {
   return normalized.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, index) => {
     const match = part.match(/^\*\*([^*]+)\*\*$/);
     if (match) {
-      return <strong key={`${part}-${index}`} className="font-semibold text-slate-900">{match[1]}</strong>;
+      return <strong key={`${part}-${index}`} className="font-semibold">{match[1]}</strong>;
     }
     return <span key={`${part}-${index}`}>{part}</span>;
   });

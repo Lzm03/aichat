@@ -8,6 +8,7 @@
     "build": "vite build",
     "lint": "tsc --noEmit",
     "test:i18n": "node --test tests/ui-i18n.test.mjs",
+    "test:ids": "node --test tests/knowledge-point-ids.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -2717,7 +2717,7 @@ router.get("/quizzes/:id/grading-detail", requireAuth, async (req, res) => {
     }
     const quizId = String(req.params.id || "").trim();
     const quizResult = await pool.query(
-      `SELECT q.id, q.title, q.question_count, q.updated_at
+      `SELECT q.id, q.title, q.question_count, q.updated_at, q.published_at
        FROM quizzes q
        WHERE q.id=$1 AND q.teacher_id=$2
        LIMIT 1`,
@@ -2727,9 +2727,16 @@ router.get("/quizzes/:id/grading-detail", requireAuth, async (req, res) => {
     const quiz = quizResult.rows[0];
     const questionRows = await listQuizQuestions(quizId);
     const attempts = await pool.query(
-      `SELECT a.*, u.full_name
+      `SELECT a.*, u.full_name, u.email,
+              COALESCE(cls.class_names, '') AS class_names
        FROM quiz_attempts a
        JOIN users u ON u.id=a.student_id
+       LEFT JOIN LATERAL (
+         SELECT string_agg(sg.name, '、' ORDER BY sg.name) AS class_names
+         FROM student_group_members gm
+         JOIN student_groups sg ON sg.id = gm.group_id AND sg.teacher_id = $2 AND sg.type = 'class'
+         WHERE gm.student_id = a.student_id
+       ) cls ON TRUE
        WHERE a.quiz_id=$1
          AND COALESCE(u.role, 'student') NOT IN ('teacher', 'admin')
        ORDER BY
@@ -2739,7 +2746,7 @@ router.get("/quizzes/:id/grading-detail", requireAuth, async (req, res) => {
            ELSE 2
          END,
          a.updated_at DESC`,
-      [quizId]
+      [quizId, user.id]
     );
     const questionById = new Map(questionRows.map((row) => [String(row.id), row]));
     const students = attempts.rows.map((row) => {
@@ -2781,6 +2788,8 @@ router.get("/quizzes/:id/grading-detail", requireAuth, async (req, res) => {
         id: String(row.student_id),
         attemptId: String(row.id),
         name: String(row.full_name || "學生"),
+        account: String(row.email || ""),
+        className: String(row.class_names || ""),
         submittedAt: row.completed_at || row.updated_at,
         status: String(row.teacher_status || buildAttemptTeacherStatus(String(row.status || "pending"), row.published_at)),
         anomalyFlags,
@@ -2801,6 +2810,7 @@ router.get("/quizzes/:id/grading-detail", requireAuth, async (req, res) => {
         title: String(quiz.title || ""),
         questionCount: Number(quiz.question_count || questionRows.length),
         updatedAt: quiz.updated_at,
+        publishedAt: quiz.published_at || quiz.updated_at,
       },
       metrics: {
         totalStudents: students.length,

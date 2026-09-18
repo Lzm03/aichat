@@ -1,11 +1,12 @@
 import { uiText, uiTemplate } from '../../utils/uiI18n';
 import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Copy, X, CheckCircle2, XCircle, ShieldAlert, ChevronDown, ArrowRight } from 'lucide-react';
+import { Copy, X, ShieldAlert, ArrowRight } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
 import { Icons } from '../icons';
 import { QuestionCard, type LibraryQuestion } from './QuestionCard';
 import { AnomalyAlertCenter, type AnomalyFlag } from './AnomalyAlertCenter';
+import { computeBloomBreakdown } from '../../utils/assessment-csv';
 
 export type PublishedQuizSummary = {
   id: string;
@@ -25,7 +26,7 @@ export type PublishedQuizSummary = {
   progress: number;
 };
 
-export type DrawerTab = 'preview' | 'results' | 'quality';
+export type DrawerTab = 'results' | 'quality' | 'preview';
 /** detail = 測驗管理語境（我的測驗，3 tabs）；alerts = 質量分析語境（純異常警示視圖，無 tab bar） */
 export type DrawerMode = 'detail' | 'alerts';
 
@@ -33,6 +34,8 @@ type StudentRow = {
   id: string;
   attemptId: string;
   name: string;
+  account?: string;
+  className?: string;
   submittedAt?: string;
   status: string;
   anomalyFlags: AnomalyFlag[];
@@ -49,6 +52,7 @@ type StudentRow = {
     aiScore: number;
     maxScore: number;
     feedback: string;
+    cognitiveLevel?: string;
   }>;
 };
 
@@ -72,26 +76,14 @@ type PublishedQuizDetailDrawerProps = {
   onDuplicated: () => void;
   initialTab?: DrawerTab;
   mode?: DrawerMode;
-  /** 提供後，成績結果 tab 有「前往批改」入口 */
+  /** 提供後，質量分析 tab 有待批改時有「前往批改」入口 */
   onOpenGrading?: (quizId: string) => void;
 };
 
-const STATUS_PILL: Record<string, string> = {
-  pending_grading: 'bg-amber-50 text-amber-600',
-  pending_confirm: 'bg-purple-50 text-purple-600',
-  completed: 'bg-emerald-50 text-emerald-600',
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  pending_grading: '待批改',
-  pending_confirm: '待確認',
-  completed: '已完成',
-};
-
 const DRAWER_TABS: { key: DrawerTab; label: string }[] = [
-  { key: 'preview', label: '題目預覽' },
   { key: 'results', label: '成績結果' },
   { key: 'quality', label: '質量分析' },
+  { key: 'preview', label: '題目預覽' },
 ];
 
 const formatDate = (value?: string) => (value ? new Date(value).toISOString().slice(0, 10) : '--');
@@ -101,17 +93,16 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
   quiz,
   onClose,
   onDuplicated,
-  initialTab = 'preview',
+  initialTab = 'results',
   mode = 'detail',
   onOpenGrading,
 }) => {
   const isAlertsMode = mode === 'alerts';
-  const [activeTab, setActiveTab] = useState<DrawerTab>('preview');
+  const [activeTab, setActiveTab] = useState<DrawerTab>('results');
   const [questions, setQuestions] = useState<LibraryQuestion[]>([]);
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [detail, setDetail] = useState<GradingDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
   const [duplicating, setDuplicating] = useState(false);
   const [duplicateError, setDuplicateError] = useState('');
   const [alertFocusStudentId, setAlertFocusStudentId] = useState<string | null>(null);
@@ -119,7 +110,6 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
   useEffect(() => {
     if (!open || !quiz) return;
     setActiveTab(initialTab);
-    setExpandedStudentId(null);
     setDuplicateError('');
 
     let active = true;
@@ -252,144 +242,51 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
 
               {/* Body */}
               <div className="flex-1 overflow-y-auto px-6 py-5 custom-scrollbar">
-                {!isAlertsMode && activeTab === 'preview' && (
-                  <div className="space-y-4">
-                    {questionsLoading ? (
-                      <div className="rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">{uiText("正在載入題目...")}</div>
-                    ) : questions.length ? (
-                      questions.map((q, index) => <QuestionCard key={`${quiz.id}-${q.id}-${index}`} q={q} index={index} />)
-                    ) : (
-                      <div className="rounded-[24px] border border-dashed border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">{uiText("此測驗暫無題目")}</div>
-                    )}
-                  </div>
-                )}
-
                 {!isAlertsMode && activeTab === 'results' && (
                   <div className="space-y-4">
-                    {onOpenGrading && quiz && (metrics?.pendingGrading || 0) + (metrics?.pendingConfirm || 0) > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => onOpenGrading(quiz.id)}
-                        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm font-bold text-indigo-600 transition hover:bg-indigo-50"
-                      >
-                        {uiText("前往批改")} <ArrowRight className="h-4 w-4" />
-                      </button>
-                    ) : null}
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                      <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
-                        <span className="text-xs font-bold text-slate-400">{uiText("平均分")}</span>
-                        <div className="mt-1 text-2xl font-black text-slate-800">{metrics?.averageScore ?? '--'}</div>
-                      </div>
-                      <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
-                        <span className="text-xs font-bold text-slate-400">{uiText("待批改")}</span>
-                        <div className="mt-1 text-2xl font-black text-amber-500">{metrics?.pendingGrading ?? '--'}</div>
-                      </div>
-                      <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
-                        <span className="text-xs font-bold text-slate-400">{uiText("待確認")}</span>
-                        <div className="mt-1 text-2xl font-black text-purple-500">{metrics?.pendingConfirm ?? '--'}</div>
-                      </div>
-                      <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
-                        <span className="text-xs font-bold text-slate-400">{uiText("已完成")}</span>
-                        <div className="mt-1 text-2xl font-black text-emerald-500">{metrics?.completed ?? '--'}</div>
-                      </div>
-                    </div>
-
                     {detailLoading ? (
                       <div className="rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">{uiText("正在載入成績...")}</div>
                     ) : students.length ? (
-                      <div className="space-y-2">
-                        {students.map((student) => {
-                          const expanded = expandedStudentId === student.id;
-                          const flags = (student.anomalyFlags || []).filter((flag) => flag.status === 'open').length;
-                          return (
-                            <div key={student.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                              <button
-                                type="button"
-                                onClick={() => setExpandedStudentId(expanded ? null : student.id)}
-                                className="flex w-full items-center gap-3 p-4 text-left transition hover:bg-slate-50/60"
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="font-bold text-slate-800">{student.name}</span>
-                                    <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${STATUS_PILL[student.status] || 'bg-slate-100 text-slate-600'}`}>
-                                      {uiText(STATUS_LABEL[student.status] || student.status)}
+                      <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+                        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_auto] items-center gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-3 text-xs font-bold text-slate-400">
+                          <span>{uiText("學生姓名 / 賬號")}</span>
+                          <span className="text-center">{uiText("布魯姆等級")}</span>
+                          <span className="text-right">{uiText("總分數")}</span>
+                        </div>
+                        <div className="divide-y divide-slate-50">
+                          {students.map((student) => (
+                            <div key={student.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_auto] items-center gap-3 px-4 py-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-bold text-slate-800">{student.name}</p>
+                                {student.account ? (
+                                  <p className="truncate text-xs text-slate-400">{student.account}</p>
+                                ) : null}
+                              </div>
+                              <div className="flex flex-wrap items-center justify-center gap-1">
+                                {computeBloomBreakdown(student.answers).map((level) => {
+                                  const stateClass = level.total === 0
+                                    ? 'bg-slate-50 text-slate-300'
+                                    : level.correct === level.total
+                                      ? 'bg-emerald-50 text-emerald-600'
+                                      : 'bg-amber-50 text-amber-600';
+                                  return (
+                                    <span
+                                      key={level.label}
+                                      title={`${level.label} ${level.total ? `${level.correct}/${level.total}` : '—'}`}
+                                      className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold ${stateClass}`}
+                                    >
+                                      {level.label} {level.total ? `${level.correct}/${level.total}` : '─'}
                                     </span>
-                                    {flags > 0 ? (
-                                      <span
-                                        role="button"
-                                        tabIndex={0}
-                                        title={uiText("查看異常警示")}
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          setAlertFocusStudentId(student.id);
-                                          setActiveTab('quality');
-                                        }}
-                                        onKeyDown={(event) => {
-                                          if (event.key === 'Enter' || event.key === ' ') {
-                                            event.preventDefault();
-                                            event.stopPropagation();
-                                            setAlertFocusStudentId(student.id);
-                                            setActiveTab('quality');
-                                          }
-                                        }}
-                                        className="inline-flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold text-rose-500 transition hover:bg-rose-50"
-                                      >
-                                        <ShieldAlert className="h-3.5 w-3.5" />
-                                        {flags}
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                  <p className="mt-1 text-xs text-slate-400">
-                                    {uiText("提交於")} {formatDate(student.submittedAt)}
-                                  </p>
-                                </div>
-                                <span className="text-sm font-bold text-slate-600 shrink-0">
-                                  {student.score}{uiText(" / ")}{student.totalPoints}
-                                </span>
-                                <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-                              </button>
-
-                              {expanded ? (
-                                <div className="space-y-3 border-t border-slate-100 bg-slate-50/50 p-4">
-                                  {student.answers.length ? (
-                                    student.answers.map((answer) => (
-                                      <div key={`${student.id}-${answer.questionIndex}`} className="rounded-xl border border-slate-100 bg-white p-4">
-                                        <div className="flex items-start justify-between gap-3">
-                                          <p className="text-sm font-medium text-slate-800 leading-relaxed">
-                                            <span className="text-slate-400 mr-1">{answer.questionIndex + 1}.</span>
-                                            {answer.question}
-                                          </p>
-                                          <span className={`inline-flex shrink-0 items-center gap-1 text-xs font-bold ${answer.isCorrect ? 'text-emerald-600' : 'text-rose-500'}`}>
-                                            {answer.isCorrect ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-                                            {answer.score}/{answer.maxScore}
-                                          </span>
-                                        </div>
-                                        <div className="mt-3 space-y-2 text-sm">
-                                          <p className="text-slate-500">
-                                            <span className="font-bold text-slate-600">{uiText("學生作答")}：</span>
-                                            {answer.studentAnswer ? answer.studentAnswer : <span className="text-slate-400">{uiText("未作答")}</span>}
-                                          </p>
-                                          <p className="text-slate-500">
-                                            <span className="font-bold text-slate-600">{uiText("正確答案")}：</span>
-                                            {answer.correctAnswer}
-                                          </p>
-                                          {answer.feedback ? (
-                                            <p className="rounded-lg bg-indigo-50/60 p-3 text-slate-600">
-                                              <span className="font-bold text-indigo-600">{uiText("AI 評語")}：</span>
-                                              {answer.feedback}
-                                            </p>
-                                          ) : null}
-                                        </div>
-                                      </div>
-                                    ))
-                                  ) : (
-                                    <p className="text-sm font-semibold text-slate-400">{uiText("沒有學生作答紀錄")}</p>
-                                  )}
-                                </div>
-                              ) : null}
+                                  );
+                                })}
+                              </div>
+                              <span className="text-right text-sm font-bold text-slate-600">
+                                {student.score}
+                                <span className="text-xs font-semibold text-slate-400"> / {student.totalPoints}</span>
+                              </span>
                             </div>
-                          );
-                        })}
+                          ))}
+                        </div>
                       </div>
                     ) : (
                       <div className="rounded-[24px] border border-dashed border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">{uiText("沒有學生作答紀錄")}</div>
@@ -399,6 +296,15 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
 
                 {(isAlertsMode || activeTab === 'quality') && (
                   <div className="space-y-4">
+                    {!isAlertsMode && onOpenGrading && quiz && (metrics?.pendingGrading || 0) + (metrics?.pendingConfirm || 0) > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenGrading(quiz.id)}
+                        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm font-bold text-indigo-600 transition hover:bg-indigo-50"
+                      >
+                        {uiText("前往批改")} <ArrowRight className="h-4 w-4" />
+                      </button>
+                    ) : null}
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                       <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
                         <span className="text-xs font-bold text-slate-400">{uiText("平均分")}</span>
@@ -436,6 +342,18 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
                       onFocusConsumed={() => setAlertFocusStudentId(null)}
                       onFlagsUpdated={updateStudentFlags}
                     />
+                  </div>
+                )}
+
+                {!isAlertsMode && activeTab === 'preview' && (
+                  <div className="space-y-4">
+                    {questionsLoading ? (
+                      <div className="rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">{uiText("正在載入題目...")}</div>
+                    ) : questions.length ? (
+                      questions.map((q, index) => <QuestionCard key={`${quiz.id}-${q.id}-${index}`} q={q} index={index} />)
+                    ) : (
+                      <div className="rounded-[24px] border border-dashed border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">{uiText("此測驗暫無題目")}</div>
+                    )}
                   </div>
                 )}
               </div>

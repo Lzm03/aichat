@@ -1,5 +1,5 @@
 import { uiText, uiTemplate, uiError } from '../../utils/uiI18n';
-import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   X,
@@ -19,6 +19,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { SequencePngPlayer } from "./SequencePngPlayer";
+import { ProgressRing } from "../shared/ProgressRing";
 import { API_BASE } from "../../utils/api";
 import {
   deleteConversation as deleteConversationRecord,
@@ -267,34 +268,51 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     total: number;
     covered: number;
     points: Array<{ id: string; tier: string; title: string; covered: boolean }>;
+    nextPoint: { id: string; title: string } | null;
   } | null>(null);
   const [progressPanelOpen, setProgressPanelOpen] = useState(false);
 
-  // 學生端（共享視圖）累積進度：開場即載入，之後每 5 秒輪詢一次，
-  // 追上 trackConversationState 嘅 fire-and-forget 寫入。
+  // 累積進度（學生同教師都係當前用戶自己嘅 bot_student_progress）：
+  // 開場即載入，之後每 5 秒輪詢一次，追上 trackConversationState 嘅
+  // fire-and-forget 寫入。
+  const progressActiveRef = useRef(false);
+  const loadProgress = useCallback(async () => {
+    if (!botConfig.id) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/bots/${botConfig.id}/progress`);
+      if (!res.ok) throw new Error("progress load failed");
+      const data = await res.json();
+      if (progressActiveRef.current) setStudentProgress(data);
+    } catch {
+      if (progressActiveRef.current) setStudentProgress(null);
+    }
+  }, [botConfig.id]);
+
+  // 回覆完成後即時刷新：server 嘅進度寫入係 fire-and-forget，等 1 秒再
+  // 拉一次；5 秒輪詢係兜底。
+  const progressRefreshTimerRef = useRef<number | null>(null);
+  const scheduleProgressRefresh = useCallback(() => {
+    if (progressRefreshTimerRef.current) window.clearTimeout(progressRefreshTimerRef.current);
+    progressRefreshTimerRef.current = window.setTimeout(() => {
+      progressRefreshTimerRef.current = null;
+      void loadProgress();
+    }, 1000);
+  }, [loadProgress]);
+
   useEffect(() => {
-    if (!isOpen || !isSharedView || !botConfig.id) return;
-    let cancelled = false;
-    const loadProgress = () => {
-      fetch(`${API_BASE}/api/bots/${botConfig.id}/progress`)
-        .then((res) => {
-          if (!res.ok) throw new Error("progress load failed");
-          return res.json();
-        })
-        .then((data) => {
-          if (!cancelled) setStudentProgress(data);
-        })
-        .catch(() => {
-          if (!cancelled) setStudentProgress(null);
-        });
-    };
-    loadProgress();
-    const timer = window.setInterval(loadProgress, 5000);
+    if (!isOpen || !botConfig.id) return;
+    progressActiveRef.current = true;
+    void loadProgress();
+    const timer = window.setInterval(() => void loadProgress(), 5000);
     return () => {
-      cancelled = true;
+      progressActiveRef.current = false;
       window.clearInterval(timer);
+      if (progressRefreshTimerRef.current) {
+        window.clearTimeout(progressRefreshTimerRef.current);
+        progressRefreshTimerRef.current = null;
+      }
     };
-  }, [isOpen, isSharedView, botConfig.id]);
+  }, [isOpen, botConfig.id, loadProgress]);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showTopMenu, setShowTopMenu] = useState(false);
@@ -2442,6 +2460,7 @@ const sendMessage = async (
         guideActivationTimerRef.current = null;
       }
       if (!playing.current && ttsInflight.current === 0 && ttsTextQueue.current.length === 0) setBotState("idle");
+      scheduleProgressRefresh();
       return;
     }
 
@@ -2472,6 +2491,7 @@ const sendMessage = async (
       if (currentGenId !== generationIdRef.current) return;
       presentSpokenReply(fallbackReply, currentGenId);
       if (!playing.current && ttsInflight.current === 0 && ttsTextQueue.current.length === 0) setBotState("idle");
+      scheduleProgressRefresh();
       return;
     }
 
@@ -2543,6 +2563,7 @@ const sendMessage = async (
     }
     presentSpokenReply(committedReply, currentGenId);
     if (!playing.current && ttsInflight.current === 0 && ttsTextQueue.current.length === 0) setBotState("idle");
+    scheduleProgressRefresh();
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") return;
     console.error(err);
@@ -2832,7 +2853,7 @@ const renderFormattedMessage = (text: string) => {
   return normalized.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, index) => {
     const match = part.match(/^\*\*([^*]+)\*\*$/);
     if (match) {
-      return <strong key={`${part}-${index}`} className="font-semibold text-[#1f160d]">{match[1]}</strong>;
+      return <strong key={`${part}-${index}`} className="font-semibold">{match[1]}</strong>;
     }
     return <span key={`${part}-${index}`}>{part}</span>;
   });
@@ -4398,35 +4419,62 @@ const unlockAudioAndMic = async () => {
                 </button>
               </div>
 
-              {isSharedView && studentProgress && studentProgress.total > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setProgressPanelOpen((current) => !current)}
-                  className="w-full border-b border-[#ebe5db] bg-[#fbf6ec] px-4 py-2 text-left"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-black text-[#6c4b22]">{uiText("學習進度")} {studentProgress.covered}/{studentProgress.total}</span>
-                    <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-[#8b7a64] transition ${progressPanelOpen ? "rotate-180" : ""}`} />
-                  </div>
-                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[#e8ddcc]">
-                    <div
-                      className="h-full rounded-full bg-indigo-500 transition-all duration-500"
-                      style={{ width: `${Math.round((studentProgress.covered / studentProgress.total) * 100)}%` }}
-                    />
-                  </div>
+              {studentProgress && studentProgress.total > 0 ? (
+                <div className="relative border-b border-[#ebe5db] bg-[#fbf6ec]">
+                  <button
+                    type="button"
+                    onClick={() => setProgressPanelOpen((current) => !current)}
+                    className="w-full px-4 py-2 text-left"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-1.5 text-[11px] font-black text-[#6c4b22]">
+                        <ProgressRing covered={studentProgress.covered} total={studentProgress.total} size={20} />
+                        <span className="truncate">{uiText("學習進度")} {studentProgress.covered}/{studentProgress.total}</span>
+                      </span>
+                      <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-[#8b7a64] transition ${progressPanelOpen ? "rotate-180" : ""}`} />
+                    </div>
+                    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[#e8ddcc]">
+                      <div
+                        className="h-full rounded-full bg-indigo-500 transition-all duration-500"
+                        style={{ width: `${Math.round((studentProgress.covered / studentProgress.total) * 100)}%` }}
+                      />
+                    </div>
+                    {studentProgress.nextPoint ? (
+                      <div className="mt-1.5 truncate text-[10px] font-semibold text-[#8b7a64]">
+                        {uiTemplate("目前學習：{0}", studentProgress.nextPoint.title)}
+                      </div>
+                    ) : null}
+                  </button>
                   {progressPanelOpen ? (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {studentProgress.points.map((point) => (
-                        <span
-                          key={point.id}
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${point.covered ? "bg-indigo-500 text-white" : "bg-[#ede4d4] text-[#8b7a64]"}`}
-                        >
-                          {point.covered ? "✓ " : ""}{point.title}
-                        </span>
-                      ))}
+                    <div className="absolute inset-x-0 top-full z-50 max-h-60 space-y-2 overflow-y-auto rounded-b-2xl border border-t-0 border-[#ebe5db] bg-white px-3 py-2 shadow-[0_16px_40px_rgba(15,23,42,0.18)]">
+                      {(["basic_fact", "deep_understanding"] as const).map((tier) => {
+                        const tierPoints = studentProgress.points.filter((point) => point.tier === tier);
+                        if (!tierPoints.length) return null;
+                        const tierCovered = tierPoints.filter((point) => point.covered).length;
+                        const tierLabel = tier === "basic_fact" ? uiText("基礎事實") : uiText("深度理解");
+                        return (
+                          <div key={tier}>
+                            <div className="mb-1 flex items-center justify-between text-[10px] font-black text-[#8b7a64]">
+                              <span>{tierLabel}</span>
+                              <span className="text-[#6c4b22]">{tierCovered}/{tierPoints.length}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1">
+                              {tierPoints.map((point) => (
+                                <span
+                                  key={point.id}
+                                  className={`flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-[10px] font-semibold ${point.covered ? "bg-indigo-50 text-indigo-700" : "bg-[#f0e9dc] text-[#9a8a72]"}`}
+                                >
+                                  <span className={`shrink-0 text-[11px] leading-none ${point.covered ? "text-indigo-500" : "text-slate-300"}`}>{point.covered ? "✓" : "○"}</span>
+                                  <span className="truncate">{point.title}</span>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : null}
-                </button>
+                </div>
               ) : null}
 
               {activeQuiz && quizUiState === "banner" ? (
