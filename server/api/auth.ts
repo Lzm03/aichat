@@ -59,7 +59,7 @@ router.post("/login", async (req, res) => {
 
   try {
     const user = await findUserByEmail(email);
-    if (!user || !verifyPassword(password, user.password_hash)) {
+    if (!user || !(await verifyPassword(password, user.password_hash))) {
       return res.status(401).json({ error: "invalid email or password" });
     }
     if (user.status !== "active") {
@@ -69,8 +69,6 @@ router.post("/login", async (req, res) => {
     await maybeAssignLegacyDataByEmail(email);
 
     const freshUser = await findUserById(user.id);
-    await ensureQuizTables();
-    await ensureDefaultTeacherExperience(freshUser || user);
     return res.json(issueAuthResponse(freshUser || user));
   } catch (error) {
     console.error("POST /api/auth/login failed:", error);
@@ -95,8 +93,6 @@ router.get("/me", async (req, res) => {
       return res.status(404).json({ error: "user not found" });
     }
 
-    await ensureQuizTables();
-    await ensureDefaultTeacherExperience(user);
     return res.json({ user: sanitizeUser(user), features: await getUserFeatureSummary(user.id, user) });
   } catch (error) {
     console.error("GET /api/auth/me failed:", error);
@@ -209,7 +205,7 @@ router.put("/profile", async (req, res) => {
     const shouldUpdatePassword = Boolean(newPassword);
 
     if (shouldUpdateEmail || shouldUpdatePassword) {
-      if (!currentPassword || !verifyPassword(currentPassword, (currentUser as any).password_hash)) {
+      if (!currentPassword || !(await verifyPassword(currentPassword, (currentUser as any).password_hash))) {
         return res.status(401).json({ error: "current password is incorrect" });
       }
     }
