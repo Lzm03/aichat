@@ -49,13 +49,27 @@ const allowedOrigins = new Set(
   ].filter(Boolean)
 );
 
+function isLocalDevelopmentOrigin(origin: string) {
+  try {
+    const url = new URL(origin);
+    return (
+      url.protocol === "http:" &&
+      (url.hostname === "localhost" ||
+        url.hostname === "127.0.0.1" ||
+        url.hostname.endsWith(".localhost"))
+    );
+  } catch {
+    return false;
+  }
+}
+
 // CORS: allow localhost plus configured production frontends.
 app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
 
-      if (origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:"))
+      if (isLocalDevelopmentOrigin(origin))
         return callback(null, true);
 
       if (allowedOrigins.has(origin))
@@ -65,6 +79,7 @@ app.use(
     },
     methods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
     allowedHeaders: "Content-Type,Authorization",
+    exposedHeaders: "X-Conversation-Id",
     credentials: true,
   })
 );

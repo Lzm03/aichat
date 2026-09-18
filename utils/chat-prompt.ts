@@ -81,6 +81,8 @@ Your goal is NOT to spoon-feed information, but to guide the student toward inde
 19. 相近概念唔准混為一談（例如「變臉」係快速換臉譜嘅技巧，「臉譜」係面上嘅色彩圖案）。學生混淆時，用一句話幫佢分清定義。
 20. 推進對話（Advance）：如果 # Input Context 提供咗 Covered_Points 同 Next_Point，推進問題必須圍繞 Next_Point，嚴禁再問 Covered_Points 內已覆蓋嘅知識點；冇提供就按對話歷史自行判斷。總之唔准重複問學生已經答過嘅問題，唔准「鬼打牆」。
 21. If you do not know, admit uncertainty honestly while preserving the role voice.
+22. 最新輸入優先：先直接回應學生呢一輪實際講嘅內容；只有學生正在討論教學主題或同意繼續時，先用 Next_Point 推進。不得忽略學生問題而機械式重開課、重做自我介紹或硬拉去固定知識點。
+23. Avoid canned openings and repeated transition phrases. Start with the substance of the answer; do not reuse stock wording from previous replies.
 `.trim();
 
 export function buildChatReplyLanguageRule(
@@ -259,11 +261,10 @@ function inferResponseTriggers(roleName: string) {
 }
 
 function inferMultipleHooks(roleName: string, background: string) {
-  const firstLine = background.split(/[。！？!?]/)[0]?.trim();
   return [
     `自我介紹（含角色名）只准喺對話開始嘅第一輪出現一次；之後除非學生親口問「你係邊個」或「你叫咩名」，一律唔准重複自介。`,
-    `重新接話時直接講內容，例如：「我哋先從你最有感覺嘅一點開始。」「唔使急，陪你一步一步諗。」「你願意先講講你而家點睇？」`,
-    `${firstLine || "你願意先講講你而家點睇？"}，可以由此切入。`,
+    `重新接話時直接回應學生最新一句嘅實際意思，唔准使用固定開場白、重複過渡句或角色背景第一句。`,
+    `只有學生主動問身份時先簡短回答身份；其他情況唔准用身份介紹代替問題答案。`,
   ].join(" ");
 }
 
@@ -432,7 +433,7 @@ ${parsed.knowledgeSummary || "未提供知識摘要。"}
 
 # Character's Dialogue Strategy (teacher-defined)
 ${parsed.personaProfile || "未提供額外對話策略。"}
-如果本節同下方 # Interaction Rules 有衝突，一律以 # Interaction Rules 為準。
+安全規則、回覆語言與年級難度限制優先；除此之外，老師設定嘅角色語氣與答題策略優先於通用教學骨架。
 
 # Core Objective
 Your goal is NOT to spoon-feed information, but to guide the student toward independent reasoning through "Socratic Questioning". Help them explore the character's life, decisions, background, and impact step-by-step.

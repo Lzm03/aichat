@@ -53,6 +53,7 @@ import {
   getVertexAIConfig,
   isVertexAIEnabled,
 } from "../lib/gemini-server.ts";
+import { takeVertexSseData } from "../lib/vertex-sse.ts";
 import {
   buildGeminiContents,
   normalizeGeminiImages,
@@ -1053,6 +1054,7 @@ async function askGemini(
             temperature: GEMINI_STABLE_TEMPERATURE,
           },
         }),
+        signal: AbortSignal.timeout(Math.max(1000, Number(process.env.VERTEX_REQUEST_TIMEOUT_MS || 60000))),
       }
     );
 
@@ -1063,17 +1065,9 @@ async function askGemini(
     const decoder = new TextDecoder();
     let buffer = "";
     const consumeBuffer = () => {
-      let boundary = buffer.indexOf("\n\n");
-      while (boundary >= 0) {
-        const rawEvent = buffer.slice(0, boundary);
-        buffer = buffer.slice(boundary + 2);
-
-        const payload = rawEvent
-          .split("\n")
-          .filter((line) => line.startsWith("data:"))
-          .map((line) => line.slice(5).trim())
-          .join("");
-
+      const parsedEvents = takeVertexSseData(buffer);
+      buffer = parsedEvents.rest;
+      for (const payload of parsedEvents.data) {
         if (payload) {
           const parsed: any = JSON.parse(payload);
           const text = parsed?.candidates?.[0]?.content?.parts
@@ -1081,8 +1075,6 @@ async function askGemini(
             .join("") || "";
           if (text) onToken(text);
         }
-
-        boundary = buffer.indexOf("\n\n");
       }
     };
 
@@ -1162,6 +1154,7 @@ async function askGeminiOnce(
             temperature: GEMINI_STABLE_TEMPERATURE,
           },
         }),
+        signal: AbortSignal.timeout(Math.max(1000, Number(process.env.VERTEX_REQUEST_TIMEOUT_MS || 60000))),
       }
     );
 

@@ -69,3 +69,13 @@ test("【製作備註】唔會進入 system prompt", () => {
   assert.doesNotMatch(prompt, /【不知道邏輯】/, "節名本身唔應該漏入 prompt");
   assert.doesNotMatch(prompt, /【製作備註】/);
 });
+
+test("compiled prompt does not inject canned opening phrases on every turn", () => {
+  const prompt = buildChatSystemPrompt({
+    roleName: "孔子",
+    knowledgeBase: `【人物背景設定】\n吾名孔丘，字仲尼。\n\n【人物知識庫摘要】\n仁與禮。`,
+  });
+  assert.equal(prompt.includes("唔使急，陪你一步一步諗"), false);
+  assert.match(prompt, /直接回應學生最新一句/);
+  assert.match(prompt, /老師設定嘅角色語氣與答題策略優先/);
+});
