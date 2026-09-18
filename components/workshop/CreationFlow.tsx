@@ -13,7 +13,7 @@ import { PublishSuccessModal } from './PublishSuccessModal';
 import type { FeatureEntitlement } from '../../hooks/useFeatureEntitlements';
 import { usePlatformDialog } from '../../hooks/usePlatformDialog';
 import { PlatformDialog } from '../system/PlatformDialog';
-import { buildChatSystemPrompt, buildStoredKnowledgeBase, parsePromptSource } from '../../utils/chat-prompt';
+import { buildChatSystemPrompt, buildKnowledgeBaseWithVersionPoints, buildStoredKnowledgeBase, parsePromptSource } from '../../utils/chat-prompt';
 import { TopicManager } from './topics/TopicManager';
 import type { TopicVersionMeta } from './topics/TopicVersionTabs';
 import {
@@ -268,47 +268,16 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
    * 手動新增／刪改嘅知識點只存在版本數據（versionsRef），唔會經 onGenerated 入
    * botConfig.knowledgeBase——發佈同預覽都用默認版本嘅點重建主知識庫，
    * 令學習報告（讀 bots.knowledge_base）同覆蓋追蹤同版本數據保持同一份來源。
+   * （純邏輯喺 utils/chat-prompt.ts buildKnowledgeBaseWithVersionPoints，有守護測試）
    */
   const buildCurrentKnowledgeBase = () => {
     const versions = versionsRef.current;
     const defaultVersion = versions.find((version) => version.isDefault) || versions[0];
     if (!defaultVersion) return botConfig.knowledgeBase;
-    const fallback = parsePromptSource({ knowledgeBase: botConfig.knowledgeBase });
-    const latest = step2ExtrasRef.current;
-    // 冇任何實際改動（legacy bot 直接發佈）就唔重寫，保住手寫摘要等原有內容
-    const pointsUnchanged =
-      defaultVersion.points.length === fallback.knowledgePoints.length &&
-      defaultVersion.points.every((point, index) => {
-        const other = fallback.knowledgePoints[index];
-        return (
-          point.id === other.id &&
-          point.title === other.title &&
-          point.content === other.content &&
-          point.tier === other.tier &&
-          Boolean(point.core) === Boolean(other.core) &&
-          JSON.stringify(point.keywords) === JSON.stringify(other.keywords) &&
-          (point.assessmentCriteria || "") === (other.assessmentCriteria || "")
-        );
-      });
-    const backgroundUnchanged = latest.characterBackground.trim() === fallback.characterBackground;
-    if (pointsUnchanged && backgroundUnchanged) return botConfig.knowledgeBase;
-    const summaryFromPoints = (points: KnowledgePoint[]) =>
-      points
-        .map((point) => {
-          const tierLabel = point.tier === "basic_fact" ? "基礎事實" : "深度理解";
-          const keywords = point.keywords.filter(Boolean).join("、");
-          const assessment = point.assessmentCriteria.trim();
-          const suffix = [keywords ? `關鍵詞：${keywords}` : "", assessment ? `評估：${assessment}` : ""]
-            .filter(Boolean)
-            .join("｜");
-          return `- [${tierLabel}] ${point.title.trim()}：${point.content.trim()}${suffix ? `（${suffix}）` : ""}`;
-        })
-        .join("\n");
-    return buildStoredKnowledgeBase({
-      characterBackground: latest.characterBackground.trim() || fallback.characterBackground,
-      knowledgeSummary: summaryFromPoints(defaultVersion.points),
-      knowledgePoints: defaultVersion.points,
-      personaProfile: fallback.personaProfile,
+    return buildKnowledgeBaseWithVersionPoints({
+      knowledgeBase: botConfig.knowledgeBase,
+      defaultVersionPoints: defaultVersion.points,
+      characterBackground: step2ExtrasRef.current.characterBackground,
     });
   };
 
