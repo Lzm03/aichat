@@ -641,6 +641,8 @@ export const englishUi: Record<string, string> = {
   "已解鎖": "Unlocked",
   "收起": "Collapse",
   "你說": "You said",
+  "正在開啟麥克風": "Opening the microphone",
+  "正在準備角色聲線…": "Preparing voices…",
   "角色聲線（精選 8 款）": "Voice (8 selected)",
   "請重新選擇角色聲線": "Please choose the voice again",
   "請選擇角色聲線": "Please choose a voice",
