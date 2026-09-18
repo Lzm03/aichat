@@ -232,6 +232,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [isChatDragActive, setIsChatDragActive] = useState(false);
   const [selectedPreviewImage, setSelectedPreviewImage] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
+  const [isMicStarting, setIsMicStarting] = useState(false);
   const [voiceLevel, setVoiceLevel] = useState(0);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -2906,6 +2907,7 @@ const clearSuggestedReplies = () => {
 const stopSpeechInput = (forceAbort = false) => {
   sttTypingTokenRef.current += 1;
   sttStartingRef.current = false;
+  setIsMicStarting(false);
   if (sttWatchdogRef.current) {
     window.clearTimeout(sttWatchdogRef.current);
     sttWatchdogRef.current = null;
@@ -2965,13 +2967,13 @@ const startSpeechInput = async () => {
   }
 
   if (isListening) {
-    // If state is stuck on mobile Chrome, force restart instead of just stopping.
     stopSpeechInput(true);
-    await new Promise((r) => window.setTimeout(r, 120));
+    return;
   }
 
   if (sttStartingRef.current) return;
   sttStartingRef.current = true;
+  setIsMicStarting(true);
   setAwaitingAudioGesture(false);
   if (audioRetryTimerRef.current) {
     window.clearTimeout(audioRetryTimerRef.current);
@@ -2988,6 +2990,8 @@ const startSpeechInput = async () => {
   stopAllSpeech();
 
   if (!navigator.mediaDevices?.getUserMedia) {
+    sttStartingRef.current = false;
+    setIsMicStarting(false);
     showAlert({
       title: "麥克風不可用",
       message: "目前環境不支援麥克風權限請求。",
@@ -3030,6 +3034,7 @@ const startSpeechInput = async () => {
     }
   } catch (e: any) {
     sttStartingRef.current = false;
+    setIsMicStarting(false);
     const name = e?.name || "UnknownError";
     if (name === "NotAllowedError") {
       showAlert({
@@ -3081,6 +3086,7 @@ const startSpeechInput = async () => {
 
   recognition.onstart = () => {
     sttStartingRef.current = false;
+    setIsMicStarting(false);
     setIsListening(true);
     clearSttTimers();
     // Auto-stop if no result comes back, avoiding "stuck listening" state.
@@ -3107,6 +3113,7 @@ const startSpeechInput = async () => {
   };
   recognition.onerror = (event: any) => {
     sttStartingRef.current = false;
+    setIsMicStarting(false);
     console.error("STT error:", event?.error || event);
     setIsListening(false);
     clearSttTimers();
@@ -3131,6 +3138,7 @@ const startSpeechInput = async () => {
   };
   recognition.onend = () => {
     sttStartingRef.current = false;
+    setIsMicStarting(false);
     setIsListening(false);
     clearSttTimers();
     speechRecognitionRef.current = null;
@@ -3216,6 +3224,7 @@ const startSpeechInput = async () => {
       return;
     } catch (retryErr) {
       console.error("STT retry start error:", retryErr);
+      setIsMicStarting(false);
       setIsListening(false);
       clearSttTimers();
       showAlert({
@@ -4310,14 +4319,41 @@ const unlockAudioAndMic = async () => {
                 <button
                   onClick={startSpeechInput}
                   disabled={shouldBlockChat}
-                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[22px] border text-white backdrop-blur-md transition-all duration-200 ${
+                  aria-pressed={isListening}
+                  className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-[22px] border text-white backdrop-blur-md transition-all duration-200 active:scale-90 ${
                     isListening
-                      ? "bg-white/14 border-white/35 shadow-[0_10px_30px_rgba(255,255,255,0.14)]"
-                      : "bg-black/45 border-white/15 hover:bg-black/60"
+                      ? "border-rose-300/80 bg-rose-500/85 shadow-[0_0_0_5px_rgba(244,63,94,0.16),0_12px_34px_rgba(244,63,94,0.38)]"
+                      : isMicStarting
+                        ? "border-sky-300/75 bg-sky-500/75 shadow-[0_0_0_5px_rgba(14,165,233,0.14),0_12px_30px_rgba(14,165,233,0.28)]"
+                        : "border-white/15 bg-black/45 hover:scale-105 hover:bg-black/60"
                   } disabled:opacity-40`}
-                  title={isListening ? uiText("點擊停止語音輸入") : uiText("語音輸入（廣東話）")}
+                  title={isListening ? uiText("點擊停止語音輸入") : isMicStarting ? uiText("正在開啟麥克風") : uiText("語音輸入（廣東話）")}
                 >
-                  <Mic size={18} />
+                  {(isListening || isMicStarting) && !prefersReducedMotion ? (
+                    <>
+                      <motion.span
+                        aria-hidden="true"
+                        className={`pointer-events-none absolute inset-[-5px] rounded-[26px] border ${isListening ? "border-rose-300/70" : "border-sky-300/70"}`}
+                        animate={{ scale: [1, 1.32], opacity: [0.72, 0] }}
+                        transition={{ duration: isListening ? 1.15 : 0.85, repeat: Infinity, ease: "easeOut" }}
+                      />
+                      <motion.span
+                        aria-hidden="true"
+                        className={`pointer-events-none absolute inset-[-3px] rounded-[24px] border ${isListening ? "border-rose-200/55" : "border-sky-200/55"}`}
+                        animate={{ scale: [1, 1.18], opacity: [0.55, 0] }}
+                        transition={{ duration: 1.15, delay: 0.28, repeat: Infinity, ease: "easeOut" }}
+                      />
+                    </>
+                  ) : null}
+                  <motion.span
+                    className="relative z-10 flex items-center justify-center"
+                    animate={isListening && !prefersReducedMotion
+                      ? { scale: 1 + Math.min(0.22, voiceLevel * 0.22) }
+                      : { scale: 1 }}
+                    transition={{ duration: 0.08 }}
+                  >
+                    <Mic size={18} />
+                  </motion.span>
                 </button>
                 <button
                   onClick={() => {
@@ -4860,14 +4896,33 @@ const unlockAudioAndMic = async () => {
                   <button
                     onClick={startSpeechInput}
                     disabled={shouldDisableRegularChat}
-                    className={`p-3 mr-2 rounded-full border ${
+                    aria-pressed={isListening}
+                    className={`relative mr-2 rounded-full border p-3 transition-all duration-200 active:scale-90 ${
                       isListening
-                        ? "bg-red-50 border-red-300 text-red-600"
-                        : "bg-white border-[#e1d4bf] text-[#6f604c] hover:bg-[#fffaf1]"
+                        ? "border-rose-400 bg-rose-500 text-white shadow-[0_0_0_4px_rgba(244,63,94,0.14)]"
+                        : isMicStarting
+                          ? "border-sky-400 bg-sky-50 text-sky-600 shadow-[0_0_0_4px_rgba(14,165,233,0.12)]"
+                          : "border-[#e1d4bf] bg-white text-[#6f604c] hover:bg-[#fffaf1]"
                     } disabled:opacity-40`}
-                    title={isListening ? uiText("點擊停止語音輸入") : uiText("語音輸入（廣東話）")}
+                    title={isListening ? uiText("點擊停止語音輸入") : isMicStarting ? uiText("正在開啟麥克風") : uiText("語音輸入（廣東話）")}
                   >
-                    <Mic size={16} />
+                    {(isListening || isMicStarting) && !prefersReducedMotion ? (
+                      <motion.span
+                        aria-hidden="true"
+                        className={`pointer-events-none absolute inset-[-3px] rounded-full border ${isListening ? "border-rose-400/65" : "border-sky-400/65"}`}
+                        animate={{ scale: [1, 1.28], opacity: [0.7, 0] }}
+                        transition={{ duration: 1, repeat: Infinity, ease: "easeOut" }}
+                      />
+                    ) : null}
+                    <motion.span
+                      className="relative z-10 flex items-center justify-center"
+                      animate={isListening && !prefersReducedMotion
+                        ? { scale: 1 + Math.min(0.18, voiceLevel * 0.18) }
+                        : { scale: 1 }}
+                      transition={{ duration: 0.08 }}
+                    >
+                      <Mic size={16} />
+                    </motion.span>
                   </button>
                   <textarea
                     ref={inputRef}

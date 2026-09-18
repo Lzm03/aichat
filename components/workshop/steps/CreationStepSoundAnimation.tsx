@@ -9,6 +9,7 @@ import { API_BASE } from "../../../utils/api";
 import type { FeatureEntitlement } from "../../../hooks/useFeatureEntitlements";
 import { usePlatformDialog } from "../../../hooks/usePlatformDialog";
 import { PlatformDialog } from "../../system/PlatformDialog";
+import { getCachedVoices, preloadVoices, type PlatformVoice } from "../../../utils/voice-api";
 
 // ============ Section Wrapper ============
 const Section = ({ title, children }: any) => (
@@ -97,7 +98,7 @@ const CURATED_VOICES: CuratedVoice[] = [
 ];
 
 // ============ 聲線選擇組件 ============
-const VoiceSelect = ({ voices, selected, onSelect }: any) => {
+const VoiceSelect = ({ voices, selected, onSelect, loading }: any) => {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const normalized = useMemo(() => {
@@ -149,6 +150,7 @@ const VoiceSelect = ({ voices, selected, onSelect }: any) => {
         type="button"
         aria-haspopup="listbox"
         aria-expanded={isOpen}
+        disabled={loading}
         onClick={() => setIsOpen((open) => !open)}
         className={`group flex w-full items-center justify-between rounded-2xl border bg-white px-4 py-3.5 text-left transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-indigo-100 ${
           isOpen
@@ -160,7 +162,9 @@ const VoiceSelect = ({ voices, selected, onSelect }: any) => {
           <span className={`h-9 w-1 shrink-0 rounded-full ${selectedVoice ? "bg-indigo-500" : "bg-slate-300"}`} />
           <span className="min-w-0">
             <span className={`block truncate text-sm font-semibold ${selectedVoice ? "text-slate-800" : "text-slate-500"}`}>
-              {selectedVoice?.displayName || (selected ? uiText("請重新選擇角色聲線") : uiText("請選擇角色聲線"))}
+              {loading
+                ? uiText("正在準備角色聲線…")
+                : selectedVoice?.displayName || (selected ? uiText("請重新選擇角色聲線") : uiText("請選擇角色聲線"))}
             </span>
             <span className="mt-0.5 block text-xs text-slate-400">
               {selectedVoice
@@ -169,7 +173,11 @@ const VoiceSelect = ({ voices, selected, onSelect }: any) => {
             </span>
           </span>
         </span>
-        <Icons.down className={`h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${isOpen ? "rotate-180 text-indigo-500" : "group-hover:text-indigo-500"}`} />
+        {loading ? (
+          <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-500" />
+        ) : (
+          <Icons.down className={`h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${isOpen ? "rotate-180 text-indigo-500" : "group-hover:text-indigo-500"}`} />
+        )}
       </button>
 
       <div
@@ -246,7 +254,9 @@ export const CreationStepSoundAnimation = ({
     if (typeof window === "undefined") return false;
     return window.sessionStorage.getItem(VIDEO_STUDIO_OPEN_KEY) === "1";
   });
-  const [voiceList, setVoiceList] = useState([]);
+  const cachedVoiceList = getCachedVoices();
+  const [voiceList, setVoiceList] = useState<PlatformVoice[]>(cachedVoiceList || []);
+  const [voicesLoading, setVoicesLoading] = useState(!cachedVoiceList);
   const [selectedVoice, setSelectedVoice] = useState(voiceId || "");
 
   const auditionText = "你好，我係你嘅 AI 助手，好高興認識你。";
@@ -261,11 +271,19 @@ export const CreationStepSoundAnimation = ({
 
   // ============ 加載聲線 ============
   useEffect(() => {
-    (async () => {
-      const res = await fetch(`${baseUrl}/api/voices`);
-      const data = await res.json();
-      setVoiceList(data.voices || []);
-    })();
+    let active = true;
+    setVoicesLoading(voiceList.length === 0);
+    preloadVoices()
+      .then((voices) => {
+        if (active) setVoiceList(voices);
+      })
+      .catch((error) => console.error("Voice list loading failed:", error))
+      .finally(() => {
+        if (active) setVoicesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -390,6 +408,7 @@ export const CreationStepSoundAnimation = ({
       <Section title={uiText("聲音製作")}>
         <VoiceSelect
           voices={voiceList}
+          loading={voicesLoading}
           selected={selectedVoice}
           onSelect={(v:any) => {
             setSelectedVoice(v);

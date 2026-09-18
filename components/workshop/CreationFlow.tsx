@@ -18,6 +18,7 @@ import { TopicManager } from './topics/TopicManager';
 import { API_BASE } from '../../utils/api';
 import { useTeacherLang, type TeacherLang } from '../../utils/teacherI18n';
 import { subjectColorOf } from '../../utils/subjects';
+import { preloadVoices } from '../../utils/voice-api';
 
 type KnowledgeTier = "basic_fact" | "deep_understanding";
 type KnowledgePoint = {
@@ -130,6 +131,13 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   refreshFeatureEntitlements,
   consumeFeature,
 }) => {
+  // Voice choices are needed on step 3. Start loading them while the teacher
+  // completes steps 1 and 2 so the selector is ready on arrival.
+  useEffect(() => {
+    void preloadVoices().catch((error) => {
+      console.warn("Voice preloading failed; step 3 will retry.", error);
+    });
+  }, []);
   const baseUrl = API_BASE;
   const lang = useTeacherLang();
   const steps = STEPS[lang];
