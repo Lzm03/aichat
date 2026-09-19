@@ -348,6 +348,58 @@ ${optionalSections ? `\n${optionalSections}\n` : ""}
   `.trim();
 }
 
+/**
+ * 發佈／預覽用：以默認主題版本嘅知識點重建主知識庫（bots.knowledge_base）。
+ * 學習報告（assessment-report）同覆蓋 intersect 都讀 bots.knowledge_base，
+ * 而手動新增／刪改嘅點只會存喺主題版本數據——呢個函數令兩邊收斂返同一份來源。
+ * 冇任何實際改動就原樣返還，保住 legacy bot 嘅手寫摘要。
+ * （守護測試：server/tests/knowledge-base-sync.test.ts）
+ */
+export function buildKnowledgeBaseWithVersionPoints(input: {
+  knowledgeBase: string;
+  defaultVersionPoints: KnowledgePoint[];
+  characterBackground?: string;
+}): string {
+  const fallback = parsePromptSource({ knowledgeBase: input.knowledgeBase });
+  const points = input.defaultVersionPoints;
+  const background = (input.characterBackground || "").trim();
+  const pointsUnchanged =
+    points.length === fallback.knowledgePoints.length &&
+    points.every((point, index) => {
+      const other = fallback.knowledgePoints[index];
+      return (
+        point.id === other.id &&
+        point.title === other.title &&
+        point.content === other.content &&
+        point.tier === other.tier &&
+        Boolean(point.core) === Boolean(other.core) &&
+        JSON.stringify(point.keywords || []) === JSON.stringify(other.keywords || []) &&
+        (point.assessmentCriteria || "") === (other.assessmentCriteria || "")
+      );
+    });
+  // 背景冇提供（或清空）都當「冇改動」——只有實際改咗先觸發重寫
+  const backgroundUnchanged = !background || background === fallback.characterBackground;
+  if (pointsUnchanged && backgroundUnchanged) return input.knowledgeBase;
+  const summaryFromPoints = (list: KnowledgePoint[]) =>
+    list
+      .map((point) => {
+        const tierLabel = point.tier === "basic_fact" ? "基礎事實" : "深度理解";
+        const keywords = (point.keywords || []).filter(Boolean).join("、");
+        const assessment = (point.assessmentCriteria || "").trim();
+        const suffix = [keywords ? `關鍵詞：${keywords}` : "", assessment ? `評估：${assessment}` : ""]
+          .filter(Boolean)
+          .join("｜");
+        return `- [${tierLabel}] ${point.title.trim()}：${point.content.trim()}${suffix ? `（${suffix}）` : ""}`;
+      })
+      .join("\n");
+  return buildStoredKnowledgeBase({
+    characterBackground: background || fallback.characterBackground,
+    knowledgeSummary: summaryFromPoints(points),
+    knowledgePoints: points,
+    personaProfile: fallback.personaProfile,
+  });
+}
+
 export function buildChatSystemPrompt(input: PromptCompilerInput) {
   const parsed = parsePromptSource({
     roleName: input.roleName,

@@ -1,7 +1,7 @@
 import { uiText } from '../../../utils/uiI18n';
 import { MAX_CUSTOM_CATEGORY_LABELS, TOPIC_CATEGORY_PRESETS, topicCategoryTone } from '../../../utils/topic-categories';
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, GripVertical, Plus, Star, X } from 'lucide-react';
+import { Check, ChevronDown, GripVertical, Plus, Star, Upload, X } from 'lucide-react';
 
 export type TopicVersionMeta = {
   id: string | null;
@@ -16,6 +16,10 @@ type TopicVersionTabsProps = {
   /** 上限（server maxTopics，預設 4） */
   maxVersions: number;
   customLabels: string[];
+  /** 完成反饋：短暫高亮呢啲 index 嘅 tab */
+  highlightIndexes?: number[];
+  /** 上傳更多教材：跳去「教材來源」並開 file picker（無上限限制——可覆蓋／合併） */
+  onUploadMore?: () => void;
   onSelect: (index: number) => void;
   onAdd: () => void;
   onRemove: (index: number) => void;
@@ -32,6 +36,8 @@ export const TopicVersionTabs: React.FC<TopicVersionTabsProps> = ({
   activeIndex,
   maxVersions,
   customLabels,
+  highlightIndexes,
+  onUploadMore,
   onSelect,
   onAdd,
   onRemove,
@@ -76,6 +82,7 @@ export const TopicVersionTabs: React.FC<TopicVersionTabsProps> = ({
     <div className="flex flex-wrap items-end gap-2 border-b border-slate-100 pb-3">
       {versions.map((version, index) => {
         const selected = index === activeIndex;
+        const highlighted = Boolean(highlightIndexes?.includes(index));
         return (
           <div
             key={version.id ?? `local-${index}`}
@@ -97,7 +104,7 @@ export const TopicVersionTabs: React.FC<TopicVersionTabsProps> = ({
                 : dragIndex === index
                   ? "border-slate-200 bg-slate-50 opacity-60"
                   : "border-slate-200 bg-white hover:border-slate-300"
-            }`}
+            }${highlighted ? " ring-2 ring-emerald-300 border-emerald-300 bg-emerald-50" : ""}`}
           >
             <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-slate-300" />
             {editingIndex === index ? (
@@ -116,7 +123,7 @@ export const TopicVersionTabs: React.FC<TopicVersionTabsProps> = ({
             ) : (
               <span
                 className={`max-w-[9rem] truncate text-xs font-black ${selected ? "text-indigo-700" : "text-slate-700"}`}
-                title={uiText("雙擊改名")}
+                title={uiText("連按兩下改名")}
                 onDoubleClick={(event) => {
                   event.stopPropagation();
                   setEditingIndex(index);
@@ -203,7 +210,7 @@ export const TopicVersionTabs: React.FC<TopicVersionTabsProps> = ({
 
             <button
               type="button"
-              title={uiText("設為默認版本")}
+              title={uiText("設為首選主題")}
               onClick={(event) => {
                 event.stopPropagation();
                 onSetDefault(index);
@@ -215,7 +222,7 @@ export const TopicVersionTabs: React.FC<TopicVersionTabsProps> = ({
             {versions.length > 1 ? (
               <button
                 type="button"
-                title={uiText("刪除版本")}
+                title={uiText("刪除主題")}
                 onClick={(event) => {
                   event.stopPropagation();
                   onRemove(index);
@@ -229,15 +236,27 @@ export const TopicVersionTabs: React.FC<TopicVersionTabsProps> = ({
         );
       })}
 
+      {onUploadMore ? (
+        <button
+          type="button"
+          onClick={onUploadMore}
+          title={uiText("再上傳更多教材")}
+          className="inline-flex min-h-9 items-center gap-1 rounded-xl border border-dashed border-indigo-300 px-3 py-2 text-xs font-bold text-indigo-500 transition hover:border-indigo-400 hover:text-indigo-600"
+        >
+          <Upload className="h-3.5 w-3.5" />
+          {uiText("上傳")}
+        </button>
+      ) : null}
+
       <button
         type="button"
         onClick={onAdd}
         disabled={!canAdd}
-        title={canAdd ? uiText("新增主題版本") : uiText("每隻 Bot 最多 4 個主題版本")}
+        title={canAdd ? uiText("新增主題") : uiText("最多 4 個主題")}
         className="inline-flex min-h-9 items-center gap-1 rounded-xl border border-dashed border-slate-300 px-3 py-2 text-xs font-bold text-slate-500 transition hover:border-indigo-300 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-40"
       >
         <Plus className="h-3.5 w-3.5" />
-        {uiText("新增版本")}
+        {uiText("新增主題")}
       </button>
     </div>
   );

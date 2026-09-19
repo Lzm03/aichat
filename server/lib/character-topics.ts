@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import type { PoolClient } from "pg";
 import { pool } from "../db.ts";
-import { parseKnowledgePoints } from "../../utils/chat-prompt.ts";
+import { buildKnowledgeBaseWithVersionPoints, parseKnowledgePoints, parsePromptSource } from "../../utils/chat-prompt.ts";
 
 export const MAX_TOPICS_PER_CHARACTER = 4;
 export const TOPIC_LIMIT_MESSAGE = "Each character can have a maximum of 4 Topics.";
@@ -42,6 +42,22 @@ export class CharacterTopicError extends Error {
     this.name = "CharacterTopicError";
     this.status = status;
     this.code = code;
+  }
+}
+
+/**
+ * 主題知識內容只接受結構化（【知識點分級】）內容（audit #4）——
+ * 自由文字會令覆蓋追蹤靜音、同埋重建 KB 時清空知識點。
+ * 空內容（新主題未整理）係允許嘅。
+ */
+function assertStructuredKnowledgeContent(knowledgeContent: string | undefined) {
+  const content = String(knowledgeContent || "").trim();
+  if (content && !content.includes("【知識點分級】")) {
+    throw new CharacterTopicError(
+      "主題知識內容必須經「知識地圖」整理成結構化知識點，唔接受自由文字。",
+      400,
+      "UNSTRUCTURED_TOPIC_CONTENT"
+    );
   }
 }
 
@@ -274,6 +290,7 @@ async function lockCharacter(client: PoolClient, characterId: string) {
 export async function createCharacterTopic(characterId: string, rawInput: Record<string, unknown>) {
   await ensureCharacterTopicTables();
   const input = normalizeTopicInput(rawInput);
+  assertStructuredKnowledgeContent(input.knowledgeContent);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -368,6 +385,10 @@ export async function updateCharacterTopic(
     const knowledgeWasEdited =
       Object.prototype.hasOwnProperty.call(input, "knowledgeContent") &&
       nextKnowledgeContent !== normalizedCurrentKnowledgeContent;
+    // 自由文字唔會再接受（audit #4）——淨係經「知識地圖」寫結構化知識點
+    if (knowledgeWasEdited) {
+      assertStructuredKnowledgeContent(input.knowledgeContent);
+    }
     const result = await client.query(
       `
       UPDATE character_topics SET
@@ -396,6 +417,11 @@ export async function updateCharacterTopic(
         knowledgeWasEdited ? false : current.inherits_legacy_knowledge,
       ]
     );
+    // 默認主題嘅內容變咗／默認旗標移動 → 同步重建 bots.knowledge_base（報告讀呢份來源）
+    const defaultMoved = input.isDefault === true || (input.isDefault === false && current.is_default);
+    if ((knowledgeWasEdited && nextDefault) || defaultMoved) {
+      await rebuildBotKnowledgeBaseFromDefaultTopic(client, characterId);
+    }
     await client.query("COMMIT");
     return result.rows[0] as CharacterTopicRow;
   } catch (error) {
@@ -403,6 +429,45 @@ export async function updateCharacterTopic(
     throw error;
   } finally {
     client.release();
+  }
+}
+
+/**
+ * 主題變更後重建 bots.knowledge_base（寫入側收斂，audit #3）。
+ * 報告/progress endpoints 只讀 bots.knowledge_base，而話題知識存 character_topics——
+ * 默認主題嘅內容或者默認旗標變咗，就要即刻令兩邊收斂返同一份來源。
+ * 主題內容非結構化（冇【知識點分級】標記）就跳過，唔會誤清 KB；
+ * 但刪除默認主題嘅路徑要強制收斂（emptyWhenUnstructured）——replacement 冇結構化
+ * 內容嗰陣，學生實際學到嘅都係 0 點，KB 要同步清空先係誠實。
+ * 必須喺同一個 transaction 內、topic 更新之後呼叫（lockCharacter 已鎖 bot row）。
+ */
+export async function rebuildBotKnowledgeBaseFromDefaultTopic(
+  client: PoolClient,
+  characterId: string,
+  options?: { emptyWhenUnstructured?: boolean }
+) {
+  const [botResult, topicResult] = await Promise.all([
+    client.query(`SELECT knowledge_base FROM bots WHERE id=$1`, [characterId]),
+    client.query(
+      `SELECT knowledge_content FROM character_topics
+       WHERE character_id=$1 AND is_default=TRUE
+       ORDER BY sort_order ASC, created_at ASC LIMIT 1`,
+      [characterId]
+    ),
+  ]);
+  if (!botResult.rowCount || !topicResult.rowCount) return;
+  const knowledgeBase = String(botResult.rows[0].knowledge_base || "");
+  const topicContent = String(topicResult.rows[0].knowledge_content || "");
+  let points;
+  if (!topicContent.includes("【知識點分級】")) {
+    if (!options?.emptyWhenUnstructured) return;
+    points = [];
+  } else {
+    points = parsePromptSource({ knowledgeBase: topicContent }).knowledgePoints;
+  }
+  const rebuilt = buildKnowledgeBaseWithVersionPoints({ knowledgeBase, defaultVersionPoints: points });
+  if (rebuilt !== knowledgeBase) {
+    await client.query(`UPDATE bots SET knowledge_base=$2, updated_at=NOW() WHERE id=$1`, [characterId, rebuilt]);
   }
 }
 
@@ -432,6 +497,9 @@ export async function deleteCharacterTopic(characterId: string, topicId: string)
         `UPDATE character_topics SET is_default=(id=$2), updated_at=NOW() WHERE character_id=$1`,
         [characterId, replacement.id]
       );
+      // 新默認主題接手 → 同步重建 bots.knowledge_base（replacement 非結構化就清空點，
+      // 唔好留低已刪主題嘅 stale 點）
+      await rebuildBotKnowledgeBaseFromDefaultTopic(client, characterId, { emptyWhenUnstructured: true });
     }
     await client.query("COMMIT");
     return { deletedId: topicId, defaultTopicId: current.is_default ? replacement.id : topics.find((topic) => topic.is_default)?.id || replacement.id };

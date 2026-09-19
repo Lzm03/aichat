@@ -42,6 +42,7 @@ import {
   buildChatReplyLanguageRule,
   buildChatSystemPrompt,
   parseAnswerMode,
+  parsePromptSource,
 } from "../../utils/chat-prompt.ts";
 import { normalizeUploadFilename } from "../../utils/uploadFilename.ts";
 import { combineExtractedFileText } from "../lib/knowledge-files.ts";
@@ -503,13 +504,18 @@ function extractDialogueKnowledgePoints(systemPrompt: string) {
   }));
 }
 
-function pickDialogueKnowledgePoint(systemPrompt: string, userPrompt: string, reply: string) {
-  const points = extractDialogueKnowledgePoints(systemPrompt);
+/** 建議對話揀知識點：優先由 canonical parser（parsePromptSource）出嚟嘅點揀，
+ *  keyword 命中即加分。冇提供先用 legacy（compiled prompt）parser 兜底。 */
+function pickDialogueKnowledgePoint(
+  points: Array<{ id?: string; title?: string; content: string; tier: string; keywords: string[] }>,
+  userPrompt: string,
+  reply: string
+) {
   if (!points.length) return null;
   const context = `${userPrompt} ${reply}`;
   const scored = points.map((point, index) => {
-    const topic = point.content;
-    const keywords = [topic, ...point.keywords].map((item) => clampChinesePhrase(item, 8)).filter(Boolean);
+    const topic = point.title || point.content;
+    const keywords = [topic, point.content, ...point.keywords].map((item) => clampChinesePhrase(item, 8)).filter(Boolean);
     const score = keywords.reduce((sum, keyword) => sum + (keyword && context.includes(keyword) ? 2 : 0), 0);
     return { point, score, index };
   });
@@ -517,8 +523,13 @@ function pickDialogueKnowledgePoint(systemPrompt: string, userPrompt: string, re
   return scored[0]?.point || points[0];
 }
 
+/** legacy 兜底：冇 canonical 點先用（default bot／抽取等非對話流程） */
+function pickDialogueKnowledgePointLegacy(systemPrompt: string, userPrompt: string, reply: string) {
+  return pickDialogueKnowledgePoint(extractDialogueKnowledgePoints(systemPrompt), userPrompt, reply);
+}
+
 function pickDialogueKnowledgePointForQuestion(systemPrompt: string, question: string, reply: string) {
-  return pickDialogueKnowledgePoint(systemPrompt, question, `${question}\n${reply}`);
+  return pickDialogueKnowledgePointLegacy(systemPrompt, question, `${question}\n${reply}`);
 }
 
 function inferDialogueQuestionType(question: string): DialogueQuestionType {
@@ -864,6 +875,8 @@ async function buildDialogueEnhancement(
     idleTrigger?: boolean;
     currentQuestion?: string;
     replyLanguage?: "cantonese" | "mandarin" | "english";
+    /** canonical（parsePromptSource）出嚟嘅追蹤知識點——有就先揀，唔用 compiled prompt parser */
+    knowledgePoints?: Array<{ id?: string; title?: string; content: string; tier: string; keywords: string[] }>;
   } = {}
 ) {
   const empty = emptyDialogueEnhancement();
@@ -874,7 +887,9 @@ async function buildDialogueEnhancement(
   if (!lastQuestion) return empty;
   const questionType = inferDialogueQuestionType(lastQuestion);
   const choiceOptions = extractChoiceOptions(lastQuestion);
-  const point = pickDialogueKnowledgePointForQuestion(systemPrompt, lastQuestion, reply);
+  const point = options.knowledgePoints?.length
+    ? pickDialogueKnowledgePoint(options.knowledgePoints, lastQuestion, reply)
+    : pickDialogueKnowledgePointForQuestion(systemPrompt, lastQuestion, reply);
   const usesClassicalChinese = /Enforced Speaking Style[\s\S]*淺近文言文/.test(systemPrompt);
   const guideLanguageRule =
     usesClassicalChinese && options.replyLanguage === "english"
@@ -2016,6 +2031,17 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
             req.body?.replyLanguage === "english" || req.body?.replyLanguage === "mandarin"
               ? req.body.replyLanguage
               : "cantonese",
+          // audit #5：用 canonical parser 出嚟嘅追蹤知識點揀（話題-aware），
+          // compiled prompt 嘅 regex parser 淨係做冇 bot 流程嘅兜底
+          knowledgePoints: trackingKnowledgeBase
+            ? parsePromptSource({ knowledgeBase: trackingKnowledgeBase }).knowledgePoints.map((point) => ({
+                id: point.id,
+                title: point.title,
+                content: point.content,
+                tier: point.tier,
+                keywords: point.keywords,
+              }))
+            : [],
         }
       );
       return res.json(enhancement);
@@ -2208,6 +2234,7 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
           conversationId: activeConversation.id,
           knowledgeBase: trackingKnowledgeBase,
           answerModeOverride: trackingAnswerMode,
+          topicId: activeTopic?.id || "",
           recentMessages: recentChatMessages,
           reply,
         }).catch((error) =>
@@ -2276,6 +2303,7 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
         conversationId: activeConversation.id,
         knowledgeBase: trackingKnowledgeBase,
         answerModeOverride: trackingAnswerMode,
+        topicId: activeTopic?.id || "",
         recentMessages: recentChatMessages,
         reply: streamedReply,
       }).catch((error) =>

@@ -20,7 +20,8 @@ export type CharacterTopicInput = {
   name: string;
   description: string;
   systemPrompt: string;
-  knowledgeContent: string;
+  /** 知識點內容（結構化【知識點分級】）；更新時可省略 = 唔郁佢 */
+  knowledgeContent?: string;
   category?: string;
   sortOrder?: number;
   isDefault: boolean;

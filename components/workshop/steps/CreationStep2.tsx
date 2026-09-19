@@ -1,6 +1,6 @@
 "use client";
 
-import { uiText } from '../../../utils/uiI18n';
+import { uiText, uiTemplate } from '../../../utils/uiI18n';
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Icons } from "../../icons";
 import { motion } from "framer-motion";
@@ -99,10 +99,16 @@ interface CreationStep2Props {
   /** 已發佈 Bot 嘅 id（編輯模式）；null = 新建模式（版本存本地，發布時先落庫） */
   characterId?: string | null;
   /** 版本列表 + 每版本知識點（供 CreationFlow 發布時建立話題） */
-  onVersionsChange?: (versions: Array<TopicVersionMeta & { points: KnowledgePoint[] }>) => void;
+  onVersionsChange?: (state: {
+    versions: Array<TopicVersionMeta & { points: KnowledgePoint[] }>;
+    characterBackground: string;
+    knowledgeSummary: string;
+  }) => void;
+  /** 發布前由 CreationFlow 呼叫：persist 當前版本 + 由話題 API 重新載入（audit #6） */
+  registerRefresh?: (refresh: () => Promise<void>) => void;
 }
 
-export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, afterKnowledgePointEditor, subject = "", onSubjectChange, grade = "", onGradeChange, botName = "", securityPrompt = "", characterId = null, onVersionsChange }) => {
+export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, afterKnowledgePointEditor, subject = "", onSubjectChange, grade = "", onGradeChange, botName = "", securityPrompt = "", characterId = null, onVersionsChange, registerRefresh }) => {
   const [uploadMethod, setUploadMethod] = useState<UploadMethod>("file");
   const modelProvider = "gemini";
   const [files, setFiles] = useState<File[]>([]);
@@ -143,7 +149,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   // 🔥 主題版本（知識地圖 Tab 架構；docs/knowledge-map-topic-versions.md）
   // --------------------------
   const [versions, setVersions] = useState<TopicVersionMeta[]>([
-    { id: null, name: "版本一", category: "", isDefault: true },
+    { id: null, name: "主題一", category: "", isDefault: true },
   ]);
   const [activeVersionIndex, setActiveVersionIndex] = useState(0);
   const [maxVersions, setMaxVersions] = useState(4);
@@ -156,6 +162,27 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
 
   const pointsOfVersion = (index: number) => pointsByVersionRef.current[index] ?? [];
 
+  // 完成反饋：新建立／變更嘅版本 tab 短暫高亮 + toast 指住 tab 列（docs §4.1 #6）
+  const [highlightIndexes, setHighlightIndexes] = useState<number[]>([]);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const feedbackTimerRef = useRef<number | null>(null);
+  const fileInputLabelRef = useRef<HTMLLabelElement | null>(null);
+
+  const showCompletionFeedback = (indexes: number[], message: string) => {
+    setHighlightIndexes(indexes);
+    setToastMessage(message);
+    if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current);
+    feedbackTimerRef.current = window.setTimeout(() => {
+      setHighlightIndexes([]);
+      setToastMessage(null);
+      feedbackTimerRef.current = null;
+    }, 2500);
+  };
+
+  useEffect(() => () => {
+    if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current);
+  }, []);
+
   const buildVersionKnowledgeContent = (points: KnowledgePoint[]) =>
     `【知識點分級】\n${JSON.stringify(points, null, 2)}`;
 
@@ -164,13 +191,15 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   }, [knowledgePoints, activeVersionIndex]);
 
   useEffect(() => {
-    onVersionsChange?.(
-      versions.map((version, index) => ({
+    onVersionsChange?.({
+      versions: versions.map((version, index) => ({
         ...version,
         points: index === activeVersionIndex ? knowledgePoints : pointsOfVersion(index),
-      }))
-    );
-  }, [versions, knowledgePoints, activeVersionIndex]);
+      })),
+      characterBackground,
+      knowledgeSummary,
+    });
+  }, [versions, knowledgePoints, activeVersionIndex, characterBackground, knowledgeSummary]);
 
   const baseUrl = import.meta.env.VITE_API_URL;
 
@@ -328,6 +357,63 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       cancelled = true;
     };
   }, [characterId]);
+
+  /**
+   * audit #6：發布前由 CreationFlow 呼叫——先 persist 當前 active 版本，
+   * 再由話題 API 重新載入全部版本（TopicManager 嘅改動唔會俾舊 snapshot 覆蓋），
+   * 並同步經 onVersionsChange 報上去（handlePublish 即時讀到最新 versionsRef）。
+   */
+  const refreshVersionsFromServer = async () => {
+    if (!characterId) return;
+    const current = versions[activeVersionIndex];
+    if (current?.id) {
+      await persistVersionPatch(current, { knowledgeContent: buildVersionKnowledgeContent(knowledgePoints) });
+    }
+    try {
+      const { topics, maxTopics } = await listCharacterTopics(characterId);
+      const loaded = topics
+        .slice()
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((topic) => ({
+          id: topic.id,
+          name: topic.name,
+          category: topic.category || "",
+          isDefault: topic.isDefault,
+        }));
+      if (!loaded.length) return;
+      const details = await Promise.all(
+        topics.map((topic) => getCharacterTopic(characterId, topic.id).catch(() => null))
+      );
+      const pointsMap: Record<number, KnowledgePoint[]> = {};
+      details.forEach((detail, index) => {
+        if (detail) {
+          pointsMap[index] = parsePromptSource({
+            knowledgeBase: detail.knowledgeContent,
+          }).knowledgePoints as unknown as KnowledgePoint[];
+        }
+      });
+      const defaultIndex = loaded.findIndex((version) => version.isDefault);
+      const firstIndex = defaultIndex >= 0 ? defaultIndex : 0;
+      const firstPoints = pointsMap[firstIndex] || [];
+      pointsByVersionRef.current = pointsMap;
+      setMaxVersions(maxTopics);
+      setVersions(loaded);
+      setActiveVersionIndex(firstIndex);
+      setKnowledgePoints(firstPoints);
+      setKnowledgeSummary(buildKnowledgeSummary(firstPoints));
+      onVersionsChange?.({
+        versions: loaded.map((version, index) => ({ ...version, points: pointsMap[index] || [] })),
+        characterBackground,
+        knowledgeSummary: buildKnowledgeSummary(firstPoints),
+      });
+    } catch (error) {
+      console.warn("發布前重新載入主題版本失敗：", error);
+    }
+  };
+
+  useEffect(() => {
+    registerRefresh?.(refreshVersionsFromServer);
+  });
 
   // 帳戶層自訂分類標籤（跨 Bot 共用）
   useEffect(() => {
@@ -562,7 +648,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       await updateCharacterTopic(characterId, version.id, patch as any);
     } catch (error) {
       console.warn("版本儲存失敗：", error);
-      showAlert({ title: uiText("儲存失敗"), message: (error as Error)?.message || uiText("版本儲存失敗，請稍後再試") });
+      showAlert({ title: uiText("儲存失敗"), message: (error as Error)?.message || uiText("主題儲存失敗，請稍後再試") });
     }
   };
 
@@ -581,10 +667,16 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
 
   const handleAddVersion = async () => {
     if (versions.length >= maxVersions) return;
+    // 切走前先儲存現時 active 版本（之前會靜靜雞丟咗未 persist 嘅知識點）
+    const current = versions[activeVersionIndex];
+    if (current?.id) {
+      await persistVersionPatch(current, { knowledgeContent: buildVersionKnowledgeContent(knowledgePoints) });
+    }
+    pointsByVersionRef.current[activeVersionIndex] = knowledgePoints;
     if (characterId) {
       try {
         const topic = await createCharacterTopic(characterId, {
-          name: `版本${versions.length + 1}`,
+          name: `主題${versions.length + 1}`,
           description: "",
           systemPrompt: "",
           knowledgeContent: "",
@@ -597,11 +689,11 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
         setKnowledgePoints([]);
         setKnowledgeSummary("");
       } catch (error) {
-        showAlert({ title: uiText("無法新增版本"), message: (error as Error)?.message || uiText("每隻 Bot 最多 4 個主題版本") });
+        showAlert({ title: uiText("無法新增主題"), message: (error as Error)?.message || uiText("最多 4 個主題") });
       }
       return;
     }
-    const next = [...versions, { id: null, name: `版本${versions.length + 1}`, category: "", isDefault: false }];
+    const next = [...versions, { id: null, name: `主題${versions.length + 1}`, category: "", isDefault: false }];
     setVersions(next);
     setActiveVersionIndex(next.length - 1);
     setKnowledgePoints([]);
@@ -620,7 +712,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
             .map((item) => ({ ...item, isDefault: item.id === result.defaultTopicId }));
           setVersions(next);
         } catch (error) {
-          showAlert({ title: uiText("無法刪除版本"), message: (error as Error)?.message || uiText("刪除版本失敗，請稍後再試") });
+          showAlert({ title: uiText("無法刪除主題"), message: (error as Error)?.message || uiText("刪除主題失敗，請稍後再試") });
           return;
         }
       } else {
@@ -642,8 +734,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       setKnowledgeSummary(buildKnowledgeSummary(pointsOfVersion(nextIndex)));
     };
     showConfirm({
-      title: uiText("刪除主題版本"),
-      message: uiText("刪除後呢個版本嘅知識點同學生覆蓋進度會一併移除，確定？"),
+      title: uiText("刪除主題"),
+      message: uiText("刪除後呢個主題嘅知識點同相關學習進度會一併移除，確定？"),
       confirmText: uiText("刪除"),
       onConfirm: doRemove,
     });
@@ -653,6 +745,12 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
     const next = versions.map((version, itemIndex) => (itemIndex === index ? { ...version, name } : version));
     setVersions(next);
     await persistVersionPatch(next[index], { name });
+  };
+
+  /** Tab 列「上傳」捷徑：跳去教材來源並直接開 file picker */
+  const handleUploadMore = () => {
+    setActiveTab("source");
+    window.setTimeout(() => fileInputLabelRef.current?.click(), 0);
   };
 
   const handleCategoryChange = async (index: number, category: string) => {
@@ -732,15 +830,17 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   // 🔥 主解析流程
   // --------------------------
   const handleProcess = async () => {
-    if (uploadMethod === "file" && files.length === 0) return;
-    if (uploadMethod !== "file" && !inputValue.trim()) return;
+    if (files.length === 0 && uploadMethod === "file") return;
+    if (files.length === 0 && uploadMethod !== "file" && !inputValue.trim()) return;
+    // complete 狀態嘅拖拽區可能喺 uploadMethod 係 url/text 嗰陣再上傳——有檔就照檔處理
+    const usingFiles = files.length > 0;
 
     setStatus("processing");
     setProgress(12);
 
     try {
       const nextSourceLabel =
-        uploadMethod === "file"
+        usingFiles
           ? `文件：${files.map((file) => file.name).join("、") || "未命名文件"}`
           : uploadMethod === "url"
           ? `Web URL：${inputValue.trim()}`
@@ -748,14 +848,21 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       setSourceLabel(nextSourceLabel);
 
       const applySingle = (parsed: { bg: string; ks: string; points: KnowledgePoint[] }, name?: string) => {
+        const target = versions[activeVersionIndex];
         setCharacterBackground(parsed.bg);
         setKnowledgeSummary(parsed.ks);
         setKnowledgePoints(parsed.points);
         pointsByVersionRef.current[activeVersionIndex] = parsed.points;
         // 空嘅「版本N」自動改用檔名
-        if (name && versions[activeVersionIndex]?.name.startsWith("版本")) {
+        if (name && target?.name.startsWith("主題")) {
           void handleRenameVersion(activeVersionIndex, name);
         }
+        // 編輯模式即刻寫庫（之前要等切 tab 先 persist，容易丟失）
+        if (target?.id) {
+          void persistVersionPatch(target, { knowledgeContent: buildVersionKnowledgeContent(parsed.points) });
+        }
+        setFiles([]);
+        setInputValue("");
         setProgress(100);
         setStatus("complete");
         setActiveTab("map");
@@ -763,30 +870,35 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
 
       const appendVersions = async (results: Array<{ bg: string; ks: string; points: KnowledgePoint[]; name: string }>) => {
         // 第一個結果填 active（空嘅話），其餘開新版本
+        const created: number[] = [];
         const activeEmpty = pointsOfVersion(activeVersionIndex).length === 0 && !knowledgeSummary.trim();
         const first = results[0];
         let lastIndex = activeVersionIndex;
         if (activeEmpty) {
           applySingle({ bg: first.bg, ks: first.ks, points: first.points }, first.name);
+          created.push(activeVersionIndex);
         } else {
-          await openNewVersionWith(first);
+          lastIndex = await openNewVersionWith(first);
+          created.push(lastIndex);
         }
         for (const extra of results.slice(1)) {
           lastIndex = await openNewVersionWith(extra);
+          created.push(lastIndex);
         }
         setActiveVersionIndex(lastIndex);
         setProgress(100);
         setStatus("complete");
         setActiveTab("map");
+        return created;
       };
 
       const openNewVersionWith = async (entry: { bg: string; ks: string; points: KnowledgePoint[]; name: string }) => {
         if (versions.length >= maxVersions) {
-          throw new Error(uiText("每隻 Bot 最多 4 個主題版本"));
+          throw new Error(uiText("最多 4 個主題"));
         }
         if (characterId) {
           const topic = await createCharacterTopic(characterId, {
-            name: entry.name || `版本${versions.length + 1}`,
+            name: entry.name || `主題${versions.length + 1}`,
             description: "",
             systemPrompt: "",
             knowledgeContent: buildVersionKnowledgeContent(entry.points),
@@ -798,14 +910,17 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           pointsByVersionRef.current[next.length - 1] = entry.points;
           return next.length - 1;
         }
-        const next = [...versions, { id: null, name: entry.name || `版本${versions.length + 1}`, category: "", isDefault: false }];
+        const next = [...versions, { id: null, name: entry.name || `主題${versions.length + 1}`, category: "", isDefault: false }];
         setVersions(next);
         pointsByVersionRef.current[next.length - 1] = entry.points;
         return next.length - 1;
       };
 
-      if (uploadMethod === "file" && files.length > 0) {
-        if (files.length >= 2) {
+      if (usingFiles) {
+        const activeEmpty = pointsOfVersion(activeVersionIndex).length === 0 && !knowledgeSummary.trim();
+        // 多檔必問；單檔喺 active 已有內容時都要問（開新版本／覆蓋當前／加進現有），
+        // 第一次上傳（active 空）照舊直接解析唔煩。
+        if (files.length >= 2 || (files.length === 1 && !activeEmpty)) {
           // 分配方式對話框（提取開始前，唔燒 API）
           const mode = await new Promise<AssignmentMode | null>((resolve) => {
             assignmentResolveRef.current = resolve;
@@ -824,13 +939,26 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
               const parsed = parseKnowledgeReply(result.reply || "", previousPointsRef.current);
               results.push({ ...parsed, name: file.name.replace(/\.[^.]+$/, "") });
             }
-            await appendVersions(results);
+            const created = await appendVersions(results);
+            showCompletionFeedback(created, uiTemplate("開咗 {0} 個新主題", created.length));
             return;
           }
           if (mode.kind === "merge-new") {
+            const entryName = files[0].name.replace(/\.[^.]+$/, "");
             const result = await processFiles(files);
             const parsed = parseKnowledgeReply(result.reply || "", previousPointsRef.current);
-            await appendVersions([{ ...parsed, name: files[0].name.replace(/\.[^.]+$/, "") }]);
+            const created = await appendVersions([{ ...parsed, name: entryName }]);
+            showCompletionFeedback(created, uiTemplate("已合併成新主題「{0}」", entryName || versions[activeVersionIndex]?.name || ""));
+            return;
+          }
+          if (mode.kind === "replace-active") {
+            const baseName = files[0].name.replace(/\.[^.]+$/, "");
+            const wasPlaceholder = versions[activeVersionIndex]?.name.startsWith("主題");
+            const result = await processFiles(files);
+            const parsed = parseKnowledgeReply(result.reply || "", previousPointsRef.current);
+            applySingle(parsed, baseName);
+            const resultName = wasPlaceholder ? baseName : versions[activeVersionIndex]?.name || baseName;
+            showCompletionFeedback([activeVersionIndex], uiTemplate("已更新「{0}」", resultName));
             return;
           }
           // merge-existing：逐檔提取 → 合併入揀咗嗰個版本
@@ -849,14 +977,19 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           setActiveVersionIndex(targetIndex);
           setKnowledgePoints(merged);
           setKnowledgeSummary(buildKnowledgeSummary(merged));
+          setFiles([]);
           setProgress(100);
           setStatus("complete");
           setActiveTab("map");
+          showCompletionFeedback([targetIndex], uiTemplate("已加入「{0}」", target?.name || uiText("現有主題")));
           return;
         }
+        const baseName = files[0].name.replace(/\.[^.]+$/, "");
+        const wasPlaceholder = versions[activeVersionIndex]?.name.startsWith("主題");
         const result = await processFiles(files);
         const parsed = parseKnowledgeReply(result.reply || "", previousPointsRef.current);
-        applySingle(parsed, files[0].name.replace(/\.[^.]+$/, ""));
+        applySingle(parsed, baseName);
+        showCompletionFeedback([activeVersionIndex], uiTemplate("已放入「{0}」", wasPlaceholder ? baseName : versions[activeVersionIndex]?.name || baseName));
         return;
       }
 
@@ -868,7 +1001,9 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       }
       const reply = result.reply || "";
       const parsed = parseKnowledgeReply(reply, previousPointsRef.current);
+      const activeName = versions[activeVersionIndex]?.name || "主題一";
       applySingle(parsed);
+      showCompletionFeedback([activeVersionIndex], uiTemplate("已放入「{0}」", activeName));
     } catch (error) {
       console.error("知識解析失敗:", error);
       setCharacterBackground("解析失敗，請重試。");
@@ -1016,60 +1151,62 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   // --------------------------
   // 🔧 UI：輸入區域
   // --------------------------
+  const renderFileDropzone = () => (
+    <div
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault();
+        handleFileDrop(e.dataTransfer.files);
+      }}
+      className="flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-2xl bg-slate-50"
+    >
+      <Icons.upload className="w-12 h-12 mb-4 text-slate-400" />
+      <p className="font-semibold text-slate-600">{uiText("拖拽文件到此處")}</p>
+      <label ref={fileInputLabelRef} className="mt-2 px-4 py-2 border rounded-lg bg-white cursor-pointer">{uiText("選擇文件")}<input
+          type="file"
+          accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            handleFileDrop(e.target.files);
+            e.currentTarget.value = "";
+          }}
+        />
+      </label>
+      <p className="mt-3 text-xs text-slate-500">{uiText("支援 PDF、DOC、DOCX，可以一次揀幾個檔案。上傳後會問你想點分主題，最多 4 個。")}</p>
+      {files.length > 0 ? (
+        <div className="mt-4 w-full max-w-xl rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
+          <p className="font-semibold text-slate-700">{uiText("已選擇 ")}{files.length}{uiText(" 個文件")}</p>
+          <div className="mt-2 space-y-2">
+            {files.map((file, index) => (
+              <div key={`${file.name}:${file.size}:${file.lastModified}`} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
+                <span className="min-w-0 flex-1 truncate" title={file.name}>{file.name}</span>
+                <button
+                  type="button"
+                  onClick={() => removeFile(index)}
+                  className="shrink-0 rounded-md px-2 py-1 text-xs font-bold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                  aria-label={`${uiText("移除文件")} ${file.name}`}
+                >
+                  {uiText("移除")}
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={handleProcess}
+            className="mt-3 w-full rounded-lg bg-indigo-600 px-4 py-2.5 font-bold text-white transition hover:bg-indigo-700"
+          >
+            {uiText("開始整理 ")}{files.length}{uiText(" 個文件")}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+
   const renderInputArea = () => {
     if (uploadMethod === "file") {
-      return (
-        <div
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => {
-            e.preventDefault();
-            handleFileDrop(e.dataTransfer.files);
-          }}
-          className="flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-2xl bg-slate-50"
-        >
-          <Icons.upload className="w-12 h-12 mb-4 text-slate-400" />
-          <p className="font-semibold text-slate-600">{uiText("拖拽文件到此處")}</p>
-          <label className="mt-2 px-4 py-2 border rounded-lg bg-white cursor-pointer">{uiText("選擇文件")}<input
-              type="file"
-              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                handleFileDrop(e.target.files);
-                e.currentTarget.value = "";
-              }}
-            />
-          </label>
-          <p className="mt-3 text-xs text-slate-500">{uiText("支援 PDF、DOC、DOCX，可一次上傳多個文件")}</p>
-          {files.length > 0 ? (
-            <div className="mt-4 w-full max-w-xl rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
-              <p className="font-semibold text-slate-700">{uiText("已選擇 ")}{files.length}{uiText(" 個文件")}</p>
-              <div className="mt-2 space-y-2">
-                {files.map((file, index) => (
-                  <div key={`${file.name}:${file.size}:${file.lastModified}`} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
-                    <span className="min-w-0 flex-1 truncate" title={file.name}>{file.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => removeFile(index)}
-                      className="shrink-0 rounded-md px-2 py-1 text-xs font-bold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
-                      aria-label={`${uiText("移除文件")} ${file.name}`}
-                    >
-                      {uiText("移除")}
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={handleProcess}
-                className="mt-3 w-full rounded-lg bg-indigo-600 px-4 py-2.5 font-bold text-white transition hover:bg-indigo-700"
-              >
-                {uiText("開始解析 ")}{files.length}{uiText(" 個文件")}
-              </button>
-            </div>
-          ) : null}
-        </div>
-      );
+      return renderFileDropzone();
     }
 
     if (uploadMethod === "url") {
@@ -1085,7 +1222,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           <button
             onClick={handleProcess}
             className="px-4 py-2 rounded-lg bg-indigo-600 text-white"
-          >{uiText("解析")}</button>
+          >{uiText("整理")}</button>
         </div>
       );
     }
@@ -1096,13 +1233,13 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           rows={5}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
-          placeholder={uiText("貼上需要解析的內容…")}
+          placeholder={uiText("貼上需要整理嘅內容…")}
           className="w-full p-4 border rounded-lg"
         />
         <button
           onClick={handleProcess}
           className="w-full py-2 rounded-lg bg-indigo-600 text-white"
-        >{uiText("解析")}</button>
+        >{uiText("整理")}</button>
       </div>
     );
   };
@@ -1113,16 +1250,16 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   const renderStatus = () => {
     if (status === "processing") {
       const steps = [
-        { label: "資料解析", pct: 30 },
-        { label: "重點抽取", pct: 60 },
-        { label: "索引建立", pct: 85 },
-        { label: "入庫完成", pct: 100 },
+        { label: "讀取教材", pct: 30 },
+        { label: "整理重點", pct: 60 },
+        { label: "生成知識點", pct: 85 },
+        { label: "整理完成", pct: 100 },
       ];
       const isDone = (pct: number) => progress >= pct;
       return (
         <div className="space-y-4">
           <div className="rounded-2xl border bg-gradient-to-br from-slate-50 to-blue-50 p-5">
-            <h4 className="text-lg font-bold text-slate-800 mb-4">{uiText("正在為您提取知識庫內容...")}</h4>
+            <h4 className="text-lg font-bold text-slate-800 mb-4">{uiText("正在為您整理教材內容...")}</h4>
             <div className="grid gap-4 md:grid-cols-[1fr_260px]">
               <div className="rounded-xl bg-white p-4 border shadow-sm">
                 <div className="flex items-center justify-between mb-3">
@@ -1153,9 +1290,9 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
               <div className="rounded-xl bg-white p-4 border shadow-sm">
                 <p className="text-sm font-semibold text-slate-700 mb-2">{uiText("實時處理日誌")}</p>
                 <div className="space-y-1.5 text-xs text-slate-500">
-                  <p>{uiText("• 內容載入中...")}</p>
-                  <p>{uiText("• 正在解析段落結構...")}</p>
-                  <p>{uiText("• 正在抽取知識重點...")}</p>
+                  <p>{uiText("• 正在讀取內容...")}</p>
+                  <p>{uiText("• 正在整理段落結構...")}</p>
+                  <p>{uiText("• 正在整理知識重點...")}</p>
                   <p>• 1-2 mins remaining</p>
                 </div>
               </div>
@@ -1210,8 +1347,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
                   type="button"
                   onClick={resetState}
                   className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
-                  aria-label={uiText("清除並重新提取知識")}
-                  title={uiText("重新提取")}
+                  aria-label={uiText("清除並重新整理知識")}
+                  title={uiText("重新整理")}
                 >
                   <Icons.delete className="h-4 w-4" />
                 </button>
@@ -1566,6 +1703,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
                   placeholder={uiText("以「、」或「,」分隔，3-5 個有辨識度的詞，例如：榫卯、凹凸")}
                   className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
                 />
+                <p className="mt-1 text-[11px] text-slate-400">{uiText("關鍵詞幫系統追蹤學生有冇學識（建議 3-5 個，留空都可以）")}</p>
               </label>
               <label className="block md:col-span-12">
                 <span className="text-xs font-bold text-slate-700">{uiText("知識內容")}</span>
@@ -1574,6 +1712,16 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
                   onChange={(e) => setNewPointContent(e.target.value)}
                   rows={4}
                   placeholder={uiText("輸入完整説明，讓角色能準確理解並回答。")}
+                  className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-white p-3.5 text-sm leading-6 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+                />
+              </label>
+              <label className="block md:col-span-12">
+                <span className="text-xs font-bold text-slate-700">{uiText("評估準則")}<span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{uiText("選填")}</span></span>
+                <textarea
+                  value={newPointAssessment}
+                  onChange={(e) => setNewPointAssessment(e.target.value)}
+                  rows={2}
+                  placeholder={uiText("例如：學生能正確指出三種榫卯結構嘅分別")}
                   className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-white p-3.5 text-sm leading-6 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
                 />
               </label>
@@ -1790,8 +1938,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       {status === "idle" && (
         <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4">
           <div>
-            <p className="text-sm font-bold text-slate-800">{uiText("知識提取模型")}</p>
-            <p className="mt-1 text-xs text-slate-500">{uiText("提取前可先選擇要使用的模型")}</p>
+            <p className="text-sm font-bold text-slate-800">{uiText("AI 模型")}</p>
+            <p className="mt-1 text-xs text-slate-500">{uiText("整理前可以揀用邊個 AI 模型")}</p>
           </div>
           <div className="rounded-full border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm">
             Gemini
@@ -1817,10 +1965,16 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       )}
 
       {status === "complete" ? (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5 text-center">
-          <p className="text-sm font-bold text-emerald-800">{uiText("知識點已抽取完成")}</p>
-          <p className="mt-1 text-xs text-emerald-700">{uiText("可以到「知識地圖」檢查知識點及調整教學目標。")}</p>
-          <button type="button" onClick={() => setActiveTab("map")} className="mt-3 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-700">{uiText("前往知識地圖")}</button>
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5 text-center">
+            <p className="text-sm font-bold text-emerald-800">{uiText("知識點已整理完成")}</p>
+            <p className="mt-1 text-xs text-emerald-700">{uiText("可以到「知識地圖」檢查知識點及調整教學目標。")}</p>
+            <button type="button" onClick={() => setActiveTab("map")} className="mt-3 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-700">{uiText("前往知識地圖")}</button>
+          </div>
+          <div>
+            <p className="mb-2 text-xs font-bold text-slate-600">{uiText("再上傳更多教材")}</p>
+            {renderFileDropzone()}
+          </div>
         </div>
       ) : (
         <div className="min-h-[180px]">{renderStatus()}</div>
@@ -1830,11 +1984,18 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
 
       {activeTab === "map" && (
         <div className="space-y-8">
+          {toastMessage ? (
+            <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-bold text-emerald-800 shadow-sm">
+              <span>✓</span>{toastMessage}
+            </div>
+          ) : null}
           <TopicVersionTabs
             versions={versions}
             activeIndex={activeVersionIndex}
             maxVersions={maxVersions}
             customLabels={customLabels}
+            highlightIndexes={highlightIndexes}
+            onUploadMore={handleUploadMore}
             onSelect={(index) => void handleSelectVersion(index)}
             onAdd={() => void handleAddVersion()}
             onRemove={(index) => void handleRemoveVersion(index)}
@@ -1846,8 +2007,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           />
           {status === "complete" ? renderStatus() : (
             <div className="flex flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-300 bg-slate-50/70 px-6 py-14 text-center">
-              <p className="text-sm font-black text-slate-700">{uiText("尚未抽取知識點")}</p>
-              <p className="mt-1 max-w-md text-xs leading-5 text-slate-500">{uiText("請先到「教材來源」上傳教材並開始解析，抽取完成後知識點會顯示在這裡。")}</p>
+              <p className="text-sm font-black text-slate-700">{uiText("未有知識點")}</p>
+              <p className="mt-1 max-w-md text-xs leading-5 text-slate-500">{uiText("先上傳教材，AI 會幫你整理出要教嘅知識點，整理好就會喺呢度顯示。")}</p>
               <button type="button" onClick={() => setActiveTab("source")} className="mt-4 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-indigo-700">{uiText("前往教材來源")}</button>
             </div>
           )}
@@ -1858,6 +2019,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
         open={assignmentOpen}
         fileNames={assignmentFileNames}
         existingVersionNames={versions.map((version) => version.name)}
+        activeVersionIndex={activeVersionIndex}
+        activeVersionEmpty={pointsOfVersion(activeVersionIndex).length === 0 && !knowledgeSummary.trim()}
         maxVersions={maxVersions}
         onConfirm={(mode) => {
           setAssignmentOpen(false);

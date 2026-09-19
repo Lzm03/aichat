@@ -395,9 +395,13 @@ export async function ensurePlatformTables() {
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
       `);
-      // 舊環境補欄（欄位係 2026-09-14 加：next_point 連續推唔動就跳過）
+      // 舊環境補欄（欄位係 2026-09-14 加：next_point 連續推唔動就跳過；
+      // topic_id 係 2026-09-19 加：覆蓋進度按話題分維度）
       await pool.query(
-        `ALTER TABLE bot_conversation_states ADD COLUMN IF NOT EXISTS skipped_point_ids JSONB NOT NULL DEFAULT '[]';`
+        `ALTER TABLE bot_conversation_states
+         ADD COLUMN IF NOT EXISTS skipped_point_ids JSONB NOT NULL DEFAULT '[]',
+         ADD COLUMN IF NOT EXISTS turns_since_judge INT NOT NULL DEFAULT 0,
+         ADD COLUMN IF NOT EXISTS topic_id TEXT NOT NULL DEFAULT '';`
       );
       await pool.query(
         `ALTER TABLE bot_conversation_states ADD COLUMN IF NOT EXISTS turns_on_next_point INT NOT NULL DEFAULT 0;`
@@ -421,6 +425,16 @@ export async function ensurePlatformTables() {
           PRIMARY KEY (bot_id, user_id)
         );
       `);
+      // 2026-09-19：覆蓋進度按話題分維度（'' = 舊數據／冇活躍話題時嘅主知識庫）
+      await pool.query(
+        `ALTER TABLE bot_student_progress ADD COLUMN IF NOT EXISTS topic_id TEXT NOT NULL DEFAULT '';`
+      );
+      await pool.query(
+        `ALTER TABLE bot_student_progress DROP CONSTRAINT IF EXISTS bot_student_progress_pkey;`
+      );
+      await pool.query(
+        `ALTER TABLE bot_student_progress ADD PRIMARY KEY (bot_id, user_id, topic_id);`
+      );
       await pool.query(`
         CREATE INDEX IF NOT EXISTS bot_student_progress_user_id_idx
         ON bot_student_progress(user_id, updated_at DESC);

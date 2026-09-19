@@ -89,7 +89,7 @@ export const TeachingSimulationPanel: React.FC<TeachingSimulationPanelProps> = (
     try {
       const points = corePointsOf(knowledgeBase);
       if (!points.length) {
-        setError(uiText('尚未有教學目標知識點，請先到「教材來源」完成知識抽取。'));
+        setError(uiText('尚未有教學目標知識點，請先到「教材來源」完成知識整理。'));
         return;
       }
       const target = pickSimulationTarget(points);

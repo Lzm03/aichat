@@ -13,7 +13,7 @@ import { PublishSuccessModal } from './PublishSuccessModal';
 import type { FeatureEntitlement } from '../../hooks/useFeatureEntitlements';
 import { usePlatformDialog } from '../../hooks/usePlatformDialog';
 import { PlatformDialog } from '../system/PlatformDialog';
-import { buildChatSystemPrompt, buildStoredKnowledgeBase, parsePromptSource } from '../../utils/chat-prompt';
+import { buildChatSystemPrompt, buildKnowledgeBaseWithVersionPoints, buildStoredKnowledgeBase, parsePromptSource } from '../../utils/chat-prompt';
 import { TopicManager } from './topics/TopicManager';
 import type { TopicVersionMeta } from './topics/TopicVersionTabs';
 import {
@@ -244,7 +244,10 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   const [botConfig, setBotConfig] = useState(loadBotConfig());
   const [isBotLoading, setIsBotLoading] = useState(Boolean(botId));
   const [botLoadError, setBotLoadError] = useState("");
-  const [currentStep, setCurrentStep] = useState(1);
+  // TEMP-DEMO: port-3100 preview starts at step 4 (knowledge map). Revert after the demo.
+  const [currentStep, setCurrentStep] = useState(() =>
+    typeof window !== "undefined" && window.location.port === "3100" ? 4 : 1
+  );
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [isPublishSuccessModalOpen, setIsPublishSuccessModalOpen] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -255,6 +258,30 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   const previousVideoTaskStatusRef = React.useRef<string | null>(null);
   /** 知識地圖主題版本（CreationStep2 回報；新建模式發布時落庫做話題） */
   const versionsRef = React.useRef<Array<TopicVersionMeta & { points: KnowledgePoint[] }>>([]);
+  /** CreationStep2 最新嘅背景／摘要（編輯模式手動改動後發佈要用） */
+  const step2ExtrasRef = React.useRef<{ characterBackground: string; knowledgeSummary: string }>({
+    characterBackground: "",
+    knowledgeSummary: "",
+  });
+  /** audit #6：發布前叫 CreationStep2 persist + 重載版本（唔好用舊 snapshot 覆蓋） */
+  const step2RefreshRef = React.useRef<(() => Promise<void>) | null>(null);
+
+  /**
+   * 手動新增／刪改嘅知識點只存在版本數據（versionsRef），唔會經 onGenerated 入
+   * botConfig.knowledgeBase——發佈同預覽都用默認版本嘅點重建主知識庫，
+   * 令學習報告（讀 bots.knowledge_base）同覆蓋追蹤同版本數據保持同一份來源。
+   * （純邏輯喺 utils/chat-prompt.ts buildKnowledgeBaseWithVersionPoints，有守護測試）
+   */
+  const buildCurrentKnowledgeBase = () => {
+    const versions = versionsRef.current;
+    const defaultVersion = versions.find((version) => version.isDefault) || versions[0];
+    if (!defaultVersion) return botConfig.knowledgeBase;
+    return buildKnowledgeBaseWithVersionPoints({
+      knowledgeBase: botConfig.knowledgeBase,
+      defaultVersionPoints: defaultVersion.points,
+      characterBackground: step2ExtrasRef.current.characterBackground,
+    });
+  };
 
   const updateConfig = <K extends keyof typeof botConfig>(key: K, value: typeof botConfig[K]) => {
     setBotConfig((prev) => (Object.is(prev[key], value) ? prev : { ...prev, [key]: value }));
@@ -470,6 +497,11 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   const canPublish = isAllStepsValid && videosReady;
 
   /** 新建模式首次發布：將主題版本落庫做話題（每 Bot 最多 4 個）。 */
+  /**
+   * 發布時將版本數據落庫做話題（新建 + 編輯模式都行；編輯模式嘅版本大多已即時
+   * 儲存，呢度保證手動新增／刪改嘅點喺發布嗰刻全部寫入 character_topics，
+   * 令話題知識同 bots.knowledge_base 收斂——audit #2）。
+   */
   const syncVersionsToTopics = async (characterId: string) => {
     const topicVersions = versionsRef.current;
     if (!topicVersions.length) return;
@@ -480,31 +512,31 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       `【知識點分級】\n${JSON.stringify(points, null, 2)}`;
     try {
       // ensureCharacterTopicTables 會為冇話題嘅 Bot 自動建立 legacy 話題——
-      // 將佢轉做版本一，其餘版本跟住建，唔會超 4 個上限亦唔會有重複內容。
+      // 版本一未落庫（新建模式）就寫入 legacy 話題，做版本一。
       const { topics } = await listCharacterTopics(characterId);
       const legacy = topics.find((topic) => topic.id.startsWith("topic_legacy_"));
-      let remaining = topicVersions;
-      if (legacy) {
-        const first = topicVersions[0];
-        await updateCharacterTopic(characterId, legacy.id, {
-          name: first.name,
-          description: "",
-          systemPrompt: "",
-          knowledgeContent: versionContent(first.points),
-          category: first.category || "單元課本",
-          isDefault: true,
-        });
-        remaining = topicVersions.slice(1);
-      }
-      for (const version of remaining) {
-        await createCharacterTopic(characterId, {
+      let legacyConsumed = false;
+      const putVersion = async (version: TopicVersionMeta & { points: KnowledgePoint[] }) => {
+        const patch = {
           name: version.name,
           description: "",
           systemPrompt: "",
           knowledgeContent: versionContent(version.points),
           category: version.category || "單元課本",
           isDefault: version.isDefault,
-        });
+        };
+        if (version.id) {
+          await updateCharacterTopic(characterId, version.id, patch as any);
+        } else if (legacy && !legacyConsumed) {
+          // 版本一（新建模式未落庫）寫入 legacy 話題，只可以寫一次
+          await updateCharacterTopic(characterId, legacy.id, patch as any);
+          legacyConsumed = true;
+        } else {
+          await createCharacterTopic(characterId, patch);
+        }
+      };
+      for (const version of topicVersions) {
+        await putVersion(version);
       }
     } catch (error) {
       console.warn("主題版本落庫失敗：", error);
@@ -516,6 +548,8 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
     setActionError("");
     setIsPublishing(true);
     try {
+      // audit #6：先 persist + 重載版本數據，再砌知識庫（TopicManager 改動唔會丟失）
+      await step2RefreshRef.current?.().catch(() => undefined);
       const newBot = {
         id: botId || Date.now().toString(),
         name: botConfig.name,
@@ -529,7 +563,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         background: botConfig.background,
         animation: botConfig.animation,
 
-        knowledgeBase: botConfig.knowledgeBase,
+        knowledgeBase: buildCurrentKnowledgeBase(),
         securityPrompt: botConfig.securityPrompt,
         grade: botConfig.grade || "",
 
@@ -569,10 +603,8 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         const accessPayload = await accessResponse.json().catch(() => null);
         throw new Error(accessPayload?.error || t("publishFailed"));
       }
-      // 新建模式：主題版本落庫做話題（編輯模式嘅版本早已即時儲存）
-      if (!botId) {
-        await syncVersionsToTopics(String(savedBot?.id || newBot.id));
-      }
+      // 版本數據落庫做話題（新建 + 編輯模式都行——手動點喺發布嗰刻全部寫入）
+      await syncVersionsToTopics(String(savedBot?.id || newBot.id));
       await refreshFeatureEntitlements();
       setBotConfig((prev) => ({
         ...prev,
@@ -669,8 +701,15 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
               botName={botConfig.name}
               securityPrompt={botConfig.securityPrompt}
               characterId={String(botConfig.id || botId || "").trim() || null}
-              onVersionsChange={(topicVersions) => {
-                versionsRef.current = topicVersions;
+              onVersionsChange={(state) => {
+                versionsRef.current = state.versions;
+                step2ExtrasRef.current = {
+                  characterBackground: state.characterBackground,
+                  knowledgeSummary: state.knowledgeSummary,
+                };
+              }}
+              registerRefresh={(refresh) => {
+                step2RefreshRef.current = refresh;
               }}
               afterKnowledgePointEditor={
                 <TopicManager characterId={String(botConfig.id || botId || "").trim() || null} />
@@ -709,7 +748,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
 const fullSystemPrompt = `
     ${buildChatSystemPrompt({
       roleName: botConfig.name,
-      knowledgeBase: botConfig.knowledgeBase,
+      knowledgeBase: buildCurrentKnowledgeBase(),
       securityPrompt: botConfig.securityPrompt,
     })}
 `.trim();

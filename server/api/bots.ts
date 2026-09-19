@@ -55,6 +55,126 @@ function coreKnowledgePoints(knowledgeBase: string) {
   );
 }
 
+/* ---------- 話題維度覆蓋聚合（audit #1：進度表按話題分維度，報告唔再撞 id） ---------- */
+
+type TopicBucket = {
+  topicId: string;
+  topicName: string;
+  isDefault: boolean;
+  points: ReturnType<typeof coreKnowledgePoints>;
+};
+
+/** 每隻 bot 嘅話題分桶（讀 character_topics） */
+async function loadTopicBuckets(botIds: string[]): Promise<Map<string, TopicBucket[]>> {
+  const map = new Map<string, TopicBucket[]>();
+  if (!botIds.length) return map;
+  const result = await pool.query(
+    `SELECT character_id, id, name, knowledge_content, is_default
+     FROM character_topics
+     WHERE character_id = ANY($1::text[])
+     ORDER BY sort_order ASC, created_at ASC`,
+    [botIds]
+  );
+  for (const row of result.rows) {
+    const botId = String(row.character_id);
+    const list = map.get(botId) || [];
+    list.push({
+      topicId: String(row.id),
+      topicName: String(row.name || "主題"),
+      isDefault: Boolean(row.is_default),
+      points: coreKnowledgePoints(String(row.knowledge_content || "")),
+    });
+    map.set(botId, list);
+  }
+  return map;
+}
+
+/**
+ * 聚合話題覆蓋：topic_id ''（舊數據／冇指定話題時跟主知識庫）嘅進度合併入
+ * 默認話題桶——默認話題同主知識庫收斂後係同一批點，分開計會重複。
+ * 每個桶各自同自己嘅點 id 集 intersect，跨話題撞 id 唔會再互相污染。
+ */
+function aggregateTopicCoverage(input: {
+  kbPoints: ReturnType<typeof coreKnowledgePoints>;
+  buckets: TopicBucket[];
+  progressByTopic: Map<string, Set<string>>;
+}) {
+  const { kbPoints, buckets, progressByTopic } = input;
+  const defaultTopic = buckets.find((bucket) => bucket.isDefault) || null;
+  const kbBucketId = defaultTopic ? defaultTopic.topicId : "";
+  const merged = new Map<string, Set<string>>();
+  for (const [topicId, ids] of progressByTopic) {
+    const target = topicId === "" ? kbBucketId : topicId;
+    if (!merged.has(target)) merged.set(target, new Set());
+    for (const id of ids) merged.get(target)!.add(id);
+  }
+  // 有效桶：默認話題（代表主知識庫）＋有其他點嘅話題；冇默認話題就用 KB 桶
+  const effective: TopicBucket[] = [];
+  if (defaultTopic) {
+    effective.push({ ...defaultTopic, points: kbPoints.length ? kbPoints : defaultTopic.points });
+  } else if (kbPoints.length) {
+    effective.push({ topicId: "", topicName: "主知識庫", isDefault: true, points: kbPoints });
+  }
+  for (const bucket of buckets) {
+    if (bucket === defaultTopic || bucket.points.length === 0) continue;
+    effective.push(bucket);
+  }
+  let covered = 0;
+  let total = 0;
+  const bucketsOut = effective.map((bucket) => {
+    const ids = new Set(bucket.points.map((point) => point.id));
+    const bucketCovered = [...(merged.get(bucket.topicId) || [])].filter((id) => ids.has(id)).length;
+    covered += bucketCovered;
+    total += bucket.points.length;
+    return {
+      topicId: bucket.topicId,
+      topicName: bucket.topicName,
+      covered: bucketCovered,
+      total: bucket.points.length,
+      points: bucket.points.map((point) => ({ id: point.id, tier: point.tier, title: point.title })),
+    };
+  });
+  return { buckets: bucketsOut, covered, total, mergedIds: merged };
+}
+
+/** 讀名冊內（或指定 user）嘅 per-topic 累積覆蓋 */
+async function loadProgressByTopic(input: {
+  botIds: string[];
+  teacherId?: string;
+  userId?: string;
+}): Promise<Map<string, Map<string, Set<string>>>> {
+  const map = new Map<string, Map<string, Set<string>>>();
+  if (!input.botIds.length) return map;
+  const result = input.userId
+    ? await pool.query(
+        `SELECT bot_id, topic_id, covered_point_ids FROM bot_student_progress
+         WHERE bot_id = ANY($1::text[]) AND user_id=$2`,
+        [input.botIds, input.userId]
+      )
+    : await pool.query(
+        `SELECT bot_id, topic_id, covered_point_ids FROM bot_student_progress
+         WHERE bot_id = ANY($1::text[])
+           AND user_id IN (
+             SELECT ts.student_id FROM teacher_students ts
+             JOIN users u ON u.id = ts.student_id
+             WHERE ts.teacher_id = $2 AND u.status = 'active'
+           )`,
+        [input.botIds, input.teacherId]
+      );
+  for (const row of result.rows) {
+    const botId = String(row.bot_id);
+    const byTopic = map.get(botId) || new Map<string, Set<string>>();
+    const topicId = String(row.topic_id || "");
+    const set = byTopic.get(topicId) || new Set<string>();
+    for (const id of Array.isArray(row.covered_point_ids) ? row.covered_point_ids.map(String) : []) {
+      set.add(id);
+    }
+    byTopic.set(topicId, set);
+    map.set(botId, byTopic);
+  }
+  return map;
+}
+
 function fallbackOpeningMessage(name: string) {
   const safeName = (name || "").trim() || "AI 助手";
   return `你好，我是${safeName}，我們一起開始今天的學習吧。`;
@@ -466,45 +586,23 @@ router.get("/", requireAuth, async (req, res) => {
       [user?.id, user?.id]
     );
 
-    // 全班覆蓋：每隻 bot 有幾多知識點被名冊內學生覆蓋（跨對話累積）。
+    // 全班覆蓋：每隻 bot 有幾多知識點被名冊內學生覆蓋（跨對話累積，按話題分維度）。
     // 只計老師名冊（teacher_students）內嘅在學學生——老師測試自己隻 bot 都會寫
     // 一行 bot_student_progress，唔過濾就會當佢係學生（口徑同 student-progress 一致）。
     const botIds = result.rows.map((row) => String(row.id));
+    const [topicsByBot, progressByBot] = await Promise.all([
+      loadTopicBuckets(botIds),
+      loadProgressByTopic({ botIds, teacherId: user?.id }),
+    ]);
     const coverageMap = new Map<string, { covered: number; total: number }>();
-    // 當前知識點 id 集，用嚟同累積覆蓋 intersect。bot_student_progress 嘅寫入
-    // 係 jsonb union、永不 prune，老師改過知識點之後會有退役 id 留喺表度，
-    // 唔過濾就會出現 covered > total。
-    const validIdsByBot = new Map<string, Set<string>>();
     for (const row of result.rows) {
-      const points = coreKnowledgePoints(String(row.knowledge_base || ""));
-      coverageMap.set(String(row.id), { covered: 0, total: points.length });
-      validIdsByBot.set(String(row.id), new Set(points.map((point) => point.id)));
-    }
-    if (botIds.length) {
-      const covResult = await pool.query(
-        `SELECT bot_id, covered_point_ids FROM bot_student_progress
-         WHERE bot_id = ANY($1)
-           AND user_id IN (
-             SELECT ts.student_id FROM teacher_students ts
-             JOIN users u ON u.id = ts.student_id
-             WHERE ts.teacher_id = $2 AND u.status = 'active'
-           )`,
-        [botIds, user?.id]
-      );
-      const distinct = new Map<string, Set<string>>();
-      for (const r of covResult.rows) {
-        const botId = String(r.bot_id);
-        if (!distinct.has(botId)) distinct.set(botId, new Set());
-        const ids = Array.isArray(r.covered_point_ids)
-          ? r.covered_point_ids.map(String)
-          : [];
-        for (const id of ids) distinct.get(botId)!.add(id);
-      }
-      for (const [botId, set] of distinct) {
-        const m = coverageMap.get(botId);
-        const validIds = validIdsByBot.get(botId);
-        if (m && validIds) m.covered = [...set].filter((id) => validIds.has(id)).length;
-      }
+      const botId = String(row.id);
+      const aggregate = aggregateTopicCoverage({
+        kbPoints: coreKnowledgePoints(String(row.knowledge_base || "")),
+        buckets: topicsByBot.get(botId) || [],
+        progressByTopic: progressByBot.get(botId) || new Map(),
+      });
+      coverageMap.set(botId, { covered: aggregate.covered, total: aggregate.total });
     }
 
     res.json(result.rows.map((row) => ({
@@ -828,29 +926,20 @@ router.get("/shared/with-me", requireAuth, async (req, res) => {
       [user?.id]
     );
     const rows = result.rows;
-    // 每隻 bot 嘅累積進度（跨對話）；一次查完，唔逐隻 bot N+1。
+    // 每隻 bot 嘅累積進度（跨對話，按話題分維度）；一次查完，唔逐隻 bot N+1。
     const botIds = rows.map((row) => String(row.id));
-    const progressMap = new Map<string, string[]>();
-    if (botIds.length) {
-      const progressResult = await pool.query(
-        `SELECT bot_id, covered_point_ids FROM bot_student_progress
-         WHERE user_id=$1 AND bot_id = ANY($2)`,
-        [user?.id, botIds]
-      );
-      for (const p of progressResult.rows) {
-        progressMap.set(
-          String(p.bot_id),
-          Array.isArray(p.covered_point_ids) ? p.covered_point_ids.map(String) : []
-        );
-      }
-    }
+    const [topicsByBot, progressByBot] = await Promise.all([
+      loadTopicBuckets(botIds),
+      loadProgressByTopic({ botIds, userId: user?.id }),
+    ]);
     return res.json(rows.map((row) => {
+      const botId = String(row.id);
       const knowledgeBase = String(row.knowledge_base || "");
-      const points = coreKnowledgePoints(knowledgeBase);
-      // 同當前知識點 intersect：bot_student_progress 係 union 寫入、永不 prune，
-      // 唔過濾就會出現 covered > total。（同 GET / 嘅班級覆蓋一樣道理）
-      const validIds = new Set(points.map((point) => point.id));
-      const covered = (progressMap.get(String(row.id)) || []).filter((id) => validIds.has(id)).length;
+      const aggregate = aggregateTopicCoverage({
+        kbPoints: coreKnowledgePoints(knowledgeBase),
+        buckets: topicsByBot.get(botId) || [],
+        progressByTopic: progressByBot.get(botId) || new Map(),
+      });
       return {
         ...toClient(row),
         teacherName: row.teacher_name || "",
@@ -858,7 +947,7 @@ router.get("/shared/with-me", requireAuth, async (req, res) => {
         hasPendingQuiz: Boolean(row.active_quiz_id) && row.active_quiz_attempt_status !== "completed",
         activeQuizId: row.active_quiz_id || "",
         activeQuizTitle: row.active_quiz_title || "",
-        progress: { covered, total: points.length },
+        progress: { covered: aggregate.covered, total: aggregate.total },
       };
     }));
   } catch (err) {
@@ -881,34 +970,56 @@ router.get("/:botId/progress", requireAuth, async (req, res) => {
     const bot = await getAccessibleBot(botId, user?.id);
     if (!bot) return res.status(404).json({ error: "Bot not found" });
 
-    const points = coreKnowledgePoints(String(bot.knowledge_base || ""));
-    const coveredIds = await getStudentProgress(botId, user.id);
-    const coveredSet = new Set(coveredIds);
+    const kbPoints = coreKnowledgePoints(String(bot.knowledge_base || ""));
+    const [topicsByBot, progressByBot] = await Promise.all([
+      loadTopicBuckets([botId]),
+      loadProgressByTopic({ botIds: [botId], userId: user.id }),
+    ]);
+    const aggregate = aggregateTopicCoverage({
+      kbPoints,
+      buckets: topicsByBot.get(botId) || [],
+      progressByTopic: progressByBot.get(botId) || new Map(),
+    });
 
-    // "目前學習"：最新一段對話嘅 next_point_id。跨對話會有少少滯後，
-    // 新對話第一輪回覆後就自癒。
-    let nextPoint: { id: string; title: string } | null = null;
+    // "目前學習"：最新一段對話嘅 next_point_id（按嗰段對話嘅話題解析）。
     const stateResult = await pool.query(
-      `SELECT next_point_id FROM bot_conversation_states WHERE bot_id=$1 AND user_id=$2 ORDER BY updated_at DESC LIMIT 1`,
+      `SELECT next_point_id, topic_id FROM bot_conversation_states WHERE bot_id=$1 AND user_id=$2 ORDER BY updated_at DESC LIMIT 1`,
       [botId, user.id]
     );
+    let nextPoint: { id: string; title: string } | null = null;
+    const stateTopicId = stateResult.rows.length ? String(stateResult.rows[0].topic_id || "") : "";
     const nextPointId = stateResult.rows.length ? String(stateResult.rows[0].next_point_id || "") : "";
     if (nextPointId) {
-      const point = points.find((item) => item.id === nextPointId);
+      const bucket = aggregate.buckets.find((item) => item.topicId === stateTopicId);
+      const scope = bucket ? bucket.points : kbPoints;
+      const point = scope.find((item) => item.id === nextPointId);
       if (point) nextPoint = { id: point.id, title: point.title };
     }
 
+    const flatPoints = aggregate.buckets.flatMap((bucket) =>
+      bucket.points.map((point) => ({
+        ...point,
+        topicId: bucket.topicId,
+        topicName: bucket.topicName,
+        covered: Boolean(aggregate.mergedIds.get(bucket.topicId)?.has(point.id)),
+      }))
+    );
+    const coveredIds = Array.from(
+      new Set([...aggregate.mergedIds.values()].flatMap((set) => [...set]))
+    );
+
     return res.json({
       botId,
-      total: points.length,
-      covered: points.filter((point) => coveredSet.has(point.id)).length,
+      total: aggregate.total,
+      covered: aggregate.covered,
       nextPoint,
       coveredPointIds: coveredIds,
-      points: points.map((point) => ({
-        id: point.id,
-        tier: point.tier,
-        title: point.title,
-        covered: coveredSet.has(point.id),
+      points: flatPoints,
+      topicBuckets: aggregate.buckets.map((bucket) => ({
+        topicId: bucket.topicId,
+        topicName: bucket.topicName,
+        covered: bucket.covered,
+        total: bucket.total,
       })),
     });
   } catch (err) {
@@ -1204,12 +1315,27 @@ router.get("/teacher/progress-overview", requireAuth, async (req, res) => {
     );
 
     const bots = [];
+    const topicsByBot = await loadTopicBuckets(botsResult.rows.map((row) => String(row.id)));
     for (const row of botsResult.rows) {
       const botId = String(row.id);
-      const points = coreKnowledgePoints(String(row.knowledge_base || ""));
+      const kbPoints = coreKnowledgePoints(String(row.knowledge_base || ""));
+      const buckets = topicsByBot.get(botId) || [];
+      const defaultTopic = buckets.find((bucket) => bucket.isDefault) || null;
+      const kbBucketId = defaultTopic ? defaultTopic.topicId : "";
+      // '' 進度（舊數據／冇指定話題）合併入默認話題桶
+      const mapTopic = (topicId: string) => (topicId === "" ? kbBucketId : topicId);
+      const effective: TopicBucket[] = [];
+      if (defaultTopic) {
+        effective.push({ ...defaultTopic, points: kbPoints.length ? kbPoints : defaultTopic.points });
+      } else if (kbPoints.length) {
+        effective.push({ topicId: "", topicName: "主知識庫", isDefault: true, points: kbPoints });
+      }
+      for (const bucket of buckets) {
+        if (bucket !== defaultTopic && bucket.points.length) effective.push(bucket);
+      }
 
       const progressResult = await pool.query(
-        `SELECT covered_point_ids FROM bot_student_progress
+        `SELECT user_id, topic_id, covered_point_ids FROM bot_student_progress
          WHERE bot_id=$1
            AND user_id IN (
              SELECT ts.student_id FROM teacher_students ts
@@ -1219,17 +1345,19 @@ router.get("/teacher/progress-overview", requireAuth, async (req, res) => {
         [botId, user.id]
       );
       const coveredCounts = new Map<string, number>();
+      const students = new Set<string>();
       for (const p of progressResult.rows) {
+        students.add(String(p.user_id));
+        const target = mapTopic(String(p.topic_id || ""));
         const ids = Array.isArray(p.covered_point_ids)
           ? p.covered_point_ids.map(String)
           : [];
-        for (const id of ids) coveredCounts.set(id, (coveredCounts.get(id) || 0) + 1);
+        for (const id of ids) coveredCounts.set(`${target}::${id}`, (coveredCounts.get(`${target}::${id}`) || 0) + 1);
       }
-      const studentsWithProgress = progressResult.rows.length;
 
       // 「常被跳過」：名冊內有幾多段對話喺 next_point 推唔動時跳走咗呢個點。
       const skipResult = await pool.query(
-        `SELECT skipped_point_ids FROM bot_conversation_states
+        `SELECT topic_id, skipped_point_ids FROM bot_conversation_states
          WHERE bot_id=$1
            AND user_id IN (
              SELECT ts.student_id FROM teacher_students ts
@@ -1240,24 +1368,29 @@ router.get("/teacher/progress-overview", requireAuth, async (req, res) => {
       );
       const skipCounts = new Map<string, number>();
       for (const s of skipResult.rows) {
+        const target = mapTopic(String(s.topic_id || ""));
         const ids = Array.isArray(s.skipped_point_ids)
           ? s.skipped_point_ids.map(String)
           : [];
-        for (const id of ids) skipCounts.set(id, (skipCounts.get(id) || 0) + 1);
+        for (const id of ids) skipCounts.set(`${target}::${id}`, (skipCounts.get(`${target}::${id}`) || 0) + 1);
       }
 
       bots.push({
         id: botId,
         name: String(row.name || "AI Bot"),
         avatarUrl: String(row.avatar_url || ""),
-        studentsWithProgress,
-        points: points.map((point) => ({
-          id: point.id,
-          tier: point.tier,
-          title: point.title,
-          coveredCount: coveredCounts.get(point.id) || 0,
-          skippedCount: skipCounts.get(point.id) || 0,
-        })),
+        studentsWithProgress: students.size,
+        points: effective.flatMap((bucket) =>
+          bucket.points.map((point) => ({
+            id: point.id,
+            tier: point.tier,
+            title: point.title,
+            topicId: bucket.topicId,
+            topicName: bucket.topicName,
+            coveredCount: coveredCounts.get(`${bucket.topicId}::${point.id}`) || 0,
+            skippedCount: skipCounts.get(`${bucket.topicId}::${point.id}`) || 0,
+          }))
+        ),
       });
     }
 
@@ -1293,8 +1426,23 @@ router.get("/teacher/student-progress", requireAuth, async (req, res) => {
     );
     if (!botResult.rows.length) return res.status(404).json({ error: "Bot not found" });
 
-    const points = coreKnowledgePoints(String(botResult.rows[0].knowledge_base || ""));
-    const validIds = new Set(points.map((point) => point.id));
+    const kbPoints = coreKnowledgePoints(String(botResult.rows[0].knowledge_base || ""));
+    const topicsByBot = await loadTopicBuckets([botId]);
+    const buckets = topicsByBot.get(botId) || [];
+    const defaultTopic = buckets.find((bucket) => bucket.isDefault) || null;
+    const kbBucketId = defaultTopic ? defaultTopic.topicId : "";
+    // '' 進度（舊數據／冇指定話題）合併入默認話題桶
+    const mapTopic = (topicId: string) => (topicId === "" ? kbBucketId : topicId);
+    const effective: TopicBucket[] = [];
+    if (defaultTopic) {
+      effective.push({ ...defaultTopic, points: kbPoints.length ? kbPoints : defaultTopic.points });
+    } else if (kbPoints.length) {
+      effective.push({ topicId: "", topicName: "主知識庫", isDefault: true, points: kbPoints });
+    }
+    for (const bucket of buckets) {
+      if (bucket !== defaultTopic && bucket.points.length) effective.push(bucket);
+    }
+    const bucketPoints = new Map(effective.map((bucket) => [bucket.topicId, bucket]));
 
     const studentsResult = await pool.query(
       `SELECT u.id, u.full_name, u.email
@@ -1306,32 +1454,37 @@ router.get("/teacher/student-progress", requireAuth, async (req, res) => {
     );
     const studentIds = studentsResult.rows.map((row) => String(row.id));
 
-    // 累積覆蓋（batched）。同當前知識點 intersect —— 寫入係 union、永不
-    // prune，老師改過知識點之後會有退役 id 留喺表度。
-    const coveredByStudent = new Map<string, string[]>();
+    // 累積覆蓋（batched，按話題分維度）。寫入係 union、永不 prune，
+    // 老師改過知識點之後會有退役 id 留喺表度——每個桶同自己嘅點 id 集 intersect。
+    const coveredByStudent = new Map<string, Map<string, string[]>>();
     const hasProgress = new Set<string>();
     if (studentIds.length) {
       const progressResult = await pool.query(
-        `SELECT user_id, covered_point_ids FROM bot_student_progress
+        `SELECT user_id, topic_id, covered_point_ids FROM bot_student_progress
          WHERE bot_id=$1 AND user_id = ANY($2::text[])`,
         [botId, studentIds]
       );
       for (const row of progressResult.rows) {
         const studentId = String(row.user_id);
         hasProgress.add(studentId);
+        const bucket = bucketPoints.get(mapTopic(String(row.topic_id || "")));
+        if (!bucket) continue;
+        const validIds = new Set(bucket.points.map((point) => point.id));
         const ids = Array.isArray(row.covered_point_ids)
           ? row.covered_point_ids.map(String).filter((id) => validIds.has(id))
           : [];
-        coveredByStudent.set(studentId, ids);
+        const byTopic = coveredByStudent.get(studentId) || new Map<string, string[]>();
+        byTopic.set(bucket.topicId, [...(byTopic.get(bucket.topicId) || []), ...ids]);
+        coveredByStudent.set(studentId, byTopic);
       }
     }
 
-    // 每人「目前學習」= 佢最新一段對話嘅 next_point_id。一個 query 攞晒，
-    // 喺 JS 度每 user 取第一行（updated_at DESC），同 /:botId/progress 一致。
+    // 每人「目前學習」= 佢最新一段對話嘅 next_point_id（按嗰段對話嘅話題解析）。
+    // 一個 query 攞晒，喺 JS 度每 user 取第一行（updated_at DESC），同 /:botId/progress 一致。
     const nextPointByStudent = new Map<string, { id: string; title: string }>();
     if (studentIds.length) {
       const stateResult = await pool.query(
-        `SELECT user_id, next_point_id FROM bot_conversation_states
+        `SELECT user_id, next_point_id, topic_id FROM bot_conversation_states
          WHERE bot_id=$1 AND user_id = ANY($2::text[])
          ORDER BY updated_at DESC`,
         [botId, studentIds]
@@ -1339,27 +1492,46 @@ router.get("/teacher/student-progress", requireAuth, async (req, res) => {
       for (const row of stateResult.rows) {
         const studentId = String(row.user_id);
         if (nextPointByStudent.has(studentId)) continue; // 只要最新嗰行
-        const point = points.find((item) => item.id === String(row.next_point_id || ""));
+        const bucket = bucketPoints.get(mapTopic(String(row.topic_id || "")));
+        const scope = bucket ? bucket.points : kbPoints;
+        const point = scope.find((item) => item.id === String(row.next_point_id || ""));
         if (point) nextPointByStudent.set(studentId, { id: point.id, title: point.title });
       }
     }
 
-    return res.json({
-      botId,
-      total: points.length,
-      points: points.map((point) => ({
+    const flatPoints = effective.flatMap((bucket) =>
+      bucket.points.map((point) => ({
         id: point.id,
         tier: point.tier,
         title: point.title,
+        topicId: bucket.topicId,
+        topicName: bucket.topicName,
+      }))
+    );
+
+    return res.json({
+      botId,
+      total: flatPoints.length,
+      points: flatPoints,
+      topicBuckets: effective.map((bucket) => ({
+        topicId: bucket.topicId,
+        topicName: bucket.topicName,
+        points: bucket.points.map((point) => ({ id: point.id, tier: point.tier, title: point.title })),
       })),
       students: studentsResult.rows.map((row) => {
         const studentId = String(row.id);
-        const coveredPointIds = coveredByStudent.get(studentId) || [];
+        const byTopic = coveredByStudent.get(studentId) || new Map<string, string[]>();
+        const coveredPointIds = Array.from(new Set([...byTopic.values()].flat()));
         return {
           userId: studentId,
           name: String(row.full_name || row.email || "學生"),
           covered: coveredPointIds.length,
           coveredPointIds,
+          coveredBuckets: effective.map((bucket) => ({
+            topicId: bucket.topicId,
+            topicName: bucket.topicName,
+            coveredPointIds: byTopic.get(bucket.topicId) || [],
+          })),
           hasProgressRow: hasProgress.has(studentId),
           nextPoint: nextPointByStudent.get(studentId) || null,
         };
