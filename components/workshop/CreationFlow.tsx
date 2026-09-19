@@ -263,6 +263,8 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
     characterBackground: "",
     knowledgeSummary: "",
   });
+  /** audit #6：發布前叫 CreationStep2 persist + 重載版本（唔好用舊 snapshot 覆蓋） */
+  const step2RefreshRef = React.useRef<(() => Promise<void>) | null>(null);
 
   /**
    * 手動新增／刪改嘅知識點只存在版本數據（versionsRef），唔會經 onGenerated 入
@@ -546,6 +548,8 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
     setActionError("");
     setIsPublishing(true);
     try {
+      // audit #6：先 persist + 重載版本數據，再砌知識庫（TopicManager 改動唔會丟失）
+      await step2RefreshRef.current?.().catch(() => undefined);
       const newBot = {
         id: botId || Date.now().toString(),
         name: botConfig.name,
@@ -703,6 +707,9 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
                   characterBackground: state.characterBackground,
                   knowledgeSummary: state.knowledgeSummary,
                 };
+              }}
+              registerRefresh={(refresh) => {
+                step2RefreshRef.current = refresh;
               }}
               afterKnowledgePointEditor={
                 <TopicManager characterId={String(botConfig.id || botId || "").trim() || null} />

@@ -1581,6 +1581,7 @@ export const englishUi: Record<string, string> = {
   "設為首選主題": "Set as preferred topic",
   "連按兩下改名": "Double-click to rename",
   "尚未有教學目標知識點，請先到「教材來源」完成知識整理。": "No teaching-target knowledge points yet. Please organize your knowledge in the teaching-materials section first.",
+  "呢個主題嘅知識點請喺上方「知識地圖」新增或整理；自由文字內容唔會再喺呢度接受，以免影響學生學習進度追蹤。": "Add or organize this topic's knowledge points in the knowledge map above. Free-text content is no longer accepted here, so student progress tracking stays reliable.",
   "再上傳更多教材": "Upload more materials",
   "已更新「{0}」": "Updated “{0}”",
   "評估準則": "Assessment criteria",

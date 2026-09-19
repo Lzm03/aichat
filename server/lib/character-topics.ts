@@ -45,6 +45,22 @@ export class CharacterTopicError extends Error {
   }
 }
 
+/**
+ * 主題知識內容只接受結構化（【知識點分級】）內容（audit #4）——
+ * 自由文字會令覆蓋追蹤靜音、同埋重建 KB 時清空知識點。
+ * 空內容（新主題未整理）係允許嘅。
+ */
+function assertStructuredKnowledgeContent(knowledgeContent: string | undefined) {
+  const content = String(knowledgeContent || "").trim();
+  if (content && !content.includes("【知識點分級】")) {
+    throw new CharacterTopicError(
+      "主題知識內容必須經「知識地圖」整理成結構化知識點，唔接受自由文字。",
+      400,
+      "UNSTRUCTURED_TOPIC_CONTENT"
+    );
+  }
+}
+
 let tablesReady: Promise<void> | null = null;
 
 export async function ensureCharacterTopicTables() {
@@ -274,6 +290,7 @@ async function lockCharacter(client: PoolClient, characterId: string) {
 export async function createCharacterTopic(characterId: string, rawInput: Record<string, unknown>) {
   await ensureCharacterTopicTables();
   const input = normalizeTopicInput(rawInput);
+  assertStructuredKnowledgeContent(input.knowledgeContent);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -368,6 +385,10 @@ export async function updateCharacterTopic(
     const knowledgeWasEdited =
       Object.prototype.hasOwnProperty.call(input, "knowledgeContent") &&
       nextKnowledgeContent !== normalizedCurrentKnowledgeContent;
+    // 自由文字唔會再接受（audit #4）——淨係經「知識地圖」寫結構化知識點
+    if (knowledgeWasEdited) {
+      assertStructuredKnowledgeContent(input.knowledgeContent);
+    }
     const result = await client.query(
       `
       UPDATE character_topics SET

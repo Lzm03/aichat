@@ -104,9 +104,11 @@ interface CreationStep2Props {
     characterBackground: string;
     knowledgeSummary: string;
   }) => void;
+  /** 發布前由 CreationFlow 呼叫：persist 當前版本 + 由話題 API 重新載入（audit #6） */
+  registerRefresh?: (refresh: () => Promise<void>) => void;
 }
 
-export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, afterKnowledgePointEditor, subject = "", onSubjectChange, grade = "", onGradeChange, botName = "", securityPrompt = "", characterId = null, onVersionsChange }) => {
+export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, afterKnowledgePointEditor, subject = "", onSubjectChange, grade = "", onGradeChange, botName = "", securityPrompt = "", characterId = null, onVersionsChange, registerRefresh }) => {
   const [uploadMethod, setUploadMethod] = useState<UploadMethod>("file");
   const modelProvider = "gemini";
   const [files, setFiles] = useState<File[]>([]);
@@ -355,6 +357,63 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       cancelled = true;
     };
   }, [characterId]);
+
+  /**
+   * audit #6：發布前由 CreationFlow 呼叫——先 persist 當前 active 版本，
+   * 再由話題 API 重新載入全部版本（TopicManager 嘅改動唔會俾舊 snapshot 覆蓋），
+   * 並同步經 onVersionsChange 報上去（handlePublish 即時讀到最新 versionsRef）。
+   */
+  const refreshVersionsFromServer = async () => {
+    if (!characterId) return;
+    const current = versions[activeVersionIndex];
+    if (current?.id) {
+      await persistVersionPatch(current, { knowledgeContent: buildVersionKnowledgeContent(knowledgePoints) });
+    }
+    try {
+      const { topics, maxTopics } = await listCharacterTopics(characterId);
+      const loaded = topics
+        .slice()
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((topic) => ({
+          id: topic.id,
+          name: topic.name,
+          category: topic.category || "",
+          isDefault: topic.isDefault,
+        }));
+      if (!loaded.length) return;
+      const details = await Promise.all(
+        topics.map((topic) => getCharacterTopic(characterId, topic.id).catch(() => null))
+      );
+      const pointsMap: Record<number, KnowledgePoint[]> = {};
+      details.forEach((detail, index) => {
+        if (detail) {
+          pointsMap[index] = parsePromptSource({
+            knowledgeBase: detail.knowledgeContent,
+          }).knowledgePoints as unknown as KnowledgePoint[];
+        }
+      });
+      const defaultIndex = loaded.findIndex((version) => version.isDefault);
+      const firstIndex = defaultIndex >= 0 ? defaultIndex : 0;
+      const firstPoints = pointsMap[firstIndex] || [];
+      pointsByVersionRef.current = pointsMap;
+      setMaxVersions(maxTopics);
+      setVersions(loaded);
+      setActiveVersionIndex(firstIndex);
+      setKnowledgePoints(firstPoints);
+      setKnowledgeSummary(buildKnowledgeSummary(firstPoints));
+      onVersionsChange?.({
+        versions: loaded.map((version, index) => ({ ...version, points: pointsMap[index] || [] })),
+        characterBackground,
+        knowledgeSummary: buildKnowledgeSummary(firstPoints),
+      });
+    } catch (error) {
+      console.warn("發布前重新載入主題版本失敗：", error);
+    }
+  };
+
+  useEffect(() => {
+    registerRefresh?.(refreshVersionsFromServer);
+  });
 
   // 帳戶層自訂分類標籤（跨 Bot 共用）
   useEffect(() => {

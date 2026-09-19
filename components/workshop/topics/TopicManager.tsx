@@ -161,9 +161,22 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
     setError("");
     setSavedNotice("");
     try {
+      // 主題知識點只經「知識地圖」以結構化內容寫入（audit #4）——
+      // 呢度淨係更新名稱／説明／專屬提示，唔會用自由文字覆蓋 knowledgeContent
       const saved = isCreating
-        ? await createCharacterTopic(characterId, form)
-        : await updateCharacterTopic(characterId, selectedTopicId!, form);
+        ? await createCharacterTopic(characterId, {
+            name: form.name,
+            description: form.description,
+            systemPrompt: form.systemPrompt,
+            knowledgeContent: "",
+            isDefault: form.isDefault,
+          })
+        : await updateCharacterTopic(characterId, selectedTopicId!, {
+            name: form.name,
+            description: form.description,
+            systemPrompt: form.systemPrompt,
+            isDefault: form.isDefault,
+          });
       setIsCreating(false);
       setIsEditing(false);
       await loadTopics(saved.id);
@@ -412,17 +425,9 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
                     className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-white px-3.5 py-3 font-mono text-xs leading-6 text-slate-800 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:resize-none disabled:border-slate-200 disabled:bg-slate-200/70 disabled:text-slate-500"
                   />
                 </label>
-                <label className="block">
-                  <span className="text-xs font-black text-slate-700">{uiText("主題背景知識")}</span>
-                  <textarea
-                    value={form.knowledgeContent}
-                    onChange={(event) => setForm((current) => ({ ...current, knowledgeContent: event.target.value }))}
-                    maxLength={100000}
-                    rows={8}
-                    placeholder={uiText("貼上只屬於這個主題的知識內容；切換主題後，其他主題的內容不會同時注入。")}
-                    className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:resize-none disabled:border-slate-200 disabled:bg-slate-200/70 disabled:text-slate-500"
-                  />
-                </label>
+                <p className="rounded-xl bg-slate-50 px-3.5 py-3 text-xs leading-5 text-slate-500">
+                  {uiText("呢個主題嘅知識點請喺上方「知識地圖」新增或整理；自由文字內容唔會再喺呢度接受，以免影響學生學習進度追蹤。")}
+                </p>
                 <label className={`flex min-h-11 items-center justify-between gap-4 rounded-xl border border-slate-200 px-3.5 py-2.5 ${
                   topicIsEditable ? "cursor-pointer bg-white" : "cursor-not-allowed bg-slate-200/70"
                 }`}>
