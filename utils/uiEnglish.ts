@@ -87,6 +87,7 @@ export const englishUi: Record<string, string> = {
   "目前主題：{0}": "Current topic: {0}",
   "確定要刪除 {0} 個對話嗎？": "Delete {0} conversations?",
   "刪除 {0} 項": "Delete {0} Items",
+  "刪除 {0}": "Delete {0}",
   "已從歷史紀錄中移除 {0} 個對話。": "Removed {0} conversations from history.",
   "相機未啟用：{0}": "Camera not enabled: {0}",
   "切換 AI 回覆至{0}": "Switch AI replies to {0}",
