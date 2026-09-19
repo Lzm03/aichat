@@ -30,6 +30,17 @@ export {
   computeNextPoint,
 } from "../../utils/coverage.ts";
 
+/**
+ * 一個「屬於某個話題」嘅值。
+ *
+ * 覆蓋進度係按 (bot, user, topic) 分開儲存嘅，所以一組 covered point id
+ * 離開咗佢所屬嘅話題就冇意義：2026-09 就中過一次 —— 對話中途切話題時，
+ * 上一話題嘅 id 就咁帶入新話題（舊話題嘅 kp_3 同新話題嘅 kp_3 可以係
+ * 兩回事）。用呢個型別將話題黐實個值，call site 就冇得淨係傳一條裸 id
+ * 陣列：想寫入邊個話題，就要喺讀出嚟嗰一刻已經講明。
+ */
+export type TopicScoped<T> = { topicId: string; value: T };
+
 export type ConversationStateRow = {
   conversation_id: string;
   bot_id: string;
@@ -83,13 +94,14 @@ export async function getConversationState(
 
 /**
  * 讀取學生 × Bot × 話題嘅跨對話累積進度（已掌握知識點）。
- * 冇紀錄（第一次對話）回傳空陣列。topicId '' = 冇指定話題（主知識庫）。
+ * 冇紀錄（第一次對話）回傳空集合。topicId '' = 冇指定話題（主知識庫）。
+ * 回傳值帶埋話題（見 TopicScoped）—— 呢個集合只可以寫返同一個話題。
  */
 export async function getStudentProgress(
   botId: string,
   userId: string,
   topicId = ""
-): Promise<string[]> {
+): Promise<TopicScoped<string[]>> {
   try {
     await ensurePlatformTables();
     const result = await pool.query(
@@ -97,14 +109,17 @@ export async function getStudentProgress(
        WHERE bot_id=$1 AND user_id=$2 AND topic_id=$3 LIMIT 1`,
       [botId, userId, topicId]
     );
-    if (!result.rows.length) return [];
+    if (!result.rows.length) return { topicId, value: [] };
     const row = result.rows[0];
-    return Array.isArray(row.covered_point_ids)
-      ? row.covered_point_ids.map(String)
-      : [];
+    return {
+      topicId,
+      value: Array.isArray(row.covered_point_ids)
+        ? row.covered_point_ids.map(String)
+        : [],
+    };
   } catch (error) {
     console.warn("[conversation-state] failed to load student progress", error);
-    return [];
+    return { topicId, value: [] };
   }
 }
 
@@ -113,12 +128,12 @@ export async function getStudentProgress(
  * coveredPointIds 係「累積 + 今輪新增」嘅完整集合，合併時照做去重並集，
  * 以防同一個 (bot, user, topic) 有並行對話時後寫嘅舊集合覆蓋走新進度。
  * 進度按話題分維度（'' = 主知識庫／冇指定話題）。
+ * 話題由 coverage 帶入（唔可以另外傳），所以寫入嘅話題一定就係讀出嚟嗰個。
  */
 export async function mergeStudentProgress(
   botId: string,
   userId: string,
-  topicId: string,
-  coveredPointIds: string[]
+  coverage: TopicScoped<readonly string[]>
 ) {
   try {
     await ensurePlatformTables();
@@ -133,7 +148,7 @@ export async function mergeStudentProgress(
            ) AS elem
          ),
          updated_at = NOW()`,
-      [botId, userId, topicId, JSON.stringify(coveredPointIds)]
+      [botId, userId, coverage.topicId, JSON.stringify(coverage.value)]
     );
   } catch (error) {
     console.warn("[conversation-state] failed to merge student progress", error);
@@ -147,28 +162,45 @@ const SUMMARY_MARKERS =
 /**
  * 對話中途切話題時，決定覆蓋集合由邊度起步（純函數，冇 DB）。
  *
- * 背景：每個話題嘅知識點 id 都由 kp_1 重新編起，跨話題撞 id 係常態。
- * 如果切話題之後照樣帶走上一段對話嘅 covered_point_ids，舊話題嘅 kp_1 會
- * 令新話題嘅 kp_1 未教就當已覆蓋，仲會經 mergeStudentProgress 寫入新話題嘅
- * 累積進度（學習報告跟住錯）。所以切話題 = 由新話題自己嘅跨對話累積進度
- * 重新起步；同一話題（或者新對話）就照舊。
+ * 背景：覆蓋進度係按 (bot, user, topic) 分開儲存嘅，所以一個 covered id
+ * 離開咗佢所屬嘅話題就唔再代表任何嘢 —— id 嘅意思係話題決定嘅。
+ * 知識點 id 本身由 assignStableKnowledgePointIds 喺全 bot 範圍分配（正常
+ * 編輯路徑跨話題唔會撞），但呢層保護淨係喺 client 一個函數度；一旦有數據
+ * 唔行嗰條路（匯入、seed、還原備份、兩個 client 同時改），兩個話題就會有
+ * 同號 id，而舊話題嘅 kp_1 就會令新話題嘅 kp_1 未教就當已覆蓋，仲會經
+ * mergeStudentProgress 寫入新話題嘅累積進度（學習報告跟住錯）。
+ * 就算冇撞 id，帶過去嘅外來 id 都會令張表污糟（讀取側 intersect 頂得住）。
+ * 所以切話題 = 由新話題自己嘅跨對話累積進度重新起步；同一話題（或者新對話）就照舊。
  */
 export function seedCoverageOnTopicSwitch(input: {
-  hasPrevious: boolean;
-  /** null = 新對話（冇 conversation state） */
-  previousTopicId: string | null;
+  /** 上一段對話狀態；null = 新對話（冇 conversation state） */
+  previous: TopicScoped<string[]> | null;
+  /** 對話而家喺邊個話題 */
   topicId: string;
-  previousCoveredIds: string[];
-  /** getStudentProgress(botId, userId, topicId) 嘅結果 */
-  accumulatedTopicIds: string[];
-}): { ids: Set<string>; topicChanged: boolean } {
-  const topicChanged =
-    input.hasPrevious && input.previousTopicId !== input.topicId;
-  const ids =
-    topicChanged || !input.hasPrevious
-      ? new Set<string>(input.accumulatedTopicIds)
-      : new Set<string>(input.previousCoveredIds);
-  return { ids, topicChanged };
+  /** getStudentProgress(botId, userId, topicId) 嘅結果（同一個話題） */
+  accumulated: TopicScoped<string[]>;
+}): { coverage: TopicScoped<Set<string>>; topicChanged: boolean } {
+  const previous = input.previous;
+  const topicChanged = previous !== null && previous.topicId !== input.topicId;
+
+  // 兩個輸入都係 TopicScoped，型別上冇得傳錯話題。呢個 guard 係防有人硬
+  // cast 或者將來改壞：寧願當冇累積（由零重新教），都唔好將第二個話題嘅
+  // id 當成呢個話題已掌握 —— 後者會靜靜雞寫入 DB，冇人會發現。
+  if (input.accumulated.topicId !== input.topicId) {
+    console.warn(
+      `[conversation-state] accumulated coverage topic mismatch: expected "${input.topicId}", got "${input.accumulated.topicId}"`
+    );
+    return {
+      coverage: { topicId: input.topicId, value: new Set<string>() },
+      topicChanged,
+    };
+  }
+
+  const source = previous && !topicChanged ? previous : input.accumulated;
+  return {
+    coverage: { topicId: input.topicId, value: new Set<string>(source.value) },
+    topicChanged,
+  };
 }
 
 export async function trackConversationState(input: {
@@ -202,17 +234,18 @@ export async function trackConversationState(input: {
     // 注意：呢度嘅話題比較係 exact compare —— ''（舊數據／主知識庫）同默認話題
     // 嘅真 id 會當成「轉咗話題」，由新話題嘅累積進度重新起步；顯示側
     // aggregateTopicCoverage 嘅 '' 合併唔受影響。
-    const accumulated =
+    const accumulated: TopicScoped<string[]> =
       !previous || previous.topic_id !== topicId
         ? await getStudentProgress(input.botId, input.userId, topicId)
-        : [];
-    const { ids: previouslyCovered, topicChanged } = seedCoverageOnTopicSwitch({
-      hasPrevious: Boolean(previous),
-      previousTopicId: previous?.topic_id ?? null,
+        : { topicId, value: [] };
+    const { coverage: startingCoverage, topicChanged } = seedCoverageOnTopicSwitch({
+      previous: previous
+        ? { topicId: previous.topic_id, value: previous.covered_point_ids }
+        : null,
       topicId,
-      previousCoveredIds: previous?.covered_point_ids ?? [],
-      accumulatedTopicIds: accumulated,
+      accumulated,
     });
+    const previouslyCovered = startingCoverage.value;
 
     // 老師改過知識點之後，舊 id 可能已經退役（例如重新生成後 title 對唔上）。
     // 呢啲 id 唔應該再入 conversation state / prompt：Covered_Points 會將佢哋
@@ -273,7 +306,13 @@ export async function trackConversationState(input: {
       strictCoverage
     );
 
-    const coveredIds = Array.from(coveredNow).filter((id) => validIds.has(id));
+    // 寫入側 invariant guard：只寫入而家呢個話題真正存在嘅知識點 id。
+    // 話題由 startingCoverage 帶落嚟 —— 跟住兩個寫入（對話狀態 + 跨對話累積）
+    // 都只可以由呢個物件攞話題，冇得將 A 話題嘅 id 寫入 B 話題。
+    const coverage: TopicScoped<string[]> = {
+      topicId: startingCoverage.topicId,
+      value: Array.from(coveredNow).filter((id) => validIds.has(id)),
+    };
     // 切話題之後，上一段對話嘅 next_point / 跳過名單唔可以帶落新話題
     // （舊話題嘅 id 會壓制新話題嘅點），所以 context 傳 null。
     const { nextPointId, skippedIds, turnsOnNextPoint } = computeNextPoint(
@@ -310,8 +349,8 @@ export async function trackConversationState(input: {
         input.conversationId,
         input.botId,
         input.userId,
-        topicId,
-        JSON.stringify(coveredIds),
+        coverage.topicId,
+        JSON.stringify(coverage.value),
         nextPointId,
         previous?.student_level || "未評估",
         turnsSinceSummary,
@@ -322,7 +361,7 @@ export async function trackConversationState(input: {
     );
 
     // 每輪結束後，將覆蓋進度合併入跨對話累積表（並集，唔會倒退；按話題分維度）。
-    await mergeStudentProgress(input.botId, input.userId, topicId, coveredIds);
+    await mergeStudentProgress(input.botId, input.userId, coverage);
   } catch (error) {
     console.warn("[conversation-state] failed to track state", error);
   }

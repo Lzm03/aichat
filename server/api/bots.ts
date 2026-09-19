@@ -20,7 +20,6 @@ import {
   syncInheritedTopicKnowledge,
 } from "../lib/character-topics.ts";
 import { ensureDefaultTeacherExperience } from "../lib/default-teacher-experience.ts";
-import { getStudentProgress } from "../lib/conversation-state.ts";
 import { parsePromptSource } from "../../utils/chat-prompt.ts";
 import {
   GEMINI_STABLE_TEMPERATURE,
