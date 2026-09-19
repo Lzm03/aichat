@@ -144,6 +144,33 @@ export async function mergeStudentProgress(
 const SUMMARY_MARKERS =
   /(你到而家學咗|到而家你學咗|你而家識|小結|總結|記住三個字)/;
 
+/**
+ * 對話中途切話題時，決定覆蓋集合由邊度起步（純函數，冇 DB）。
+ *
+ * 背景：每個話題嘅知識點 id 都由 kp_1 重新編起，跨話題撞 id 係常態。
+ * 如果切話題之後照樣帶走上一段對話嘅 covered_point_ids，舊話題嘅 kp_1 會
+ * 令新話題嘅 kp_1 未教就當已覆蓋，仲會經 mergeStudentProgress 寫入新話題嘅
+ * 累積進度（學習報告跟住錯）。所以切話題 = 由新話題自己嘅跨對話累積進度
+ * 重新起步；同一話題（或者新對話）就照舊。
+ */
+export function seedCoverageOnTopicSwitch(input: {
+  hasPrevious: boolean;
+  /** null = 新對話（冇 conversation state） */
+  previousTopicId: string | null;
+  topicId: string;
+  previousCoveredIds: string[];
+  /** getStudentProgress(botId, userId, topicId) 嘅結果 */
+  accumulatedTopicIds: string[];
+}): { ids: Set<string>; topicChanged: boolean } {
+  const topicChanged =
+    input.hasPrevious && input.previousTopicId !== input.topicId;
+  const ids =
+    topicChanged || !input.hasPrevious
+      ? new Set<string>(input.accumulatedTopicIds)
+      : new Set<string>(input.previousCoveredIds);
+  return { ids, topicChanged };
+}
+
 export async function trackConversationState(input: {
   botId: string;
   userId: string;
@@ -170,11 +197,22 @@ export async function trackConversationState(input: {
     const topicId = input.topicId || "";
 
     // 新對話開場（冇 conversation 狀態）時，用同一個話題嘅跨對話累積進度 seed，
-    // 令 bot 唔會每段新對話都重新教同一批已掌握知識點。
-    // 已有 conversation 狀態就照舊由 conversation 嘅 covered 起步。
-    const previouslyCovered = previous
-      ? new Set<string>(previous.covered_point_ids)
-      : new Set<string>(await getStudentProgress(input.botId, input.userId, topicId));
+    // 令 bot 唔會每段新對話都重新教同一批已掌握知識點。已有 conversation 狀態、
+    // 而且話題冇變，就照舊由 conversation 嘅 covered 起步。
+    // 注意：呢度嘅話題比較係 exact compare —— ''（舊數據／主知識庫）同默認話題
+    // 嘅真 id 會當成「轉咗話題」，由新話題嘅累積進度重新起步；顯示側
+    // aggregateTopicCoverage 嘅 '' 合併唔受影響。
+    const accumulated =
+      !previous || previous.topic_id !== topicId
+        ? await getStudentProgress(input.botId, input.userId, topicId)
+        : [];
+    const { ids: previouslyCovered, topicChanged } = seedCoverageOnTopicSwitch({
+      hasPrevious: Boolean(previous),
+      previousTopicId: previous?.topic_id ?? null,
+      topicId,
+      previousCoveredIds: previous?.covered_point_ids ?? [],
+      accumulatedTopicIds: accumulated,
+    });
 
     // 老師改過知識點之後，舊 id 可能已經退役（例如重新生成後 title 對唔上）。
     // 呢啲 id 唔應該再入 conversation state / prompt：Covered_Points 會將佢哋
@@ -235,12 +273,14 @@ export async function trackConversationState(input: {
       strictCoverage
     );
 
-    const coveredIds = Array.from(coveredNow);
+    const coveredIds = Array.from(coveredNow).filter((id) => validIds.has(id));
+    // 切話題之後，上一段對話嘅 next_point / 跳過名單唔可以帶落新話題
+    // （舊話題嘅 id 會壓制新話題嘅點），所以 context 傳 null。
     const { nextPointId, skippedIds, turnsOnNextPoint } = computeNextPoint(
       points,
       coveredNow,
-      new Set<string>(previous?.skipped_point_ids || []),
-      previous
+      new Set<string>(topicChanged ? [] : previous?.skipped_point_ids || []),
+      previous && !topicChanged
         ? {
             nextPointId: previous.next_point_id,
             turnsOnNextPoint: previous.turns_on_next_point,
