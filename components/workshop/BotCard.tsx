@@ -1,5 +1,6 @@
 import { uiText, uiTemplate } from '../../utils/uiI18n';
 import React, { useEffect, useRef, useState } from "react";
+import { Trash2 } from "lucide-react";
 import type { AiBot } from "../../types";
 import { SequencePngPlayer } from "./SequencePngPlayer";
 import { SafeAvatarImage } from "../shared/SafeAvatarImage";
@@ -10,6 +11,7 @@ interface BotCardProps {
   bot: AiBot;
   onOpen: () => void;
   onEdit: () => void;
+  onDelete: () => void;
   onShowSubjectHelp?: () => void;
 }
 
@@ -20,7 +22,7 @@ type IdleSequenceManifest = {
   fps: number;
 };
 
-export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onShowSubjectHelp }) => {
+export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onDelete, onShowSubjectHelp }) => {
   // 由 label 派生顏色（唔讀 bot.subjectColor 欄）：舊 bot 嘅欄位係 Tailwind 色名，讀咗會跌灰色
   const subjectColor = subjectColorOf(bot.subject);
   const [isPreviewingIdle, setIsPreviewingIdle] = useState(false);
@@ -155,6 +157,18 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onShowSub
         </div>
 
         <div className="flex flex-col items-end gap-2">
+          <button
+            type="button"
+            aria-label={uiTemplate("刪除 {0}", bot.name)}
+            title={uiText("刪除機器人")}
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete();
+            }}
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 focus:outline-none focus:ring-2 focus:ring-rose-200"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+          </button>
           {bot.hasPendingQuiz ? (
             <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-600 shadow-sm">{uiText("測試題")}</span>
           ) : null}

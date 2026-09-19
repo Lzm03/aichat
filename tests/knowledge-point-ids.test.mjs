@@ -63,3 +63,12 @@ test('冇舊知識點時（首次提取）全部派新 id', () => {
     ['kp_001', 'kp_002']
   );
 });
+
+test('新主題避開同一 Bot 其他主題已使用嘅 id', () => {
+  const otherTopic = [point('kp_001', '舊主題 A'), point('kp_006', '舊主題 B')];
+  const incoming = [point('kp_001', '新主題 A'), point('kp_002', '新主題 B')];
+  assert.deepEqual(
+    assignStableKnowledgePointIds(incoming, [], otherTopic).map((item) => item.id),
+    ['kp_007', 'kp_008']
+  );
+});

@@ -63,6 +63,10 @@ const LIB_T: Record<TeacherLang, Record<string, string | ((arg: string) => strin
     noNameMatch: (query: string) => `沒有名稱包含「${query}」的機器人`,
     deleteFailedTitle: "刪除失敗",
     deleteFailedBody: "暫時無法刪除這個機器人，請稍後再試。",
+    deleteConfirmTitle: "確定要刪除此機器人嗎？",
+    deleteConfirmBody: (name: string) => `刪除「${name}」後，相關設定與內容將無法復原。`,
+    deleteAction: "刪除",
+    cancelAction: "取消",
     viewPlanAria: "查看方案説明",
     loading: "載入中",
     createUsedUp: "創建角色已用完",
@@ -99,6 +103,10 @@ const LIB_T: Record<TeacherLang, Record<string, string | ((arg: string) => strin
     noNameMatch: (query: string) => `No bots with “${query}” in the name`,
     deleteFailedTitle: "Deletion failed",
     deleteFailedBody: "This bot can't be deleted right now. Please try again later.",
+    deleteConfirmTitle: "Delete this bot?",
+    deleteConfirmBody: (name: string) => `Deleting “${name}” will permanently remove its settings and content.`,
+    deleteAction: "Delete",
+    cancelAction: "Cancel",
     viewPlanAria: "View plan details",
     loading: "Loading",
     createUsedUp: "Persona quota used up",
@@ -144,7 +152,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [drawerStudents, setDrawerStudents] = useState<PermissionStudent[]>([]);
   const [savingClassShare, setSavingClassShare] = useState(false);
   const [classShareError, setClassShareError] = useState('');
-  const { dialog, closeDialog, showAlert } = usePlatformDialog();
+  const { dialog, closeDialog, showAlert, showConfirm } = usePlatformDialog();
   const lang = useTeacherLang();
   const t = (key: string) => lt(key, lang);
   const tf = (key: string) => ltf(key, lang);
@@ -325,6 +333,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     }
   };
 
+  const confirmDeleteBot = (bot: AiBot) => {
+    showConfirm({
+      title: t("deleteConfirmTitle"),
+      message: tf("deleteConfirmBody")(bot.name),
+      confirmText: t("deleteAction"),
+      cancelText: t("cancelAction"),
+      tone: "danger",
+      onConfirm: () => void deleteBot(bot.id),
+    });
+  };
+
   return (
     <div className="mx-auto max-w-[1080px] pb-14">
       <div className="mb-5 flex w-fit rounded-2xl border border-slate-200 bg-slate-100 p-1">
@@ -419,6 +438,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             bot={bot}
             onOpen={() => setSelectedBot(bot)}
             onEdit={() => onEditBot(bot.id)}
+            onDelete={() => confirmDeleteBot(bot)}
             onShowSubjectHelp={() => setTip("subject")}
           />
         ))}

@@ -203,7 +203,8 @@ export function nextKnowledgePointId(points: Array<{ id?: string }>): string {
  */
 export function assignStableKnowledgePointIds<T extends { id?: string; title?: string }>(
   points: T[],
-  previousPoints: Array<{ id?: string; title?: string }>
+  previousPoints: Array<{ id?: string; title?: string }>,
+  reservedPoints: Array<{ id?: string }> = previousPoints
 ): T[] {
   const byTitle = new Map<string, string>();
   for (const point of previousPoints) {
@@ -215,7 +216,7 @@ export function assignStableKnowledgePointIds<T extends { id?: string; title?: s
   // 新號一定要高過所有「舊點」嘅號：舊點就算已經退役，佢個號仍然帶住學生嘅
   // 覆蓋紀錄，重用就會令進度對錯知識點。今批點自己嘅暫定 id 唔計 —— 佢哋
   // 一係 LLM 位置性編號、一係 fallback 照行數生成，全部都唔會保留。
-  let highest = previousPoints.reduce(
+  let highest = reservedPoints.reduce(
     (max, point) => Math.max(max, numericIdSuffix(point.id)),
     0
   );

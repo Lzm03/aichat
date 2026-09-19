@@ -1419,8 +1419,10 @@ router.get("/teacher/student-progress", requireAuth, async (req, res) => {
     const botResult = await pool.query(
       `SELECT b.id, b.knowledge_base
        FROM bots b
-       JOIN bot_student_shares s ON s.bot_id = b.id
-       WHERE b.id=$1 AND s.teacher_id=$2
+       WHERE b.id=$1 AND (
+         EXISTS (SELECT 1 FROM bot_student_shares s WHERE s.bot_id=b.id AND s.teacher_id=$2)
+         OR EXISTS (SELECT 1 FROM bot_group_shares bg WHERE bg.bot_id=b.id AND bg.teacher_id=$2)
+       )
        LIMIT 1`,
       [botId, user.id]
     );

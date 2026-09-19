@@ -94,5 +94,7 @@ const TEACHER_UNLIMITED_FEATURES = new Set<FeatureLimitKey>([
 ]);
 
 export function isFeatureUnlimitedForRole(role: string | null | undefined, featureKey: FeatureLimitKey) {
-  return role === "teacher" && TEACHER_UNLIMITED_FEATURES.has(featureKey);
+  if (role === "teacher") return TEACHER_UNLIMITED_FEATURES.has(featureKey);
+  // 所有學生嘅 Bot 對話語音永久開放；聲音試聽等製作功能仍跟原有配額。
+  return role === "student" && featureKey === "voice_messages";
 }

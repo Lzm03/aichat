@@ -520,7 +520,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         const patch = {
           name: version.name,
           description: "",
-          systemPrompt: "",
+          systemPrompt: version.background || "",
           knowledgeContent: versionContent(version.points),
           category: version.category || "單元課本",
           isDefault: version.isDefault,

@@ -159,8 +159,11 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   const assignmentResolveRef = useRef<((mode: AssignmentMode | null) => void) | null>(null);
   /** 每個版本嘅知識點（active 版本嘅權威來源係 knowledgePoints state） */
   const pointsByVersionRef = useRef<Record<number, KnowledgePoint[]>>({});
+  const backgroundByVersionRef = useRef<Record<number, string>>({});
+  const sourceByVersionRef = useRef<Record<number, string>>({});
 
   const pointsOfVersion = (index: number) => pointsByVersionRef.current[index] ?? [];
+  const allVersionPoints = () => Object.values(pointsByVersionRef.current).flat();
 
   // 完成反饋：新建立／變更嘅版本 tab 短暫高亮 + toast 指住 tab 列（docs §4.1 #6）
   const [highlightIndexes, setHighlightIndexes] = useState<number[]>([]);
@@ -298,8 +301,11 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   // 之後老師改任何設定（性格／說話風格／回答模式等）都會觸發 initialData
   // 重跑，冇呢個 guard 就會被強制跳走。
   const didAutoOpenMapRef = useRef(false);
+  const didHydrateInitialDataRef = useRef(false);
 
   useEffect(() => {
+    if (didHydrateInitialDataRef.current) return;
+    didHydrateInitialDataRef.current = true;
     setCharacterBackground(initialData?.characterBackground || "");
     setKnowledgeSummary(initialData?.knowledgeSummary || "");
     setKnowledgePoints(normalizeKnowledgePoints(initialData?.knowledgePoints || []));
@@ -333,7 +339,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
         if (!loaded.length) return;
         setVersions(loaded);
         const details = await Promise.all(
-          topics.map((topic) => getCharacterTopic(characterId, topic.id).catch(() => null))
+          loaded.map((topic) => getCharacterTopic(characterId, topic.id!).catch(() => null))
         );
         if (cancelled) return;
         details.forEach((detail, index) => {
@@ -341,6 +347,9 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
             pointsByVersionRef.current[index] = parsePromptSource({
               knowledgeBase: detail.knowledgeContent,
             }).knowledgePoints as unknown as KnowledgePoint[];
+            backgroundByVersionRef.current[index] = String(detail.systemPrompt || "").trim();
+            sourceByVersionRef.current[index] = String(detail.description || "").trim();
+            loaded[index].background = backgroundByVersionRef.current[index];
           }
         });
         const defaultIndex = loaded.findIndex((version) => version.isDefault);
@@ -349,6 +358,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
         const firstPoints = pointsOfVersion(firstIndex);
         setKnowledgePoints(firstPoints);
         setKnowledgeSummary(buildKnowledgeSummary(firstPoints));
+        setCharacterBackground(backgroundByVersionRef.current[firstIndex] || initialData?.characterBackground || "");
+        setSourceLabel(sourceByVersionRef.current[firstIndex] || "");
       } catch (error) {
         console.warn("載入主題版本失敗：", error);
       }
@@ -467,12 +478,13 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   // --------------------------
   const handleFileDrop = useCallback((nextFiles: FileList | null) => {
     if (!nextFiles || nextFiles.length === 0) return;
+    const droppedFiles = Array.from(nextFiles);
     setFiles((currentFiles) => {
       const merged = [...currentFiles];
       const knownFiles = new Set(
         currentFiles.map((file) => `${file.name}:${file.size}:${file.lastModified}`)
       );
-      Array.from(nextFiles).forEach((file) => {
+      droppedFiles.forEach((file) => {
         const key = `${file.name}:${file.size}:${file.lastModified}`;
         if (!knownFiles.has(key)) {
           knownFiles.add(key);
@@ -577,7 +589,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
     return data;
   };
 
-  const parseKnowledgeReply = (reply: string, previousPoints: KnowledgePoint[] = []) => {
+  const parseKnowledgeReply = (reply: string, previousPoints: KnowledgePoint[] = [], reservedPoints: KnowledgePoint[] = allVersionPoints()) => {
     let parsed: any = null;
     try {
       parsed = JSON.parse(reply);
@@ -597,7 +609,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
         trimKnowledgePoints(parsed.knowledge_points
           .map((point: any, index: number) => normalizeKnowledgePoint(point, index))
           .filter(Boolean) as KnowledgePoint[]),
-        previousPoints
+        previousPoints,
+        reservedPoints
       );
       const bg = String(parsed.character_background || parsed.characterBackground || "").trim()
         || "我會根據你提供的資料進行回答與整理。";
@@ -635,7 +648,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
     return {
       bg: reply.split("\n\n")[0]?.trim() || "我會根據你提供的資料進行回答與整理。",
       ks: buildKnowledgeSummary(cleanedLines),
-      points: assignStableKnowledgePointIds(cleanedLines, previousPoints),
+      points: assignStableKnowledgePointIds(cleanedLines, previousPoints, reservedPoints),
     };
   };
 
@@ -652,17 +665,25 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
     }
   };
 
-  const handleSelectVersion = async (index: number) => {
+  const handleSelectVersion = (index: number) => {
     if (index === activeVersionIndex) return;
+    const currentIndex = activeVersionIndex;
     const current = versions[activeVersionIndex];
-    if (current?.id) {
-      await persistVersionPatch(current, { knowledgeContent: buildVersionKnowledgeContent(knowledgePoints) });
-    }
-    pointsByVersionRef.current[activeVersionIndex] = knowledgePoints;
-    setActiveVersionIndex(index);
+    pointsByVersionRef.current[currentIndex] = knowledgePoints;
+    backgroundByVersionRef.current[currentIndex] = characterBackground;
     const nextPoints = pointsOfVersion(index);
+    setActiveVersionIndex(index);
     setKnowledgePoints(nextPoints);
     setKnowledgeSummary(buildKnowledgeSummary(nextPoints));
+    setCharacterBackground(backgroundByVersionRef.current[index] || versions[index]?.background || "");
+    setSourceLabel(sourceByVersionRef.current[index] || "");
+    setStatus(nextPoints.length ? "complete" : "idle");
+    if (current?.id && knowledgePoints.length) {
+      void persistVersionPatch(current, {
+        knowledgeContent: buildVersionKnowledgeContent(knowledgePoints),
+        systemPrompt: characterBackground,
+      });
+    }
   };
 
   const handleAddVersion = async () => {
@@ -847,19 +868,25 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           : "Text";
       setSourceLabel(nextSourceLabel);
 
-      const applySingle = (parsed: { bg: string; ks: string; points: KnowledgePoint[] }, name?: string) => {
+      const applySingle = (parsed: { bg: string; ks: string; points: KnowledgePoint[] }, name?: string, appliedSource = nextSourceLabel) => {
         const target = versions[activeVersionIndex];
         setCharacterBackground(parsed.bg);
         setKnowledgeSummary(parsed.ks);
         setKnowledgePoints(parsed.points);
         pointsByVersionRef.current[activeVersionIndex] = parsed.points;
+        backgroundByVersionRef.current[activeVersionIndex] = parsed.bg;
+        sourceByVersionRef.current[activeVersionIndex] = appliedSource;
         // 空嘅「版本N」自動改用檔名
         if (name && target?.name.startsWith("主題")) {
           void handleRenameVersion(activeVersionIndex, name);
         }
         // 編輯模式即刻寫庫（之前要等切 tab 先 persist，容易丟失）
         if (target?.id) {
-          void persistVersionPatch(target, { knowledgeContent: buildVersionKnowledgeContent(parsed.points) });
+          void persistVersionPatch(target, {
+            description: appliedSource,
+            systemPrompt: parsed.bg,
+            knowledgeContent: buildVersionKnowledgeContent(parsed.points),
+          });
         }
         setFiles([]);
         setInputValue("");
@@ -869,51 +896,63 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       };
 
       const appendVersions = async (results: Array<{ bg: string; ks: string; points: KnowledgePoint[]; name: string }>) => {
-        // 第一個結果填 active（空嘅話），其餘開新版本
+        const workingVersions = [...versions];
         const created: number[] = [];
-        const activeEmpty = pointsOfVersion(activeVersionIndex).length === 0 && !knowledgeSummary.trim();
-        const first = results[0];
+        const activeEmpty = pointsOfVersion(activeVersionIndex).length === 0;
         let lastIndex = activeVersionIndex;
-        if (activeEmpty) {
-          applySingle({ bg: first.bg, ks: first.ks, points: first.points }, first.name);
-          created.push(activeVersionIndex);
-        } else {
-          lastIndex = await openNewVersionWith(first);
+        for (let resultIndex = 0; resultIndex < results.length; resultIndex += 1) {
+          const entry = results[resultIndex];
+          const entrySource = `文件：${entry.name}`;
+          if (resultIndex === 0 && activeEmpty) {
+            const current = workingVersions[activeVersionIndex];
+            const nextName = current.name.startsWith("主題") ? entry.name : current.name;
+            workingVersions[activeVersionIndex] = { ...current, name: nextName, background: entry.bg };
+            lastIndex = activeVersionIndex;
+            if (current.id) {
+              await updateCharacterTopic(characterId!, current.id, {
+                name: nextName,
+                description: entrySource,
+                systemPrompt: entry.bg,
+                knowledgeContent: buildVersionKnowledgeContent(entry.points),
+                category: current.category,
+                isDefault: current.isDefault,
+              });
+            }
+          } else {
+            if (workingVersions.length >= maxVersions) throw new Error(uiText("最多 4 個主題"));
+            if (characterId) {
+              const topic = await createCharacterTopic(characterId, {
+                name: entry.name || `主題${workingVersions.length + 1}`,
+                description: entrySource,
+                systemPrompt: entry.bg,
+                knowledgeContent: buildVersionKnowledgeContent(entry.points),
+                category: "單元課本",
+                isDefault: false,
+              });
+              workingVersions.push({ id: topic.id, name: topic.name, category: topic.category || "", isDefault: topic.isDefault, background: entry.bg });
+            } else {
+              workingVersions.push({ id: null, name: entry.name || `主題${workingVersions.length + 1}`, category: "", isDefault: false, background: entry.bg });
+            }
+            lastIndex = workingVersions.length - 1;
+          }
+          pointsByVersionRef.current[lastIndex] = entry.points;
+          backgroundByVersionRef.current[lastIndex] = entry.bg;
+          sourceByVersionRef.current[lastIndex] = entrySource;
           created.push(lastIndex);
         }
-        for (const extra of results.slice(1)) {
-          lastIndex = await openNewVersionWith(extra);
-          created.push(lastIndex);
-        }
+        const last = results[results.length - 1];
+        setVersions(workingVersions);
         setActiveVersionIndex(lastIndex);
+        setKnowledgePoints(last.points);
+        setKnowledgeSummary(last.ks);
+        setCharacterBackground(last.bg);
+        setSourceLabel(sourceByVersionRef.current[lastIndex] || "");
+        setFiles([]);
+        setInputValue("");
         setProgress(100);
         setStatus("complete");
         setActiveTab("map");
         return created;
-      };
-
-      const openNewVersionWith = async (entry: { bg: string; ks: string; points: KnowledgePoint[]; name: string }) => {
-        if (versions.length >= maxVersions) {
-          throw new Error(uiText("最多 4 個主題"));
-        }
-        if (characterId) {
-          const topic = await createCharacterTopic(characterId, {
-            name: entry.name || `主題${versions.length + 1}`,
-            description: "",
-            systemPrompt: "",
-            knowledgeContent: buildVersionKnowledgeContent(entry.points),
-            category: "單元課本",
-            isDefault: false,
-          });
-          const next = [...versions, { id: topic.id, name: topic.name, category: topic.category || "", isDefault: topic.isDefault }];
-          setVersions(next);
-          pointsByVersionRef.current[next.length - 1] = entry.points;
-          return next.length - 1;
-        }
-        const next = [...versions, { id: null, name: entry.name || `主題${versions.length + 1}`, category: "", isDefault: false }];
-        setVersions(next);
-        pointsByVersionRef.current[next.length - 1] = entry.points;
-        return next.length - 1;
       };
 
       if (usingFiles) {
@@ -934,10 +973,12 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           }
           if (mode.kind === "each") {
             const results = [];
+            const reservedPoints = [...allVersionPoints()];
             for (const file of files) {
               const result = await processSingleFile(file);
-              const parsed = parseKnowledgeReply(result.reply || "", previousPointsRef.current);
+              const parsed = parseKnowledgeReply(result.reply || "", [], reservedPoints);
               results.push({ ...parsed, name: file.name.replace(/\.[^.]+$/, "") });
+              reservedPoints.push(...parsed.points);
             }
             const created = await appendVersions(results);
             showCompletionFeedback(created, uiTemplate("開咗 {0} 個新主題", created.length));
@@ -1075,7 +1116,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       .slice(0, 5);
     const nextPoint: KnowledgePoint = {
       // max+1 而唔係 length+1：刪咗中間嘅點之後 length 會細過最大號，會撞 id
-      id: nextKnowledgePointId(knowledgePoints),
+      id: nextKnowledgePointId(allVersionPoints()),
       tier: newPointTier,
       title: newPointTitle.trim() || createKnowledgeTitle(content, keywords),
       content,
@@ -1935,18 +1976,6 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
 
       {activeTab === "source" && (
         <div className="space-y-8">
-      {status === "idle" && (
-        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4">
-          <div>
-            <p className="text-sm font-bold text-slate-800">{uiText("AI 模型")}</p>
-            <p className="mt-1 text-xs text-slate-500">{uiText("整理前可以揀用邊個 AI 模型")}</p>
-          </div>
-          <div className="rounded-full border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm">
-            Gemini
-          </div>
-        </div>
-      )}
-
       {/* Upload method tabs */}
       {status === "idle" && (
         <div className="bg-slate-100 p-1 rounded-xl flex items-center">

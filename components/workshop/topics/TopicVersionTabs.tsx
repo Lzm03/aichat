@@ -8,6 +8,7 @@ export type TopicVersionMeta = {
   name: string;
   category: string;
   isDefault: boolean;
+  background?: string;
 };
 
 type TopicVersionTabsProps = {
