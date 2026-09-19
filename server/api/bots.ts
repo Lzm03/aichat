@@ -121,17 +121,33 @@ function normalizeKnowledgeEntry(value: string) {
     .trim();
 }
 
-/** 統一走 canonical parser（utils/chat-prompt.ts），同 live chat／進度／教學模擬同一套規則；
- *  舊 bot（純散文、冇【知識點分級】 JSON）由 extractKnowledgeBuckets 嘅 legacy 分桶支援。 */
 function extractStructuredKnowledgePoints(knowledgeBase: string): StructuredKnowledgePoint[] {
-  return parsePromptSource({ knowledgeBase }).knowledgePoints
-    .map((point) => ({
-      tier: point.tier,
-      title: String(point.title || "").trim(),
-      content: String(point.content || "").trim(),
-      keywords: point.keywords.slice(0, 8),
-    }))
-    .filter((point) => point.content && point.title);
+  const pointsMatch = String(knowledgeBase || "").match(
+    /【知識點分級】([\s\S]*?)(?:【角色對話策略】|請根據「人物背景設定」與「知識庫摘要」回答問題，不要捏造不存在的資訊。|$)/
+  );
+
+  try {
+    const raw = pointsMatch?.[1]?.trim();
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => {
+        const content = String(item?.content || "").trim();
+        const title = String(item?.title || item?.topic || "").trim();
+        if (!content || !title) return null;
+        return {
+          tier: item?.tier === "deep_understanding" ? "deep_understanding" : "basic_fact",
+          title,
+          content,
+          keywords: Array.isArray(item?.keywords)
+            ? item.keywords.map((keyword: string) => String(keyword || "").trim()).filter(Boolean).slice(0, 8)
+            : [],
+        } satisfies StructuredKnowledgePoint;
+      })
+      .filter(Boolean) as StructuredKnowledgePoint[];
+  } catch {
+    return [];
+  }
 }
 
 function splitKnowledgeEntries(line: string) {
@@ -1174,10 +1190,15 @@ router.get("/teacher/progress-overview", requireAuth, async (req, res) => {
     }
 
     const botsResult = await pool.query(
-      `SELECT DISTINCT b.id, b.name, b.knowledge_base, b.avatar_url
+      `SELECT b.id, b.name, b.knowledge_base, b.avatar_url, b.updated_at
        FROM bots b
-       JOIN bot_student_shares s ON s.bot_id = b.id
-       WHERE s.teacher_id=$1
+       WHERE EXISTS (
+         SELECT 1 FROM bot_student_shares s
+         WHERE s.bot_id=b.id AND s.teacher_id=$1
+       ) OR EXISTS (
+         SELECT 1 FROM bot_group_shares bg
+         WHERE bg.bot_id=b.id AND bg.teacher_id=$1
+       )
        ORDER BY b.updated_at DESC`,
       [user.id]
     );
