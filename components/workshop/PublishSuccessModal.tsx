@@ -478,6 +478,12 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     Boolean(activeProgressTopicId) &&
     Boolean(studentProgress) &&
     !activeProgressBucket;
+  // 主題名：桶有就用桶嘅；桶未出現（主題未有知識點）就用主題清單嘅名。
+  const activeProgressTopicName = activeProgressTopicId
+    ? activeProgressBucket?.topicName ||
+      availableTopics.find((topic) => topic.id === activeProgressTopicId)?.name ||
+      ""
+    : "";
   const scopedProgress = activeProgressBucket
     ? {
         covered: activeProgressBucket.covered,
@@ -486,15 +492,18 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
           (point) => point.topicId === activeProgressBucket.topicId
         ),
         nextPoint: activeProgressBucket.nextPoint,
-        topicName: activeProgressBucket.topicName,
+        topicName: activeProgressTopicName,
       }
-    : {
-        covered: studentProgress?.covered ?? 0,
-        total: studentProgress?.total ?? 0,
-        points: studentProgress?.points || [],
-        nextPoint: studentProgress?.nextPoint ?? null,
-        topicName: "",
-      };
+    : activeProgressTopicId
+      ? // 指定咗睇邊個主題，但嗰個主題未有知識點：明確空態，唔好跌返去做全部。
+        { covered: 0, total: 0, points: [], nextPoint: null, topicName: activeProgressTopicName }
+      : {
+          covered: studentProgress?.covered ?? 0,
+          total: studentProgress?.total ?? 0,
+          points: studentProgress?.points || [],
+          nextPoint: studentProgress?.nextPoint ?? null,
+          topicName: "",
+        };
 
   const shareableLink =
     botConfig?.id && typeof window !== "undefined"
