@@ -9,6 +9,9 @@ type PointProgress = {
   id: string;
   tier: 'basic_fact' | 'deep_understanding';
   title: string;
+  /** 話題維度（audit #1）：進度按話題分桶，報表按話題分組顯示 */
+  topicId: string;
+  topicName: string;
   coveredCount: number;
   skippedCount: number;
 };
@@ -73,36 +76,43 @@ export const TeacherProgressOverview: React.FC = () => {
                 </span>
               </div>
               <div className="mt-3 space-y-2">
-                {bot.points.length ? bot.points.map((point) => {
+                {bot.points.length ? bot.points.map((point, index) => {
                   const pct = bot.studentsWithProgress > 0
                     ? Math.round((point.coveredCount / bot.studentsWithProgress) * 100)
                     : 0;
                   const untouched = point.coveredCount === 0;
+                  const previous = bot.points[index - 1];
+                  const showTopic = Boolean(point.topicName) && point.topicName !== previous?.topicName;
                   return (
-                    <div key={point.id} className="flex items-center gap-3">
-                      <span
-                        className={`w-32 shrink-0 truncate text-xs font-semibold ${untouched ? 'text-rose-500' : 'text-slate-700'}`}
-                        title={point.title}
-                      >
-                        {point.title}
-                      </span>
-                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
-                        <div
-                          className={`h-full rounded-full ${point.tier === 'basic_fact' ? 'bg-emerald-500' : 'bg-indigo-500'}`}
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                      <span className={`w-10 shrink-0 text-right text-xs font-black ${untouched ? 'text-rose-500' : 'text-slate-600'}`}>
-                        {point.coveredCount}
-                      </span>
-                      {point.skippedCount > 0 ? (
-                        <span
-                          className="shrink-0 rounded-md bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700"
-                          title={uiText("此知識點曾多次推唔動而被跳過")}
-                        >
-                          {uiText("跳過")} {point.skippedCount}
-                        </span>
+                    <div key={`${point.topicId}:${point.id}`}>
+                      {showTopic ? (
+                        <div className="mt-2 mb-1 text-[10px] font-black text-indigo-500">{point.topicName}</div>
                       ) : null}
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`w-32 shrink-0 truncate text-xs font-semibold ${untouched ? 'text-rose-500' : 'text-slate-700'}`}
+                          title={point.title}
+                        >
+                          {point.title}
+                        </span>
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+                          <div
+                            className={`h-full rounded-full ${point.tier === 'basic_fact' ? 'bg-emerald-500' : 'bg-indigo-500'}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className={`w-10 shrink-0 text-right text-xs font-black ${untouched ? 'text-rose-500' : 'text-slate-600'}`}>
+                          {point.coveredCount}
+                        </span>
+                        {point.skippedCount > 0 ? (
+                          <span
+                            className="shrink-0 rounded-md bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700"
+                            title={uiText("此知識點曾多次推唔動而被跳過")}
+                          >
+                            {uiText("跳過")} {point.skippedCount}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   );
                 }) : (

@@ -56,6 +56,9 @@ type StudentProgressPoint = {
   id: string;
   tier: KnowledgeTier;
   title: string;
+  /** 話題維度（audit #1） */
+  topicId: string;
+  topicName: string;
 };
 
 type StudentProgressEntry = {
@@ -63,6 +66,8 @@ type StudentProgressEntry = {
   name: string;
   covered: number;
   coveredPointIds: string[];
+  /** 每話題各自嘅覆蓋 id 集（撞 id 唔會互相污染） */
+  coveredBuckets: Array<{ topicId: string; topicName: string; coveredPointIds: string[] }>;
   /** bot_student_progress 有冇呢個學生嘅 row —— 覆蓋地圖嘅分母用 */
   hasProgressRow: boolean;
   nextPoint: { id: string; title: string } | null;
@@ -72,6 +77,7 @@ type StudentProgressPayload = {
   botId: string;
   total: number;
   points: StudentProgressPoint[];
+  topicBuckets?: Array<{ topicId: string; topicName: string; points: StudentProgressPoint[] }>;
   students: StudentProgressEntry[];
 };
 
@@ -200,23 +206,47 @@ export const StudentLearningReportCard = () => {
   }, [studentProgressData, selectedDetailStudent?.studentId]);
   const knowledgeTierGroups = useMemo(() => {
     if (!studentProgressData) return [];
-    const covered = new Set(selectedStudentProgress?.coveredPointIds || []);
-    return ([
-      { tier: 'basic_fact' as const, label: '基礎事實', level: 'L1' },
-      { tier: 'deep_understanding' as const, label: '深度理解', level: 'L2/L3' },
-    ])
-      .map(({ tier, label, level }) => {
-        const points = studentProgressData.points.filter((point) => point.tier === tier);
-        return {
+    // 話題維度（audit #1）：每個主題分桶，再用每桶自己嘅覆蓋 id 集標 covered，
+    // 跨話題撞 id 唔會再互相污染。
+    const buckets = Array.isArray(studentProgressData.topicBuckets) && studentProgressData.topicBuckets.length
+      ? studentProgressData.topicBuckets
+      : [{ topicId: "", topicName: "", }];
+    const coveredBuckets = selectedStudentProgress?.coveredBuckets || [];
+    const coveredByTopic = new Map(
+      coveredBuckets.map((bucket) => [bucket.topicId, new Set(bucket.coveredPointIds || [])])
+    );
+    const groups: Array<{
+      key: string;
+      topicName: string;
+      tier: 'basic_fact' | 'deep_understanding';
+      label: string;
+      level: string;
+      points: Array<{ id: string; title: string; covered: boolean }>;
+      coveredCount: number;
+      total: number;
+    }> = [];
+    for (const bucket of buckets) {
+      const bucketPoints = studentProgressData.points.filter((point) => point.topicId === bucket.topicId);
+      const covered = coveredByTopic.get(bucket.topicId) || new Set<string>();
+      for (const { tier, label, level } of [
+        { tier: 'basic_fact' as const, label: '基礎事實', level: 'L1' },
+        { tier: 'deep_understanding' as const, label: '深度理解', level: 'L2/L3' },
+      ]) {
+        const points = bucketPoints.filter((point) => point.tier === tier);
+        if (!points.length) continue;
+        groups.push({
+          key: `${bucket.topicId}:${tier}`,
+          topicName: bucket.topicName,
           tier,
           label,
           level,
-          points: points.map((point) => ({ ...point, covered: covered.has(point.id) })),
+          points: points.map((point) => ({ id: point.id, title: point.title, covered: covered.has(point.id) })),
           coveredCount: points.filter((point) => covered.has(point.id)).length,
           total: points.length,
-        };
-      })
-      .filter((group) => group.total > 0);
+        });
+      }
+    }
+    return groups;
   }, [studentProgressData, selectedStudentProgress]);
   const inputRate = interactionSummary.independentRate || 0;
   const assistedRate = interactionSummary.assistedRate || 0;
@@ -238,11 +268,22 @@ export const StudentLearningReportCard = () => {
   const topicNodes = useMemo(() => {
     if (!studentProgressData) return [];
     const roster = studentProgressData.students.filter((student) => student.hasProgressRow);
+    const buckets = Array.isArray(studentProgressData.topicBuckets) && studentProgressData.topicBuckets.length
+      ? studentProgressData.topicBuckets
+      : null;
     return studentProgressData.points.map((point) => {
-      const coveredStudents = roster.filter((student) => student.coveredPointIds.includes(point.id)).length;
+      // 話題維度：每點只計自己嗰個主題嘅覆蓋（coveredBuckets），撞 id 唔污染
+      const coveredStudents = roster.filter((student) => {
+        if (buckets) {
+          const bucket = (student.coveredBuckets || []).find((item) => item.topicId === point.topicId);
+          return Boolean(bucket?.coveredPointIds?.includes(point.id));
+        }
+        return student.coveredPointIds.includes(point.id);
+      }).length;
       return {
         id: point.id,
-        label: point.title,
+        topicId: point.topicId || "",
+        label: buckets && point.topicName ? `${point.topicName}：${point.title}` : point.title,
         score: roster.length ? Math.round((coveredStudents / roster.length) * 100) : 0,
         completed: roster.length > 0 && coveredStudents === roster.length,
         hasData: roster.length > 0,
@@ -519,7 +560,7 @@ export const StudentLearningReportCard = () => {
                 {topicNodes.length ? (
                   <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
                     {topicNodes.map((item) => (
-                      <div key={item.id} className="flex flex-col items-center rounded-2xl border border-transparent p-1 text-center">
+                      <div key={`${item.topicId}:${item.id}`} className="flex flex-col items-center rounded-2xl border border-transparent p-1 text-center">
                         <div className={`flex h-12 w-12 items-center justify-center rounded-full text-sm font-black ${item.completed ? 'bg-indigo-500 text-white' : 'bg-amber-100 text-amber-700'}`}>
                           {item.completed ? '✓' : '!'}
                         </div>
@@ -1088,8 +1129,14 @@ export const StudentLearningReportCard = () => {
 
                                 {knowledgeTierGroups.length ? (
                                   <div className="mt-3 space-y-3">
-                                    {knowledgeTierGroups.map((group) => (
-                                      <div key={group.tier}>
+                                    {knowledgeTierGroups.map((group, index) => {
+                                      const previous = knowledgeTierGroups[index - 1];
+                                      const showTopic = Boolean(group.topicName) && group.topicName !== previous?.topicName;
+                                      return (
+                                      <div key={group.key}>
+                                        {showTopic ? (
+                                          <div className="mt-2 mb-1 text-[11px] font-black text-indigo-600">{group.topicName}</div>
+                                        ) : null}
                                         <div className="mb-1 flex items-center justify-between text-[10px] font-black text-slate-500">
                                           <span>{uiText(group.label)} ({group.level})</span>
                                           <span className="text-slate-700">{group.coveredCount}/{group.total}</span>
@@ -1106,7 +1153,8 @@ export const StudentLearningReportCard = () => {
                                           ))}
                                         </div>
                                       </div>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 ) : (
                                   <p className="mt-3 rounded-xl bg-slate-50 px-3 py-3 text-[11px] font-semibold text-slate-500">{uiText("這位學生還沒有與這個角色累積可顯示的知識點紀錄。")}</p>
