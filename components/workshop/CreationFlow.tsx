@@ -495,6 +495,11 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   const canPublish = isAllStepsValid && videosReady;
 
   /** 新建模式首次發布：將主題版本落庫做話題（每 Bot 最多 4 個）。 */
+  /**
+   * 發布時將版本數據落庫做話題（新建 + 編輯模式都行；編輯模式嘅版本大多已即時
+   * 儲存，呢度保證手動新增／刪改嘅點喺發布嗰刻全部寫入 character_topics，
+   * 令話題知識同 bots.knowledge_base 收斂——audit #2）。
+   */
   const syncVersionsToTopics = async (characterId: string) => {
     const topicVersions = versionsRef.current;
     if (!topicVersions.length) return;
@@ -505,31 +510,31 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       `【知識點分級】\n${JSON.stringify(points, null, 2)}`;
     try {
       // ensureCharacterTopicTables 會為冇話題嘅 Bot 自動建立 legacy 話題——
-      // 將佢轉做版本一，其餘版本跟住建，唔會超 4 個上限亦唔會有重複內容。
+      // 版本一未落庫（新建模式）就寫入 legacy 話題，做版本一。
       const { topics } = await listCharacterTopics(characterId);
       const legacy = topics.find((topic) => topic.id.startsWith("topic_legacy_"));
-      let remaining = topicVersions;
-      if (legacy) {
-        const first = topicVersions[0];
-        await updateCharacterTopic(characterId, legacy.id, {
-          name: first.name,
-          description: "",
-          systemPrompt: "",
-          knowledgeContent: versionContent(first.points),
-          category: first.category || "單元課本",
-          isDefault: true,
-        });
-        remaining = topicVersions.slice(1);
-      }
-      for (const version of remaining) {
-        await createCharacterTopic(characterId, {
+      let legacyConsumed = false;
+      const putVersion = async (version: TopicVersionMeta & { points: KnowledgePoint[] }) => {
+        const patch = {
           name: version.name,
           description: "",
           systemPrompt: "",
           knowledgeContent: versionContent(version.points),
           category: version.category || "單元課本",
           isDefault: version.isDefault,
-        });
+        };
+        if (version.id) {
+          await updateCharacterTopic(characterId, version.id, patch as any);
+        } else if (legacy && !legacyConsumed) {
+          // 版本一（新建模式未落庫）寫入 legacy 話題，只可以寫一次
+          await updateCharacterTopic(characterId, legacy.id, patch as any);
+          legacyConsumed = true;
+        } else {
+          await createCharacterTopic(characterId, patch);
+        }
+      };
+      for (const version of topicVersions) {
+        await putVersion(version);
       }
     } catch (error) {
       console.warn("主題版本落庫失敗：", error);
@@ -594,10 +599,8 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         const accessPayload = await accessResponse.json().catch(() => null);
         throw new Error(accessPayload?.error || t("publishFailed"));
       }
-      // 新建模式：主題版本落庫做話題（編輯模式嘅版本早已即時儲存）
-      if (!botId) {
-        await syncVersionsToTopics(String(savedBot?.id || newBot.id));
-      }
+      // 版本數據落庫做話題（新建 + 編輯模式都行——手動點喺發布嗰刻全部寫入）
+      await syncVersionsToTopics(String(savedBot?.id || newBot.id));
       await refreshFeatureEntitlements();
       setBotConfig((prev) => ({
         ...prev,
