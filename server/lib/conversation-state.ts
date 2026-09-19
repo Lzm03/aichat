@@ -34,6 +34,8 @@ export type ConversationStateRow = {
   conversation_id: string;
   bot_id: string;
   user_id: string;
+  /** 對話揀咗嘅話題 id（'' = 冇指定話題，跟主知識庫） */
+  topic_id: string;
   covered_point_ids: string[];
   next_point_id: string | null;
   student_level: string;
@@ -59,6 +61,7 @@ export async function getConversationState(
       conversation_id: String(row.conversation_id || ""),
       bot_id: String(row.bot_id || ""),
       user_id: String(row.user_id || ""),
+      topic_id: String(row.topic_id || ""),
       covered_point_ids: Array.isArray(row.covered_point_ids)
         ? row.covered_point_ids.map(String)
         : [],
@@ -79,18 +82,20 @@ export async function getConversationState(
 }
 
 /**
- * 讀取學生 × Bot 嘅跨對話累積進度（已掌握知識點）。
- * 冇紀錄（第一次對話）回傳空陣列。
+ * 讀取學生 × Bot × 話題嘅跨對話累積進度（已掌握知識點）。
+ * 冇紀錄（第一次對話）回傳空陣列。topicId '' = 冇指定話題（主知識庫）。
  */
 export async function getStudentProgress(
   botId: string,
-  userId: string
+  userId: string,
+  topicId = ""
 ): Promise<string[]> {
   try {
     await ensurePlatformTables();
     const result = await pool.query(
-      `SELECT covered_point_ids FROM bot_student_progress WHERE bot_id=$1 AND user_id=$2 LIMIT 1`,
-      [botId, userId]
+      `SELECT covered_point_ids FROM bot_student_progress
+       WHERE bot_id=$1 AND user_id=$2 AND topic_id=$3 LIMIT 1`,
+      [botId, userId, topicId]
     );
     if (!result.rows.length) return [];
     const row = result.rows[0];
@@ -106,19 +111,21 @@ export async function getStudentProgress(
 /**
  * 將今輪已覆蓋知識點合併入跨對話累積進度（並集，唔會倒退）。
  * coveredPointIds 係「累積 + 今輪新增」嘅完整集合，合併時照做去重並集，
- * 以防同一個 (bot, user) 有並行對話時後寫嘅舊集合覆蓋走新進度。
+ * 以防同一個 (bot, user, topic) 有並行對話時後寫嘅舊集合覆蓋走新進度。
+ * 進度按話題分維度（'' = 主知識庫／冇指定話題）。
  */
 export async function mergeStudentProgress(
   botId: string,
   userId: string,
+  topicId: string,
   coveredPointIds: string[]
 ) {
   try {
     await ensurePlatformTables();
     await pool.query(
-      `INSERT INTO bot_student_progress (bot_id, user_id, covered_point_ids, updated_at)
-       VALUES ($1, $2, $3::jsonb, NOW())
-       ON CONFLICT (bot_id, user_id) DO UPDATE SET
+      `INSERT INTO bot_student_progress (bot_id, user_id, topic_id, covered_point_ids, updated_at)
+       VALUES ($1, $2, $3, $4::jsonb, NOW())
+       ON CONFLICT (bot_id, user_id, topic_id) DO UPDATE SET
          covered_point_ids = (
            SELECT COALESCE(jsonb_agg(DISTINCT elem), '[]'::jsonb)
            FROM jsonb_array_elements_text(
@@ -126,7 +133,7 @@ export async function mergeStudentProgress(
            ) AS elem
          ),
          updated_at = NOW()`,
-      [botId, userId, JSON.stringify(coveredPointIds)]
+      [botId, userId, topicId, JSON.stringify(coveredPointIds)]
     );
   } catch (error) {
     console.warn("[conversation-state] failed to merge student progress", error);
@@ -142,6 +149,8 @@ export async function trackConversationState(input: {
   userId: string;
   conversationId: string;
   knowledgeBase: string;
+  /** 對話揀咗嘅話題 id（'' = 冇指定話題）；進度按話題分維度 */
+  topicId?: string;
   /** 答題模式覆寫：知識來源係話題內容（冇【答題策略】節）時，由主知識庫傳入 */
   answerModeOverride?: string;
   recentMessages: Array<{ role: string; content: string }>;
@@ -158,13 +167,14 @@ export async function trackConversationState(input: {
 
     await ensurePlatformTables();
     const previous = await getConversationState(input.conversationId);
+    const topicId = input.topicId || "";
 
-    // 新對話開場（冇 conversation 狀態）時，用跨對話累積進度 seed，
+    // 新對話開場（冇 conversation 狀態）時，用同一個話題嘅跨對話累積進度 seed，
     // 令 bot 唔會每段新對話都重新教同一批已掌握知識點。
     // 已有 conversation 狀態就照舊由 conversation 嘅 covered 起步。
     const previouslyCovered = previous
       ? new Set<string>(previous.covered_point_ids)
-      : new Set<string>(await getStudentProgress(input.botId, input.userId));
+      : new Set<string>(await getStudentProgress(input.botId, input.userId, topicId));
 
     // 老師改過知識點之後，舊 id 可能已經退役（例如重新生成後 title 對唔上）。
     // 呢啲 id 唔應該再入 conversation state / prompt：Covered_Points 會將佢哋
@@ -244,9 +254,10 @@ export async function trackConversationState(input: {
 
     await pool.query(
       `INSERT INTO bot_conversation_states
-         (conversation_id, bot_id, user_id, covered_point_ids, next_point_id, student_level, turns_since_summary, skipped_point_ids, turns_on_next_point, turns_since_judge, updated_at)
-       VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8::jsonb,$9,$10,NOW())
+         (conversation_id, bot_id, user_id, topic_id, covered_point_ids, next_point_id, student_level, turns_since_summary, skipped_point_ids, turns_on_next_point, turns_since_judge, updated_at)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9::jsonb,$10,$11,NOW())
        ON CONFLICT (conversation_id) DO UPDATE SET
+         topic_id=EXCLUDED.topic_id,
          covered_point_ids=EXCLUDED.covered_point_ids,
          next_point_id=EXCLUDED.next_point_id,
          student_level=EXCLUDED.student_level,
@@ -259,6 +270,7 @@ export async function trackConversationState(input: {
         input.conversationId,
         input.botId,
         input.userId,
+        topicId,
         JSON.stringify(coveredIds),
         nextPointId,
         previous?.student_level || "未評估",
@@ -269,8 +281,8 @@ export async function trackConversationState(input: {
       ]
     );
 
-    // 每輪結束後，將覆蓋進度合併入跨對話累積表（並集，唔會倒退）。
-    await mergeStudentProgress(input.botId, input.userId, coveredIds);
+    // 每輪結束後，將覆蓋進度合併入跨對話累積表（並集，唔會倒退；按話題分維度）。
+    await mergeStudentProgress(input.botId, input.userId, topicId, coveredIds);
   } catch (error) {
     console.warn("[conversation-state] failed to track state", error);
   }

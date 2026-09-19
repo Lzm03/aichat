@@ -2208,6 +2208,7 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
           conversationId: activeConversation.id,
           knowledgeBase: trackingKnowledgeBase,
           answerModeOverride: trackingAnswerMode,
+          topicId: activeTopic?.id || "",
           recentMessages: recentChatMessages,
           reply,
         }).catch((error) =>
@@ -2276,6 +2277,7 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
         conversationId: activeConversation.id,
         knowledgeBase: trackingKnowledgeBase,
         answerModeOverride: trackingAnswerMode,
+        topicId: activeTopic?.id || "",
         recentMessages: recentChatMessages,
         reply: streamedReply,
       }).catch((error) =>
