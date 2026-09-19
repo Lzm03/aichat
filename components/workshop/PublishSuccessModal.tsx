@@ -269,9 +269,28 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [studentProgress, setStudentProgress] = useState<{
     total: number;
     covered: number;
-    points: Array<{ id: string; tier: string; title: string; covered: boolean }>;
+    points: Array<{
+      id: string;
+      tier: string;
+      title: string;
+      topicId: string;
+      topicName: string;
+      covered: boolean;
+    }>;
     nextPoint: { id: string; title: string } | null;
+    topicBuckets: Array<{
+      topicId: string;
+      topicName: string;
+      covered: number;
+      total: number;
+      nextPoint: { id: string; title: string } | null;
+    }>;
   } | null>(null);
+  // 進度面板顯示邊個範圍：跟住對話（默認）／全部／指定主題。
+  // 手動揀咗就 sticky，唔會俾對話切主題扯走；關咗面板再開會重置返跟對話。
+  const [progressScope, setProgressScope] = useState<
+    { kind: "follow" } | { kind: "all" } | { kind: "topic"; topicId: string }
+  >({ kind: "follow" });
   const [progressPanelOpen, setProgressPanelOpen] = useState(false);
 
   // 累積進度（學生同教師都係當前用戶自己嘅 bot_student_progress）：
@@ -284,7 +303,19 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       const res = await fetch(`${API_BASE}/api/bots/${botConfig.id}/progress`);
       if (!res.ok) throw new Error("progress load failed");
       const data = await res.json();
-      if (progressActiveRef.current) setStudentProgress(data);
+      if (progressActiveRef.current) {
+        setStudentProgress(data);
+        // 手動揀咗嘅主題如果喺 server 冇咗（老師刪咗），跟返對話範圍，
+        // 唔好留住一個空白範圍。
+        setProgressScope((current) =>
+          current.kind === "topic" &&
+          !(Array.isArray(data?.topicBuckets) ? data.topicBuckets : []).some(
+            (bucket: { topicId?: string }) => String(bucket?.topicId || "") === current.topicId
+          )
+            ? { kind: "follow" }
+            : current
+        );
+      }
     } catch {
       if (progressActiveRef.current) setStudentProgress(null);
     }
@@ -315,6 +346,11 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       }
     };
   }, [isOpen, botConfig.id, loadProgress]);
+
+  // 關咗面板再開，進度範圍重置返「跟住對話」——手動揀過嘅範圍唔應該跨 session 殘留。
+  useEffect(() => {
+    if (!isOpen) setProgressScope({ kind: "follow" });
+  }, [isOpen]);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showTopMenu, setShowTopMenu] = useState(false);
@@ -422,6 +458,44 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     availableTopics.find((topic) => topic.isDefault) ||
     availableTopics[0] ||
     null;
+
+  // 學習進度面板嘅顯示範圍。默認跟對話目前嘅主題（selectedTopicId），
+  // 對話一轉主題面板即刻成套換走；老師手動揀咗其他主題就 sticky，
+  // 唔會俾對話切換扯走（想跟返就撳「跟住對話」）。
+  const progressBuckets = studentProgress?.topicBuckets || [];
+  const activeProgressTopicId =
+    progressScope.kind === "all"
+      ? null
+      : progressScope.kind === "topic"
+        ? progressScope.topicId
+        : selectedTopicId;
+  const activeProgressBucket = activeProgressTopicId
+    ? progressBuckets.find((bucket) => bucket.topicId === activeProgressTopicId) || null
+    : null;
+  // 跟緊嘅主題喺 server 桶度唔存在 = 呢個主題未有知識點（唔係載入失敗）。
+  const followedTopicIsEmpty =
+    progressScope.kind === "follow" &&
+    Boolean(activeProgressTopicId) &&
+    Boolean(studentProgress) &&
+    !activeProgressBucket;
+  const scopedProgress = activeProgressBucket
+    ? {
+        covered: activeProgressBucket.covered,
+        total: activeProgressBucket.total,
+        points: (studentProgress?.points || []).filter(
+          (point) => point.topicId === activeProgressBucket.topicId
+        ),
+        nextPoint: activeProgressBucket.nextPoint,
+        topicName: activeProgressBucket.topicName,
+      }
+    : {
+        covered: studentProgress?.covered ?? 0,
+        total: studentProgress?.total ?? 0,
+        points: studentProgress?.points || [],
+        nextPoint: studentProgress?.nextPoint ?? null,
+        topicName: "",
+      };
+
   const shareableLink =
     botConfig?.id && typeof window !== "undefined"
       ? `${window.location.origin}/bot/${botConfig.id}`
@@ -2616,6 +2690,8 @@ const handleTopicSwitch = async (nextTopic: CharacterTopicSummary) => {
   setTopicError("");
   setSelectedTopicId(nextTopic.id);
   setIsTopicSelectorOpen(false);
+  // 學習進度面板跟住對話主題：換主題即拉一次，唔使等 5 秒輪詢。
+  void loadProgress();
   if (currentConversationId && canUseHistory) {
     syncConversationList((current) =>
       current.map((conversation) =>
@@ -2649,6 +2725,8 @@ const handleTopicSwitch = async (nextTopic: CharacterTopicSummary) => {
     ]);
   } catch (switchError) {
     setSelectedTopicId(previousTopicId);
+    // 切換失敗要彈返，進度面板都跟返原本個主題。
+    void loadProgress();
     if (currentConversationId && canUseHistory) {
       syncConversationList((current) =>
         current.map((conversation) =>
@@ -4528,27 +4606,80 @@ const unlockAudioAndMic = async () => {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="flex min-w-0 items-center gap-1.5 text-[11px] font-black text-[#6c4b22]">
-                        <ProgressRing covered={studentProgress.covered} total={studentProgress.total} size={20} />
-                        <span className="truncate">{uiText("學習進度")} {studentProgress.covered}/{studentProgress.total}</span>
+                        <ProgressRing covered={scopedProgress.covered} total={scopedProgress.total} size={20} />
+                        <span className="truncate">
+                          {scopedProgress.topicName
+                            ? uiTemplate("學習進度 · {0}", scopedProgress.topicName)
+                            : uiText("學習進度")}{" "}
+                          {scopedProgress.covered}/{scopedProgress.total}
+                        </span>
                       </span>
                       <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-[#8b7a64] transition ${progressPanelOpen ? "rotate-180" : ""}`} />
                     </div>
                     <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[#e8ddcc]">
                       <div
                         className="h-full rounded-full bg-indigo-500 transition-all duration-500"
-                        style={{ width: `${Math.round((studentProgress.covered / studentProgress.total) * 100)}%` }}
+                        style={{
+                          width: `${scopedProgress.total > 0 ? Math.round((scopedProgress.covered / scopedProgress.total) * 100) : 0}%`,
+                        }}
                       />
                     </div>
-                    {studentProgress.nextPoint ? (
+                    {scopedProgress.nextPoint ? (
                       <div className="mt-1.5 truncate text-[10px] font-semibold text-[#8b7a64]">
-                        {uiTemplate("目前學習：{0}", studentProgress.nextPoint.title)}
+                        {uiTemplate("目前學習：{0}", scopedProgress.nextPoint.title)}
                       </div>
                     ) : null}
                   </button>
                   {progressPanelOpen ? (
                     <div className="absolute inset-x-0 top-full z-50 max-h-60 space-y-2 overflow-y-auto rounded-b-2xl border border-t-0 border-[#ebe5db] bg-white px-3 py-2 shadow-[0_16px_40px_rgba(15,23,42,0.18)]">
+                      {progressBuckets.length > 1 ? (
+                        <div
+                          className="flex items-center gap-1 overflow-x-auto pb-1"
+                          aria-label={uiText("按主題查看學習進度")}
+                        >
+                          {progressScope.kind !== "follow" ? (
+                            <button
+                              type="button"
+                              onClick={() => setProgressScope({ kind: "follow" })}
+                              className="shrink-0 rounded-full border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-black text-indigo-700"
+                            >
+                              {uiText("跟住對話")}
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => setProgressScope({ kind: "all" })}
+                            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${
+                              activeProgressTopicId === null
+                                ? "bg-indigo-600 text-white"
+                                : "bg-[#f0e9dc] text-[#6c4b22]"
+                            }`}
+                          >
+                            {uiText("全部")} {studentProgress.covered}/{studentProgress.total}
+                          </button>
+                          {progressBuckets.map((bucket) => (
+                            <button
+                              type="button"
+                              key={bucket.topicId}
+                              onClick={() => setProgressScope({ kind: "topic", topicId: bucket.topicId })}
+                              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${
+                                activeProgressBucket?.topicId === bucket.topicId
+                                  ? "bg-indigo-600 text-white"
+                                  : "bg-[#f0e9dc] text-[#6c4b22]"
+                              }`}
+                            >
+                              {bucket.topicName} {bucket.covered}/{bucket.total}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                      {followedTopicIsEmpty ? (
+                        <div className="py-2 text-center text-[10px] font-semibold text-[#9a8a72]">
+                          {uiText("呢個主題暫時未有知識點。")}
+                        </div>
+                      ) : null}
                       {(["basic_fact", "deep_understanding"] as const).map((tier) => {
-                        const tierPoints = studentProgress.points.filter((point) => point.tier === tier);
+                        const tierPoints = scopedProgress.points.filter((point) => point.tier === tier);
                         if (!tierPoints.length) return null;
                         const tierCovered = tierPoints.filter((point) => point.covered).length;
                         const tierLabel = tier === "basic_fact" ? uiText("基礎事實") : uiText("深度理解");
