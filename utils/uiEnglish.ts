@@ -976,6 +976,8 @@ export const englishUi: Record<string, string> = {
   "按主題查看學習進度": "View learning progress by topic",
   "目前學習：{0}": "Learning now: {0}",
   "知識點掌握概覽": "Knowledge Mastery Overview",
+  "已掌握 {0}/{1} 個知識點": "Mastered {0}/{1} knowledge points",
+  "跳過 {0} 次": "Skipped {0} times",
   "跳過": "Skipped",
   "此知識點曾多次推唔動而被跳過": "This knowledge point was repeatedly skipped because it could not be advanced.",
   "由學生實際對話累積的知識點掌握統計。": "Knowledge mastery aggregated from real student conversations.",
