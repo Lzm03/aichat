@@ -9,6 +9,15 @@ import {
   hashPassword,
   requireAuth,
 } from "../lib/platform-auth.ts";
+import {
+  MAX_BATCH_STUDENTS,
+  fetchOwnedGroupIds,
+  fetchOwnedStudentIds,
+  normalizeIdList,
+  normalizeOptionalIdList,
+  setStudentsGroups,
+  unlinkStudentsFromTeacher,
+} from "../lib/student-ops.ts";
 
 const router = express.Router();
 
@@ -219,6 +228,41 @@ router.post("/import", requireAuth, async (req, res) => {
   }
 });
 
+// 批量由老師名單移除學生。同單人 DELETE 一樣只係解除關聯，users row 保留。
+router.delete("/", requireAuth, async (req, res) => {
+  const studentIds = normalizeIdList(req.body?.studentIds);
+  if (!studentIds) {
+    return res.status(400).json({ error: `studentIds must be an array of 1-${MAX_BATCH_STUDENTS} ids` });
+  }
+  try {
+    await ensurePlatformTables();
+    const teacher = requireTeacher(req, res);
+    if (!teacher) return;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      // 擁有權喺 transaction 入面驗：驗完同刪完之間冇窗口俾人插手，
+      // 「唔會 partial」先至真係成立。
+      const owned = await fetchOwnedStudentIds(client, teacher.id, studentIds);
+      if (owned.length !== studentIds.length) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "one or more students are invalid" });
+      }
+      const removed = await unlinkStudentsFromTeacher(client, teacher.id, studentIds);
+      await client.query("COMMIT");
+      return res.json({ ok: true, count: removed });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error("DELETE /api/students failed:", error);
+    return res.status(500).json({ error: "failed to remove students" });
+  }
+});
+
 router.delete("/:studentId", requireAuth, async (req, res) => {
   try {
     await ensurePlatformTables();
@@ -228,19 +272,9 @@ router.delete("/:studentId", requireAuth, async (req, res) => {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      await client.query(
-        `DELETE FROM student_group_members
-         WHERE student_id=$1 AND group_id IN (SELECT id FROM student_groups WHERE teacher_id=$2)`,
-        [studentId, teacher.id]
-      );
-      await client.query("DELETE FROM bot_student_shares WHERE student_id=$1 AND teacher_id=$2", [studentId, teacher.id]);
-      await client.query("DELETE FROM bot_student_exclusions WHERE student_id=$1 AND teacher_id=$2", [studentId, teacher.id]);
-      const result = await client.query(
-        "DELETE FROM teacher_students WHERE teacher_id=$1 AND student_id=$2",
-        [teacher.id, studentId]
-      );
+      const removed = await unlinkStudentsFromTeacher(client, teacher.id, [studentId]);
       await client.query("COMMIT");
-      if (!result.rowCount) return res.status(404).json({ error: "student not found" });
+      if (!removed) return res.status(404).json({ error: "student not found" });
       return res.json({ ok: true });
     } catch (error) {
       await client.query("ROLLBACK");
@@ -254,41 +288,73 @@ router.delete("/:studentId", requireAuth, async (req, res) => {
   }
 });
 
+// 批量為學生 replace 班級。body: { studentIds, groupIds }；空 groupIds ＝ 清空班級。
+router.put("/groups", requireAuth, async (req, res) => {
+  const studentIds = normalizeIdList(req.body?.studentIds);
+  const groupIds = normalizeOptionalIdList(req.body?.groupIds);
+  if (!studentIds) {
+    return res.status(400).json({ error: `studentIds must be an array of 1-${MAX_BATCH_STUDENTS} ids` });
+  }
+  if (!groupIds) {
+    return res.status(400).json({ error: `groupIds must be an array of at most ${MAX_BATCH_STUDENTS} ids` });
+  }
+  try {
+    await ensurePlatformTables();
+    const teacher = requireTeacher(req, res);
+    if (!teacher) return;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      // 全批驗完先寫：任何一個 id 唔屬於呢位老師就成批 400，唔做 partial。
+      // （同上星期 TopicScoped 嘅取向一致：寧願大聲失敗，都唔好靜靜雞做一半。）
+      const owned = await fetchOwnedStudentIds(client, teacher.id, studentIds);
+      if (owned.length !== studentIds.length) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "one or more students are invalid" });
+      }
+      const allowedGroups = await fetchOwnedGroupIds(client, teacher.id, groupIds);
+      if (allowedGroups.length !== groupIds.length) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "one or more groups are invalid" });
+      }
+      await setStudentsGroups(client, teacher.id, studentIds, groupIds);
+      await client.query("COMMIT");
+      return res.json({ ok: true, studentIds, groupIds });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error("PUT /api/students/groups failed:", error);
+    return res.status(500).json({ error: "failed to update student groups" });
+  }
+});
+
 router.put("/:studentId/groups", requireAuth, async (req, res) => {
-  const groupIds = Array.isArray(req.body?.groupIds) ? Array.from(new Set(req.body.groupIds.map(String))) : [];
+  // 標明 string[]：req.body 係 any，唔標嘅話 new Set() 會推導成 Set<unknown>，
+  // 就傳唔入 student-ops 嘅 string[] 參數（以前直接掉落 pool.query，所以睇唔出）。
+  const groupIds = Array.isArray(req.body?.groupIds)
+    ? Array.from(new Set<string>((req.body.groupIds as unknown[]).map(String)))
+    : [];
   try {
     await ensurePlatformTables();
     const teacher = requireTeacher(req, res);
     if (!teacher) return;
     const studentId = String(req.params.studentId || "");
-    const linked = await pool.query(
-      "SELECT 1 FROM teacher_students WHERE teacher_id=$1 AND student_id=$2",
-      [teacher.id, studentId]
-    );
-    if (!linked.rowCount) return res.status(404).json({ error: "student not found" });
+    const linked = await fetchOwnedStudentIds(pool, teacher.id, [studentId]);
+    if (!linked.length) return res.status(404).json({ error: "student not found" });
 
-    const allowedGroups = groupIds.length
-      ? await pool.query("SELECT id FROM student_groups WHERE teacher_id=$1 AND id = ANY($2::text[])", [teacher.id, groupIds])
-      : { rows: [] as Array<{ id: string }> };
-    if (allowedGroups.rows.length !== groupIds.length) {
+    const allowedGroups = await fetchOwnedGroupIds(pool, teacher.id, groupIds);
+    if (allowedGroups.length !== groupIds.length) {
       return res.status(400).json({ error: "one or more groups are invalid" });
     }
 
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      await client.query(
-        `DELETE FROM student_group_members
-         WHERE student_id=$1 AND group_id IN (SELECT id FROM student_groups WHERE teacher_id=$2)`,
-        [studentId, teacher.id]
-      );
-      if (groupIds.length) {
-        await client.query(
-          `INSERT INTO student_group_members (group_id, student_id)
-           SELECT UNNEST($1::text[]), $2`,
-          [groupIds, studentId]
-        );
-      }
+      await setStudentsGroups(client, teacher.id, [studentId], groupIds);
       await client.query("COMMIT");
       return res.json({ ok: true, groupIds });
     } catch (error) {
