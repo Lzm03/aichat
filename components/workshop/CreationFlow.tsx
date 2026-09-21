@@ -249,10 +249,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
   const [botConfig, setBotConfig] = useState(loadBotConfig());
   const [isBotLoading, setIsBotLoading] = useState(Boolean(botId));
   const [botLoadError, setBotLoadError] = useState("");
-  // TEMP-DEMO: port-3100 preview starts at step 4 (knowledge map). Revert after the demo.
-  const [currentStep, setCurrentStep] = useState(() =>
-    typeof window !== "undefined" && window.location.port === "3100" ? 4 : 1
-  );
+  const [currentStep, setCurrentStep] = useState(1);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [isPublishSuccessModalOpen, setIsPublishSuccessModalOpen] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);

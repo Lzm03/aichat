@@ -10,6 +10,7 @@ import test from "node:test";
 import {
   computeNewlyCovered,
   computeNextPoint,
+  seedCoverageOnTopicSwitch,
 } from "../lib/conversation-state.ts";
 import type { KnowledgePoint } from "../../utils/chat-prompt.ts";
 
@@ -264,4 +265,90 @@ test("全部 basic_fact 覆蓋後先推 deep_understanding", () => {
   ];
   const result = computeNextPoint(points, new Set(["kp_001"]), new Set(), null);
   assert.equal(result.nextPointId, "kp_002", "基礎做完先輪到 deep");
+});
+
+// ── 切話題時嘅覆蓋 seed（覆蓋集合一定綁住自己嘅話題） ──────────────────
+
+test("同一話題：seed 保留對話 row 嘅 covered，topicChanged = false", () => {
+  const result = seedCoverageOnTopicSwitch({
+    previous: { topicId: "topic_a", value: ["kp_1", "kp_2"] },
+    topicId: "topic_a",
+    accumulated: { topicId: "topic_a", value: ["kp_1"] },
+  });
+  assert.deepEqual([...result.coverage.value].sort(), ["kp_1", "kp_2"]);
+  assert.equal(result.coverage.topicId, "topic_a");
+  assert.equal(result.topicChanged, false);
+});
+
+test("轉話題：丟棄舊話題 covered，由新話題累積進度重新起步", () => {
+  // 舊話題嘅 kp_1 同新話題嘅 kp_1 可以係兩回事，所以一個都唔可以帶過去。
+  const result = seedCoverageOnTopicSwitch({
+    previous: { topicId: "topic_a", value: ["kp_1", "kp_2"] },
+    topicId: "topic_b",
+    accumulated: { topicId: "topic_b", value: ["kp_3"] },
+  });
+  assert.deepEqual([...result.coverage.value], ["kp_3"], "舊話題 id 一個都唔可以帶過去");
+  assert.equal(result.coverage.topicId, "topic_b");
+  assert.equal(result.topicChanged, true);
+});
+
+test("新對話（冇 conversation 狀態）：seed 用跨對話累積，topicChanged = false", () => {
+  const result = seedCoverageOnTopicSwitch({
+    previous: null,
+    topicId: "topic_a",
+    accumulated: { topicId: "topic_a", value: ["kp_1", "kp_2"] },
+  });
+  assert.deepEqual([...result.coverage.value].sort(), ["kp_1", "kp_2"]);
+  assert.equal(result.coverage.topicId, "topic_a");
+  assert.equal(result.topicChanged, false);
+});
+
+test("'' 對 '' 屬同一話題（舊數據冇指定話題）", () => {
+  const result = seedCoverageOnTopicSwitch({
+    previous: { topicId: "", value: ["kp_1"] },
+    topicId: "",
+    accumulated: { topicId: "", value: [] },
+  });
+  assert.deepEqual([...result.coverage.value], ["kp_1"]);
+  assert.equal(result.topicChanged, false, "冇指定話題嘅舊對話唔應該當成切咗話題");
+});
+
+test("accumulated 帶錯話題：大聲 warn，當冇累積（唔可以靜靜雞當已掌握）", () => {
+  // 兩個輸入都係 TopicScoped，型別上冇得傳錯話題；呢個 test 守住硬 cast
+  // 或者將來改壞嘅情況 —— 出事要出聲，而且要 fail-safe（由零重新教），
+  // 唔係將第二個話題嘅 id 當成呢個話題已掌握寫入 DB。
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args.map(String).join(" "));
+  };
+  try {
+    const result = seedCoverageOnTopicSwitch({
+      previous: null,
+      topicId: "topic_b",
+      accumulated: { topicId: "topic_a", value: ["kp_1", "kp_2"] },
+    });
+    assert.deepEqual([...result.coverage.value], [], "第二個話題嘅 id 一個都唔可以入嚟");
+    assert.equal(result.coverage.topicId, "topic_b", "coverage 一定屬於而家呢個話題");
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.equal(warnings.length, 1, "要出聲，唔可以靜靜雞");
+  assert.match(warnings[0], /topic mismatch/);
+});
+
+test("轉話題：next_point 沿用 context 會被清空（舊話題 id 唔壓制新話題）", () => {
+  const switched = seedCoverageOnTopicSwitch({
+    previous: { topicId: "topic_a", value: ["kp_1"] },
+    topicId: "topic_b",
+    accumulated: { topicId: "topic_b", value: [] },
+  });
+  // trackConversationState 喺 topicChanged 時傳 null context 入 computeNextPoint，
+  // 即係舊話題嘅 next_point / 跳過名單唔會帶落新話題。
+  const context = switched.topicChanged ? null : { nextPointId: "kp_1", turnsOnNextPoint: 3 };
+  assert.equal(context, null);
+  const points = [point("kp_2", ["榫卯", "斗拱"])];
+  const result = computeNextPoint(points, switched.coverage.value, new Set(), context);
+  assert.equal(result.nextPointId, "kp_2", "新話題由自己第一個未覆蓋點重新起");
+  assert.deepEqual(result.skippedIds, []);
 });

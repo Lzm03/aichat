@@ -81,6 +81,36 @@ type StudentProgressPayload = {
   students: StudentProgressEntry[];
 };
 
+/** 覆蓋地圖一格：某個知識點有幾多百分比嘅學生覆蓋咗 */
+type CoverageNode = {
+  id: string;
+  topicId: string;
+  topicName: string;
+  label: string;
+  score: number;
+  completed: boolean;
+  hasData: boolean;
+};
+
+/** 學生 drawer 節內嘅層級子組 */
+type TierGroup = {
+  key: string;
+  label: string;
+  level: string;
+  points: Array<{ id: string; title: string; covered: boolean }>;
+  coveredCount: number;
+  total: number;
+};
+
+/** 學生 drawer 一個主題一節，節內再分層級 */
+type KnowledgeSection = {
+  key: string;
+  topicName: string;
+  tiers: TierGroup[];
+  masteredPoints: number;
+  total: number;
+};
+
 type InteractionPoint = {
   name: string;
   x: number;
@@ -204,7 +234,7 @@ export const StudentLearningReportCard = () => {
     if (!studentId || !studentProgressData) return null;
     return studentProgressData.students.find((student) => student.userId === String(studentId)) || null;
   }, [studentProgressData, selectedDetailStudent?.studentId]);
-  const knowledgeTierGroups = useMemo(() => {
+  const knowledgeTopicSections = useMemo(() => {
     if (!studentProgressData) return [];
     // 話題維度（audit #1）：每個主題分桶，再用每桶自己嘅覆蓋 id 集標 covered，
     // 跨話題撞 id 唔會再互相污染。
@@ -215,29 +245,20 @@ export const StudentLearningReportCard = () => {
     const coveredByTopic = new Map(
       coveredBuckets.map((bucket) => [bucket.topicId, new Set(bucket.coveredPointIds || [])])
     );
-    const groups: Array<{
-      key: string;
-      topicName: string;
-      tier: 'basic_fact' | 'deep_understanding';
-      label: string;
-      level: string;
-      points: Array<{ id: string; title: string; covered: boolean }>;
-      coveredCount: number;
-      total: number;
-    }> = [];
+    const sections: KnowledgeSection[] = [];
     for (const bucket of buckets) {
       const bucketPoints = studentProgressData.points.filter((point) => point.topicId === bucket.topicId);
+      if (!bucketPoints.length) continue;
       const covered = coveredByTopic.get(bucket.topicId) || new Set<string>();
+      const tiers: TierGroup[] = [];
       for (const { tier, label, level } of [
         { tier: 'basic_fact' as const, label: '基礎事實', level: 'L1' },
         { tier: 'deep_understanding' as const, label: '深度理解', level: 'L2/L3' },
       ]) {
         const points = bucketPoints.filter((point) => point.tier === tier);
         if (!points.length) continue;
-        groups.push({
+        tiers.push({
           key: `${bucket.topicId}:${tier}`,
-          topicName: bucket.topicName,
-          tier,
           label,
           level,
           points: points.map((point) => ({ id: point.id, title: point.title, covered: covered.has(point.id) })),
@@ -245,8 +266,15 @@ export const StudentLearningReportCard = () => {
           total: points.length,
         });
       }
+      sections.push({
+        key: bucket.topicId,
+        topicName: bucket.topicName,
+        tiers,
+        masteredPoints: bucketPoints.filter((point) => covered.has(point.id)).length,
+        total: bucketPoints.length,
+      });
     }
-    return groups;
+    return sections;
   }, [studentProgressData, selectedStudentProgress]);
   const inputRate = interactionSummary.independentRate || 0;
   const assistedRate = interactionSummary.assistedRate || 0;
@@ -265,7 +293,7 @@ export const StudentLearningReportCard = () => {
   // 覆蓋地圖：每點 % = 覆蓋咗嗰點嘅學生數 ÷ 有進度紀錄嘅學生數。
   // 分母用 hasProgressRow（同 progress-overview 嘅 studentsWithProgress 同一口徑），
   // 唔係全班人數 —— 未傾過偈嘅學生冇資料，計入分母會令所有點永遠偏低。
-  const topicNodes = useMemo(() => {
+  const topicNodes = useMemo<CoverageNode[]>(() => {
     if (!studentProgressData) return [];
     const roster = studentProgressData.students.filter((student) => student.hasProgressRow);
     const buckets = Array.isArray(studentProgressData.topicBuckets) && studentProgressData.topicBuckets.length
@@ -283,13 +311,25 @@ export const StudentLearningReportCard = () => {
       return {
         id: point.id,
         topicId: point.topicId || "",
-        label: buckets && point.topicName ? `${point.topicName}：${point.title}` : point.title,
+        // 主題名由外層分節標題顯示，格仔只出知識點本身
+        topicName: point.topicName || "",
+        label: point.title,
         score: roster.length ? Math.round((coveredStudents / roster.length) * 100) : 0,
         completed: roster.length > 0 && coveredStudents === roster.length,
         hasData: roster.length > 0,
       };
     });
   }, [studentProgressData]);
+  // 覆蓋地圖按主題分節（server 已排好序，呢度只做保序分組）
+  const topicNodeSections = useMemo(() => {
+    const sections = new Map<string, { topicId: string; topicName: string; nodes: CoverageNode[] }>();
+    for (const node of topicNodes) {
+      const existing = sections.get(node.topicId);
+      if (existing) existing.nodes.push(node);
+      else sections.set(node.topicId, { topicId: node.topicId, topicName: node.topicName, nodes: [node] });
+    }
+    return Array.from(sections.values());
+  }, [topicNodes]);
   const botAvatarFallback = 'https://api.dicebear.com/9.x/bottts/svg?seed=Chopreality';
 
   useEffect(() => {
@@ -557,15 +597,24 @@ export const StudentLearningReportCard = () => {
                     <p className="mt-0.5 text-[10px] font-semibold text-slate-400">{uiText("展示全班各知識點的集體解鎖進度")}</p>
                   </div>
                 </div>
-                {topicNodes.length ? (
-                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-                    {topicNodes.map((item) => (
-                      <div key={`${item.topicId}:${item.id}`} className="flex flex-col items-center rounded-2xl border border-transparent p-1 text-center">
-                        <div className={`flex h-12 w-12 items-center justify-center rounded-full text-sm font-black ${item.completed ? 'bg-indigo-500 text-white' : 'bg-amber-100 text-amber-700'}`}>
-                          {item.completed ? '✓' : '!'}
+                {topicNodeSections.length ? (
+                  <div className="mt-3 space-y-3">
+                    {topicNodeSections.map((section) => (
+                      <div key={section.topicId}>
+                        {section.topicName ? (
+                          <div className="mb-1.5 text-[10px] font-black text-indigo-500">{section.topicName}</div>
+                        ) : null}
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                          {section.nodes.map((item) => (
+                            <div key={`${item.topicId}:${item.id}`} className="flex flex-col items-center rounded-2xl border border-transparent p-1 text-center">
+                              <div className={`flex h-12 w-12 items-center justify-center rounded-full text-sm font-black ${item.completed ? 'bg-indigo-500 text-white' : 'bg-amber-100 text-amber-700'}`}>
+                                {item.completed ? '✓' : '!'}
+                              </div>
+                              <div className="mt-2 text-[10px] font-black text-slate-700">{item.label}</div>
+                              <div className="mt-1 text-xs font-black text-indigo-500">{item.hasData ? `${item.score}%` : '—'}</div>
+                            </div>
+                          ))}
                         </div>
-                        <div className="mt-2 text-[10px] font-black text-slate-700">{item.label}</div>
-                        <div className="mt-1 text-xs font-black text-indigo-500">{item.hasData ? `${item.score}%` : '—'}</div>
                       </div>
                     ))}
                   </div>
@@ -1127,34 +1176,43 @@ export const StudentLearningReportCard = () => {
                                   <p className="mt-3 text-[10px] font-semibold text-slate-500">{uiTemplate("目前學習：{0}", selectedStudentProgress.nextPoint.title)}</p>
                                 ) : null}
 
-                                {knowledgeTierGroups.length ? (
-                                  <div className="mt-3 space-y-3">
-                                    {knowledgeTierGroups.map((group, index) => {
-                                      const previous = knowledgeTierGroups[index - 1];
-                                      const showTopic = Boolean(group.topicName) && group.topicName !== previous?.topicName;
-                                      return (
-                                      <div key={group.key}>
-                                        {showTopic ? (
-                                          <div className="mt-2 mb-1 text-[11px] font-black text-indigo-600">{group.topicName}</div>
-                                        ) : null}
-                                        <div className="mb-1 flex items-center justify-between text-[10px] font-black text-slate-500">
-                                          <span>{uiText(group.label)} ({group.level})</span>
-                                          <span className="text-slate-700">{group.coveredCount}/{group.total}</span>
+                                {knowledgeTopicSections.length ? (
+                                  <div className="mt-3 space-y-4">
+                                    {knowledgeTopicSections.map((section) => (
+                                      <div key={section.key}>
+                                        <div className="mb-1.5 flex items-center justify-between gap-2">
+                                          {section.topicName ? (
+                                            <span className="truncate text-[11px] font-black text-indigo-600">{section.topicName}</span>
+                                          ) : (
+                                            <span />
+                                          )}
+                                          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-600">
+                                            {uiTemplate("已掌握 {0}/{1} 個知識點", section.masteredPoints, section.total)}
+                                          </span>
                                         </div>
-                                        <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
-                                          {group.points.map((point) => (
-                                            <span
-                                              key={point.id}
-                                              className={`flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-[10px] font-semibold ${point.covered ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-400'}`}
-                                            >
-                                              <span className={`shrink-0 text-[11px] leading-none ${point.covered ? 'text-emerald-500' : 'text-slate-300'}`}>{point.covered ? '✓' : '○'}</span>
-                                              <span className="truncate">{point.title}</span>
-                                            </span>
+                                        <div className="space-y-2.5">
+                                          {section.tiers.map((group) => (
+                                            <div key={group.key}>
+                                              <div className="mb-1 flex items-center justify-between text-[10px] font-black text-slate-500">
+                                                <span>{uiText(group.label)} ({group.level})</span>
+                                                <span className="text-slate-700">{group.coveredCount}/{group.total}</span>
+                                              </div>
+                                              <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                                                {group.points.map((point) => (
+                                                  <span
+                                                    key={point.id}
+                                                    className={`flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-[10px] font-semibold ${point.covered ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-400'}`}
+                                                  >
+                                                    <span className={`shrink-0 text-[11px] leading-none ${point.covered ? 'text-emerald-500' : 'text-slate-300'}`}>{point.covered ? '✓' : '○'}</span>
+                                                    <span className="truncate">{point.title}</span>
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            </div>
                                           ))}
                                         </div>
                                       </div>
-                                      );
-                                    })}
+                                    ))}
                                   </div>
                                 ) : (
                                   <p className="mt-3 rounded-xl bg-slate-50 px-3 py-3 text-[11px] font-semibold text-slate-500">{uiText("這位學生還沒有與這個角色累積可顯示的知識點紀錄。")}</p>

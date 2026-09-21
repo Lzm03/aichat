@@ -20,7 +20,6 @@ import {
   syncInheritedTopicKnowledge,
 } from "../lib/character-topics.ts";
 import { ensureDefaultTeacherExperience } from "../lib/default-teacher-experience.ts";
-import { getStudentProgress } from "../lib/conversation-state.ts";
 import { parsePromptSource } from "../../utils/chat-prompt.ts";
 import {
   GEMINI_STABLE_TEMPERATURE,
@@ -996,6 +995,28 @@ router.get("/:botId/progress", requireAuth, async (req, res) => {
       if (point) nextPoint = { id: point.id, title: point.title };
     }
 
+    // 每個話題各自嘅 "目前學習"：嗰個話題最近一段對話嘅 next_point_id。
+    // 前端學習進度面板按話題切換顯示，就係靠呢個欄位。
+    const topicStateResult = await pool.query(
+      `SELECT DISTINCT ON (topic_id) topic_id, next_point_id FROM bot_conversation_states
+       WHERE bot_id=$1 AND user_id=$2 ORDER BY topic_id, updated_at DESC`,
+      [botId, user.id]
+    );
+    // '' 進度（舊數據／冇指定話題）同 aggregateTopicCoverage 一樣合併入默認話題桶。
+    const defaultTopicBucket = (topicsByBot.get(botId) || []).find(
+      (item) => item.isDefault
+    );
+    const mapTopicId = (topicId: string) =>
+      topicId === "" ? defaultTopicBucket?.topicId ?? "" : topicId;
+    const nextPointByTopic = new Map<string, { id: string; title: string }>();
+    for (const row of topicStateResult.rows) {
+      const mappedTopicId = mapTopicId(String(row.topic_id || ""));
+      const bucket = aggregate.buckets.find((item) => item.topicId === mappedTopicId);
+      const scope = bucket ? bucket.points : kbPoints;
+      const point = scope.find((item) => item.id === String(row.next_point_id || ""));
+      if (point) nextPointByTopic.set(mappedTopicId, { id: point.id, title: point.title });
+    }
+
     const flatPoints = aggregate.buckets.flatMap((bucket) =>
       bucket.points.map((point) => ({
         ...point,
@@ -1020,6 +1041,7 @@ router.get("/:botId/progress", requireAuth, async (req, res) => {
         topicName: bucket.topicName,
         covered: bucket.covered,
         total: bucket.total,
+        nextPoint: nextPointByTopic.get(bucket.topicId) ?? null,
       })),
     });
   } catch (err) {

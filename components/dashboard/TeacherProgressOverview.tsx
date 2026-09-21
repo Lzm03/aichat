@@ -1,4 +1,4 @@
-import { uiText } from '../../utils/uiI18n';
+import { uiText, uiTemplate } from '../../utils/uiI18n';
 import React, { useEffect, useState } from 'react';
 import { Target, Users } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
@@ -22,6 +22,22 @@ type BotProgress = {
   avatarUrl: string;
   studentsWithProgress: number;
   points: PointProgress[];
+};
+
+/** 知識點按主題分節。Server 已按 default 桶先行排好，呢度只做保序分組。 */
+const groupPointsByTopic = (points: PointProgress[]) => {
+  const sections = new Map<string, { topicId: string; topicName: string; points: PointProgress[] }>();
+  for (const point of points) {
+    const existing = sections.get(point.topicId);
+    if (existing) existing.points.push(point);
+    else sections.set(point.topicId, { topicId: point.topicId, topicName: point.topicName, points: [point] });
+  }
+  return Array.from(sections.values()).map((section) => ({
+    ...section,
+    // 班級層面：有一位學生覆蓋過，就當呢個知識點已經有人掌握
+    masteredPoints: section.points.filter((point) => point.coveredCount > 0).length,
+    skippedTotal: section.points.reduce((sum, point) => sum + point.skippedCount, 0),
+  }));
 };
 
 export const TeacherProgressOverview: React.FC = () => {
@@ -75,47 +91,63 @@ export const TeacherProgressOverview: React.FC = () => {
                   <Users className="h-3 w-3" />{bot.studentsWithProgress}
                 </span>
               </div>
-              <div className="mt-3 space-y-2">
-                {bot.points.length ? bot.points.map((point, index) => {
-                  const pct = bot.studentsWithProgress > 0
-                    ? Math.round((point.coveredCount / bot.studentsWithProgress) * 100)
-                    : 0;
-                  const untouched = point.coveredCount === 0;
-                  const previous = bot.points[index - 1];
-                  const showTopic = Boolean(point.topicName) && point.topicName !== previous?.topicName;
-                  return (
-                    <div key={`${point.topicId}:${point.id}`}>
-                      {showTopic ? (
-                        <div className="mt-2 mb-1 text-[10px] font-black text-indigo-500">{point.topicName}</div>
-                      ) : null}
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={`w-32 shrink-0 truncate text-xs font-semibold ${untouched ? 'text-rose-500' : 'text-slate-700'}`}
-                          title={point.title}
-                        >
-                          {point.title}
+              <div className="mt-3 space-y-3">
+                {bot.points.length ? groupPointsByTopic(bot.points).map((section) => (
+                  <div key={section.topicId} className="rounded-2xl bg-slate-50/70 p-2.5">
+                    <div className="flex items-center justify-between gap-2 px-1">
+                      {section.topicName ? (
+                        <span className="truncate text-[10px] font-black text-indigo-500">{section.topicName}</span>
+                      ) : (
+                        <span />
+                      )}
+                      <span className="flex shrink-0 items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-slate-500">
+                          {uiTemplate("已掌握 {0}/{1} 個知識點", section.masteredPoints, section.points.length)}
                         </span>
-                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
-                          <div
-                            className={`h-full rounded-full ${point.tier === 'basic_fact' ? 'bg-emerald-500' : 'bg-indigo-500'}`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <span className={`w-10 shrink-0 text-right text-xs font-black ${untouched ? 'text-rose-500' : 'text-slate-600'}`}>
-                          {point.coveredCount}
-                        </span>
-                        {point.skippedCount > 0 ? (
-                          <span
-                            className="shrink-0 rounded-md bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700"
-                            title={uiText("此知識點曾多次推唔動而被跳過")}
-                          >
-                            {uiText("跳過")} {point.skippedCount}
+                        {section.skippedTotal > 0 ? (
+                          <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
+                            {uiTemplate("跳過 {0} 次", section.skippedTotal)}
                           </span>
                         ) : null}
-                      </div>
+                      </span>
                     </div>
-                  );
-                }) : (
+                    <div className="mt-2 space-y-2">
+                      {section.points.map((point) => {
+                        const pct = bot.studentsWithProgress > 0
+                          ? Math.round((point.coveredCount / bot.studentsWithProgress) * 100)
+                          : 0;
+                        const untouched = point.coveredCount === 0;
+                        return (
+                          <div key={point.id} className="flex items-center gap-3">
+                            <span
+                              className={`w-32 shrink-0 truncate text-xs font-semibold ${untouched ? 'text-rose-500' : 'text-slate-700'}`}
+                              title={point.title}
+                            >
+                              {point.title}
+                            </span>
+                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+                              <div
+                                className={`h-full rounded-full ${point.tier === 'basic_fact' ? 'bg-emerald-500' : 'bg-indigo-500'}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <span className={`w-10 shrink-0 text-right text-xs font-black ${untouched ? 'text-rose-500' : 'text-slate-600'}`}>
+                              {point.coveredCount}
+                            </span>
+                            {point.skippedCount > 0 ? (
+                              <span
+                                className="shrink-0 rounded-md bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700"
+                                title={uiText("此知識點曾多次推唔動而被跳過")}
+                              >
+                                {uiText("跳過")} {point.skippedCount}
+                              </span>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )) : (
                   <p className="text-xs font-semibold text-slate-400">{uiText("此 Bot 尚未設定知識點。")}</p>
                 )}
               </div>
