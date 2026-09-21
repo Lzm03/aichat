@@ -18,6 +18,7 @@ import {
   getAccessibleBot,
   resolveCharacterTopic,
 } from "../lib/character-topics.ts";
+import { switchConversationTopicState } from "../lib/conversation-state.ts";
 
 const router = express.Router();
 
@@ -112,6 +113,15 @@ router.patch("/:conversationId/topic", async (req, res) => {
     const topic = await resolveCharacterTopic({ characterId, requestedTopicId: topicId });
     if (!topic) return res.status(404).json({ error: "Topic not found" });
     const updated = await updateConversationTopic(conversation.id, user.id, topic.id);
+    // 老師／學生一撳切話題就即刻同步重置對話狀態，唔等下一輪回覆：
+    // 舊話題嘅知識點進度同訊息已經按話題存檔，呢度清走 next_point、skipped 等
+    // 淨係對舊話題有意義嘅欄位（詳見 switchConversationTopicState）。
+    await switchConversationTopicState({
+      conversationId: conversation.id,
+      botId: characterId,
+      userId: user.id,
+      topicId: topic.id,
+    });
     return res.json({ conversation: mapConversationRow(updated!) });
   } catch (error) {
     if (error instanceof CharacterTopicError) {

@@ -10,7 +10,9 @@ import test from "node:test";
 import {
   computeNewlyCovered,
   computeNextPoint,
+  sameTopic,
   seedCoverageOnTopicSwitch,
+  stateForTopic,
 } from "../lib/conversation-state.ts";
 import type { KnowledgePoint } from "../../utils/chat-prompt.ts";
 
@@ -351,4 +353,53 @@ test("轉話題：next_point 沿用 context 會被清空（舊話題 id 唔壓�
   const result = computeNextPoint(points, switched.coverage.value, new Set(), context);
   assert.equal(result.nextPointId, "kp_2", "新話題由自己第一個未覆蓋點重新起");
   assert.deepEqual(result.skippedIds, []);
+});
+
+test("sameTopic：'' 同真 topic id 一定唔相等（讀寫兩側同一條規則）", () => {
+  assert.equal(sameTopic("topic_a", "topic_a"), true);
+  assert.equal(sameTopic("topic_a", "topic_b"), false);
+  // 舊數據／主知識庫嘅 '' 唔等於任何真話題；undefined / null 一律當 ''。
+  assert.equal(sameTopic("", "topic_a"), false);
+  assert.equal(sameTopic("topic_a", ""), false);
+  assert.equal(sameTopic("", ""), true);
+  assert.equal(sameTopic(null, ""), true);
+  assert.equal(sameTopic(undefined, "topic_a"), false);
+});
+
+test("stateForTopic：唔同話題嘅 state row 一律當冇 state", () => {
+  const row = {
+    topic_id: "topic_a",
+    covered_point_ids: ["kp_1"],
+    next_point_id: "kp_2",
+  };
+  assert.equal(stateForTopic(row, "topic_a")?.next_point_id, "kp_2", "同一話題照用");
+  // 呢個就係 bug 嘅閘：切話題之後如果仲讀到舊話題嘅 row，
+  // Next_Point 會注入上一個話題嘅知識點，Bot 照傾舊話題。
+  assert.equal(stateForTopic(row, "topic_b"), null, "轉咗話題 = 呢段對話喺新話題未有狀態");
+  assert.equal(stateForTopic(row, ""), null, "真話題嘅 row 唔可以當成主知識庫嘅");
+  assert.equal(stateForTopic(null, "topic_a"), null, "本身冇 state 就係冇");
+  // 舊數據（''）第一次帶真話題入嚟，要當成轉咗話題，由新話題重新起步。
+  assert.equal(stateForTopic({ ...row, topic_id: "" }, "topic_a"), null);
+});
+
+test("讀寫兩側對「轉咗話題」嘅判斷一致（同一條規則，唔可以各自比）", () => {
+  const cases: Array<[string, string]> = [
+    ["topic_a", "topic_a"],
+    ["topic_a", "topic_b"],
+    ["", "topic_a"],
+    ["topic_a", ""],
+  ];
+  for (const [stateTopicId, topicId] of cases) {
+    const readSideSaysChanged = stateForTopic({ topic_id: stateTopicId }, topicId) === null;
+    const writeSideSaysChanged = seedCoverageOnTopicSwitch({
+      previous: { topicId: stateTopicId, value: ["kp_1"] },
+      topicId,
+      accumulated: { topicId, value: [] },
+    }).topicChanged;
+    assert.equal(
+      readSideSaysChanged,
+      writeSideSaysChanged,
+      `"${stateTopicId}" vs "${topicId}"：讀側同寫側判斷要一樣`
+    );
+  }
 });
