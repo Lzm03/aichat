@@ -908,6 +908,8 @@ export const englishUi: Record<string, string> = {
   "樣本不足": "Insufficient samples",
   "全期表現": "All-Time Performance",
   "學習報告": "Learning Report",
+  "聊天回覆語言（可多選）": "Chat Reply Languages (Select Multiple)",
+  "聊天介面只會顯示已選語言；新角色預設只啟用粵語，並且至少保留一種語言。": "The chat shows only selected languages. New characters default to Cantonese, and at least one language must remain enabled.",
   "追蹤學生能力表現、測驗質量與學習狀態。": "Track student ability, quiz quality, and learning progress.",
   "待批改 {0} 份": "{0} to grade",
   "待批改 {0} 份 · 查看完整報告": "{0} to grade · View full report",

@@ -23,6 +23,8 @@ export interface AiBot {
   videoThinking?: string;
   videoTalking?: string;
   voiceId?: string;
+  /** 聊天介面可切換的回覆語言；舊 Bot 預設只開啟粵語 */
+  allowedReplyLanguages?: Array<"cantonese" | "mandarin" | "english">;
   hasPublishedQuiz?: boolean;
   hasPendingQuiz?: boolean;
   activeQuizId?: string;

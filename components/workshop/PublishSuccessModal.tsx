@@ -185,6 +185,19 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     openingMessage: configuredOpeningMessage,
   } = botConfig;
 
+  const allowedReplyLanguages = React.useMemo<ReplyLanguage[]>(() => {
+    const configured: ReplyLanguage[] = Array.isArray(botConfig.allowedReplyLanguages)
+      ? botConfig.allowedReplyLanguages.filter((language: unknown): language is ReplyLanguage =>
+          language === "cantonese" || language === "mandarin" || language === "english"
+        )
+      : [];
+    return configured.length ? configured : ["cantonese"];
+  }, [botConfig.allowedReplyLanguages]);
+  const availableReplyLanguageOptions = React.useMemo(
+    () => REPLY_LANGUAGE_OPTIONS.filter((option) => allowedReplyLanguages.includes(option.value)),
+    [allowedReplyLanguages]
+  );
+
   
   const lastTTS = useRef(0);
 
@@ -344,9 +357,9 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [replyLanguage, setReplyLanguage] = useState<ReplyLanguage>(() => {
     if (typeof window === "undefined") return "cantonese";
     const saved = window.localStorage.getItem(`bot-reply-language:${botConfig.id}`);
-    return REPLY_LANGUAGE_OPTIONS.some((option) => option.value === saved)
+    return allowedReplyLanguages.includes(saved as ReplyLanguage)
       ? (saved as ReplyLanguage)
-      : "cantonese";
+      : allowedReplyLanguages[0];
   });
   const [translatedOpeningMessage, setTranslatedOpeningMessage] = useState("");
   const [activeQuiz, setActiveQuiz] = useState<ActiveQuizSummary | null>(null);
@@ -544,6 +557,12 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   useEffect(() => {
     window.localStorage.setItem(`bot-reply-language:${botConfig.id}`, replyLanguage);
   }, [botConfig.id, replyLanguage]);
+
+  useEffect(() => {
+    if (!allowedReplyLanguages.includes(replyLanguage)) {
+      handleReplyLanguageChange(allowedReplyLanguages[0]);
+    }
+  }, [allowedReplyLanguages, handleReplyLanguageChange, replyLanguage]);
 
   useEffect(() => {
     if (replyLanguage !== "mandarin") return;
@@ -4489,7 +4508,7 @@ const unlockAudioAndMic = async () => {
                   role="radiogroup"
                   aria-label={uiText("AI 回覆語言")}
                 >
-                  {REPLY_LANGUAGE_OPTIONS.map((option) => (
+                  {availableReplyLanguageOptions.map((option) => (
                     <button
                       key={option.value}
                       type="button"

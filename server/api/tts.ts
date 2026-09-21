@@ -169,7 +169,7 @@ router.post("/tts", async (req, res) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "speech-2.6-hd",
+          model: "speech-2.6-turbo",
           text,
           language_boost: languageBoost,
           voice_setting: {
