@@ -36,6 +36,8 @@ import {
 } from "../lib/character-topics.ts";
 import {
   getConversationState,
+  stateForTopic,
+  switchConversationTopicState,
   trackConversationState,
 } from "../lib/conversation-state.ts";
 import {
@@ -1792,6 +1794,14 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
           authUser.id,
           activeTopic.id
         );
+        // 即刻同步重置對話狀態先讀 —— 唔係嘅話下面 getConversationState 會攞返
+        // 上一個話題嘅 covered / next_point，今輪回覆照傾舊話題（慢一整輪先好）。
+        await switchConversationTopicState({
+          conversationId: activeConversation.id,
+          botId: normalizedBotId,
+          userId: authUser.id,
+          topicId: activeTopic.id,
+        });
       }
       // P1 按話題計進度：對話揀咗主題版本，覆蓋追蹤用該版本嘅知識點，
       // 唔係主知識庫。答題模式由主知識庫（角色對話策略）解析。
@@ -1801,10 +1811,13 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
           : characterKnowledgeBase;
       trackingAnswerMode = parseAnswerMode(characterKnowledgeBase);
       characterGradeBand = character.grade || null;
-      // 後台實錄嘅對話狀態（已覆蓋知識點／下一步目標）——有就注入，冇就用模型自估
-      const conversationState = activeConversation
-        ? await getConversationState(activeConversation.id)
-        : null;
+      // 後台實錄嘅對話狀態（已覆蓋知識點／下一步目標）——有就注入，冇就用模型自估。
+      // state row 淨係對佢自己嗰個話題有意義：唔同話題一律當冇 state，
+      // 免得將上一個話題嘅 Covered_Points / Next_Point 當成呢個話題嘅。
+      const conversationState = stateForTopic(
+        activeConversation ? await getConversationState(activeConversation.id) : null,
+        activeTopic?.id || ""
+      );
       const characterBasePrompt = buildChatSystemPrompt({
         roleName: character.name,
         knowledgeBase: character.knowledge_base || "",

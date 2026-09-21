@@ -160,6 +160,32 @@ const SUMMARY_MARKERS =
   /(你到而家學咗|到而家你學咗|你而家識|小結|總結|記住三個字)/;
 
 /**
+ * 話題比較嘅唯一來源。'' = 主知識庫／冇指定話題，同任何真 topic id 都唔相等
+ * （exact compare：舊數據 topic_id='' 第一次帶真話題入嚟會當成「轉咗話題」）。
+ *
+ * 讀側（prompt 組裝前嘅 state gate，經 stateForTopic）、寫側
+ * （trackConversationState → seedCoverageOnTopicSwitch）同切話題重置
+ * （switchConversationTopicState）三處都經呢度判斷，唔好各自比 topic_id —— 之前讀側
+ * 漏咗呢層，切話題之後第一輪仍然讀到上一個話題嘅 covered / next_point，Bot 照傾舊話題。
+ */
+export function sameTopic(a: string | null | undefined, b: string | null | undefined): boolean {
+  return String(a || "") === String(b || "");
+}
+
+/**
+ * state row 淨係對佢自己嗰個話題有意義：唔同話題 = 呢段對話喺呢個話題未有狀態。
+ * 回傳 null 就當「冇 state」——寧願由新話題重新起步，都唔好將上一個話題嘅
+ * covered / next_point 當成呢個話題嘅。
+ */
+export function stateForTopic<T extends { topic_id: string }>(
+  state: T | null,
+  topicId: string
+): T | null {
+  if (!state || !sameTopic(state.topic_id, topicId)) return null;
+  return state;
+}
+
+/**
  * 對話中途切話題時，決定覆蓋集合由邊度起步（純函數，冇 DB）。
  *
  * 背景：覆蓋進度係按 (bot, user, topic) 分開儲存嘅，所以一個 covered id
@@ -181,7 +207,7 @@ export function seedCoverageOnTopicSwitch(input: {
   accumulated: TopicScoped<string[]>;
 }): { coverage: TopicScoped<Set<string>>; topicChanged: boolean } {
   const previous = input.previous;
-  const topicChanged = previous !== null && previous.topicId !== input.topicId;
+  const topicChanged = previous !== null && !sameTopic(previous.topicId, input.topicId);
 
   // 兩個輸入都係 TopicScoped，型別上冇得傳錯話題。呢個 guard 係防有人硬
   // cast 或者將來改壞：寧願當冇累積（由零重新教），都唔好將第二個話題嘅
@@ -364,5 +390,66 @@ export async function trackConversationState(input: {
     await mergeStudentProgress(input.botId, input.userId, coverage);
   } catch (error) {
     console.warn("[conversation-state] failed to track state", error);
+  }
+}
+
+/**
+ * 對話中途切話題：即刻（同步）將 state row 由舊話題轉去新話題，唔等下一輪回覆。
+ *
+ * 點解要即刻：state row 係每段對話一行，切話題嗰刻如果唔重寫，今輪組裝 prompt
+ * 仍然會讀到上一個話題嘅 covered / next_point，Bot 就照傾舊話題（回覆出咗之後
+ * trackConversationState 先會寫新 state，即係慢咗一整輪）。
+ *
+ * 舊話題嘅嘢冇丟，全部已經歸咗去相關路徑：
+ * - 知識點進度 → 每輪 trackConversationState 都經 mergeStudentProgress 寫入
+ *   bot_student_progress(bot_id, user_id, 舊話題)；呢度再保險補寫一次（並集，唔會倒退）。
+ * - 對話記錄 → 每條訊息嘅 metadata.topicId 記住佢當時屬邊個話題。
+ * 所以呢度只需要清走「淨係對舊話題有意義」嘅欄位：next_point_id、skipped_point_ids、
+ * turns_on_next_point（舊話題嘅 id 喺新話題冇意義，仲會壓制新話題嘅點），
+ * 同 turns_since_summary（唔好一轉話題就叫 Bot 小結上一個話題）。
+ * student_level 係講個學生唔係講個話題，保留。
+ */
+export async function switchConversationTopicState(input: {
+  conversationId: string;
+  botId: string;
+  userId: string;
+  topicId: string;
+}): Promise<void> {
+  try {
+    await ensurePlatformTables();
+    const current = await getConversationState(input.conversationId);
+    // 冇 state（未傾過）或者已經係呢個話題 → 冇嘢要轉。
+    if (!current || sameTopic(current.topic_id, input.topicId)) return;
+
+    await mergeStudentProgress(input.botId, input.userId, {
+      topicId: current.topic_id,
+      value: current.covered_point_ids,
+    });
+    const accumulated = await getStudentProgress(input.botId, input.userId, input.topicId);
+
+    await pool.query(
+      `INSERT INTO bot_conversation_states
+         (conversation_id, bot_id, user_id, topic_id, covered_point_ids, next_point_id, student_level, turns_since_summary, skipped_point_ids, turns_on_next_point, turns_since_judge, updated_at)
+       VALUES ($1,$2,$3,$4,$5::jsonb,NULL,$6,0,'[]'::jsonb,0,0,NOW())
+       ON CONFLICT (conversation_id) DO UPDATE SET
+         topic_id=EXCLUDED.topic_id,
+         covered_point_ids=EXCLUDED.covered_point_ids,
+         next_point_id=NULL,
+         turns_since_summary=0,
+         skipped_point_ids='[]'::jsonb,
+         turns_on_next_point=0,
+         turns_since_judge=0,
+         updated_at=NOW()`,
+      [
+        input.conversationId,
+        input.botId,
+        input.userId,
+        input.topicId,
+        JSON.stringify(accumulated.value),
+        current.student_level || "未評估",
+      ]
+    );
+  } catch (error) {
+    console.warn("[conversation-state] failed to switch conversation topic state", error);
   }
 }
