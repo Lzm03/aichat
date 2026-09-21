@@ -21,6 +21,7 @@
     "test:request-concurrency": "node --import tsx --test tests/request-concurrency.test.ts",
     "test:upload-filename": "node --import tsx --test tests/upload-filename.test.ts",
     "test:vertex-sse": "node --import tsx --test tests/vertex-sse.test.ts",
+    "test:all": "node --import tsx --test tests/*.test.ts",
     "start": "node --import tsx index.ts"
   },
   "dependencies": {
