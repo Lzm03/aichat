@@ -8,6 +8,7 @@
     "migrate:topics": "node --import tsx scripts/migrate-character-topics.ts",
     "test:topics": "node --import tsx --test tests/character-topics.integration.test.ts",
     "test:topic-switch": "node --import tsx --test tests/conversation-topic-switch.integration.test.ts",
+    "test:track-queue": "node --import tsx --test tests/conversation-track-queue.integration.test.ts",
     "test:kb-sync": "node --import tsx --test tests/knowledge-base-sync.test.ts",
     "test:proposal": "node --import tsx --test tests/bot-proposal.test.ts",
     "test:conversation-state": "node --import tsx --test tests/conversation-state.test.ts",

@@ -22,6 +22,7 @@ import {
   computeNextPoint,
 } from "../../utils/coverage.ts";
 import { judgeStudentAnswers, shouldRunJudge } from "./answer-judge.ts";
+import { enqueueConversationTrack } from "./conversation-track-queue.ts";
 
 export {
   computeNewlyCovered,
@@ -229,7 +230,7 @@ export function seedCoverageOnTopicSwitch(input: {
   };
 }
 
-export async function trackConversationState(input: {
+export type TrackConversationStateInput = {
   botId: string;
   userId: string;
   conversationId: string;
@@ -240,7 +241,18 @@ export async function trackConversationState(input: {
   answerModeOverride?: string;
   recentMessages: Array<{ role: string; content: string }>;
   reply: string;
-}) {
+};
+
+/**
+ * 排入該對話嘅 FIFO 隊列先寫。call site 照舊 `void` 就得 —— 回覆唔會等佢，
+ * 但下一個 ask 讀 state 之前會等埋條鏈（見 conversation-track-queue.ts）。
+ * 順帶修好兩個在途寫入互相交錯、食咗一回合計數器嘅問題。
+ */
+export async function trackConversationState(input: TrackConversationStateInput): Promise<void> {
+  return enqueueConversationTrack(input.conversationId, () => trackConversationStateWork(input));
+}
+
+async function trackConversationStateWork(input: TrackConversationStateInput): Promise<void> {
   try {
     const allPoints = parsePromptSource({ knowledgeBase: input.knowledgeBase })
       .knowledgePoints;
@@ -409,12 +421,31 @@ export async function trackConversationState(input: {
  * 同 turns_since_summary（唔好一轉話題就叫 Bot 小結上一個話題）。
  * student_level 係講個學生唔係講個話題，保留。
  */
-export async function switchConversationTopicState(input: {
+export type SwitchConversationTopicStateInput = {
   conversationId: string;
   botId: string;
   userId: string;
   topicId: string;
-}): Promise<void> {
+};
+
+/**
+ * 同樣排入該對話嘅隊列。淨係喺開頭等「已起飛」嗰條 track 係唔夠嘅 ——
+ * 等完之後先入隊嘅 track 會用舊話題嘅讀數覆寫呢度啱啱寫好嘅新話題 row，
+ * 個對話就會黏死喺舊話題一個回合。行同一條 FIFO 鏈兩個方向都封死。
+ * 兩個 call site（ask.ts / conversations.ts）本身已 await，語意不變，
+ * 只係多咗「排隊」。
+ */
+export async function switchConversationTopicState(
+  input: SwitchConversationTopicStateInput
+): Promise<void> {
+  return enqueueConversationTrack(input.conversationId, () =>
+    switchConversationTopicStateWork(input)
+  );
+}
+
+async function switchConversationTopicStateWork(
+  input: SwitchConversationTopicStateInput
+): Promise<void> {
   try {
     await ensurePlatformTables();
     const current = await getConversationState(input.conversationId);
