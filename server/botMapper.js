@@ -1,3 +1,11 @@
+const normalizeReplyLanguages = (value) => {
+  const allowed = new Set(["cantonese", "mandarin", "english"]);
+  const normalized = Array.isArray(value)
+    ? [...new Set(value.map((item) => String(item || "").trim()).filter((item) => allowed.has(item)))]
+    : [];
+  return normalized.length ? normalized : ["cantonese"];
+};
+
 // camelCase → snake_case（寫入資料庫用）
 export function toDb(bot) {
   return {
@@ -17,6 +25,7 @@ export function toDb(bot) {
     video_thinking: bot.videoThinking,
     video_talking: bot.videoTalking,
     voice_id: bot.voiceId,
+    allowed_reply_languages: normalizeReplyLanguages(bot.allowedReplyLanguages),
     opening_message: bot.openingMessage,
 
     interactions: bot.interactions,
@@ -44,6 +53,7 @@ export function toClient(raw) {
     videoThinking: raw.video_thinking,
     videoTalking: raw.video_talking,
     voiceId: raw.voice_id,
+    allowedReplyLanguages: normalizeReplyLanguages(raw.allowed_reply_languages),
     openingMessage: raw.opening_message || "",
 
     interactions: raw.interactions,

@@ -126,6 +126,9 @@ function normalizeBots(data: any[]): AiBot[] {
     avatarUrl: raw.avatarUrl, background: raw.background || "", animation: raw.animation || "",
     knowledgeBase: raw.knowledgeBase || "", securityPrompt: raw.securityPrompt || "",
     voiceId: raw.voiceId || "", openingMessage: raw.openingMessage || "",
+    allowedReplyLanguages: Array.isArray(raw.allowedReplyLanguages) && raw.allowedReplyLanguages.length
+      ? raw.allowedReplyLanguages
+      : ["cantonese"],
     videoIdle: raw.videoIdle || "", videoThinking: raw.videoThinking || "", videoTalking: raw.videoTalking || "",
     interactions: raw.interactions, accuracy: raw.accuracy, isVisible: raw.isVisible,
     createdAt: raw.createdAt || "", updatedAt: raw.updatedAt || "",

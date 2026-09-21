@@ -1788,10 +1788,10 @@ router.post("/", requireAuth, async (req, res) => {
       INSERT INTO bots (
         id, name, subject, subject_color, avatar_url,
         background, animation, knowledge_base, security_prompt,
-        video_idle, video_thinking, video_talking, voice_id,
+        video_idle, video_thinking, video_talking, voice_id, allowed_reply_languages,
         opening_message, interactions, accuracy, is_visible, owner_id, owner_email, grade
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
       RETURNING *;
     `;
 
@@ -1809,6 +1809,7 @@ router.post("/", requireAuth, async (req, res) => {
       bot.video_thinking,
       bot.video_talking,
       bot.voice_id,
+      bot.allowed_reply_languages,
       openingMessage,
       bot.interactions ?? 0,
       bot.accuracy ?? 0,
@@ -1855,9 +1856,9 @@ router.put("/:id", requireAuth, async (req, res) => {
         name=$1, subject=$2, subject_color=$3, avatar_url=$4,
         background=$5, animation=$6, knowledge_base=$7, security_prompt=$8,
         video_idle=$9, video_thinking=$10, video_talking=$11, voice_id=$12,
-        opening_message=$13, interactions=$14, accuracy=$15, is_visible=$16, grade=$17,
+        allowed_reply_languages=$13, opening_message=$14, interactions=$15, accuracy=$16, is_visible=$17, grade=$18,
         updated_at=NOW()
-      WHERE id=$18 AND owner_id=$19
+      WHERE id=$19 AND owner_id=$20
       RETURNING *;
     `;
 
@@ -1874,6 +1875,7 @@ router.put("/:id", requireAuth, async (req, res) => {
       bot.video_thinking,
       bot.video_talking,
       bot.voice_id,
+      bot.allowed_reply_languages,
       openingMessage,
       bot.interactions ?? 0,
       bot.accuracy ?? 0,
@@ -1996,13 +1998,13 @@ router.put("/admin/:id/owner", requireAuth, async (req, res) => {
         `INSERT INTO bots (
            id, name, subject, subject_color, avatar_url, background, animation,
            knowledge_base, security_prompt, video_idle, video_thinking, video_talking,
-           voice_id, interactions, accuracy, is_visible, owner_id, owner_email,
+           voice_id, allowed_reply_languages, interactions, accuracy, is_visible, owner_id, owner_email,
            opening_message, template_key, chat_message_limit
          )
          SELECT
            $1, name, subject, subject_color, avatar_url, background, animation,
            knowledge_base, security_prompt, video_idle, video_thinking, video_talking,
-           voice_id, 0, accuracy, is_visible, $2, $3,
+           voice_id, allowed_reply_languages, 0, accuracy, is_visible, $2, $3,
            opening_message, NULL, chat_message_limit
          FROM bots
          WHERE id=$4

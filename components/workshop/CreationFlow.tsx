@@ -176,6 +176,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         videoTalking: "",
 
         voiceId: "",
+        allowedReplyLanguages: ["cantonese"] as Array<"cantonese" | "mandarin" | "english">,
         openingMessage: "",
       };
     }
@@ -194,6 +195,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
       videoThinking: "",
       videoTalking: "",
       voiceId: "",
+      allowedReplyLanguages: ["cantonese"] as Array<"cantonese" | "mandarin" | "english">,
       openingMessage: "",
     };
   };
@@ -225,6 +227,9 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
           videoThinking: data.videoThinking || "",
           videoTalking: data.videoTalking || "",
           voiceId: data.voiceId || "",
+          allowedReplyLanguages: Array.isArray(data.allowedReplyLanguages) && data.allowedReplyLanguages.length
+            ? data.allowedReplyLanguages
+            : ["cantonese"],
           openingMessage: data.openingMessage || "",
         });
       } catch (error) {
@@ -568,6 +573,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         videoThinking: botConfig.videoThinking,
         videoTalking: botConfig.videoTalking,
         voiceId: botConfig.voiceId,
+        allowedReplyLanguages: botConfig.allowedReplyLanguages,
       };
 
       const apiUrl = botId
@@ -695,6 +701,8 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
               onSubjectChange={(value) => updateConfig("subject", value)}
               grade={botConfig.grade}
               onGradeChange={(value) => updateConfig("grade", value)}
+              allowedReplyLanguages={botConfig.allowedReplyLanguages}
+              onAllowedReplyLanguagesChange={(value) => updateConfig("allowedReplyLanguages", value)}
               botName={botConfig.name}
               securityPrompt={botConfig.securityPrompt}
               characterId={String(botConfig.id || botId || "").trim() || null}

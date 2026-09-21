@@ -156,23 +156,9 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onDelete,
           ) : null}
         </div>
 
-        <div className="flex flex-col items-end gap-2">
-          <button
-            type="button"
-            aria-label={uiTemplate("刪除 {0}", bot.name)}
-            title={uiText("刪除機器人")}
-            onClick={(event) => {
-              event.stopPropagation();
-              onDelete();
-            }}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 focus:outline-none focus:ring-2 focus:ring-rose-200"
-          >
-            <Trash2 className="h-4 w-4" aria-hidden="true" />
-          </button>
-          {bot.hasPendingQuiz ? (
-            <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-600 shadow-sm">{uiText("測試題")}</span>
-          ) : null}
-        </div>
+        {bot.hasPendingQuiz ? (
+          <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-600 shadow-sm">{uiText("測試題")}</span>
+        ) : null}
       </div>
 
       {/* 標題 + 科目標籤 */}
@@ -203,14 +189,28 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onDelete,
         ) : (
           <p className="text-[13px] text-slate-400">{uiText("今日互動 ")}{bot.interactions || 0}{uiText(" 次")}</p>
         )}
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onEdit();
-          }}
-          className="rounded-lg px-2 py-1 text-[13px] font-bold text-indigo-600 transition hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-        >{uiText("編輯 →")}</button>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            aria-label={uiTemplate("刪除 {0}", bot.name)}
+            title={uiText("刪除機器人")}
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete();
+            }}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 focus:outline-none focus:ring-2 focus:ring-rose-200"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit();
+            }}
+            className="inline-flex h-8 items-center rounded-lg px-2 text-[13px] font-bold text-indigo-600 transition hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+          >{uiText("編輯 →")}</button>
+        </div>
       </div>
     </div>
   );
