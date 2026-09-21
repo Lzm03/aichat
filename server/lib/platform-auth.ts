@@ -485,6 +485,7 @@ export async function ensurePlatformTables() {
       await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS opening_message TEXT;`);
       // 年級帶（P1 / P2-P3 / P4-P6 / S1-S3 / S4-S6）；NULL = 未設定，沿用預設回覆風格
       await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS grade TEXT;`);
+      await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS allowed_reply_languages TEXT[] NOT NULL DEFAULT ARRAY['cantonese']::TEXT[];`);
       await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS template_key TEXT;`);
       await pool.query(`ALTER TABLE bots ADD COLUMN IF NOT EXISTS chat_message_limit INTEGER;`);
       await pool.query(`

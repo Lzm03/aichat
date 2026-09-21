@@ -25,6 +25,13 @@ import { MAX_CUSTOM_CATEGORY_LABELS } from "../../../utils/topic-categories";
 
 type UploadMethod = "file" | "url" | "text";
 type KnowledgeTier = "basic_fact" | "deep_understanding";
+type ReplyLanguage = "cantonese" | "mandarin" | "english";
+
+const REPLY_LANGUAGE_OPTIONS: Array<{ value: ReplyLanguage; label: string }> = [
+  { value: "cantonese", label: "粵語" },
+  { value: "mandarin", label: "普通話" },
+  { value: "english", label: "English" },
+];
 
 type KnowledgePoint = {
   id: string;
@@ -92,6 +99,9 @@ interface CreationStep2Props {
   /** 年級帶（選填）；留空 = 沿用預設回覆難度 */
   grade?: string;
   onGradeChange?: (grade: string) => void;
+  /** 發佈後聊天介面顯示的語言切換選項；至少保留一項 */
+  allowedReplyLanguages?: ReplyLanguage[];
+  onAllowedReplyLanguagesChange?: (languages: ReplyLanguage[]) => void;
   /** Bot 名稱（教學模擬預覽用；唔影響儲存） */
   botName?: string;
   /** 安全提示詞（教學模擬預覽用；唔影響儲存） */
@@ -108,7 +118,7 @@ interface CreationStep2Props {
   registerRefresh?: (refresh: () => Promise<void>) => void;
 }
 
-export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, afterKnowledgePointEditor, subject = "", onSubjectChange, grade = "", onGradeChange, botName = "", securityPrompt = "", characterId = null, onVersionsChange, registerRefresh }) => {
+export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initialData, afterKnowledgePointEditor, subject = "", onSubjectChange, grade = "", onGradeChange, allowedReplyLanguages = ["cantonese"], onAllowedReplyLanguagesChange, botName = "", securityPrompt = "", characterId = null, onVersionsChange, registerRefresh }) => {
   const [uploadMethod, setUploadMethod] = useState<UploadMethod>("file");
   const modelProvider = "gemini";
   const [files, setFiles] = useState<File[]>([]);
@@ -1887,6 +1897,38 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           </div>
           <p className="mt-2 text-xs leading-5 text-slate-500">
             {uiText("設定年級後，AI 會自動調整句子長度與用字難度，適用於粵語、普通話及英語回覆。留空則保留預設回覆風格。")}
+          </p>
+
+          <p className="mb-3 mt-6 text-xs font-bold text-slate-700">{uiText("聊天回覆語言（可多選）")}</p>
+          <div className="flex flex-wrap gap-2">
+            {REPLY_LANGUAGE_OPTIONS.map((option) => {
+              const active = allowedReplyLanguages.includes(option.value);
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => {
+                    if (active && allowedReplyLanguages.length === 1) return;
+                    onAllowedReplyLanguagesChange?.(
+                      active
+                        ? allowedReplyLanguages.filter((language) => language !== option.value)
+                        : [...allowedReplyLanguages, option.value]
+                    );
+                  }}
+                  className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
+                    active
+                      ? "border-indigo-600 bg-indigo-600 text-white shadow-sm"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                  }`}
+                >
+                  {uiText(option.label)}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            {uiText("聊天介面只會顯示已選語言；新角色預設只啟用粵語，並且至少保留一種語言。")}
           </p>
 
           <p className="mb-3 mt-6 text-xs font-bold text-slate-700">{uiText("角色性格（可多選）")}</p>
