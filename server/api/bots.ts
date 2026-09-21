@@ -1800,7 +1800,7 @@ router.post("/", requireAuth, async (req, res) => {
     const bot = toDb(req.body);
     const user = getAuthUser(req);
     await ensureFeatureAvailable(user!.id, "bot_publish", 1);
-    const openingMessage = await generateOpeningMessage(bot);
+    const openingMessage = String(bot.opening_message || "").trim() || fallbackOpeningMessage(bot.name);
     await ensureCharacterTopicTables();
 
     const query = `
@@ -1867,7 +1867,7 @@ router.put("/:id", requireAuth, async (req, res) => {
     await ensurePlatformTables();
     const bot = toDb(req.body);
     const user = getAuthUser(req);
-    const openingMessage = await generateOpeningMessage(bot);
+    const openingMessage = String(bot.opening_message || "").trim() || fallbackOpeningMessage(bot.name);
     await ensureCharacterTopicTables();
 
     const query = `

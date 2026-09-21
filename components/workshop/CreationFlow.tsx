@@ -587,6 +587,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         videoTalking: botConfig.videoTalking,
         voiceId: botConfig.voiceId,
         allowedReplyLanguages: botConfig.allowedReplyLanguages,
+        openingMessage: botConfig.openingMessage,
       };
 
       const apiUrl = botId
