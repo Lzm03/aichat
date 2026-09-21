@@ -5,7 +5,10 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 // Exercise the actual modal playback code with controllable audio/network clocks.
-const source = fs.readFileSync(new URL('../components/workshop/PublishSuccessModal.tsx', import.meta.url), 'utf8');
+// Normalise CRLF -> LF before slicing: on a Windows checkout (core.autocrlf=true,
+// no .gitattributes) the file on disk has \r\n, so the multi-line slice markers
+// below never match and every slice lands on the wrong region.
+const source = fs.readFileSync(new URL('../components/workshop/PublishSuccessModal.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const playback = source.slice(source.indexOf('const enqueueSpeak ='), source.indexOf('useEffect(() => {\n  if (!isOpen) return;\n  const resumeAudio'));
 const pump = source.slice(source.indexOf('const pumpTTSRequests ='), source.indexOf('const isSentenceEnd ='));
 const stop = source.slice(source.indexOf("const stopAllSpeech ="), source.indexOf("const extractQuestionFromReply"));
