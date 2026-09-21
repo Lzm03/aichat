@@ -62,6 +62,59 @@ type ChatMessage = {
   guidedTitle?: string;
   guidedBody?: string;
   imagePreviews?: string[];
+  /** 由存檔還原嘅訊息先有；即場打嘅訊息屬目前主題，唔會帶。 */
+  topicId?: string;
+};
+
+const topicBoundaryLabel = (
+  nextTopicId: string,
+  previousTopicId: string | null,
+  topicNames: Map<string, string>
+): string => {
+  const nextName = topicNames.get(nextTopicId) || "";
+  const previousName = previousTopicId ? topicNames.get(previousTopicId) || "" : "";
+  // 主題名解析唔到（主題已刪）就唔好扮識嗌個名。
+  if (!nextName) return uiText("（已刪除的主題）");
+  if (previousName) return uiTemplate("主題已由「{0}」切換為「{1}」", previousName, nextName);
+  return uiTemplate("目前主題：{0}", nextName);
+};
+
+/**
+ * 由每條訊息自帶嘅 topicId 推返主題分界線，唔靠即場插入嘅臨時訊息 ——
+ * 咁即場對話同還原歷史就用同一套規則，唔會再各自一套。
+ */
+const buildTopicTranscript = (
+  messages: ChatMessage[],
+  currentTopicId: string | null,
+  topicNames: Map<string, string>
+): ChatMessage[] => {
+  const transcript: ChatMessage[] = [];
+  let lastTopicId: string | null = null;
+
+  const pushBoundary = (nextTopicId: string, previousTopicId: string | null) => {
+    transcript.push({
+      role: "event",
+      content: topicBoundaryLabel(nextTopicId, previousTopicId, topicNames),
+    });
+  };
+
+  for (const message of messages) {
+    // 即場打嘅訊息冇 topicId，佢一定屬於目前主題。
+    const topicId = message.topicId || currentTopicId || null;
+    if (topicId && topicId !== lastTopicId) {
+      // 第一組唔畫線：開場白唔應該頂住一條線。
+      if (lastTopicId) pushBoundary(topicId, lastTopicId);
+      lastTopicId = topicId;
+    }
+    transcript.push(message);
+  }
+
+  // 切咗話題但仲未有新訊息：即刻喺尾補一條線，保留即時反饋。
+  if (currentTopicId && lastTopicId && currentTopicId !== lastTopicId) {
+    pushBoundary(currentTopicId, lastTopicId);
+  }
+
+  return transcript;
 };
 
 type ReplyLanguage = "cantonese" | "mandarin" | "english";
@@ -716,10 +769,13 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
               .filter((image: any) => supportedMimeTypes.has(image.mimeType) && image.data)
               .map((image: any) => `data:${image.mimeType};base64,${image.data}`)
           : [];
+        const storedTopicId =
+          typeof message.metadata?.topicId === "string" ? message.metadata.topicId : "";
         return {
           role: message.role === "assistant" ? "bot" : message.role === "system" ? "event" : "user",
           content: message.content,
           imagePreviews: storedImages,
+          topicId: storedTopicId || undefined,
         } as ChatMessage;
       });
       return restoredMessages.length
@@ -2706,7 +2762,6 @@ const handleTopicSwitch = async (nextTopic: CharacterTopicSummary) => {
     setIsTopicSelectorOpen(false);
     return;
   }
-  const previousTopic = selectedTopic;
   const previousTopicId = selectedTopicId;
   const previousConversationTopicId = currentConversationId
     ? conversations.find((conversation) => conversation.id === currentConversationId)?.topicId ?? previousTopicId
@@ -2742,15 +2797,8 @@ const handleTopicSwitch = async (nextTopic: CharacterTopicSummary) => {
         )
       );
     }
-    setMessages((current) => [
-      ...current,
-      {
-        role: "event",
-        content: previousTopic
-          ? `主題已由「${previousTopic.name}」切換為「${nextTopic.name}」`
-          : `目前主題：${nextTopic.name}`,
-      },
-    ]);
+    // 主題分界線唔喺呢度插入：佢由每條訊息自帶嘅 topicId 推返出嚟，
+    // 即場同還原歷史用同一套規則（見 buildTopicTranscript）。
   } catch (switchError) {
     setSelectedTopicId(previousTopicId);
     // 切換失敗要彈返，進度面板都跟返原本個主題。
@@ -3746,6 +3794,10 @@ const unlockAudioAndMic = async () => {
   const characterLayerClass = `absolute inset-0 h-full w-full object-contain drop-shadow-xl ${
     stageViewMode === "upper" ? "object-top" : ""
   }`;
+  // 對話逐條渲染用嘅版本：主題分界線由每條訊息自帶嘅 topicId 推返出嚟。
+  const topicNamesById = new Map(availableTopics.map((topic) => [topic.id, topic.name]));
+  const topicTranscript = buildTopicTranscript(messages, selectedTopicId, topicNamesById);
+
   const stageCaptionMessages = messages
     .map((message, index) => ({ ...message, index }))
     .filter((message) => message.role !== "event" && message.content.trim())
@@ -4759,7 +4811,7 @@ const unlockAudioAndMic = async () => {
                       !isQuizGuidanceBlocked && (suggestedReplies.length > 0 || guidedMode) ? "pb-44 md:pb-52" : "pb-3.5"
                     }`}
                   >
-                {messages.map((m, i) => m.role === "bot" && !m.content ? null : (
+                {topicTranscript.map((m, i) => m.role === "bot" && !m.content ? null : (
                   <div
                     key={i}
                     className={`flex ${

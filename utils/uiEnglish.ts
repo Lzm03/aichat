@@ -85,6 +85,7 @@ export const englishUi: Record<string, string> = {
   "沒有名稱包含「{0}」的機器人": "No bots with names containing “{0}”",
   "主題已由「{0}」切換為「{1}」": "Topic switched from “{0}” to “{1}”",
   "目前主題：{0}": "Current topic: {0}",
+  "（已刪除的主題）": "(Deleted topic)",
   "確定要刪除 {0} 個對話嗎？": "Delete {0} conversations?",
   "刪除 {0} 項": "Delete {0} Items",
   "刪除 {0}": "Delete {0}",
