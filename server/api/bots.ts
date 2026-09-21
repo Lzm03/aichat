@@ -179,6 +179,22 @@ function fallbackOpeningMessage(name: string) {
   return `你好，我是${safeName}，我們一起開始今天的學習吧。`;
 }
 
+const OPENING_MESSAGE_TIMEOUT_MS = 8_000;
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("AI request timed out")), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function generateOpeningMessage(bot: any) {
   const name = String(bot?.name || "").trim() || "AI 助手";
   const characterContext = [bot?.knowledge_base, bot?.security_prompt]
@@ -207,14 +223,17 @@ ${characterContext || "（未提供）"}
 
   try {
     const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: GEMINI_TEXT_MODEL,
-      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: GEMINI_STABLE_TEMPERATURE,
-      },
-    });
+    const response = await withTimeout(
+      ai.models.generateContent({
+        model: GEMINI_TEXT_MODEL,
+        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: GEMINI_STABLE_TEMPERATURE,
+        },
+      }),
+      OPENING_MESSAGE_TIMEOUT_MS
+    );
     const text = String(response.text || "").replace(/\s+/g, " ").trim();
     if (text) return text;
     return fallbackOpeningMessage(name);

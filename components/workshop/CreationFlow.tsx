@@ -40,6 +40,17 @@ type KnowledgePoint = {
 
 const MAX_KNOWLEDGE_POINTS = 20;
 const MAX_POINTS_PER_TIER = 10;
+const PUBLISH_REQUEST_TIMEOUT_MS = 45_000;
+
+async function publishFetch(input: RequestInfo | URL, init?: RequestInit) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), PUBLISH_REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
 
 type VideoStudioTask = {
   id: string;
@@ -83,6 +94,7 @@ const CF_T: Record<TeacherLang, Record<string, string | ((arg: string) => string
     update: "更新機器人",
     publishing: "發布中...",
     publishFailed: "發布失敗，請稍後再試。",
+    publishTimeout: "發布逾時，請重新整理後確認機器人是否已更新，再嘗試一次。",
     charactersCount: (arg: string) => `創建角色 ${arg}`,
     reasonName: "請先輸入機器人名稱。",
     reasonAvatar: "請先完成頭像與背景設定。",
@@ -114,6 +126,7 @@ const CF_T: Record<TeacherLang, Record<string, string | ((arg: string) => string
     update: "Update Bot",
     publishing: "Publishing…",
     publishFailed: "Publishing failed. Please try again later.",
+    publishTimeout: "Publishing timed out. Refresh and check whether the bot was updated before trying again.",
     charactersCount: (arg: string) => `Personas ${arg}`,
     reasonName: "Please enter a bot name first.",
     reasonAvatar: "Please complete the avatar and background settings first.",
@@ -580,7 +593,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
         ? `${baseUrl}/api/bots/${botId}`
         : `${baseUrl}/api/bots`;
 
-      const response = await fetch(apiUrl, {
+      const response = await publishFetch(apiUrl, {
         method: botId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newBot),
@@ -592,7 +605,7 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
 
       const savedBot = await response.json();
       const accessConfig = parseSecurityConfig(newBot.securityPrompt);
-      const accessResponse = await fetch(`${baseUrl}/api/bots/${encodeURIComponent(savedBot?.id || newBot.id)}/access`, {
+      const accessResponse = await publishFetch(`${baseUrl}/api/bots/${encodeURIComponent(savedBot?.id || newBot.id)}/access`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -617,7 +630,9 @@ export const CreationFlow: React.FC<CreationFlowProps> = ({
 
       setIsPublishSuccessModalOpen(true);
     } catch (error) {
-      const message = error instanceof Error ? error.message : t("publishFailed");
+      const message = error instanceof DOMException && error.name === "AbortError"
+        ? t("publishTimeout")
+        : error instanceof Error ? error.message : t("publishFailed");
       setActionError(message);
     } finally {
       setIsPublishing(false);
