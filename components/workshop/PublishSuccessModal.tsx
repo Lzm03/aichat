@@ -1998,13 +1998,10 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
       return;
     }
 
-    // Do not block the chat UI on TTS. Show the opening text immediately,
-    // then play its voice as soon as the audio is ready.
-    setIsBooting(false);
-    setBotState("idle");
-    setMessages([{ role: "bot", content: openingMessage }]);
+    setIsBooting(true);
+    setBotState("thinking");
+    setMessages([]);
     setSuggestedReplies([]);
-    setOpeningReady(true);
 
     const openingSeq = ttsSeq.current++;
     let openingReady = false;
@@ -2015,7 +2012,13 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
         }
         openingReady = true;
         ttsAudioMap.current.set(openingSeq, audio);
+        setMessages([{ role: "bot", content: "" }]);
+        speechRevealRef.current.set(openingSeq, createSpeechReveal(openingMessage, content => {
+          setMessages([{ role: "bot", content }]);
+        }));
         setIsStopAvailable(true);
+        setIsBooting(false);
+        setOpeningReady(true);
         tryPlayInOrder();
       })
       .catch((e) => {
