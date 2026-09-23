@@ -1,0 +1,5 @@
+# Store every text file with LF in the repository and check it out as LF on all
+# platforms. Windows checkouts otherwise get CRLF (core.autocrlf=true), which
+# breaks any test that reads repo source and matches multi-line markers, e.g.
+# tests/speech-playback.test.mjs. Binary files are detected automatically.
+* text=auto eol=lf
