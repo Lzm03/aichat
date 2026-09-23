@@ -36,7 +36,8 @@ PostgreSQL
 
 - `api/` — REST API：auth / bots / ask / chat / conversations / quizzes / student-tasks / uploads…
 - `lib/` — 後端邏輯：Gemini、影片任務、平台登入、主題、會話狀態
-  - `conversation-track-queue.ts`：每段對話的狀態寫入走 FIFO 隊列，保證 read-your-writes
+  - `conversation-track-queue.ts`：每段對話的狀態寫入走 FIFO 隊列，保證 read-your-writes。
+    隊列是 **per-process** 的——多 instance 部署時跨進程序列化不成立（顯示側有 5 秒輪詢兜底）
 - `config/` — 帳號覆寫、方案功能限額
 - `migrations/` — SQL migration
 - `scripts/` — 主題 migration、Google Sheet 用戶註冊、bot-prompt 手動測試
@@ -56,7 +57,8 @@ aichat/
 ├── vite.config.ts           # port 3000、proxy /api /uploads → localhost:4000、alias '@' → repo 根
 ├── tsconfig.json            # paths @/* → 專案根、noEmit（檢查靠 npm run lint）
 ├── tailwind.config.js       # Tailwind v3：Noto Sans TC/Nunito、brand colors、soft-tech shadow
-├── package.json             # scripts：dev/build/preview/lint/test:i18n/test:ids
+├── package.json             # 專案依賴與 npm scripts（逐套跑法見下方「測試」）
+├── .gitattributes           # 文字檔一律 LF 存庫與 checkout（Windows CRLF 會弄壞讀源碼的測試）
 ├── vercel.json              # 前端部署設定
 ├── railway.toml             # 後端部署設定
 ├── next.config.mjs          # Next App Router 遺留設定；目前構建走 Vite
@@ -122,6 +124,7 @@ aichat/
 │   ├── subjects.ts              # 學科分類單一來源（9 項）＋逐科顏色＋舊分類 alias
 │   ├── avatarColor.ts / default-avatar.ts # 頭像顏色與預設頭像
 │   ├── uploadFilename.ts        # multipart 檔名 Latin-1→UTF-8 修正（中文檔名防亂碼）
+│   ├── student-batches.ts       # 大量學生操作分批（API 每次最多 100 個 id，前後端共用上限）
 │   └── trial-popup.ts           # Trial/demo 提示互動
 ├── types/
 │   ├── chat.ts                  # 對話訊息/請求型別
@@ -152,16 +155,9 @@ aichat/
 
 | 位置 | 跑法 | 備註 |
 | --- | --- | --- |
-| `tests/*.test.mjs` | `npm run test:i18n`、`npm run test:ids` 等逐套 script | `/tests/*` 被 `.gitignore` 擋住，**只追蹤白名單**——新測試要同時加 `.gitignore` negation 同 `package.json` script，否則唔入版控、亦冇人跑 |
+| `tests/*.test.mjs` | `npm run test:i18n`、`npm run test:ids` 等逐套 script | `/tests/*` 被 `.gitignore` 擋住，**只追蹤白名單**——新測試要加 `.gitignore` negation 先入版控。注意 `test:all` 係掃 working directory：未入版控嘅新測試**本機照跑、照綠燈**，但同事完全睇唔到，所以白名單係唯一防線 |
 | `tests/ui-i18n.browser.cjs` | **不**行 `node --test`。要開住 dev server，用 `playwright-cli run-code --filename` 跑 | |
-| `server/tests/*.ts` | `cd server && npm run test:<名>` | **每套都應該有 npm script**。冇 script 嘅測試檔冇人跑，會靜靜雞腐爛。要 DB 的多數自帶 guard，URL 唔含指定關鍵字就全 skip |
-
-## 本機專屬（不入版控）
-
-以下不在 repo 內，但本機開發會用到：
-
-- `AGENTS.md`、`MEMORY.md`、`memory/`、`progress/` — AI 協作與工作記錄
-- `../aichat-preview-mock/` — 預覽假後端（port 4000）
+| `server/tests/*.ts` | `cd server && npm run test:<名>` | **每套都應該有 npm script**。冇 script 嘅測試檔冇人跑，會靜靜雞腐爛。要 DB 的自帶 guard：`DATABASE_URL` 要是本機（`localhost`／`127.0.0.1`）且含指定關鍵字，否則全 skip——`character-topics` 要 `topic_test`、`conversation-topic-switch` 同 `conversation-track-queue` 要 `topic_switch_test`、`students` 要 `students_test`；`quiz-audience` 例外，用探測式（DB 可達且有 `quizzes` 表）就照跑 |
 
 ## 相關文件
 
