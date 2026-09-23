@@ -825,9 +825,13 @@ export const StudentManagementPage: React.FC = () => {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 14, scale: 0.98 }}
               transition={{ duration: 0.18 }}
-                              className="max-h-[90vh] w-[min(720px,100%)] overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.22)]"
+                              className="flex max-h-[90vh] w-[min(720px,100%)] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.22)]"
             >
-              <div className="flex items-start justify-between border-b border-slate-100 px-6 py-5">
+              {/* 中間名單要用 flex 撐，唔可以靠 max-h-[calc(90vh-132px)] 估高度：
+                  header + footer 實際高過 132px，內容就會高出卡片，俾
+                  overflow-hidden 剪咗底部——「取消」同「加入未分組」兩粒掣
+                  會俾切一半。表頭同底部固定，只有中間嗰格捲。 */}
+              <div className="flex shrink-0 items-start justify-between border-b border-slate-100 px-6 py-5">
                 <div>
                   <h3 className="text-xl font-black text-slate-900">{uiText('匯入學生名單')}</h3>
                   <p className="mt-1 text-sm text-slate-500">
@@ -847,7 +851,7 @@ export const StudentManagementPage: React.FC = () => {
                 </button>
               </div>
 
-              <div className="max-h-[calc(90vh-132px)] overflow-y-auto px-6 py-5">
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
                 <input
                   ref={importFileRef}
                   type="file"
@@ -948,7 +952,7 @@ export const StudentManagementPage: React.FC = () => {
                 ) : null}
               </div>
 
-              <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
+              <div className="flex shrink-0 justify-end gap-3 border-t border-slate-100 px-6 py-4">
                 <button
                   type="button"
                   onClick={() => {
