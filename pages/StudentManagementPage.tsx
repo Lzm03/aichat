@@ -18,6 +18,7 @@ import { usePlatformDialog } from '../hooks/usePlatformDialog';
 import { PlatformDialog } from '../components/system/PlatformDialog';
 import type { PermissionGroup, PermissionStudent } from '../components/workshop/permissions/BotPermissionDrawer';
 import { API_BASE } from '../utils/api';
+import { runChunkedBatches } from '../utils/student-batches';
 import { invalidateTeacherData, loadTeacherData, peekTeacherData } from '../utils/teacher-data-cache';
 
 type StudentFormState = {
@@ -173,6 +174,8 @@ export const StudentManagementPage: React.FC = () => {
   };
 
   // 批量移除：同單人一樣只係由老師名單解除關聯，學生帳戶保留（可再用電郵加入返）。
+  // 「全選」之後可能幾百人，但 DELETE /api/students 一次最多收 100 個 id，
+  // 所以交俾 runChunkedBatches 切批；以前一炮交晒，server 回一句英文原始錯誤。
   const removeSelectedUnassigned = () => {
     const studentIds = effectiveSelectedIds;
     if (!studentIds.length) return;
@@ -185,19 +188,39 @@ export const StudentManagementPage: React.FC = () => {
       onConfirm: () => {
         void (async () => {
           try {
-            const response = await fetch(`${API_BASE}/api/students`, {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ studentIds }),
+            const { done, batchCount, error } = await runChunkedBatches(studentIds, async (batch) => {
+              const response = await fetch(`${API_BASE}/api/students`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ studentIds: batch }),
+              });
+              await readApiResponse(response, '無法移除學生');
+              invalidateTeacherData('/api/students');
+              const idSet = new Set(batch);
+              setStudents((current) => current.filter((student) => !idSet.has(student.id)));
+              setGroups((current) =>
+                current.map((group) => ({ ...group, studentIds: group.studentIds.filter((id) => !idSet.has(id)) }))
+              );
             });
-            await readApiResponse(response, '無法移除學生');
-            invalidateTeacherData('/api/students');
-            const idSet = new Set(studentIds);
-            setStudents((current) => current.filter((student) => !idSet.has(student.id)));
-            setGroups((current) =>
-              current.map((group) => ({ ...group, studentIds: group.studentIds.filter((id) => !idSet.has(id)) }))
-            );
-            setSelectedUnassignedIds([]);
+            // 只清走真正移除咗嗰批：中途失敗嘅人留住剔選，老師可以即刻再試。
+            const doneSet = new Set(done);
+            setSelectedUnassignedIds((current) => current.filter((id) => !doneSet.has(id)));
+            if (error && !done.length) {
+              showAlert({ title: uiText('移除失敗'), message: error.message, tone: 'danger' });
+            } else if (error) {
+              showAlert({
+                title: uiText('部分學生未能移除'),
+                message: uiTemplate('已移除 {0} 位學生，其餘 {1} 位未能處理，請再試一次。', done.length, studentIds.length - done.length),
+                details: [error.message],
+                tone: 'danger',
+              });
+            } else if (batchCount > 1) {
+              showAlert({
+                title: uiText('已移除學生'),
+                message: uiTemplate('已移除 {0} 位學生。', done.length),
+                tone: 'info',
+              });
+            }
           } catch (error) {
             showAlert({ title: uiText('移除失敗'), message: (error as Error).message, tone: 'danger' });
           }
@@ -351,11 +374,35 @@ export const StudentManagementPage: React.FC = () => {
     try {
       if (studentIds.length === 1) {
         await updateStudentGroups(studentIds[0], selectedGroupIds);
+        // 只清走今次真正分咗組嘅人，唔係一炮清空：老師可能仲想處理剔剩嗰啲。
+        setSelectedUnassignedIds((current) => current.filter((id) => id !== studentIds[0]));
       } else {
-        await updateStudentsGroups(studentIds, selectedGroupIds);
+        // 「全選」可能幾百人，但 PUT /api/students/groups 一次最多收 100 個 id，
+        // 所以前端自己切批送；一批搞掂就照舊靜靜雞完成，真係切過批先報數。
+        const { done, batchCount, error } = await runChunkedBatches(studentIds, (batch) =>
+          updateStudentsGroups(batch, selectedGroupIds)
+        );
+        // 同上：只清走真正分咗組嘅人，中途失敗嗰啲留住剔選俾老師即刻再試。
+        const doneSet = new Set(done);
+        setSelectedUnassignedIds((current) => current.filter((id) => !doneSet.has(id)));
+        if (error && !done.length) {
+          showAlert({ title: uiText('更新失敗'), message: error.message, tone: 'danger' });
+        } else if (error) {
+          showAlert({
+            title: uiText('部分學生未能加入班級'),
+            message: uiTemplate('已將 {0} 位學生加入班級，其餘 {1} 位未能處理，請再試一次。', done.length, studentIds.length - done.length),
+            details: [error.message],
+            tone: 'danger',
+          });
+        } else if (batchCount > 1 && selectedGroupIds.length) {
+          // 冇揀班級就送出＝原封不動（未分組學生本來就冇班級），唔可以報「已加入班級」。
+          showAlert({
+            title: uiText('已加入班級'),
+            message: uiTemplate('已將 {0} 位學生加入班級。', done.length),
+            tone: 'info',
+          });
+        }
       }
-      // 只清走今次真正分咗組嘅人，唔係一炮清空：老師可能仲想處理剔剩嗰啲。
-      setSelectedUnassignedIds((current) => current.filter((id) => !studentIds.includes(id)));
       setAssignStudent({ studentIds: [], selectedGroupIds: [] });
     } catch (error) {
       showAlert({ title: uiText('更新失敗'), message: (error as Error).message, tone: 'danger' });
@@ -439,11 +486,15 @@ export const StudentManagementPage: React.FC = () => {
       setBulkRows([]);
       setShowBulkModal(false);
       const created = data.students.filter((student: any) => student.created && student.temporaryPassword);
+      const total = data.students.length;
       showAlert({
         title: uiText('匯入完成'),
+        // 名單長短都要睇得到按鈕：訊息只出摘要，逐個帳戶嘅臨時密碼交俾
+        // details 用可捲動列表顯示（彈窗自己會收埋長名單）。
         message: created.length
-          ? `${uiText('已加入學生。新帳戶臨時密碼：')}\n${created.map((student: any) => `${student.email}: ${student.temporaryPassword}`).join('\n')}`
+          ? `${uiTemplate('共 {0} 位學生已加入，其中 {1} 位為新帳戶，{2} 位之前已在名單。', total, created.length, total - created.length)}\n${uiText('請將以下臨時密碼交給學生。')}`
           : uiText('所有學生帳戶已加入你的學生名單。'),
+        details: created.map((student: any) => `${student.email}: ${student.temporaryPassword}`),
         tone: 'info',
       });
     } catch (error) {
@@ -821,9 +872,13 @@ export const StudentManagementPage: React.FC = () => {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 14, scale: 0.98 }}
               transition={{ duration: 0.18 }}
-                              className="max-h-[90vh] w-[min(720px,100%)] overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.22)]"
+                              className="flex max-h-[90vh] w-[min(720px,100%)] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.22)]"
             >
-              <div className="flex items-start justify-between border-b border-slate-100 px-6 py-5">
+              {/* 中間名單要用 flex 撐，唔可以靠 max-h-[calc(90vh-132px)] 估高度：
+                  header + footer 實際高過 132px，內容就會高出卡片，俾
+                  overflow-hidden 剪咗底部——「取消」同「加入未分組」兩粒掣
+                  會俾切一半。表頭同底部固定，只有中間嗰格捲。 */}
+              <div className="flex shrink-0 items-start justify-between border-b border-slate-100 px-6 py-5">
                 <div>
                   <h3 className="text-xl font-black text-slate-900">{uiText('匯入學生名單')}</h3>
                   <p className="mt-1 text-sm text-slate-500">
@@ -843,7 +898,7 @@ export const StudentManagementPage: React.FC = () => {
                 </button>
               </div>
 
-              <div className="max-h-[calc(90vh-132px)] overflow-y-auto px-6 py-5">
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
                 <input
                   ref={importFileRef}
                   type="file"
@@ -944,7 +999,7 @@ export const StudentManagementPage: React.FC = () => {
                 ) : null}
               </div>
 
-              <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
+              <div className="flex shrink-0 justify-end gap-3 border-t border-slate-100 px-6 py-4">
                 <button
                   type="button"
                   onClick={() => {
@@ -1124,6 +1179,7 @@ export const StudentManagementPage: React.FC = () => {
         open={dialog.open}
         title={dialog.title}
         message={dialog.message}
+        details={dialog.details}
         confirmText={dialog.confirmText}
         cancelText={dialog.cancelText}
         tone={dialog.tone}

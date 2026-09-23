@@ -9,6 +9,7 @@
     "lint": "tsc --noEmit",
     "test:i18n": "node --test tests/ui-i18n.test.mjs",
     "test:ids": "node --test tests/knowledge-point-ids.test.mjs",
+    "test:batches": "node --test tests/student-batches.test.mjs",
     "test:speech-playback": "node --test tests/speech-playback.test.mjs",
     "test:all": "node --test tests/*.test.mjs",
     "preview": "vite preview"

@@ -18,6 +18,7 @@ dist/
 !/tests/ui-i18n.test.mjs
 !/tests/ui-i18n.browser.cjs
 !/tests/knowledge-point-ids.test.mjs
+!/tests/student-batches.test.mjs
 .playwright-cli/
 output/playwright/
 
