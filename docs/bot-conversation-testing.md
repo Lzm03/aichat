@@ -872,3 +872,38 @@ Implementation status (`server/scripts/test-bot-prompt.ts`, 2026-09-18):
 - Judge prompt 必須明確寫出輸出 schema（`questions[]` 每輪一個 +
   `dialogue` 全部欄位）——寫「只輸出 JSON」唔夠，model 會自由發揮
 - S4 語言詞表（粵/普語氣詞、北方話禁詞）屬高置信度語言特定訊號，保留做 heuristic
+
+---
+
+## 落地原則（2026-09-19 追加）
+
+以下三條由實作教訓而來，適用於所有功能（不只對話測試）。
+
+### 1. 有設計文檔的 feature，實作收尾要逐條對返 checklist
+
+實作收尾**必須**逐條對返文檔的 UX checklist tick 一次，不可以只靠測試綠燈當做完。
+
+2026-09-19 教訓：topic 版本功能在 `docs/knowledge-map-topic-versions.md` §4.1 的
+#4 記住上次選擇 / #6 完成反饋（highlight + toast）spec 了但漏做，同事試用才發現；
+測試 gate（lint / i18n / ids / build）全部捉不到這類缺失。
+
+### 2. 用戶文案：假設用戶第一次用
+
+所有用戶可見文案，假設**從未用過產品的老師**第一眼要明：
+
+1. 不准用開發／機制詞：解析、抽取、提取、版本、覆蓋、佔位、tab（除非真係指瀏覽器分頁）
+2. 用老師日常詞：主題、教材、檔案、整理；講「結果」不講「機制」
+3. 每句過一次測試：未用過的老師，第一眼明不明白？
+
+2026-09-19 全 step 4 板塊已按這個原則重寫（commit b7f04fa）。
+
+### 3. 資料來源一致性：寫入路徑必須覆蓋所有讀取路徑
+
+知識點等核心數據有多個存儲（`bots.knowledge_base` / `character_topics` / `progress` 表）。
+**每加一條寫入路徑，必須盤點所有讀取路徑**，確保讀到的是同一份來源；純邏輯要抽入
+`utils/` 做守護測試。
+
+2026-09-19 教訓：手動知識點只寫版本數據，學習報告只讀 `bots.knowledge_base` →
+報告隱形 + 覆蓋被 filter 走。修法：發佈時以默認版本重建主知識庫
+（`utils/chat-prompt.ts` 的 `buildKnowledgeBaseWithVersionPoints` +
+`server/tests/knowledge-base-sync.test.ts` 守護測試，`npm run test:kb-sync`）。
