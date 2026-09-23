@@ -439,11 +439,15 @@ export const StudentManagementPage: React.FC = () => {
       setBulkRows([]);
       setShowBulkModal(false);
       const created = data.students.filter((student: any) => student.created && student.temporaryPassword);
+      const total = data.students.length;
       showAlert({
         title: uiText('匯入完成'),
+        // 名單長短都要睇得到按鈕：訊息只出摘要，逐個帳戶嘅臨時密碼交俾
+        // details 用可捲動列表顯示（彈窗自己會收埋長名單）。
         message: created.length
-          ? `${uiText('已加入學生。新帳戶臨時密碼：')}\n${created.map((student: any) => `${student.email}: ${student.temporaryPassword}`).join('\n')}`
+          ? `${uiTemplate('共 {0} 位學生已加入，其中 {1} 位為新帳戶，{2} 位之前已在名單。', total, created.length, total - created.length)}\n${uiText('請將以下臨時密碼交給學生。')}`
           : uiText('所有學生帳戶已加入你的學生名單。'),
+        details: created.map((student: any) => `${student.email}: ${student.temporaryPassword}`),
         tone: 'info',
       });
     } catch (error) {
@@ -1124,6 +1128,7 @@ export const StudentManagementPage: React.FC = () => {
         open={dialog.open}
         title={dialog.title}
         message={dialog.message}
+        details={dialog.details}
         confirmText={dialog.confirmText}
         cancelText={dialog.cancelText}
         tone={dialog.tone}

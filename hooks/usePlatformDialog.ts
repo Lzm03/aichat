@@ -6,6 +6,10 @@ type DialogState = {
   open: boolean;
   title: string;
   message: string;
+  /** Optional one-entry-per-row detail lines (e.g. a new account's email and
+   * temporary password). Rendered as a scrollable list so that a long list
+   * cannot grow the dialog past the viewport and hide its buttons. */
+  details?: string[];
   confirmText: string;
   cancelText?: string;
   tone: DialogTone;
@@ -16,6 +20,7 @@ const initialState: DialogState = {
   open: false,
   title: "",
   message: "",
+  details: undefined,
   confirmText: "知道了",
   tone: "info",
   onConfirm: null,
@@ -32,11 +37,13 @@ export function usePlatformDialog() {
     ({
       title,
       message,
+      details,
       confirmText = "知道了",
       tone = "info",
     }: {
       title: string;
       message: string;
+      details?: string[];
       confirmText?: string;
       tone?: DialogTone;
     }) => {
@@ -44,6 +51,7 @@ export function usePlatformDialog() {
         open: true,
         title,
         message,
+        details,
         confirmText,
         tone,
         cancelText: undefined,
@@ -57,6 +65,7 @@ export function usePlatformDialog() {
     ({
       title,
       message,
+      details,
       confirmText = "確認",
       cancelText = "取消",
       tone = "info",
@@ -64,6 +73,7 @@ export function usePlatformDialog() {
     }: {
       title: string;
       message: string;
+      details?: string[];
       confirmText?: string;
       cancelText?: string;
       tone?: DialogTone;
@@ -73,6 +83,9 @@ export function usePlatformDialog() {
         open: true,
         title,
         message,
+        // Always set, even when undefined: otherwise a confirm opened after an
+        // alert would keep showing that alert's detail list.
+        details,
         confirmText,
         cancelText,
         tone,
