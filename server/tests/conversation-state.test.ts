@@ -15,6 +15,10 @@ import {
   stateForTopic,
 } from "../lib/conversation-state.ts";
 import type { KnowledgePoint } from "../../utils/chat-prompt.ts";
+import {
+  enqueueConversationTrack,
+  waitForPendingTrack,
+} from "../lib/conversation-track-queue.ts";
 
 const point = (id: string, keywords: string[]): KnowledgePoint => ({
   id,
@@ -402,4 +406,82 @@ test("讀寫兩側對「轉咗話題」嘅判斷一致（同一條規則，唔�
       `"${stateTopicId}" vs "${topicId}"：讀側同寫側判斷要一樣`
     );
   }
+});
+
+// ── 對話狀態寫入隊列（server/lib/conversation-track-queue.ts）───────────────
+// 呢層係「寫完之後讀」嘅保證：trackConversationState 照舊 fire-and-forget，
+// 但下一個 ask 讀 state 之前會等埋條鏈。
+
+test("隊列：同一對話嘅寫入 FIFO，唔會交錯", async () => {
+  const log: string[] = [];
+  const work = (name: string, delay: number) => async () => {
+    log.push(`${name}-start`);
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    log.push(`${name}-end`);
+  };
+  const a = enqueueConversationTrack("fifo_conv", work("a", 30));
+  const b = enqueueConversationTrack("fifo_conv", work("b", 1));
+  await Promise.all([a, b]);
+  assert.deepEqual(log, ["a-start", "a-end", "b-start", "b-end"], "B 一定要等 A 完先開始");
+});
+
+test("waitForPendingTrack 等得到在途寫入真係做完", async () => {
+  let done = false;
+  const track = enqueueConversationTrack("wait_conv", async () => {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    done = true;
+  });
+  await waitForPendingTrack("wait_conv");
+  // 如果 waitForPendingTrack 一叫就 resolve，呢度會係 false。
+  assert.equal(done, true, "等到嘅時候 work 一定要做完");
+  await track;
+});
+
+test("waitForPendingTrack：冇在途寫入就即刻 resolve，唔會等到 timeout", async () => {
+  const started = Date.now();
+  await waitForPendingTrack("never_used_conv", 5_000);
+  assert.ok(Date.now() - started < 1_000, "冇 pending 應該即刻返，唔使等 5 秒");
+});
+
+test("隊列：A 完成時唔會清走仲喺隊列尾嘅 B", async () => {
+  let bDone = false;
+  const a = enqueueConversationTrack("cleanup_conv", async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  const b = enqueueConversationTrack("cleanup_conv", async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    bDone = true;
+  });
+  await a; // A 完成嗰刻 B 已經入咗隊 —— A 嘅清理唔可以刪走 B 條 entry
+  await waitForPendingTrack("cleanup_conv");
+  assert.equal(bDone, true, "B 條鏈唔可以被 A 嘅清理斬斷");
+  await b;
+});
+
+test("隊列：work reject 都唔會斷鏈", async () => {
+  let bDone = false;
+  const a = enqueueConversationTrack("reject_conv", async () => {
+    throw new Error("boom");
+  });
+  const b = enqueueConversationTrack("reject_conv", async () => {
+    bDone = true;
+  });
+  await a; // 回傳嘅 promise 一定唔會 reject（console.warn 會印一行，預期之內）
+  await b;
+  assert.equal(bDone, true, "上一件工作爆咗，下一件照跑");
+});
+
+test("隊列：唔同對話各自一條鏈，互唔阻塞", async () => {
+  const log: string[] = [];
+  const slow = enqueueConversationTrack("conv_slow", async () => {
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    log.push("slow");
+  });
+  const fast = enqueueConversationTrack("conv_fast", async () => {
+    log.push("fast");
+  });
+  await fast;
+  assert.deepEqual(log, ["fast"], "另一個對話嘅慢寫入唔應該阻住呢個");
+  await slow;
+  assert.deepEqual(log, ["fast", "slow"]);
 });

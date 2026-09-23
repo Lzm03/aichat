@@ -40,6 +40,7 @@ import {
   switchConversationTopicState,
   trackConversationState,
 } from "../lib/conversation-state.ts";
+import { waitForPendingTrack } from "../lib/conversation-track-queue.ts";
 import {
   buildChatReplyLanguageRule,
   buildChatSystemPrompt,
@@ -1811,6 +1812,13 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
           : characterKnowledgeBase;
       trackingAnswerMode = parseAnswerMode(characterKnowledgeBase);
       characterGradeBand = character.grade || null;
+      if (activeConversation) {
+        // 等埋呢段對話嘅在途背景寫（可能仲跑緊每 3 輪一次嘅 Gemini judge）——
+        // 唔係嘅話下面讀到嘅 covered / next_point 會慢一整輪，Bot 照教舊嘢。
+        // 封頂 15 秒：judge call 冇 app-level timeout，真係掛死咗寧願讀舊 state，
+        // 都好過之後每一句都卡喺度。
+        await waitForPendingTrack(activeConversation.id, 15_000);
+      }
       // 後台實錄嘅對話狀態（已覆蓋知識點／下一步目標）——有就注入，冇就用模型自估。
       // state row 淨係對佢自己嗰個話題有意義：唔同話題一律當冇 state，
       // 免得將上一個話題嘅 Covered_Points / Next_Point 當成呢個話題嘅。
