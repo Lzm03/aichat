@@ -17,8 +17,7 @@ ChopReality 的主前端與 API 服務。介面語言以繁體中文（香港用
 PostgreSQL
 ```
 
-本機開發時中間那層可以換成**預覽 mock**（`../aichat-preview-mock/`，在 repo 外，port 4000），
-不需要 PostgreSQL 就能跑起前端。切換方法見 [local-development.md](local-development.md)。
+本機開發時中間那層可以換成**預覽 mock**（在 repo 外，不入版控），不需要 PostgreSQL 就能跑起前端。
 
 ## 前端
 
@@ -167,7 +166,6 @@ aichat/
 ## 相關文件
 
 - [設計系統](design-system.md) — 色彩、字體、圓角、動效
-- [本地開發](local-development.md) — 點跑起專案、mock vs 真後端、常用指令
 - [Bot 角色設定指南](bot-persona-guide.md)
 - [異常偵測規則規格](anomaly-detection-spec.md)
 - [Bot 對話測試架構](bot-conversation-testing.md)

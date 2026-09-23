@@ -9,7 +9,6 @@
 | --- | --- |
 | [architecture.md](architecture.md) | 想知專案點組成、資料流、邊個目錄放乜、測試喺邊 |
 | [design-system.md](design-system.md) | 要寫／改 UI，想知道色彩、字體、圓角、陰影、動效的 token |
-| [local-development.md](local-development.md) | 第一次跑起專案、要分辨 mock 同真後端、查常用指令 |
 | [bot-persona-guide.md](bot-persona-guide.md) | 要改 Bot 角色設定、知識點關鍵詞規則、對話狀態追蹤 |
 | [bot-conversation-testing.md](bot-conversation-testing.md) | 要改對話評測／回歸測試（Semantic Judge、場景 S1–S12） |
 | [anomaly-detection-spec.md](anomaly-detection-spec.md) | 要改異常偵測規則、加新規則（含 FP 風險與合規依據） |

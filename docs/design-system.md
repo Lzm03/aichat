@@ -60,4 +60,3 @@
 ## 相關文件
 
 - [架構總覽](architecture.md)
-- [本地開發](local-development.md)
