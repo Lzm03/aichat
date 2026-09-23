@@ -26,3 +26,11 @@ AGENTS.md
 MEMORY.md
 memory/
 progress/
+
+# Personal / scratch files; patterns stay generic on purpose so the repo does
+# not publish the names of local working documents (repo is public)
+/*.docx
+/new-session---*.json
+/server/*.txt
+!/server/handoff-*.txt
+/server/tmp-demo-*
