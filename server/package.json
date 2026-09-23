@@ -13,6 +13,15 @@
     "test:conversation-state": "node --import tsx --test tests/conversation-state.test.ts",
     "test:gemini": "node --import tsx --test tests/gemini-multimodal.test.ts",
     "test:golden": "node --import tsx --test tests/conversation-state-golden.test.ts tests/answer-judge.test.ts tests/conversation-state.test.ts tests/teaching-simulation.test.ts",
+    "test:students": "node --import tsx --test tests/students.integration.test.ts",
+    "test:feature-limits": "node --import tsx --test tests/feature-limits.test.ts",
+    "test:knowledge-files": "node --import tsx --test tests/knowledge-files.test.ts",
+    "test:platform-auth": "node --import tsx --test tests/platform-auth-password.test.ts",
+    "test:quiz-audience": "node --import tsx --test tests/quiz-audience.integration.test.ts",
+    "test:request-concurrency": "node --import tsx --test tests/request-concurrency.test.ts",
+    "test:upload-filename": "node --import tsx --test tests/upload-filename.test.ts",
+    "test:vertex-sse": "node --import tsx --test tests/vertex-sse.test.ts",
+    "test:all": "node --import tsx --test tests/*.test.ts",
     "start": "node --import tsx index.ts"
   },
   "dependencies": {
