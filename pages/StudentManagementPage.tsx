@@ -525,6 +525,12 @@ export const StudentManagementPage: React.FC = () => {
       setShowBulkModal(false);
 
       const created = data.students.filter((student: any) => student.created && student.temporaryPassword);
+      // 而家後端每個新帳戶都用同一個初始密碼（server 嗰邊
+      // DEFAULT_STUDENT_INITIAL_PASSWORD），逐個學生列一行密碼淨係噪音——
+      // 20 個新帳戶就 20 行一模一樣嘅字。唔硬編死個值：只要回傳嘅密碼一致就
+      // 收埋做一行，將來若果改返逐個唔同，下面照樣逐行列返出嚟。
+      const createdPasswords = Array.from(new Set(created.map((student: any) => String(student.temporaryPassword))));
+      const sharedPassword = createdPasswords.length === 1 ? createdPasswords[0] : null;
       const total = data.students.length;
       const importedClasses: ImportedClassSummary[] = Array.isArray(data.groups) ? data.groups : [];
       const lines = [uiTemplate('共 {0} 位學生已加入，其中 {1} 位為新帳戶，{2} 位之前已在名單。', total, created.length, total - created.length)];
@@ -538,16 +544,17 @@ export const StudentManagementPage: React.FC = () => {
         lines.push(...importedClasses.map((group) => uiTemplate('班級 {0}：{1} 位學生', group.name, group.studentCount)));
       }
       if (skipped.length) lines.push(uiTemplate('另外有 {0} 行冇匯入，請睇下面嘅原因。', skipped.length));
-      if (created.length) lines.push(uiText('請將以下臨時密碼交給學生。'));
+      if (sharedPassword) lines.push(uiTemplate('所有新帳戶嘅臨時密碼都係 {0}，請話俾學生知，並提醒佢哋登入後改密碼。', sharedPassword));
+      else if (created.length) lines.push(uiText('請將以下臨時密碼交給學生。'));
 
       showAlert({
         title: uiText('匯入完成'),
-        // 名單長短都要睇得到按鈕：摘要只出統計，逐行嘅臨時密碼同失敗原因交俾
-        // details 用可捲動列表顯示（彈窗自己會收埋長名單）。
+        // 名單長短都要睇得到按鈕：摘要只出統計，逐行嘅失敗原因（同逐個唔同時嘅
+        // 臨時密碼）交俾 details 用可捲動列表顯示（彈窗自己會收埋長名單）。
         message: lines.join('\n'),
         details: [
           ...skipped.map((row) => uiTemplate('第 {0} 行：{1}', row.line, skippedReasonText[row.reason])),
-          ...created.map((student: any) => `${student.email}: ${student.temporaryPassword}`),
+          ...(sharedPassword ? [] : created.map((student: any) => `${student.email}: ${student.temporaryPassword}`)),
         ],
         tone: 'info',
       });
@@ -854,9 +861,12 @@ export const StudentManagementPage: React.FC = () => {
               return (
                 <div key={group.id} className="overflow-hidden rounded-2xl border border-slate-100 bg-white">
                   <div className="flex items-center gap-3 p-4">
+                    {/* 箭嘴要放喺 button 入面：擺喺外面嘅話佢只係裝飾，
+                        撳落去唔會收起，用家會以為壞咗。 */}
                     <button
                       type="button"
                       onClick={() => toggleGroupExpand(group.id)}
+                      aria-expanded={expanded}
                       className="flex min-w-0 flex-1 items-center gap-3 text-left"
                     >
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
@@ -871,8 +881,12 @@ export const StudentManagementPage: React.FC = () => {
                         </div>
                         <div className="mt-0.5 text-xs text-slate-500">{group.studentIds.length}{uiText(' 位學生')}</div>
                       </div>
+                      {expanded ? (
+                        <ChevronDown className="ml-auto h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />
+                      ) : (
+                        <ChevronRight className="ml-auto h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />
+                      )}
                     </button>
-                    {expanded ? <ChevronDown className="h-5 w-5 text-slate-400" /> : <ChevronRight className="h-5 w-5 text-slate-400" />}
                     <button
                       type="button"
                       onClick={() => removeGroup(group.id)}

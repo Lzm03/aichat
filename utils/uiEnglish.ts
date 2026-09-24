@@ -1950,6 +1950,7 @@ export const englishUi: Record<string, string> = {
   "匯入完成": "Import Complete",
   "共 {0} 位學生已加入，其中 {1} 位為新帳戶，{2} 位之前已在名單。": "Added {0} students: {1} new accounts, {2} already on your list.",
   "請將以下臨時密碼交給學生。": "Give the temporary passwords below to the students.",
+  "所有新帳戶嘅臨時密碼都係 {0}，請話俾學生知，並提醒佢哋登入後改密碼。": "Every new account uses the temporary password {0}. Tell your students, and remind them to change it after they log in.",
   "查看詳細名單": "Show details",
   "收起詳細名單": "Hide details",
   "匯入失敗": "Import Failed",
