@@ -130,6 +130,7 @@ export const englishUi: Record<string, string> = {
   "最新 AI 夥伴": "Latest AI partner",
   "從你最近更新的 AI 夥伴開始，快速調整角色細節。": "Start from the AI partner you edited most recently and refine its details quickly.",
   "繼續編輯": "Continue editing",
+  "立即試用": "Try Now",
   "仲未有 AI 夥伴": "No AI partner yet",
   "建立第一個 AI 夥伴後，就可以喺呢度快速繼續編輯。": "Create your first AI partner and you can continue editing it here.",
   "建立第一個 AI 夥伴": "Create your first AI partner",

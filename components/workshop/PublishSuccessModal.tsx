@@ -45,7 +45,8 @@ interface PublishSuccessModalProps {
   onClose: () => void;
   botConfig: any;
   onEdit: () => void;
-  onDelete: (botId: string) => void;
+  /** 唔傳就唔顯示「刪除機器人」（例：由 Dashboard 直接試用）。 */
+  onDelete?: (botId: string) => void;
   isSharedView?: boolean;
 }
 
@@ -3500,7 +3501,7 @@ const unlockAudioAndMic = async () => {
 
   const handleConfirmDelete = () => {
     setShowDeleteConfirm(false);
-    onDelete(botConfig.id);
+    onDelete?.(botConfig.id);
   };
 
   useEffect(() => {
@@ -3959,7 +3960,7 @@ const unlockAudioAndMic = async () => {
                             void handleCopyShareLink();
                           }}
                         >{uiText("複製共享連結")}</button>
-                        {!botConfig.isDefault ? (
+                        {!botConfig.isDefault && onDelete ? (
                           <button
                             className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-red-300 transition hover:bg-red-500/10"
                             onClick={() => {
