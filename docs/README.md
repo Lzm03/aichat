@@ -9,8 +9,8 @@
 | --- | --- |
 | [architecture.md](architecture.md) | 想知專案點組成、資料流、邊個目錄放乜、測試喺邊 |
 | [design-system.md](design-system.md) | 要寫／改 UI，想知道色彩、字體、圓角、陰影、動效的 token |
-| [bot-persona-guide.md](bot-persona-guide.md) | 要改 Bot 角色設定、知識點關鍵詞規則、對話狀態追蹤 |
-| [bot-conversation-testing.md](bot-conversation-testing.md) | 要改對話評測／回歸測試（Semantic Judge、場景 S1–S12） |
+| [bot-persona-guide.md](bot-persona-guide.md) | 要改 Bot 角色設定、答題策略（三個揭曉階梯）、知識點關鍵詞規則、對話狀態追蹤 |
+| [bot-conversation-testing.md](bot-conversation-testing.md) | 要改對話評測／回歸測試（Semantic Judge、場景 S1–S14） |
 | [anomaly-detection-spec.md](anomaly-detection-spec.md) | 要改異常偵測規則、加新規則（含 FP 風險與合規依據） |
 | [chat-anomaly-detection.md](chat-anomaly-detection.md) | 要改學生對話異常偵測：三類（不當用語／情緒困擾／個人私隱）× 兩種動作（攔截／放行）、詞表、紀錄 API 或教師覆核流程 |
 | [student-management.md](student-management.md) | 要改學生管理、名單匯入、班級欄位規則或 Excel 範本 |

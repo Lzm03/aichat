@@ -13,7 +13,7 @@
     "test:proposal": "node --import tsx --test tests/bot-proposal.test.ts",
     "test:conversation-state": "node --import tsx --test tests/conversation-state.test.ts",
     "test:gemini": "node --import tsx --test tests/gemini-multimodal.test.ts",
-    "test:golden": "node --import tsx --test tests/conversation-state-golden.test.ts tests/answer-judge.test.ts tests/conversation-state.test.ts tests/teaching-simulation.test.ts",
+    "test:golden": "node --import tsx --test tests/conversation-state-golden.test.ts tests/answer-judge.test.ts tests/conversation-state.test.ts tests/teaching-simulation.test.ts tests/answer-mode-prompt.test.ts",
     "test:students": "node --import tsx --test tests/students.integration.test.ts",
     "test:feature-limits": "node --import tsx --test tests/feature-limits.test.ts",
     "test:knowledge-files": "node --import tsx --test tests/knowledge-files.test.ts",
@@ -24,6 +24,8 @@
     "test:vertex-sse": "node --import tsx --test tests/vertex-sse.test.ts",
     "test:chat-anomaly-rules": "node --import tsx --test tests/chat-anomaly-rules.test.ts",
     "test:flagged-chat": "node --import tsx --test tests/flagged-chat.integration.test.ts",
+    "test:answer-mode": "node --import tsx --test tests/answer-mode-prompt.test.ts",
+    "test:bot-prompt": "node --import tsx scripts/test-bot-prompt.ts",
     "test:all": "node --import tsx --test --test-concurrency=1 tests/*.test.ts",
     "start": "node --import tsx index.ts"
   },

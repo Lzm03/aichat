@@ -20,7 +20,14 @@ import {
   syncInheritedTopicKnowledge,
 } from "../lib/character-topics.ts";
 import { ensureDefaultTeacherExperience } from "../lib/default-teacher-experience.ts";
-import { parsePromptSource } from "../../utils/chat-prompt.ts";
+import {
+  buildCannedGuidedAnnouncement,
+  buildGuidedAnnouncementPrompt,
+  needsGuidedAnnouncement,
+  parseAnswerMode,
+  parsePromptSource,
+} from "../../utils/chat-prompt.ts";
+import type { AnswerMode, ChatReplyLanguage } from "../../utils/chat-prompt.ts";
 import {
   GEMINI_STABLE_TEMPERATURE,
   GEMINI_TEXT_MODEL,
@@ -239,6 +246,46 @@ ${characterContext || "（未提供）"}
     return fallbackOpeningMessage(name);
   } catch {
     return fallbackOpeningMessage(name);
+  }
+}
+
+/**
+ * 生成開場引導說明。跟 generateOpeningMessage 同一形狀：逾時／出錯／空字串都落罐頭後備句，
+ * 令對話開頭一定有嘢講（呢句係學生第一眼見到嘅規則說明，唔可以靜靜雞冇咗）。
+ * prompt 本身喺 utils/chat-prompt.ts（單一來源），呢度只負責叫模型。
+ */
+export async function generateGuidedAnnouncement(
+  bot: any,
+  replyLanguage: ChatReplyLanguage,
+  answerMode: AnswerMode
+) {
+  const fallback = buildCannedGuidedAnnouncement(replyLanguage);
+  const { systemPrompt, userPrompt } = buildGuidedAnnouncementPrompt({
+    roleName: bot?.name,
+    knowledgeBase: bot?.knowledge_base,
+    securityPrompt: bot?.security_prompt,
+    replyLanguage,
+    answerMode,
+  });
+
+  try {
+    const ai = getAI();
+    const response = await withTimeout(
+      ai.models.generateContent({
+        model: GEMINI_TEXT_MODEL,
+        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: GEMINI_STABLE_TEMPERATURE,
+        },
+      }),
+      OPENING_MESSAGE_TIMEOUT_MS
+    );
+    const text = String(response.text || "").replace(/\s+/g, " ").trim();
+    if (text) return { announcement: text, source: "generated" as const };
+    return { announcement: fallback, source: "fallback" as const };
+  } catch {
+    return { announcement: fallback, source: "fallback" as const };
   }
 }
 
@@ -1790,6 +1837,44 @@ router.get("/:id", async (req, res) => {
   } catch (err) {
     console.error("❌ GET /:id Failed:", err);
     res.status(500).json({ error: "Failed to fetch bot" });
+  }
+});
+
+/**
+ * 開場引導說明：開場白之後補充嘅一句「呢段對話我唔會直接俾答案，而係引導你」。
+ *
+ * 只有兩個引導模式先有（「直接給答案」回 not-applicable，老師自己揀咗唔使引導）。
+ * 說明係即時按**現時** knowledge_base 生成，唔會寫返落已存嘅 opening_message：
+ * 老師之後改答題策略／說話風格，下次開對話自動跟返新設定，唔會有舊句殘留。
+ * 前端會按 bot×語言×人設內容指紋快取，所以正常情況每個組合只生成一次。
+ */
+router.get("/:id/opening", async (req, res) => {
+  const { id } = req.params;
+  const requested = String(req.query.replyLanguage || "cantonese");
+  const replyLanguage: ChatReplyLanguage =
+    requested === "english" || requested === "mandarin" ? requested : "cantonese";
+
+  try {
+    await ensurePlatformTables();
+    const user = await optionalAuth(req);
+    // 存取閘同 GET /:id 一致：冇權限同唔存在一樣回 404。
+    const accessibleBot = await getAccessibleBot(id, user?.id || null);
+    if (!accessibleBot) return res.status(404).json({ error: "Bot not found" });
+
+    const answerMode = parseAnswerMode(String(accessibleBot.knowledge_base || ""));
+    if (!needsGuidedAnnouncement(answerMode)) {
+      return res.json({ announcement: "", source: "not-applicable", answerMode });
+    }
+
+    const { announcement, source } = await generateGuidedAnnouncement(
+      accessibleBot,
+      replyLanguage,
+      answerMode
+    );
+    res.json({ announcement, source, answerMode });
+  } catch (err) {
+    console.error("❌ GET /:id/opening Failed:", err);
+    res.status(500).json({ error: "Failed to build opening announcement" });
   }
 });
 

@@ -69,7 +69,7 @@ Your goal is NOT to spoon-feed information, but to guide the student toward inde
 4. Produce ONE complete reply per turn. Do not split one reply into two separate messages.
 5. Keep each reply to a short passage of at most 3 message units — one unit = one piece of information, one question, or one set of 2-3 options. Usually under 150 Chinese characters unless the student explicitly asks for detail.
 6. 訊息先行 (info before asking): if the reply ends with a question, it must first deliver at least one piece of new information or one substantive affirmation BEFORE the question (1 info + 1 question). Two consecutive turns that only ask questions without delivering any new information are a violation.
-7. Do not ask a follow-up question every single turn. Some turns should simply answer and stop.
+7. Do not dump the complete answer in one message. Whether a turn may reveal the final answer is decided ONLY by # Answer Mode Directive — outside its explicit allowance, reply with a hint, a smaller sub-question, or 2-3 options instead. A turn without a follow-up question is fine when it delivers substance (an answer the student earned, a summary, or a completion), never as a shortcut that bypasses the guided path.
 8. Only ask one short, knowledge-related follow-up question when it naturally helps the student think deeper.
 9. Never ask more than one question in a single reply. One reply can contain zero or one question only. An A/B choice still counts as one question and must end with a single question mark, e.g. 「你想知紅色定黑色？」 is allowed, 「係唔係咁？定係咁？」 is not. A rhetorical self-answered question also counts — end it with a full stop instead, e.g. 「你諗下點解扯唔開——力斜斜咁壓入去。」 not 「點解扯唔開？係因為力。」
 10. Do not stack two Socratic prompts in one turn. Ask about only one knowledge point at a time.
@@ -130,7 +130,7 @@ export function buildGradeBandRule(gradeBand?: string | null) {
   ].join("\n");
 }
 
-function matchSection(source: string, label: string, fallbackLabels: string[] = []) {
+export function matchSection(source: string, label: string, fallbackLabels: string[] = []) {
   const labels = [label, ...fallbackLabels].map((item) => item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const pattern = new RegExp(
     `【(?:${labels.join("|")})】([\\s\\S]*?)(?=\\n【[^\\n]+】|$)`,
@@ -313,6 +313,112 @@ export function parseAnswerMode(knowledgeBase: string): AnswerMode {
   return "引導後再回答";
 }
 
+/**
+ * 「答題策略」真正落地嘅一節。以前呢個老師設定只影響覆蓋追蹤（coverage strictness），
+ * 對模型講嘢完全冇作用——揀「不直接給答案」同「直接給答案」出嚟嘅 prompt 一模一樣，
+ * 所以學生覺得 Bot 一嘢倒答案。呢節將模式翻譯成「揭曉階梯」指令。
+ *
+ * 兩個引導模式都保證有終點（提示 → 選項 → 答案連解釋）：無限引導＝學生永遠攞唔到答案，
+ * 係另一種失敗模式。分別只在於節奏快慢同揭曉時嘅措辭。
+ */
+export function buildAnswerModeDirective(mode: AnswerMode): string {
+  const header =
+    "# Answer Mode Directive (derived from the teacher's 【答題策略】; if this section conflicts with # Safety Rules or # Interaction Rules below, those rules always win)";
+  // 「一輪最多一條問題」喺引導輪特別易甩：模型會連問兩條唔同嘅問題（問完「係咩色」
+  // 又問「印象點樣」），或者喺選項輪寫完「A 定 B？」再跟手加句「你揀邊個」。
+  // 三個模式共用同一條限制。
+  const oneQuestionRule =
+    "一輪仍然最多一條問題：一輪只可以問一樣嘢，連問兩條唔同嘅問題（例如問完「咩色」又問「印象點樣」）都唔准；選項寫成一個問句（例如「A 定 B？」），唔准跟手加多句「你揀邊個」，亦唔准將同一條問題換個問法重複寫兩次。想開頭 check-in（例如「你聽過『赤膽忠心』未」）就用陳述句或者自己答埋收句號，唔准寫成問句再加第二條問題。";
+
+  if (mode === "直接給答案") {
+    return `${header}
+${oneQuestionRule}
+You are in「直接給答案」mode: the teacher has given you explicit permission to answer directly. Give the complete answer in one reply when the student asks for knowledge or facts — do not withhold it behind forced hints or counter-questions. You may still add one short follow-up question afterwards if it naturally deepens understanding, but the answer must come first. All other # Interaction Rules (language, one question maximum, safety) still apply.`;
+  }
+
+  if (mode === "不直接給答案") {
+    return `${header}
+${oneQuestionRule}
+You are in「不直接給答案」mode: never casually reveal the answer. Rule 7 does not license you to "simply answer and stop" in this mode.
+1. 先引導：always guide first — ask, hint, or break the problem into smaller steps. Do NOT reveal the full answer, even if the student asks directly, complains, or repeats the demand. 第一輪硬性禁止講出學生問嗰個事實本身：就算你喺同一句入面再補一條問題或一句提示，只要個事實已經講咗，就當倒咗答案。第一輪只可以出問題、線索或者縮窄範圍。
+2. 更謹慎嘅卡關遞進：only after the student is clearly stuck for several turns (roughly 3 or more consecutive 唔明／唔識), escalate slowly — small hint → more concrete hint or 2-3 choices → after that, give the answer WITH a full explanation, framed as 「我破例直接講一次，但你要試下用自己嘅說話重講返出嚟」.
+3. 交返俾學生：after any reveal, immediately return the conversation to guided mode by asking the student to retell or apply the answer. 但如果學生喺揭曉之後仍然話唔明，就再直接講一次答案連解釋，唔准退返去出選擇題——答案已經揭曉過，再出選項只會令學生更攰。
+4. 永不放任卡死：sustained stuckness always ends with the answer + explanation — never endless questioning. 答案揭曉之後嘅回合，如果學生仲話唔明／諗唔到，就每次用唔同嘅講法再解釋一次答案，永遠唔准再出選項或者追問嗰個概念。`;
+  }
+
+  return `${header}
+${oneQuestionRule}
+You are in「引導後再回答」mode: guide first, answer later. Follow this reveal ladder strictly:
+1. 先引導：open with a guiding question, an analogy, a related example, or a hint that does NOT state the answer itself. Do NOT give the full answer, even if the student asks directly (e.g. 「你直接講啦」). 如果學生問嘅係一個事實（例如「紅色代表咩」），第一輪唔准直接講出嗰個事實本身——就算你喺同一句入面再補一條問題，只要事實已出就當倒咗答案；第一輪只可以反問、俾線索或者叫學生觀察。
+2. 卡關遞進：after roughly 2 consecutive turns of 唔明／唔識／唔知 or direct demands for the answer, upgrade — give a more concrete hint, or offer 2-3 answer options for the student to choose from.
+3. 最終俾答案：if the student is still stuck after the hint-and-options rounds, THEN give the full answer WITH a short explanation, and hand the reasoning back (e.g. 「而家明咗，試下用自己嘅說話講返點解」). The answer is the last resort, not the first move — the student is never trapped in an endless loop. 揭曉之後如果學生仍然話唔明，就再直接講一次答案連解釋，唔准退返去出選擇題。
+4. 學生答啱或主動問新嘢：guiding continues normally and the ladder resets.`;
+}
+
+/**
+ * 開場引導說明嘅罐頭後備句（跟對話回覆語言）。
+ * 正常路徑係由模型按「說話風格 × 人物設定 × 回覆語言」生成變體（server/api/bots.ts），
+ * 呢句只喺冇 model／生成失敗時用，唔應該係學生平時見到嗰句。
+ */
+export function buildCannedGuidedAnnouncement(replyLanguage: ChatReplyLanguage): string {
+  if (replyLanguage === "english") {
+    return "Just so you know: in our chat I won't give you the answer directly — I'll guide you to figure it out with questions and hints.";
+  }
+  if (replyLanguage === "mandarin") {
+    return "提醒你：這段對話我不會直接給答案，而是用問題和提示引導你自己思考。";
+  }
+  return "提提你：呢段對話我唔會直接俾答案，而係會用問題同提示引導你自己諗。";
+}
+
+/** 只有兩個引導模式先需要開場說明；「直接給答案」唔應該出呢句。 */
+export function needsGuidedAnnouncement(mode: AnswerMode): boolean {
+  return mode !== "直接給答案";
+}
+
+/**
+ * 開場引導說明嘅生成 prompt。
+ *
+ * 呢句唔可以係固定罐頭句：老師揀嘅說話風格、回覆語言同數字人人物設定都要反映落去，
+ * 所以交俾模型生成變體。答題策略都入 prompt，令「引導後再回答」同「不直接給答案」
+ * 嘅措辭自然有別（前者較輕，後者較嚴）。
+ */
+export function buildGuidedAnnouncementPrompt(input: {
+  roleName?: string;
+  knowledgeBase?: string;
+  securityPrompt?: string;
+  replyLanguage: ChatReplyLanguage;
+  answerMode: AnswerMode;
+}) {
+  const personaProfile = parsePromptSource({ knowledgeBase: input.knowledgeBase || "" }).personaProfile;
+  const speakingStyle = matchSection(personaProfile, "說話風格").trim();
+  const name = String(input.roleName || "").trim() || "AI 助手";
+  // 「說話風格」藏喺【角色對話策略】容器入面，要單獨抽出嚟餵俾生成器，
+  // 否則模型只會見到一大段人設，捉唔到「文言文」呢類會左右句式嘅設定。
+  const characterContext = [input.knowledgeBase, input.securityPrompt]
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 4000);
+
+  const systemPrompt =
+    "你是角色語氣設計助手。你必須根據角色人設、說話風格同指定回覆語言，寫一句簡短的「引導式對話說明」。只輸出一句，不要引號，不要換行，不要解釋。";
+  const userPrompt = `
+角色名稱：${name}
+角色背景與設定：
+${characterContext || "（未提供）"}
+說話風格：${speakingStyle || "（未指定，用自然口語）"}
+回覆語言：${buildChatReplyLanguageRule(input.replyLanguage, speakingStyle === "文言文")}
+答題策略：${input.answerMode}
+
+請寫一句「引導式對話說明」，向學生講清楚：呢段對話我唔會直接俾答案，而係會用問題同提示一步步引導佢自己諗。要求：
+1. 必須用角色自己嘅語氣同人物身份去講（歷史人物用佢自己嘅口吻，唔可以似通用助理）；
+2. 必須跟足上面嘅「說話風格」（例如文言風格就用文言句式）同「回覆語言」；
+3. 唔准照抄任何固定模板句，要自然多變；
+4. 只輸出一句，20-40 字，唔好加引號或解釋。
+`.trim();
+
+  return { systemPrompt, userPrompt };
+}
+
 export function buildStoredKnowledgeBase(input: {
   characterBackground: string;
   knowledgeSummary: string;
@@ -431,6 +537,9 @@ export function buildChatSystemPrompt(input: PromptCompilerInput) {
 
   const gradeBandRule = buildGradeBandRule(input.gradeBand);
 
+  // 答題策略永遠由**主知識庫**讀（話題版本冇【答題策略】節），同 ask.ts 嘅 trackingAnswerMode 一致。
+  const answerModeDirective = buildAnswerModeDirective(parseAnswerMode(input.knowledgeBase || ""));
+
   // Input Context：有後台實錄狀態就用真實狀態（Covered/Next），冇就維持模型自估
   const state = input.conversationState;
   const inputContextSections: string[] = [
@@ -498,6 +607,8 @@ ${parsed.knowledgeSummary || "未提供知識摘要。"}
 ${parsed.personaProfile || "未提供額外對話策略。"}
 安全規則、回覆語言與年級難度限制優先；除此之外，老師設定嘅角色語氣與答題策略優先於通用教學骨架。
 
+${answerModeDirective}
+
 # Core Objective
 Your goal is NOT to spoon-feed information, but to guide the student toward independent reasoning through "Socratic Questioning". Help them explore the character's life, decisions, background, and impact step-by-step.
 
@@ -509,8 +620,8 @@ Follow this cognitive loop internally before every response:
 1. Evaluate the student's latest input: off-topic, surface fact recall, or deeper relational understanding.
 2. Apply adaptive scaffolding: ${DEFAULT_SCAFFOLDING}
 3. If the student is engaged, briefly affirm and optionally push one level deeper.
-4. If the student is confused, lower difficulty and give a partial hint without dumping the answer.
-5. If the student is clearly stuck or silent for too long, be ready to support L1/L2/L3 guided replies generated by the outer system.
+4. If the student is confused, lower difficulty and give a partial hint without dumping the answer — escalate along the stuck-progression ladder in # Answer Mode Directive.
+5. If the student is clearly stuck or silent for too long, advance one rung on the # Answer Mode Directive ladder (hint → choices → answer with explanation), and be ready to support L1/L2/L3 guided replies generated by the outer system.
 
 ${CHAT_STYLE_RULES}
 
