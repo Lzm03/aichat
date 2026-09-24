@@ -50,10 +50,11 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
   const [publishedLoading, setPublishedLoading] = useState(false);
   const [publishedLoaded, setPublishedLoaded] = useState(false);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
+  const [deletingPublishedId, setDeletingPublishedId] = useState<string | null>(null);
   const [detailQuiz, setDetailQuiz] = useState<PublishedQuizSummary | null>(null);
   const [detailInitialTab, setDetailInitialTab] = useState<DrawerTab>('results');
   const deepLinkAttempted = useRef(false);
-  const { dialog, closeDialog, showAlert } = usePlatformDialog();
+  const { dialog, closeDialog, showAlert, showConfirm } = usePlatformDialog();
 
   const loadDrafts = useCallback(() => {
     setDraftsLoading(true);
@@ -120,14 +121,70 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
     try {
       const response = await fetch(`${API_BASE}/api/quizzes/${draftId}`, { method: 'DELETE' });
       if (!response.ok) {
-        throw new Error('刪除草稿失敗');
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || uiText("測驗暫時無法刪除，請稍後再試。"));
       }
       setDrafts((prev) => prev.filter((draft) => draft.id !== draftId));
     } catch (error) {
-      console.error(error);
+      showAlert({
+        title: uiText("刪除失敗"),
+        message: error instanceof Error ? error.message : uiText("測驗暫時無法刪除，請稍後再試。"),
+        tone: "danger",
+      });
     } finally {
       setDeletingDraftId(null);
     }
+  };
+
+  const requestDeleteDraft = (draft: DraftSummary) => {
+    showConfirm({
+      title: uiText("刪除草稿？"),
+      message: uiTemplate("「{0}」刪除後無法復原。", draft.title),
+      confirmText: uiText("刪除"),
+      cancelText: uiText("取消"),
+      tone: "danger",
+      onConfirm: () => void handleDeleteDraft(draft.id),
+    });
+  };
+
+  const handleDeletePublished = async (quiz: PublishedQuizSummary) => {
+    setDeletingPublishedId(quiz.id);
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/${quiz.id}`, { method: 'DELETE' });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || uiText("測驗暫時無法刪除，請稍後再試。"));
+      }
+      setPublished((prev) => prev.filter((item) => item.id !== quiz.id));
+      showAlert({
+        title: uiText("已刪除測驗"),
+        message: uiTemplate("已刪除「{0}」。", quiz.title),
+        confirmText: uiText("知道了"),
+      });
+    } catch (error) {
+      showAlert({
+        title: uiText("刪除失敗"),
+        message: error instanceof Error ? error.message : uiText("測驗暫時無法刪除，請稍後再試。"),
+        tone: "danger",
+      });
+    } finally {
+      setDeletingPublishedId(null);
+    }
+  };
+
+  const requestDeletePublished = (quiz: PublishedQuizSummary) => {
+    const answerCount = Number(quiz.submitted || 0);
+    showConfirm({
+      title: uiText("刪除測驗？"),
+      // 有人作答過就先講清楚會連紀錄一齊無，唔好等老師刪完先發現
+      message: answerCount > 0
+        ? uiTemplate("「{0}」已有 {1} 位學生作答，刪除後無法復原，作答與批改紀錄將一併移除。", quiz.title, answerCount)
+        : uiTemplate("「{0}」刪除後無法復原，相關作答與批改資料也會一併移除。", quiz.title),
+      confirmText: uiText("刪除"),
+      cancelText: uiText("取消"),
+      tone: "danger",
+      onConfirm: () => void handleDeletePublished(quiz),
+    });
   };
 
   const handleDuplicated = (quiz: PublishedQuizSummary) => {
@@ -194,9 +251,10 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
-                      void handleDeleteDraft(draft.id);
+                      requestDeleteDraft(draft);
                     }}
                     disabled={deletingDraftId === draft.id}
+                    aria-label={uiTemplate("刪除草稿 {0}", draft.title)}
                     className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-white hover:text-rose-600 hover:shadow-sm transition-all disabled:opacity-50"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -235,14 +293,29 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
                       <p className="truncate text-sm font-bold text-slate-700">{item.botName}</p>
                     </div>
                   </div>
-                  {item.botSubject ? (
-                    <span className="px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full shrink-0">{uiText(item.botSubject)}</span>
-                  ) : null}
-                  {isQuizGraded(item) ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full shrink-0">
-                      <CheckCircle2 className="h-3.5 w-3.5" />{uiText("已完成批改")}
-                    </span>
-                  ) : null}
+                  <div className="flex shrink-0 items-center gap-2">
+                    {item.botSubject ? (
+                      <span className="px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full">{uiText(item.botSubject)}</span>
+                    ) : null}
+                    {isQuizGraded(item) ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full">
+                        <CheckCircle2 className="h-3.5 w-3.5" />{uiText("已完成批改")}
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        // 成張卡 click 會開 Drawer，所以一定要截住
+                        event.stopPropagation();
+                        requestDeletePublished(item);
+                      }}
+                      disabled={deletingPublishedId === item.id}
+                      aria-label={uiTemplate("刪除測驗 {0}", item.title)}
+                      className="w-8 h-8 shrink-0 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-white hover:text-rose-600 hover:shadow-sm transition-all disabled:opacity-50"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex-1">

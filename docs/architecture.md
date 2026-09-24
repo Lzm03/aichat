@@ -89,7 +89,7 @@ aichat/
 │   ├── dashboard/               # 學習報告卡、能力追蹤報告、學習報告入口卡
 │   │   ├── FlaggedChatSummaryCard.tsx # 異常對話記錄卡（學習報告頁）：扼要＋撳開展開、類別 pill、待處理/已歸檔 tab、分頁
 │   ├── assessment/              # 評估流程：題庫、產題、批改、主觀題、步驟元件
-│   │   ├── MyQuizzesView.tsx        # 我的測驗：草稿/已發佈 + 複製為草稿 flow
+│   │   ├── MyQuizzesView.tsx        # 我的測驗：草稿/已發佈 + 複製為草稿 flow + 刪除確認
 │   │   ├── PublishedQuizDetailDrawer.tsx # 已發佈詳情 Drawer：題目預覽/成績結果/質量分析
 │   │   ├── AnomalyAlertCenter.tsx   # 異常警示中心：Drawer 質量分析 tab 主體
 │   │   ├── AnomalyAlertsOverview.tsx # AI 異常警示 sub-tab：有待處理警示嘅測驗列表
