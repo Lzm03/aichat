@@ -33,14 +33,19 @@ type AbilityStudent = {
   past: Record<string, number> | null;
 };
 
+/** 頁面層級時間範圍（過去一個月／過去三個月／全期），由 LearningReportPage 統一控制 */
+export type ReportPeriod = '30d' | '90d' | 'all';
+
 type AbilityReport = {
-  period: '30d' | 'all';
+  period: ReportPeriod;
   generatedAt?: string;
   classLevels: ClassLevel[];
   students: AbilityStudent[];
 };
 
 type AbilityTrackingReportProps = {
+  /** 時間範圍由頁面擁有：卡片唔再自帶選擇器，避免兩個選擇器講唔同嘢 */
+  period: ReportPeriod;
   onCreateQuiz?: () => void;
 };
 
@@ -60,10 +65,9 @@ const BloomRadarTooltip = ({ active, payload }: any) => {
   );
 };
 
-export const AbilityTrackingReport: React.FC<AbilityTrackingReportProps> = ({ onCreateQuiz }) => {
+export const AbilityTrackingReport: React.FC<AbilityTrackingReportProps> = ({ period, onCreateQuiz }) => {
   const cachedClasses = peekTeacherData<any>('/api/bots/classes');
-  const cachedReport = peekTeacherData<any>('/api/teachers/me/ability-report?period=30d');
-  const [period, setPeriod] = useState<'30d' | 'all'>('30d');
+  const cachedReport = peekTeacherData<any>(`/api/teachers/me/ability-report?period=${period}`);
   const [classId, setClassId] = useState<string | null>(null);
   const [classes, setClasses] = useState<{ id: string; name: string }[]>(cachedClasses?.classes || []);
   const [report, setReport] = useState<AbilityReport | null>(cachedReport || null);
@@ -99,7 +103,8 @@ export const AbilityTrackingReport: React.FC<AbilityTrackingReportProps> = ({ on
         if (cancelled) return;
         const classLevels = Array.isArray(data?.classLevels) ? data.classLevels : [];
         const students = Array.isArray(data?.students) ? data.students : [];
-        setReport({ period: data?.period === 'all' ? 'all' : '30d', generatedAt: data?.generatedAt, classLevels, students });
+        const echoedPeriod: ReportPeriod = data?.period === 'all' ? 'all' : data?.period === '90d' ? '90d' : '30d';
+        setReport({ period: echoedPeriod, generatedAt: data?.generatedAt, classLevels, students });
         setSelectedStudentId((prev) => prev || students[0]?.studentId || null);
       })
       .catch(() => {
@@ -132,7 +137,7 @@ export const AbilityTrackingReport: React.FC<AbilityTrackingReportProps> = ({ on
 
   return (
     <div className="bg-white p-4 md:p-6 rounded-[24px] shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] flex flex-col h-full border border-slate-100">
-      {/* Header：時間切換只影響此卡 */}
+      {/* Header：時間範圍由頁面控制，此卡只保留匯出 */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-5 gap-4">
         <div>
           <h3 className="text-lg font-bold text-[#1E293B] flex items-center shrink-0">
@@ -141,16 +146,6 @@ export const AbilityTrackingReport: React.FC<AbilityTrackingReportProps> = ({ on
           <p className="mt-0.5 text-xs text-slate-400">{uiText("Bloom 六層級來自已發佈測驗之作答，追蹤班級與學生的能力層級。")}</p>
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
-          <div className="bg-slate-100 p-1 rounded-full flex items-center text-xs font-semibold w-full sm:w-auto">
-            <button
-              onClick={() => setPeriod('30d')}
-              className={`w-1/2 sm:w-auto px-4 py-1.5 rounded-full transition-all ${period === '30d' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >{uiText("過去一個月")}</button>
-            <button
-              onClick={() => setPeriod('all')}
-              className={`w-1/2 sm:w-auto px-4 py-1.5 rounded-full transition-all ${period === 'all' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >{uiText("全期")}</button>
-          </div>
           <button
             onClick={() => downloadAbilityReportCsv(report)}
             disabled={!report || (!report.classLevels.length && !report.students.length)}
@@ -192,7 +187,7 @@ export const AbilityTrackingReport: React.FC<AbilityTrackingReportProps> = ({ on
           </button>
         </div>
       ) : !students.length && !(report?.classLevels || []).length ? (
-        report?.period === '30d' ? (
+        report?.period !== 'all' ? (
           <div className="flex-1 min-h-[320px] flex items-center justify-center text-sm font-semibold text-slate-400 px-6 text-center">
             {uiText('此時間範圍暫無測驗作答，請嘗試切換至「全期」。')}
           </div>

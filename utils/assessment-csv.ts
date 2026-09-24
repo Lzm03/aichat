@@ -139,7 +139,8 @@ type AbilityExportStudent = {
 };
 
 type AbilityExport = {
-  period: '30d' | 'all';
+  // 跟學習報告頁嘅頁面級時間範圍（30d／90d／all）；非 all 都出「近期表現 + 過往平均」兩欄
+  period: '30d' | '90d' | 'all';
   classLevels?: AbilityExportLevel[];
   students?: AbilityExportStudent[];
 };
