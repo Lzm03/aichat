@@ -2,12 +2,13 @@ import { uiText, uiTemplate, uiLocale } from '../../utils/uiI18n';
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from '../icons';
-import { Target, ArrowLeft, ChevronRight, AlertCircle, BookOpen, CheckCircle2, Sparkles, X, BarChart3, ChevronDown, ChevronUp, MessageCircle, Search, Clock3 } from 'lucide-react';
+import { Target, ArrowLeft, ChevronRight, AlertCircle, BookOpen, CheckCircle2, Sparkles, X, BarChart3, MessageCircle, Search, Clock3 } from 'lucide-react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
 import { readAuthSession } from '../../utils/auth';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { API_BASE } from '../../utils/api';
 import { SafeAvatarImage } from '../shared/SafeAvatarImage';
+import { ShowMoreList } from '../shared/ShowMoreList';
 import { loadTeacherData, peekTeacherData } from '../../utils/teacher-data-cache';
 
 type AssessmentRow = {
@@ -144,8 +145,6 @@ const getMasteryTone = (mastery: number) => {
 };
 
 /** 能力追蹤報告 bot 列表預設顯示數量，超出部分靠「看更多」摺叠展開 */
-const MAX_VISIBLE_BOTS = 10;
-
 const normalizeSharedBots = (bots: any[]): SharedBotOption[] => bots.map((bot: any) => ({
   id: String(bot.id || ''),
   name: String(bot.name || 'AI Bot'),
@@ -165,7 +164,6 @@ export const StudentLearningReportCard = () => {
   const [sharedBots, setSharedBots] = useState<SharedBotOption[]>(normalizeSharedBots(cachedAssessment?.sharedBots || []));
   const [selectedBotId, setSelectedBotId] = useState(String(cachedAssessment?.selectedBotId || ''));
   const [studentProgressData, setStudentProgressData] = useState<StudentProgressPayload | null>(null);
-  const [showAllBots, setShowAllBots] = useState(false);
   const [interactionSummary, setInteractionSummary] = useState<{
     independentRate: number;
     assistedRate: number;
@@ -488,52 +486,40 @@ export const StudentLearningReportCard = () => {
                 <p className="mt-0.5 text-xs text-slate-400">{uiText("追蹤全班思維自主指數、知識覆蓋、學習狀態分佈與學生對話記錄。")}</p>
               </div>
             </div>
-            <div className="space-y-2 flex-1">
-              {sharedBots.length ? (showAllBots ? sharedBots : sharedBots.slice(0, MAX_VISIBLE_BOTS)).map((bot) => {
-                return (
-                  <button
-                    key={bot.id}
-                    type="button"
-                    onClick={() => openBotReport(bot.id)}
-                    className="flex min-h-[92px] w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-[0_2px_5px_rgba(15,23,42,0.04)] transition hover:border-indigo-200 hover:shadow-[0_18px_40px_rgba(79,70,229,0.10)]"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-indigo-50 text-indigo-600">
-                        <SafeAvatarImage
-                          src={bot.avatarUrl || botAvatarFallback}
-                          alt={bot.name}
-                          className="h-full w-full"
-                        />
-                      </div>
-                      <div className="min-w-0">
-                        <h4 className="truncate text-sm font-black text-slate-900">{bot.name}</h4>
-                        <p className="mt-0.5 text-[10px] text-slate-500">{uiText("查看由實際對話與測驗累積的學習分析")}</p>
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <span className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-2 text-[11px] font-black text-indigo-600">{uiText("查看報告")}<ChevronRight className="h-4 w-4" />
-                      </span>
-                    </div>
-                  </button>
-                );
-              }) : (
+            <ShowMoreList
+              items={sharedBots}
+              className="space-y-2 flex-1"
+              empty={(
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-[11px] text-slate-500">
                   {assessmentLoading ? uiText('正在同步能力追蹤資料…') : assessmentError ? uiText('暫時無法載入能力追蹤資料，請稍後再試。') : uiText('尚未分享 AI 夥伴給學生；分享後會在此累積真實互動資料。')}
                 </div>
               )}
-              {sharedBots.length > MAX_VISIBLE_BOTS && (
+              renderItem={(bot) => (
                 <button
                   type="button"
-                  onClick={() => setShowAllBots((value) => !value)}
-                  className="flex w-full items-center justify-center gap-1 rounded-xl py-2 text-xs font-bold text-slate-500 transition-colors hover:text-indigo-600"
+                  onClick={() => openBotReport(bot.id)}
+                  className="flex min-h-[92px] w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-[0_2px_5px_rgba(15,23,42,0.04)] transition hover:border-indigo-200 hover:shadow-[0_18px_40px_rgba(79,70,229,0.10)]"
                 >
-                  {showAllBots
-                    ? uiText("收起")
-                    : uiTemplate("看更多（還有 {0} 個）", String(sharedBots.length - MAX_VISIBLE_BOTS))}
-                  {showAllBots ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-indigo-50 text-indigo-600">
+                      <SafeAvatarImage
+                        src={bot.avatarUrl || botAvatarFallback}
+                        alt={bot.name}
+                        className="h-full w-full"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="truncate text-sm font-black text-slate-900">{bot.name}</h4>
+                      <p className="mt-0.5 text-[10px] text-slate-500">{uiText("查看由實際對話與測驗累積的學習分析")}</p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-2 text-[11px] font-black text-indigo-600">{uiText("查看報告")}<ChevronRight className="h-4 w-4" />
+                    </span>
+                  </div>
                 </button>
               )}
-            </div>
+            />
           </motion.div>
         )}
 
@@ -604,17 +590,20 @@ export const StudentLearningReportCard = () => {
                         {section.topicName ? (
                           <div className="mb-1.5 text-[10px] font-black text-indigo-500">{section.topicName}</div>
                         ) : null}
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-                          {section.nodes.map((item) => (
-                            <div key={`${item.topicId}:${item.id}`} className="flex flex-col items-center rounded-2xl border border-transparent p-1 text-center">
+                        <ShowMoreList
+                          items={section.nodes}
+                          className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
+                          toggleClassName="mt-2"
+                          renderItem={(item) => (
+                            <div className="flex flex-col items-center rounded-2xl border border-transparent p-1 text-center">
                               <div className={`flex h-12 w-12 items-center justify-center rounded-full text-sm font-black ${item.completed ? 'bg-indigo-500 text-white' : 'bg-amber-100 text-amber-700'}`}>
                                 {item.completed ? '✓' : '!'}
                               </div>
                               <div className="mt-2 text-[10px] font-black text-slate-700">{item.label}</div>
                               <div className="mt-1 text-xs font-black text-indigo-500">{item.hasData ? `${item.score}%` : '—'}</div>
                             </div>
-                          ))}
-                        </div>
+                          )}
+                        />
                       </div>
                     ))}
                   </div>

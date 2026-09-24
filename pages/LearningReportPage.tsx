@@ -1,8 +1,7 @@
 import { uiText } from '../utils/uiI18n';
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
 import { Icons } from '../components/icons';
-import { ArrowRight, CopyPlus } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { StudentLearningReportCard } from '../components/dashboard/StudentLearningReportCard';
 import { FlaggedChatSummaryCard } from '../components/dashboard/FlaggedChatSummaryCard';
 import { AbilityTrackingReport, type ReportPeriod } from '../components/dashboard/AbilityTrackingReport';
@@ -35,8 +34,9 @@ export const LearningReportPage: React.FC<LearningReportPageProps> = ({ onOpenQu
   const [tab, setTab] = useState<LearningTab>('overview');
   const [period, setPeriod] = useState<ReportPeriod>('30d');
 
-  // 快速入口卡：跟智能評測頁 QUICK_LINKS 嘅樣式與 3 欄格。
+  // 快速入口卡：跟智能評測頁 QUICK_LINKS 嘅樣式。四張卡排 2×2，冇 accent 卡。
   // 唔放 KPI 卡——已發佈測驗／待批改／已完成批改喺智能評測頁已有，異常紀錄亦有 Sidebar 紅點。
+  // 「新建測驗」入口唔喺呢頁重複（Dashboard 同智能評測頁已有）。
   const quickLinks: {
     key: string;
     label: string;
@@ -44,19 +44,8 @@ export const LearningReportPage: React.FC<LearningReportPageProps> = ({ onOpenQu
     icon: React.ComponentType<{ className?: string }>;
     chipClass: string;
     iconClass: string;
-    accent?: boolean;
     onClick: () => void;
   }[] = [
-    {
-      key: 'create',
-      label: '新建測驗',
-      description: '建立 AI 評測並自動批改',
-      icon: CopyPlus,
-      accent: true,
-      chipClass: 'bg-white/20',
-      iconClass: 'text-white',
-      onClick: onCreateQuiz,
-    },
     {
       key: 'participation',
       label: '課堂參與',
@@ -134,29 +123,23 @@ export const LearningReportPage: React.FC<LearningReportPageProps> = ({ onOpenQu
       {tab === 'overview' && (
         <div>
           <h2 className="text-lg font-bold text-slate-800 mb-4">{uiText("快速入口")}</h2>
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             {quickLinks.map((link) => (
-              <motion.button
+              <button
                 key={link.key}
                 type="button"
-                whileHover={link.accent ? { y: -4 } : undefined}
-                whileTap={link.accent ? { scale: 0.97 } : undefined}
                 onClick={link.onClick}
-                className={`group relative flex min-h-[140px] items-center gap-5 overflow-hidden rounded-[28px] border p-6 text-left ${
-                  link.accent
-                    ? 'border-[#4C71E0] bg-[#5681FF] shadow-[0_14px_32px_rgba(86,129,255,0.45)] transition-shadow hover:shadow-[0_24px_48px_-12px_rgba(86,129,255,0.65)]'
-                    : 'border-slate-100 bg-white shadow-[0_14px_32px_rgba(15,23,42,0.06)] transition hover:-translate-y-1 hover:shadow-xl'
-                }`}
+                className="group relative flex min-h-[140px] items-center gap-5 overflow-hidden rounded-[28px] border border-slate-100 bg-white p-6 text-left shadow-[0_14px_32px_rgba(15,23,42,0.06)] transition hover:-translate-y-1 hover:shadow-xl"
               >
                 <span className={`relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${link.chipClass}`}>
                   <link.icon className={`h-7 w-7 ${link.iconClass}`} />
                 </span>
                 <span className="relative min-w-0">
-                  <span className={`block text-lg font-black ${link.accent ? 'text-white' : 'text-slate-900'}`}>{uiText(link.label)}</span>
-                  <span className={`mt-1 block text-sm ${link.accent ? 'text-white/85' : 'text-slate-500'}`}>{uiText(link.description)}</span>
+                  <span className="block text-lg font-black text-slate-900">{uiText(link.label)}</span>
+                  <span className="mt-1 block text-sm text-slate-500">{uiText(link.description)}</span>
                 </span>
-                <ArrowRight className={`relative ml-auto h-5 w-5 shrink-0 transition group-hover:translate-x-1 ${link.accent ? 'text-white/70 group-hover:text-white' : 'text-slate-300 group-hover:text-indigo-500'}`} />
-              </motion.button>
+                <ArrowRight className="relative ml-auto h-5 w-5 shrink-0 text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500" />
+              </button>
             ))}
           </div>
         </div>

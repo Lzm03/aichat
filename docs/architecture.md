@@ -102,7 +102,7 @@ aichat/
 │   │   └── topics/              # 角色主題/知識點管理
 │   ├── student/                 # 學生端：Header/FloatingSidebar/StarMap/Island/TokenHistory/Confetti
 │   ├── system/                  # 通用 UI：Button/Card/BentoGrid/Dialog/Token/FeatureLimit
-│   └── shared/                  # 跨域小元件：AssessmentStepper/IosToggle/SafeAvatarImage
+│   └── shared/                  # 跨域小元件：AssessmentStepper/IosToggle/SafeAvatarImage/ShowMoreList（列表封頂 10＋看更多）
 ├── hooks/
 │   ├── useFeatureEntitlements.ts # 方案功能限額與用量
 │   ├── usePlatformDialog.ts      # 全域/局部 PlatformDialog 狀態
