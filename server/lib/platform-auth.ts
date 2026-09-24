@@ -202,9 +202,38 @@ export function normalizeUserPreferences(input: Record<string, any> | null | und
   };
 }
 
+// Every process that provisions the schema must take this lock, or the mutex
+// silently stops working. Chosen once; never change it.
+const PLATFORM_TABLES_LOCK_KEY = 1_668_248_688;
+
+// CREATE TABLE IF NOT EXISTS is not race-free: two processes that both see a
+// missing table both try to create it, and the loser dies on
+// pg_type_typname_nsp_index. A fresh database plus several instances booting at
+// once reaches this, and it fails the whole boot because ensurePlatformTables()
+// is awaited before app.listen().
+//
+// Session-scoped rather than transaction-scoped, because the DDL below runs as
+// individual autocommit statements on the pool instead of one transaction.
+// Postgres drops a session's advisory locks when it ends, so a crashed process
+// cannot wedge the mutex.
+async function withPlatformTablesLock<T>(run: () => Promise<T>): Promise<T> {
+  const lockClient = await pool.connect();
+  try {
+    await lockClient.query("SELECT pg_advisory_lock($1::bigint)", [PLATFORM_TABLES_LOCK_KEY]);
+    return await run();
+  } finally {
+    try {
+      await lockClient.query("SELECT pg_advisory_unlock($1::bigint)", [PLATFORM_TABLES_LOCK_KEY]);
+    } catch {
+      // The session is already gone; its advisory locks went with it.
+    }
+    lockClient.release();
+  }
+}
+
 export async function ensurePlatformTables() {
   if (!ensurePlatformTablesPromise) {
-    ensurePlatformTablesPromise = (async () => {
+    ensurePlatformTablesPromise = withPlatformTablesLock(async () => {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS users (
           id TEXT PRIMARY KEY,
@@ -429,12 +458,36 @@ export async function ensurePlatformTables() {
       await pool.query(
         `ALTER TABLE bot_student_progress ADD COLUMN IF NOT EXISTS topic_id TEXT NOT NULL DEFAULT '';`
       );
-      await pool.query(
-        `ALTER TABLE bot_student_progress DROP CONSTRAINT IF EXISTS bot_student_progress_pkey;`
-      );
-      await pool.query(
-        `ALTER TABLE bot_student_progress ADD PRIMARY KEY (bot_id, user_id, topic_id);`
-      );
+      // The pre-topic schema had PRIMARY KEY (bot_id, user_id); it has to become the
+      // topic-scoped one. This must stay a single statement (a DO block is one
+      // transaction): as two autocommit statements, two processes could each DROP and
+      // then each ADD, and the loser died with "multiple primary keys for table".
+      //
+      // LOCK TABLE first, so the guard below is evaluated only after the previous
+      // holder committed. Every SQL statement inside a DO block gets its own snapshot
+      // under READ COMMITTED, so the guard sees the winner's schema and an
+      // already-upgraded database skips the ALTER instead of rebuilding the PK index
+      // on every boot.
+      await pool.query(`
+        DO $$
+        BEGIN
+          LOCK TABLE bot_student_progress IN ACCESS EXCLUSIVE MODE;
+          IF NOT EXISTS (
+            SELECT 1
+            FROM pg_constraint c
+            JOIN pg_class t ON t.oid = c.conrelid
+            JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY (c.conkey)
+            WHERE t.relname = 'bot_student_progress'
+              AND c.contype = 'p'
+              AND a.attname = 'topic_id'
+          ) THEN
+            ALTER TABLE bot_student_progress
+              DROP CONSTRAINT IF EXISTS bot_student_progress_pkey;
+            ALTER TABLE bot_student_progress
+              ADD PRIMARY KEY (bot_id, user_id, topic_id);
+          END IF;
+        END $$
+      `);
       await pool.query(`
         CREATE INDEX IF NOT EXISTS bot_student_progress_user_id_idx
         ON bot_student_progress(user_id, updated_at DESC);
@@ -551,7 +604,7 @@ export async function ensurePlatformTables() {
         SET opening_message = '你好！我是' || COALESCE(NULLIF(BTRIM(name), ''), 'AI 助手') || '，我們一起開始今天的學習吧。'
         WHERE opening_message IS NULL OR BTRIM(opening_message) = ''
       `);
-    })();
+    });
   }
   await ensurePlatformTablesPromise;
 }
