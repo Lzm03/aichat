@@ -3,6 +3,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from '../icons';
 import type { Page } from '../../App';
+import { useFlaggedChatCount } from '../../hooks/useFlaggedChatCount';
 
 interface MobileSidebarDrawerProps {
     isOpen: boolean;
@@ -16,11 +17,12 @@ interface MobileSidebarDrawerProps {
 
 export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen, setIsOpen, activePage, setActivePage, forceVisible = false, showRequestAdmin = false, requestAdminActive = false }) => {
   
-  const menuItems: { id: Page; label: string; icon: React.ElementType; disabled?: boolean }[] = [
+  const flaggedCount = useFlaggedChatCount();
+  const menuItems: { id: Page; label: string; icon: React.ElementType; disabled?: boolean; badge?: number }[] = [
     { id: 'dashboard', label: '教學總覽', icon: Icons.dashboard },
     { id: 'workshop', label: 'AI工作坊', icon: Icons.bot },
     { id: 'assessment', label: '智能評測', icon: Icons.assessment },
-    { id: 'learning', label: '學習報告', icon: Icons.report },
+    { id: 'learning', label: '學習報告', icon: Icons.report, badge: flaggedCount },
     { id: 'students', label: '學生管理', icon: Icons.classes },
   ];
 
@@ -76,6 +78,11 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen
                   >
                     <item.icon className="w-5 h-5" />
                     <span className="text-sm">{uiText(item.label)}</span>
+                    {item.badge && item.badge > 0 && (
+                      <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-black text-white">
+                        {item.badge > 99 ? '99+' : item.badge}
+                      </span>
+                    )}
                   </button>
                 ))}
               </nav>

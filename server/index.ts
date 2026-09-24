@@ -31,6 +31,7 @@ import tokenUsageRoute from "./api/token-usage.ts";
 import webmSequenceRoute from "./api/webm-sequence.ts";
 import modoIntegrationRoute from "./api/modo-integration.ts";
 import schoolAvatarRequestsRoute, { ensureSchoolAvatarRequestTables } from "./api/school-avatar-requests.ts";
+import flaggedChatRoute, { ensureFlaggedChatTables } from "./api/flagged-chat.ts";
 import { pool, warmDatabasePool } from "./db.ts";
 import { uploadsDir } from "./lib/uploads-dir.ts";
 import { ensurePlatformTables, maybeAssignLegacyDataByEmail } from "./lib/platform-auth.ts";
@@ -151,6 +152,7 @@ app.use("/api/teacher/topic-category-labels", topicCategoryLabelsRoute);
 app.use("/api/bots", botsRoute);
 app.use("/api/integrations/modo", modoIntegrationRoute);
 app.use("/api/school-avatar-requests", schoolAvatarRequestsRoute);
+app.use("/api/flagged-chat", flaggedChatRoute);
 // Routes
 app.use("/api/generate-image", generateImageRoute);
 app.use("/api", ttsRoute);
@@ -221,6 +223,7 @@ async function start() {
   await ensureCharacterTopicTables();
   await ensureStudentTaskTables();
   await ensureSchoolAvatarRequestTables();
+  await ensureFlaggedChatTables();
   await warmDatabasePool();
   try {
     await maybeAssignLegacyDataByEmail("lzm200303@gmail.com");

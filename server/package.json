@@ -22,6 +22,8 @@
     "test:request-concurrency": "node --import tsx --test tests/request-concurrency.test.ts",
     "test:upload-filename": "node --import tsx --test tests/upload-filename.test.ts",
     "test:vertex-sse": "node --import tsx --test tests/vertex-sse.test.ts",
+    "test:chat-anomaly-rules": "node --import tsx --test tests/chat-anomaly-rules.test.ts",
+    "test:flagged-chat": "node --import tsx --test tests/flagged-chat.integration.test.ts",
     "test:all": "node --import tsx --test --test-concurrency=1 tests/*.test.ts",
     "start": "node --import tsx index.ts"
   },

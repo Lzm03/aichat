@@ -2573,6 +2573,23 @@ const sendMessage = async (
     activeRequestController.current = null;
     if (!response.ok) {
       const data = await response.json().catch(() => null);
+      // 異常對話攔截：訊息已畀後端阻擋，還原輸入等學生改字，唔入對話史。
+      // 情緒困擾類（wellbeing）唔會行到呢度——後端照樣送出，只留紀錄俾老師。
+      if (data?.code === "inappropriate_language" || data?.code === "personal_data_detected") {
+        setBotState("idle");
+        setMessages((prev) => prev.slice(0, -1));
+        setInputText(userMsg);
+        setChatImages(queuedImages);
+        setChatImagePreviews(queuedPreviews);
+        showAlert({
+          title: uiText("訊息未能送出"),
+          message: data?.code === "personal_data_detected"
+            ? uiText("訊息含個人資料，已提醒老師")
+            : uiText("請使用合適的用語，此紀錄已通知老師"),
+          tone: "danger",
+        });
+        return;
+      }
       const errorMessage = data?.error || `聊天請求失敗：${response.status}`;
       if (response.status === 402 || /對話次數已用完|請升級到付費版|功能使用次數不足/.test(String(errorMessage))) {
         markTrialEndedPopupPending();

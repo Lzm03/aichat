@@ -1,6 +1,7 @@
 import { uiText } from '../utils/uiI18n';
 import React from 'react';
 import { StudentLearningReportCard } from '../components/dashboard/StudentLearningReportCard';
+import { FlaggedChatSummaryCard } from '../components/dashboard/FlaggedChatSummaryCard';
 import { AbilityTrackingReport } from '../components/dashboard/AbilityTrackingReport';
 import { AssessmentQualityList } from '../components/assessment/AssessmentQualityList';
 import { TeacherProgressOverview } from '../components/dashboard/TeacherProgressOverview';
@@ -19,8 +20,11 @@ export const LearningReportPage: React.FC<LearningReportPageProps> = ({ onOpenQu
         <p className="text-slate-500">{uiText("追蹤學生能力表現、測驗質量與學習狀態。")}</p>
       </div>
 
-      {/* 能力追蹤報告（由 Dashboard 搬入，內容不變） */}
-      <StudentLearningReportCard />
+      {/* 兩大卡並排：能力追蹤報告（由 Dashboard 搬入，內容不變）＋ 異常對話記錄 */}
+      <div className="grid grid-cols-1 items-stretch gap-6 xl:grid-cols-2">
+        <StudentLearningReportCard />
+        <FlaggedChatSummaryCard />
+      </div>
 
       {/* 知識點掌握概覽（使用後總結，跨對話累積） */}
       <TeacherProgressOverview />
