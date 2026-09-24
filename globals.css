@@ -2,6 +2,58 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ===== 由 index.html 嘅 inline <style> 搬過嚟（單一 CSS 來源）=====
+   呢啲規則原本喺 <head> 嘅 <style> 裏面，同 Tailwind CDN 並存；
+   而家 Tailwind 改由 build 編譯，所以全部收埋喺呢個檔。
+   注意：body 嘅 font-family 係 Nunito 先——同 tailwind.config.js 嘅
+   fontFamily.sans（Noto Sans TC 先）唔一致，亦同 docs/design-system.md
+   寫嘅唔一致。呢度刻意保持原狀（視覺零變化），留返主題統一嗰輪先傾。 */
+body {
+  font-family: 'Nunito', 'Noto Sans TC', sans-serif;
+  background-color: #F8FAFC;
+  color: #1E293B;
+}
+
+/* Custom Scrollbar Styles */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+  margin-block: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #E2E8F0; /* slate-200 */
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #CBD5E1; /* slate-300 */
+}
+
+/* Avatar Animation Keyframes */
+@keyframes wave {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(10deg); }
+  75% { transform: rotate(-8deg); }
+}
+.animate-wave { animation: wave 2.5s ease-in-out infinite; transform-origin: 50% 80%; }
+
+@keyframes nod {
+  0%, 100% { transform: rotateX(0deg); }
+  50% { transform: rotateX(15deg); }
+}
+.animate-nod { animation: nod 2s ease-in-out infinite; }
+
+@keyframes think {
+  0%, 100% { transform: translate(0, 0) rotate(0); }
+  25% { transform: translate(5px, -5px) rotate(3deg); }
+  75% { transform: translate(-5px, 0) rotate(-2deg); }
+}
+.animate-think { animation: think 4s ease-in-out infinite; }
+
 /* 美化右側滾動條（Chat Preview 專用） */
 .custom-scroll::-webkit-scrollbar {
   width: 6px;

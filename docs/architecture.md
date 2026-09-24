@@ -26,7 +26,9 @@ PostgreSQL
   在 `pages/` 加檔 + 在 `App.tsx` 加分支
 - **API 呼叫一律用 `utils/api.ts` 的 `API_BASE`**，不要自行拼 origin。既有少數檔案自行讀
   `VITE_API_URL`，遇到時順手統一
-- **樣式**：Tailwind utility 為主；全域 CSS 變數與動畫集中在 `globals.css`。
+- **樣式**：Tailwind utility 為主，**由 build 時編譯**（`postcss.config.js` → `tailwind.config.js`）。
+  以前靠 `index.html` 的 Play CDN runtime 生成；已於 2026-09-24 改為編譯，不要再加返 CDN。
+  全域 CSS 變數與動畫集中在 `globals.css`（含字體堆疊）。
   色彩、字體、圓角、動效見 [design-system.md](design-system.md)
 - `app/` 是 Next App Router 遺留結構，**不要再擴大**；新頁面一律寫在 `pages/`
 
@@ -53,10 +55,11 @@ aichat/
 ├── index.html               # Vite 唯一 HTML 入口：zh-Hant、掛載 /index.tsx
 ├── index.tsx                # React 掛載點：App + globals.css
 ├── App.tsx                  # App shell：登入/路由判斷、Sidebar/Header、師生頁面切換
-├── globals.css              # Tailwind 入口、全域 keyframes、學生端主題 CSS 變數
+├── globals.css              # Tailwind 入口（@tailwind 指令）、字體堆疊、全域 keyframes、學生端主題 CSS 變數
 ├── vite.config.ts           # port 3000、proxy /api /uploads → localhost:4000、alias '@' → repo 根
-├── tsconfig.json            # paths @/* → 專案根、noEmit（檢查靠 npm run lint）
-├── tailwind.config.js       # Tailwind v3：Noto Sans TC/Nunito、brand colors、soft-tech shadow
+├── tsconfig.json            # paths @/* → 專案根、noEmit（檢查靠 npm run lint；冇 include/exclude，所以連 config .js 都檢）
+├── postcss.config.js        # Tailwind + autoprefixer；Vite 自動讀取（ESM，因 package.json 是 type: module）
+├── tailwind.config.js       # Tailwind v3：brand colors、soft-tech shadow、content globs、darkMode: 'class'
 ├── package.json             # 專案依賴與 npm scripts（逐套跑法見下方「測試」）
 ├── .gitattributes           # 文字檔一律 LF 存庫與 checkout（Windows CRLF 會弄壞讀源碼的測試）
 ├── vercel.json              # 前端部署設定

@@ -1,7 +1,12 @@
 # 設計系統
 
-介面視覺的單一來源：`tailwind.config.js`（token 定義）、`globals.css`（CSS 變數、keyframes）、
-`utils/subjects.ts`（學科分類與配色）。
+介面視覺的單一來源：`tailwind.config.js`（色彩／陰影 token、content 掃描範圍）、
+`globals.css`（CSS 變數、keyframes、字體堆疊）、`utils/subjects.ts`（學科分類與配色）。
+
+Tailwind **由 build 時編譯**（`postcss.config.js` + `tailwind.config.js`，dev 與 production 皆是）。
+2026-09-24 之前是靠 `index.html` 的 Play CDN `<script>` 在瀏覽器 runtime 即場生成；
+唔好再加返 CDN。因為改為編譯，class 若冇被 `content` 掃到就會靜靜雞消失——
+新增頂層目錄放 JSX 時要同步加 `content` glob。
 
 寫 UI 時照這裡的 token 走，不要自己發明顏色或圓角數值。
 
@@ -38,7 +43,15 @@
 
 ## 字體、圓角與陰影
 
-- 字體：`"Noto Sans TC", Nunito, sans-serif`；display 字體 `Nunito, "Noto Sans TC", sans-serif`
+- 字體：**三處目前不一致，尚未統一。這是已知未決項，唔係可以照抄嘅規格。**
+  - 本文件（設計意圖）：`"Noto Sans TC", Nunito, sans-serif`；display 用 `Nunito` 先行
+  - 實際渲染（`globals.css` 嘅 `body`）：`Nunito, "Noto Sans TC", sans-serif`——Nunito 先行
+  - `tailwind.config.js`：**唔再宣告 `fontFamily`**（2026-09-24 移除）。佢以前寫 Noto 先行，
+    但當時 Tailwind 由 Play CDN 供應、`tailwind.config.js` 根本冇被載入過，所以嗰行從未生效；
+    一旦改為 build 時編譯，佢就會反過來蓋掉實際渲染。統一邊一套係設計決定，
+    **未拍板前唔好改 `body` 嗰行**
+  - 另外 `.font-sans`（登入頁 CHOPREALITY 字標、Header 小標籤、角色設定書嘅 `<pre>`）
+    走 Tailwind 預設 system stack，同上面三者都唔同。呢個係 Play CDN 年代嘅實際行為，暫時保留
 - 圓角節奏：
   - 頁面容器／大卡 `rounded-[24px]`–`rounded-[32px]`、`rounded-3xl`
   - 一般卡片／按鈕 `rounded-xl`、`rounded-2xl`
