@@ -4,6 +4,7 @@ import express from "express";
 import multer from "multer";
 import { createRequire } from "module";
 import { pool } from "../db.ts";
+import { withSchemaLock } from "../lib/schema-lock.ts";
 import { requireAuth, getAuthUser, ensurePlatformTables, ensureFeatureAvailable, recordFeatureUsage } from "../lib/platform-auth.ts";
 import { getAI, getVertexAccessToken, getVertexAIConfig, isVertexAIEnabled } from "../lib/gemini-server.ts";
 import { ensureDefaultTeacherExperience } from "../lib/default-teacher-experience.ts";
@@ -283,7 +284,7 @@ let ensureQuizTablesPromise: Promise<void> | null = null;
 
 export function ensureQuizTables() {
   if (!ensureQuizTablesPromise) {
-    const initialization = initializeQuizTables();
+    const initialization = withSchemaLock(initializeQuizTables);
     ensureQuizTablesPromise = initialization;
     initialization.catch(() => {
       if (ensureQuizTablesPromise === initialization) {
