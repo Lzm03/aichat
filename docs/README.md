@@ -12,6 +12,7 @@
 | [bot-persona-guide.md](bot-persona-guide.md) | 要改 Bot 角色設定、知識點關鍵詞規則、對話狀態追蹤 |
 | [bot-conversation-testing.md](bot-conversation-testing.md) | 要改對話評測／回歸測試（Semantic Judge、場景 S1–S12） |
 | [anomaly-detection-spec.md](anomaly-detection-spec.md) | 要改異常偵測規則、加新規則（含 FP 風險與合規依據） |
+| [student-management.md](student-management.md) | 要改學生管理、名單匯入、班級欄位規則或 Excel 範本 |
 | [knowledge-map-topic-versions.md](knowledge-map-topic-versions.md) | 要改知識地圖多主題版本（Tab 架構）的 UX／UI |
 
 ## 寫文件的規矩

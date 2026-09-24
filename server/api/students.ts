@@ -26,6 +26,11 @@ type StudentInput = {
   email: string;
 };
 
+/** 班級名只是介面上嘅標籤，超長就截短，唔值得為咗佢令成批匯入 400。 */
+const MAX_CLASS_NAME_LENGTH = 40;
+
+type ImportStudentInput = StudentInput & { className: string };
+
 function requireTeacher(req: express.Request, res: express.Response) {
   const user = getAuthUser(req);
   if (!user || !["teacher", "admin"].includes(user.role)) {
@@ -40,6 +45,68 @@ function normalizeStudentInput(input: any): StudentInput | null {
   const email = String(input?.email || "").trim().toLowerCase();
   if (!fullName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
   return { fullName, email };
+}
+
+/**
+ * 匯入專用：多收一個班級名（空白／冇 = 唔分班）。
+ * 單人新增（POST /）用返 normalizeStudentInput，佢冇班級邏輯，
+ * 就算 client 夾硬帶 className 入嚟都會俾呢個 function 隔走。
+ */
+function normalizeImportStudentInput(input: any): ImportStudentInput | null {
+  const base = normalizeStudentInput(input);
+  if (!base) return null;
+  return { ...base, className: String(input?.className || "").trim().slice(0, MAX_CLASS_NAME_LENGTH) };
+}
+
+/**
+ * 班級名 → student_groups row。同名班級重用，唔會開第二個。
+ *
+ * DB 冇 (teacher_id, name) 嘅 unique 約束（POST /groups 本身都唔去重），所以
+ * 去重只可以喺呢度做：同名有幾個就揀最早建立嗰個，唔會再開新。
+ * Caller 要自己開 transaction，並且同一批入面同一個名只可以查一次（見 classGroups cache）。
+ */
+async function resolveClassGroup(
+  client: any,
+  teacherId: string,
+  name: string
+): Promise<{ id: string; created: boolean }> {
+  const existing = await client.query(
+    `SELECT id FROM student_groups
+     WHERE teacher_id=$1 AND name=$2
+     ORDER BY created_at ASC, id ASC LIMIT 1`,
+    [teacherId, name]
+  );
+  if (existing.rowCount) return { id: existing.rows[0].id as string, created: false };
+
+  const id = crypto.randomUUID();
+  await client.query(
+    `INSERT INTO student_groups (id, teacher_id, name, type) VALUES ($1, $2, $3, 'class')`,
+    [id, teacherId, name]
+  );
+  return { id, created: true };
+}
+
+/**
+ * 匯入之後每班有幾多人 —— 係「呢班而家有幾多人」，唔係「今次加咗幾個」。
+ * 老師睇摘要係想知班開齊未，重用返舊班時今次加咗幾個根本冇意思。
+ */
+async function summarizeClasses(client: any, classGroups: Map<string, { id: string; created: boolean }>) {
+  if (!classGroups.size) return [];
+  const groupIds = Array.from(classGroups.values()).map((group) => group.id);
+  const counts = await client.query(
+    `SELECT group_id, COUNT(*)::int AS student_count FROM student_group_members
+     WHERE group_id = ANY($1::text[]) GROUP BY group_id`,
+    [groupIds]
+  );
+  const countByGroup = new Map<string, number>(
+    counts.rows.map((row: { group_id: string; student_count: number }) => [row.group_id, row.student_count])
+  );
+  return Array.from(classGroups.entries()).map(([name, group]) => ({
+    id: group.id,
+    name,
+    created: group.created,
+    studentCount: countByGroup.get(group.id) || 0,
+  }));
 }
 
 export const DEFAULT_STUDENT_INITIAL_PASSWORD = "00000000";
@@ -186,7 +253,7 @@ router.post("/import", requireAuth, async (req, res) => {
   if (!rawStudents.length || rawStudents.length > 500) {
     return res.status(400).json({ error: "students must contain between 1 and 500 rows" });
   }
-  const students = rawStudents.map(normalizeStudentInput);
+  const students = rawStudents.map(normalizeImportStudentInput);
   if (students.some((student) => !student)) {
     return res.status(400).json({ error: "every student must have a valid name and email" });
   }
@@ -198,13 +265,26 @@ router.post("/import", requireAuth, async (req, res) => {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const imported = [];
-      for (const student of students as StudentInput[]) {
+      // 班級名 → group row。同一批同一個名只查一次 DB。
+      const classGroups = new Map<string, { id: string; created: boolean }>();
+      const imported: Array<{
+        id: string;
+        fullName: string;
+        email: string;
+        groupIds: string[];
+        created: boolean;
+        temporaryPassword: string;
+      }> = [];
+
+      for (const student of students as ImportStudentInput[]) {
         const createdStudent = await findOrCreateStudent(client, student);
         await client.query(
           "INSERT INTO teacher_students (teacher_id, student_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
           [teacher.id, createdStudent.row.id]
         );
+        if (student.className && !classGroups.has(student.className)) {
+          classGroups.set(student.className, await resolveClassGroup(client, teacher.id, student.className));
+        }
         imported.push({
           id: createdStudent.row.id,
           fullName: createdStudent.row.full_name,
@@ -214,8 +294,48 @@ router.post("/import", requireAuth, async (req, res) => {
           temporaryPassword: createdStudent.temporaryPassword,
         });
       }
+
+      // 逐班一次過 assign，用返 setStudentsGroups（同 PUT /groups 逐字一樣嘅
+      // replace 語義）：名單寫嘅就係呢位學生嘅班級，唔會殘留上次匯入嘅舊班。
+      // 同一個學生喺名單出現兩次嘅話，以第一次為準，唔會同時入兩班。
+      const byClass = new Map<string, string[]>();
+      const assigned = new Set<string>();
+      imported.forEach((row, index) => {
+        const className = (students[index] as ImportStudentInput).className;
+        const groupId = className ? classGroups.get(className)?.id : undefined;
+        if (!groupId || assigned.has(row.id)) return;
+        assigned.add(row.id);
+        byClass.set(groupId, [...(byClass.get(groupId) || []), row.id]);
+      });
+      for (const [groupId, studentIds] of byClass) {
+        await setStudentsGroups(client, teacher.id, studentIds, [groupId]);
+      }
+
+      // groupIds 一定要係呢位學生喺呢位老師名下嘅「全部」班級，唔可以淨係報今次
+      // 嗰個：前端會用呢個 response 覆蓋自己嘅學生紀錄，殘缺清單會靜靜雞抹走
+      // 佢原有嘅班級（例如 3B 重匯入 3A，3B 就消失）。
+      const importedIds = imported.map((row) => row.id);
+      if (importedIds.length) {
+        const membership = await client.query(
+          `SELECT gm.student_id, gm.group_id
+           FROM student_group_members gm
+           JOIN student_groups sg ON sg.id = gm.group_id
+           WHERE sg.teacher_id = $1 AND gm.student_id = ANY($2::text[])
+           ORDER BY sg.created_at ASC, sg.id ASC`,
+          [teacher.id, importedIds]
+        );
+        const groupsByStudent = new Map<string, string[]>();
+        for (const row of membership.rows as Array<{ student_id: string; group_id: string }>) {
+          groupsByStudent.set(row.student_id, [...(groupsByStudent.get(row.student_id) || []), row.group_id]);
+        }
+        imported.forEach((student) => {
+          student.groupIds = groupsByStudent.get(student.id) || [];
+        });
+      }
+
+      const groups = await summarizeClasses(client, classGroups);
       await client.query("COMMIT");
-      return res.status(201).json({ students: imported });
+      return res.status(201).json({ students: imported, groups });
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
