@@ -271,7 +271,7 @@ export const englishUi: Record<string, string> = {
   "學生首頁右上角的 Tokens 數字就是你的剩餘額度（剩餘 / 每月總額）。點擊旁邊的「？」圖示可以查看詳細說明。": "The Tokens counter at the top right of the student home page shows your remaining and monthly allowance. Select the question-mark icon for details.",
   "如何更換頭像或修改個人資料？": "How do I change my avatar or profile?",
   "點擊右上角頭像 → 帳戶中心，即可編輯頭像、用戶名，並在「安全設定」中修改密碼或電郵。": "Select your avatar at the top right, then Account Center to edit your avatar and username. Change your password or email under Security Settings.",
-  "點擊右上角頭像 → 帳戶中心，即可編輯頭像、用戶名，並在「安全設定」中更改電郵。": "Select your avatar at the top right, then Account Center to edit your avatar and username, or change your email under Security Settings.",
+  "點擊右上角頭像 → 帳戶中心，即可編輯頭像、用戶名。": "Select your avatar at the top right, then Account Center to edit your avatar and username.",
   "如何更改密碼？": "How do I change my password?",
   "帳戶中心 → 安全設定 → 修改密碼，輸入目前密碼與新密碼（至少 8 個字元）即可完成更新。": "Go to Account Center, Security Settings, then Change Password. Enter your current password and a new password with at least 8 characters.",
   "不夠對話次數怎麼辦": "What if I run out of conversations?",
