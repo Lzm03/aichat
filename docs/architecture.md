@@ -159,6 +159,12 @@ aichat/
 | `tests/ui-i18n.browser.cjs` | **不**行 `node --test`。要開住 dev server，用 `playwright-cli run-code --filename` 跑 | |
 | `server/tests/*.ts` | `cd server && npm run test:<名>` | **每套都應該有 npm script**。冇 script 嘅測試檔冇人跑，會靜靜雞腐爛。要 DB 的自帶 guard：`DATABASE_URL` 要是本機（`localhost`／`127.0.0.1`）且含指定關鍵字，否則全 skip——`character-topics` 要 `topic_test`、`conversation-topic-switch` 同 `conversation-track-queue` 要 `topic_switch_test`、`students` 要 `students_test`；`quiz-audience` 例外，用探測式（DB 可達且有 `quizzes` 表）就照跑 |
 
+DB suite 每次都會建 schema，所以**唔可以指去一個你在乎嘅 database**。一個全新空 DB 就夠跑，
+只需先有 `bots`——佢係遺留表，`ensurePlatformTables()` 唔會建，但 `bot_student_progress` 有 FK
+指住（測試檔自己會補上）。`test:all` 用 `--test-concurrency=1` 逐檔跑：所有 DB suite 共用同一個
+database，而 `CREATE TABLE IF NOT EXISTS` 本身唔係 race-free（兩個進程同時建表，輸家爆
+`pg_type_typname_nsp_index`），併發跑會隨機紅。
+
 ## 相關文件
 
 - [設計系統](design-system.md) — 色彩、字體、圓角、動效
