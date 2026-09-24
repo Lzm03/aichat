@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pencil, CopyPlus, Users, ArrowRight } from 'lucide-react';
+import { Pencil, CopyPlus, Users, ArrowRight, Rocket } from 'lucide-react';
 import { uiText, uiTemplate } from '../utils/uiI18n';
 import { readAuthSession } from '../utils/auth';
 import { useTeacherLang } from '../utils/teacherI18n';
@@ -14,6 +14,7 @@ import { LearningReportEntryCard } from '../components/dashboard/LearningReportE
 import { DemoNotice } from '../components/system/DemoNotice';
 import { SafeAvatarImage } from '../components/shared/SafeAvatarImage';
 import { ProgressRing } from '../components/shared/ProgressRing';
+import { PublishSuccessModal } from '../components/workshop/PublishSuccessModal';
 
 const WELCOME_T = {
   "zh-HK": "歡迎回到教學指揮艙，和學生們一起開啟今天的學習之旅！",
@@ -86,6 +87,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const cachedBots = peekTeacherData<AiBot[]>('/api/bots');
   const [bots, setBots] = useState<AiBot[]>(cachedBots || []);
   const [botsLoading, setBotsLoading] = useState(!cachedBots);
+  // 卡片「立即試用」：mount 完整 chat 舞台（同 LibraryView 一樣用 PublishSuccessModal）
+  const [tryBot, setTryBot] = useState<AiBot | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,6 +117,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const recentBots = useMemo(() => bots, [bots]);
   const hasBots = recentBots.length > 0;
+
+  // 先清舞台再導航，同 LibraryView editSelectedBot 一致
+  const handleTryBotEdit = () => {
+    if (!tryBot?.id) return;
+    const botId = tryBot.id;
+    setTryBot(null);
+    onEditRecentBot(botId);
+  };
 
   return (
     <div className="h-full flex flex-col pb-32 md:pb-0">
@@ -167,14 +178,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       ) : (
                         <div className="mt-3 text-xs text-slate-400">{uiText("今日互動 ")}{bot.interactions || 0}{uiText(" 次")}</div>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => onEditRecentBot(bot.id)}
-                        className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-50 px-3 py-3 text-sm font-black text-indigo-600 transition hover:bg-indigo-100"
-                      >
-                        <Pencil className="h-4 w-4" />
-                        {uiText("繼續編輯")}
-                      </button>
+                      <div className="mt-auto grid gap-2 pt-6">
+                        <button
+                          type="button"
+                          onClick={() => onEditRecentBot(bot.id)}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-50 px-3 py-3 text-sm font-black text-indigo-600 transition hover:bg-indigo-100"
+                        >
+                          <Pencil className="h-4 w-4" />
+                          {uiText("繼續編輯")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTryBot(bot)}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-3 text-sm font-black text-white transition hover:bg-indigo-700"
+                        >
+                          <Rocket className="h-4 w-4" />
+                          {uiText("立即試用")}
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -244,6 +265,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <LearningReportEntryCard onClick={onOpenLearningReport} />
         </div>
       </section>
+
+      {tryBot ? (
+        <PublishSuccessModal
+          isOpen
+          onClose={() => setTryBot(null)}
+          botConfig={tryBot}
+          onEdit={handleTryBotEdit}
+        />
+      ) : null}
     </div>
   );
 };
