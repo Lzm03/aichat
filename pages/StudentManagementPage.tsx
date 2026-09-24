@@ -544,7 +544,8 @@ export const StudentManagementPage: React.FC = () => {
         lines.push(...importedClasses.map((group) => uiTemplate('班級 {0}：{1} 位學生', group.name, group.studentCount)));
       }
       if (skipped.length) lines.push(uiTemplate('另外有 {0} 行冇匯入，請睇下面嘅原因。', skipped.length));
-      if (sharedPassword) lines.push(uiTemplate('所有新帳戶嘅臨時密碼都係 {0}，請話俾學生知，並提醒佢哋登入後改密碼。', sharedPassword));
+      // 學生暫時唔可以自己改密碼（帳戶由學校名單管理），所以只講密碼，唔叫佢哋去改。
+      if (sharedPassword) lines.push(uiTemplate('所有新帳戶嘅臨時密碼都係 {0}，請話俾學生知。', sharedPassword));
       else if (created.length) lines.push(uiText('請將以下臨時密碼交給學生。'));
 
       showAlert({

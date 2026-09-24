@@ -204,6 +204,14 @@ router.put("/profile", async (req, res) => {
     const shouldUpdateEmail = nextEmail && nextEmail !== currentUser.email;
     const shouldUpdatePassword = Boolean(newPassword);
 
+    // Students keep the password the school handed out with the roster import
+    // (2026-09-24 decision: no self-service change until the permission scheme is
+    // reworked). Hiding the form in the UI is not enough - the API is reachable
+    // directly. Teachers and admins are unaffected.
+    if (shouldUpdatePassword && currentUser.role === "student") {
+      return res.status(403).json({ error: "students cannot change their own password" });
+    }
+
     if (shouldUpdateEmail || shouldUpdatePassword) {
       if (!currentPassword || !(await verifyPassword(currentPassword, (currentUser as any).password_hash))) {
         return res.status(401).json({ error: "current password is incorrect" });
