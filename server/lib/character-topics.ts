@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import type { PoolClient } from "pg";
 import { pool } from "../db.ts";
+import { withSchemaLock } from "./schema-lock.ts";
 import { buildKnowledgeBaseWithVersionPoints, parseKnowledgePoints, parsePromptSource } from "../../utils/chat-prompt.ts";
 
 export const MAX_TOPICS_PER_CHARACTER = 4;
@@ -65,7 +66,7 @@ let tablesReady: Promise<void> | null = null;
 
 export async function ensureCharacterTopicTables() {
   if (!tablesReady) {
-    tablesReady = (async () => {
+    tablesReady = withSchemaLock(async () => {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS character_topics (
           id TEXT PRIMARY KEY,
@@ -140,7 +141,7 @@ export async function ensureCharacterTopicTables() {
         )
         ON CONFLICT (id) DO NOTHING
       `);
-    })();
+    });
   }
   return tablesReady;
 }

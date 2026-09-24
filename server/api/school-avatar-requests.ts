@@ -3,6 +3,7 @@ import express from "express";
 import multer from "multer";
 import path from "path";
 import { pool } from "../db.ts";
+import { withSchemaLock } from "../lib/schema-lock.ts";
 import { getAuthUser, requireAuth } from "../lib/platform-auth.ts";
 import { canManageAllAccounts } from "../config/account-overrides.ts";
 import { normalizeUploadFilename } from "../../utils/uploadFilename.ts";
@@ -28,7 +29,7 @@ let ensureTablesPromise: Promise<void> | null = null;
 
 export function ensureSchoolAvatarRequestTables() {
   if (!ensureTablesPromise) {
-    ensureTablesPromise = (async () => {
+    ensureTablesPromise = withSchemaLock(async () => {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS school_avatar_requests (
           id TEXT PRIMARY KEY,
@@ -75,7 +76,7 @@ export function ensureSchoolAvatarRequestTables() {
       `);
       await pool.query(`CREATE INDEX IF NOT EXISTS school_avatar_requests_created_at_idx ON school_avatar_requests(created_at DESC)`);
       await pool.query(`CREATE INDEX IF NOT EXISTS school_avatar_request_files_request_idx ON school_avatar_request_files(request_id)`);
-    })().catch((error) => {
+    }).catch((error) => {
       ensureTablesPromise = null;
       throw error;
     });

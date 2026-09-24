@@ -1,5 +1,6 @@
 import express from "express";
 import { pool } from "../db.ts";
+import { withSchemaLock } from "../lib/schema-lock.ts";
 import { getAuthUser, requireAuth } from "../lib/platform-auth.ts";
 import { ensureQuizTables } from "./quizzes.ts";
 import { quizAudienceSql } from "../lib/quiz-audience.ts";
@@ -78,7 +79,7 @@ function hasFiveEventsWithinTenMinutes(timestamps: Array<Date | string>) {
 
 export function ensureStudentTaskTables() {
   if (!taskTablesReady) {
-    const initialization = (async () => {
+    const initialization = withSchemaLock(async () => {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS student_task_reads (
           user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -92,7 +93,7 @@ export function ensureStudentTaskTables() {
         CREATE INDEX IF NOT EXISTS student_task_reads_user_read_at_idx
         ON student_task_reads(user_id, read_at DESC)
       `);
-    })();
+    });
     taskTablesReady = initialization;
     initialization.catch(() => {
       if (taskTablesReady === initialization) taskTablesReady = null;

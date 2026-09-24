@@ -8,6 +8,7 @@ import {
   type FeatureLimitKey,
 } from "../config/feature-limits.ts";
 import { canManageAllAccounts, canResetOwnUsage, isUnlimitedAccount } from "../config/account-overrides.ts";
+import { withSchemaLock } from "./schema-lock.ts";
 
 export type AppRole = "teacher" | "student" | "admin";
 
@@ -202,38 +203,9 @@ export function normalizeUserPreferences(input: Record<string, any> | null | und
   };
 }
 
-// Every process that provisions the schema must take this lock, or the mutex
-// silently stops working. Chosen once; never change it.
-const PLATFORM_TABLES_LOCK_KEY = 1_668_248_688;
-
-// CREATE TABLE IF NOT EXISTS is not race-free: two processes that both see a
-// missing table both try to create it, and the loser dies on
-// pg_type_typname_nsp_index. A fresh database plus several instances booting at
-// once reaches this, and it fails the whole boot because ensurePlatformTables()
-// is awaited before app.listen().
-//
-// Session-scoped rather than transaction-scoped, because the DDL below runs as
-// individual autocommit statements on the pool instead of one transaction.
-// Postgres drops a session's advisory locks when it ends, so a crashed process
-// cannot wedge the mutex.
-async function withPlatformTablesLock<T>(run: () => Promise<T>): Promise<T> {
-  const lockClient = await pool.connect();
-  try {
-    await lockClient.query("SELECT pg_advisory_lock($1::bigint)", [PLATFORM_TABLES_LOCK_KEY]);
-    return await run();
-  } finally {
-    try {
-      await lockClient.query("SELECT pg_advisory_unlock($1::bigint)", [PLATFORM_TABLES_LOCK_KEY]);
-    } catch {
-      // The session is already gone; its advisory locks went with it.
-    }
-    lockClient.release();
-  }
-}
-
 export async function ensurePlatformTables() {
   if (!ensurePlatformTablesPromise) {
-    ensurePlatformTablesPromise = withPlatformTablesLock(async () => {
+    ensurePlatformTablesPromise = withSchemaLock(async () => {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS users (
           id TEXT PRIMARY KEY,
