@@ -125,6 +125,7 @@ aichat/
 │   ├── avatarColor.ts / default-avatar.ts # 頭像顏色與預設頭像
 │   ├── uploadFilename.ts        # multipart 檔名 Latin-1→UTF-8 修正（中文檔名防亂碼）
 │   ├── student-batches.ts       # 大量學生操作分批（API 每次最多 100 個 id，前後端共用上限）
+│   ├── student-roster.ts        # 學生名單解析（CSV/TSV/xlsx → 姓名+班級+email）與範本產生；規則見 docs/student-management.md
 │   └── trial-popup.ts           # Trial/demo 提示互動
 ├── types/
 │   ├── chat.ts                  # 對話訊息/請求型別
@@ -168,6 +169,7 @@ database，而 `CREATE TABLE IF NOT EXISTS` 本身唔係 race-free（兩個進�
 ## 相關文件
 
 - [設計系統](design-system.md) — 色彩、字體、圓角、動效
+- [學生管理與名單匯入](student-management.md) — 班級欄位慣例、匯入規則、範本格式
 - [Bot 角色設定指南](bot-persona-guide.md)
 - [異常偵測規則規格](anomaly-detection-spec.md)
 - [Bot 對話測試架構](bot-conversation-testing.md)

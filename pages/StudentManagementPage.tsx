@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardList,
+  Download,
   Plus,
   Search,
   Trash2,
@@ -19,6 +20,18 @@ import { PlatformDialog } from '../components/system/PlatformDialog';
 import type { PermissionGroup, PermissionStudent } from '../components/workshop/permissions/BotPermissionDrawer';
 import { API_BASE } from '../utils/api';
 import { runChunkedBatches } from '../utils/student-batches';
+import {
+  MAX_ROSTER_FILE_BYTES,
+  MAX_ROSTER_ROWS,
+  downloadRosterTemplate,
+  formatRosterRowsAsText,
+  parseRosterText,
+  parseRosterWorkbook,
+  type RosterParseResult,
+  type RosterSkipReason,
+  type RosterSkippedRow,
+  type RosterStudent,
+} from '../utils/student-roster';
 import { invalidateTeacherData, loadTeacherData, peekTeacherData } from '../utils/teacher-data-cache';
 
 type StudentFormState = {
@@ -36,12 +49,16 @@ type AssignStudentState = {
   selectedGroupIds: string[];
 };
 
-type ParsedStudent = {
-  fullName: string;
-  email: string;
+/** 匯入結果摘要入面，server 回報嘅班級。 */
+type ImportedClassSummary = {
+  id: string;
+  name: string;
+  created: boolean;
+  /** 匯入之後全班有幾多人（唔係今次加咗幾個）。 */
+  studentCount: number;
 };
 
-const acceptedImportExtensions = ['.csv', '.tsv', '.txt', '.pdf'];
+const acceptedImportExtensions = ['.csv', '.tsv', '.txt', '.xlsx', '.pdf'];
 
 async function readApiResponse(response: Response, fallbackMessage: string) {
   const data = await response.json().catch(() => ({}));
@@ -63,7 +80,8 @@ export const StudentManagementPage: React.FC = () => {
   const [assignStudent, setAssignStudent] = useState<AssignStudentState>({ studentIds: [], selectedGroupIds: [] });
   const [selectedUnassignedIds, setSelectedUnassignedIds] = useState<string[]>([]);
   const [bulkText, setBulkText] = useState('');
-  const [bulkRows, setBulkRows] = useState<ParsedStudent[]>([]);
+  const [bulkRows, setBulkRows] = useState<RosterStudent[]>([]);
+  const [bulkSkipped, setBulkSkipped] = useState<RosterSkippedRow[]>([]);
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [showAllAssignedStudentsModal, setShowAllAssignedStudentsModal] = useState(false);
   const importFileRef = useRef<HTMLInputElement | null>(null);
@@ -411,23 +429,15 @@ export const StudentManagementPage: React.FC = () => {
     }
   };
 
-  const parseBulkText = (text: string): ParsedStudent[] => {
-    const seenEmails = new Set<string>();
-    return text
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => Boolean(line) && !/^(姓名|名字|學生|student|name)/i.test(line))
-      .map((line) => {
-        const parts = line.split(/[\t,，]/).map((part) => part.trim()).filter(Boolean);
-        if (parts.length < 2) return null;
-        const fullName = parts.slice(0, -1).join(' ') || parts[0];
-        const email = parts[parts.length - 1]?.toLowerCase();
-        if (!email.includes('@')) return null;
-        if (seenEmails.has(email)) return null;
-        seenEmails.add(email);
-        return { fullName: fullName || email, email };
-      })
-    .filter((item): item is ParsedStudent => Boolean(item));
+  // 一定要喺 component 入面砌：uiText 係睇當下語言，擺喺 module scope 會凍結語言。
+  const skippedReasonText: Record<RosterSkipReason, string> = {
+    'invalid-email': uiText('電郵格式唔正確'),
+    'duplicate-email': uiText('電郵同上面嘅行重複'),
+  };
+
+  const applyParsedRoster = (parsed: RosterParseResult) => {
+    setBulkRows(parsed.rows);
+    setBulkSkipped(parsed.skipped);
   };
 
   const handleImportFile = async (file: File) => {
@@ -435,7 +445,7 @@ export const StudentManagementPage: React.FC = () => {
     if (!acceptedImportExtensions.includes(extension)) {
       showAlert({
         title: uiText('格式不支援'),
-        message: uiText('請選擇 PDF、CSV、TSV 或 TXT 檔案。'),
+        message: uiText('請選擇 Excel（.xlsx）、CSV、TSV 或 TXT 檔案。'),
         tone: 'info',
       });
       return;
@@ -450,9 +460,30 @@ export const StudentManagementPage: React.FC = () => {
       return;
     }
 
+    if (file.size > MAX_ROSTER_FILE_BYTES) {
+      showAlert({
+        title: uiText('檔案太大'),
+        message: uiTemplate('名單檔案唔可以大過 {0} MB。', Math.round(MAX_ROSTER_FILE_BYTES / 1024 / 1024)),
+        tone: 'info',
+      });
+      return;
+    }
+
+    if (extension === '.xlsx') {
+      try {
+        applyParsedRoster(await parseRosterWorkbook(await file.arrayBuffer()));
+      } catch (error) {
+        showAlert({ title: uiText('讀取不到 Excel 檔案'), message: (error as Error).message, tone: 'danger' });
+        return;
+      }
+      // 檔案同文字框二選一：唔清走舊文字，老師會以為兩份名單都匯咗。
+      setBulkText('');
+      return;
+    }
+
     const text = await file.text();
     setBulkText(text);
-    setBulkRows(parseBulkText(text));
+    applyParsedRoster(parseRosterText(text));
   };
 
   const handleDropFiles = async (files: FileList | null) => {
@@ -464,37 +495,68 @@ export const StudentManagementPage: React.FC = () => {
   const removeBulkRow = (email: string) => {
     const nextRows = bulkRows.filter((row) => row.email !== email);
     setBulkRows(nextRows);
-    setBulkText(nextRows.map((row) => `${row.fullName}, ${row.email}`).join('\n'));
+    setBulkText(formatRosterRowsAsText(nextRows));
   };
 
   const applyBulkStudents = async () => {
     setIsSaving(true);
+    const skipped = bulkSkipped;
     try {
       const response = await fetch(`${API_BASE}/api/students/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // 冇班級嘅行送 className: ''，server 會當「唔分班」——同唔送係一樣。
         body: JSON.stringify({ students: bulkRows }),
       });
       const data = await readApiResponse(response, '無法匯入學生');
       invalidateTeacherData('/api/students');
-      setStudents((current) => {
-        const byId = new Map(current.map((student) => [student.id, student]));
-        data.students.forEach((student: PermissionStudent) => byId.set(student.id, student));
-        return Array.from(byId.values());
-      });
+      // 一定要重新載入，唔可以自己砌：新開嘅班級淨係喺 server 度有 id，
+      // 而班級卡嘅成員係由 group.studentIds 推導出嚟，唔重載就見唔到新班。
+      try {
+        const refreshed = await loadTeacherData<{ students?: PermissionStudent[]; groups?: PermissionGroup[] }>('/api/students');
+        setStudents(Array.isArray(refreshed.students) ? refreshed.students : []);
+        setGroups(Array.isArray(refreshed.groups) ? refreshed.groups : []);
+      } catch {
+        // 匯入已經成功，重新載入失敗唔應該報成匯入失敗。cache 已經清咗，下次入頁會再載。
+      }
       setBulkText('');
       setBulkRows([]);
+      setBulkSkipped([]);
       setShowBulkModal(false);
+
       const created = data.students.filter((student: any) => student.created && student.temporaryPassword);
+      // 而家後端每個新帳戶都用同一個初始密碼（server 嗰邊
+      // DEFAULT_STUDENT_INITIAL_PASSWORD），逐個學生列一行密碼淨係噪音——
+      // 20 個新帳戶就 20 行一模一樣嘅字。唔硬編死個值：只要回傳嘅密碼一致就
+      // 收埋做一行，將來若果改返逐個唔同，下面照樣逐行列返出嚟。
+      const createdPasswords = Array.from(new Set(created.map((student: any) => String(student.temporaryPassword))));
+      const sharedPassword = createdPasswords.length === 1 ? createdPasswords[0] : null;
       const total = data.students.length;
+      const importedClasses: ImportedClassSummary[] = Array.isArray(data.groups) ? data.groups : [];
+      const lines = [uiTemplate('共 {0} 位學生已加入，其中 {1} 位為新帳戶，{2} 位之前已在名單。', total, created.length, total - created.length)];
+      if (importedClasses.length) {
+        const newClasses = importedClasses.filter((group) => group.created).length;
+        lines.push(
+          newClasses
+            ? uiTemplate('已分班：{0} 個班級，其中 {1} 個係新開嘅。', importedClasses.length, newClasses)
+            : uiTemplate('已分班：{0} 個班級。', importedClasses.length)
+        );
+        lines.push(...importedClasses.map((group) => uiTemplate('班級 {0}：{1} 位學生', group.name, group.studentCount)));
+      }
+      if (skipped.length) lines.push(uiTemplate('另外有 {0} 行冇匯入，請睇下面嘅原因。', skipped.length));
+      // 學生暫時唔可以自己改密碼（帳戶由學校名單管理），所以只講密碼，唔叫佢哋去改。
+      if (sharedPassword) lines.push(uiTemplate('所有新帳戶嘅臨時密碼都係 {0}，請話俾學生知。', sharedPassword));
+      else if (created.length) lines.push(uiText('請將以下臨時密碼交給學生。'));
+
       showAlert({
         title: uiText('匯入完成'),
-        // 名單長短都要睇得到按鈕：訊息只出摘要，逐個帳戶嘅臨時密碼交俾
-        // details 用可捲動列表顯示（彈窗自己會收埋長名單）。
-        message: created.length
-          ? `${uiTemplate('共 {0} 位學生已加入，其中 {1} 位為新帳戶，{2} 位之前已在名單。', total, created.length, total - created.length)}\n${uiText('請將以下臨時密碼交給學生。')}`
-          : uiText('所有學生帳戶已加入你的學生名單。'),
-        details: created.map((student: any) => `${student.email}: ${student.temporaryPassword}`),
+        // 名單長短都要睇得到按鈕：摘要只出統計，逐行嘅失敗原因（同逐個唔同時嘅
+        // 臨時密碼）交俾 details 用可捲動列表顯示（彈窗自己會收埋長名單）。
+        message: lines.join('\n'),
+        details: [
+          ...skipped.map((row) => uiTemplate('第 {0} 行：{1}', row.line, skippedReasonText[row.reason])),
+          ...(sharedPassword ? [] : created.map((student: any) => `${student.email}: ${student.temporaryPassword}`)),
+        ],
         tone: 'info',
       });
     } catch (error) {
@@ -800,9 +862,12 @@ export const StudentManagementPage: React.FC = () => {
               return (
                 <div key={group.id} className="overflow-hidden rounded-2xl border border-slate-100 bg-white">
                   <div className="flex items-center gap-3 p-4">
+                    {/* 箭嘴要放喺 button 入面：擺喺外面嘅話佢只係裝飾，
+                        撳落去唔會收起，用家會以為壞咗。 */}
                     <button
                       type="button"
                       onClick={() => toggleGroupExpand(group.id)}
+                      aria-expanded={expanded}
                       className="flex min-w-0 flex-1 items-center gap-3 text-left"
                     >
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
@@ -817,8 +882,12 @@ export const StudentManagementPage: React.FC = () => {
                         </div>
                         <div className="mt-0.5 text-xs text-slate-500">{group.studentIds.length}{uiText(' 位學生')}</div>
                       </div>
+                      {expanded ? (
+                        <ChevronDown className="ml-auto h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />
+                      ) : (
+                        <ChevronRight className="ml-auto h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />
+                      )}
                     </button>
-                    {expanded ? <ChevronDown className="h-5 w-5 text-slate-400" /> : <ChevronRight className="h-5 w-5 text-slate-400" />}
                     <button
                       type="button"
                       onClick={() => removeGroup(group.id)}
@@ -866,23 +935,23 @@ export const StudentManagementPage: React.FC = () => {
 
       <AnimatePresence>
         {showBulkModal ? (
-          <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
+          <div className="pointer-events-none fixed inset-0 z-[95] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0, y: 20, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 14, scale: 0.98 }}
               transition={{ duration: 0.18 }}
-                              className="flex max-h-[90vh] w-[min(720px,100%)] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.22)]"
+              className="pointer-events-auto relative flex max-h-[90vh] w-[min(720px,100%)] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.22)]"
             >
               {/* 中間名單要用 flex 撐，唔可以靠 max-h-[calc(90vh-132px)] 估高度：
                   header + footer 實際高過 132px，內容就會高出卡片，俾
-                  overflow-hidden 剪咗底部——「取消」同「加入未分組」兩粒掣
-                  會俾切一半。表頭同底部固定，只有中間嗰格捲。 */}
+                  overflow-hidden 剪咗底部——「取消」同「匯入」兩粒掣會俾切一半。
+                  表頭同底部固定，只有中間嗰格捲。 */}
               <div className="flex shrink-0 items-start justify-between border-b border-slate-100 px-6 py-5">
                 <div>
                   <h3 className="text-xl font-black text-slate-900">{uiText('匯入學生名單')}</h3>
                   <p className="mt-1 text-sm text-slate-500">
-                    {uiText('上傳 CSV / TSV 或直接貼上名單，每行一個學生。')}
+                    {uiText('上傳 Excel / CSV 檔案，或直接貼上名單，每行一個學生。')}
                   </p>
                 </div>
                 <button
@@ -891,6 +960,7 @@ export const StudentManagementPage: React.FC = () => {
                     setShowBulkModal(false);
                     setBulkText('');
                     setBulkRows([]);
+                    setBulkSkipped([]);
                   }}
                   className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
                 >
@@ -902,10 +972,12 @@ export const StudentManagementPage: React.FC = () => {
                 <input
                   ref={importFileRef}
                   type="file"
-                  accept=".csv,.tsv,.txt,.pdf,application/pdf,text/csv,text/tab-separated-values,text/plain"
+                  accept=".xlsx,.csv,.tsv,.txt,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf,text/csv,text/tab-separated-values,text/plain"
                   onChange={(event) => {
                     const file = event.target.files?.[0];
                     if (file) void handleImportFile(file);
+                    // 同一個檔案揀兩次都要再觸發 onChange，否則老師改完個 Excel 再上傳會冇反應。
+                    event.target.value = '';
                   }}
                   className="hidden"
                 />
@@ -923,7 +995,7 @@ export const StudentManagementPage: React.FC = () => {
                     className="group flex min-h-[96px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-indigo-200 bg-indigo-50/40 px-4 py-4 text-center transition hover:border-indigo-300 hover:bg-indigo-50/70"
                   >
                     <Upload className="h-5 w-5 text-indigo-500" />
-                    <span className="mt-2 text-sm font-black text-indigo-700">{uiText('拖放 CSV / TSV 檔')}</span>
+                    <span className="mt-2 text-sm font-black text-indigo-700">{uiText('拖放 Excel / CSV 檔')}</span>
                     <span className="mt-1 text-xs text-slate-500">{uiText('或點擊選擇檔案')}</span>
                   </button>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">
@@ -931,13 +1003,24 @@ export const StudentManagementPage: React.FC = () => {
                     <div className="mt-1 text-slate-600">
                       {uiText('每行格式')}
                       <br />
-                      <code className="rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-700">{uiText('姓名, email')}</code>
+                      <code className="rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-700">{uiText('姓名, 班級, email')}</code>
                     </div>
                     <div className="mt-2 text-slate-600">
-                      {uiText('可接受')}
-                      <br />
-                      <code className="rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-700">{uiText(', tab 空格')}</code>
+                      {uiText('班級填 3A、5B 就自動分班；冇填就只開帳號。')}
                     </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void downloadRosterTemplate({
+                          fileName: uiText('學生名單範本'),
+                          sheetName: uiText('學生名單'),
+                        })
+                      }
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-xs font-black text-indigo-600 transition hover:bg-indigo-50"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      {uiText('下載 Excel 範本')}
+                    </button>
                   </div>
                 </div>
 
@@ -948,6 +1031,7 @@ export const StudentManagementPage: React.FC = () => {
                     onClick={() => {
                       setBulkText('');
                       setBulkRows([]);
+                      setBulkSkipped([]);
                     }}
                     className="text-xs font-bold text-slate-400 transition hover:text-slate-600"
                   >
@@ -958,10 +1042,10 @@ export const StudentManagementPage: React.FC = () => {
                   value={bulkText}
                   onChange={(event) => {
                     setBulkText(event.target.value);
-                    setBulkRows(parseBulkText(event.target.value));
+                    applyParsedRoster(parseRosterText(event.target.value));
                   }}
                   rows={6}
-                  placeholder={'陳小明, student1@school.hk\n李美玲, student2@school.hk\n王小明\tstudent3@school.hk'}
+                  placeholder={'姓名, 班級, email\n陳小明, 3A, student1@school.hk\n李美玲, 5B, student2@school.hk'}
                   className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                 />
 
@@ -980,6 +1064,9 @@ export const StudentManagementPage: React.FC = () => {
                             <Check className="h-4 w-4" />
                           </span>
                           <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-700">{row.fullName}</span>
+                          <span className="shrink-0 rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-black text-indigo-600">
+                            {row.className || uiText('不分班')}
+                          </span>
                           <span className="min-w-0 flex-1 truncate text-xs text-slate-500">{row.email}</span>
                           <button
                             type="button"
@@ -991,11 +1078,31 @@ export const StudentManagementPage: React.FC = () => {
                         </div>
                       ))}
                     </div>
+                    {bulkRows.length > MAX_ROSTER_ROWS ? (
+                      <p className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-700">
+                        {uiTemplate('一次最多匯入 {0} 位學生，請分開幾次上傳。', MAX_ROSTER_ROWS)}
+                      </p>
+                    ) : null}
                   </div>
                 ) : bulkText.trim() ? (
                   <p className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-700">
                     {uiText('未偵測到有效學生資料。請確認每行至少包含姓名和電郵，且電郵應包含 @。')}
                   </p>
+                ) : null}
+
+                {bulkSkipped.length ? (
+                  <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-3">
+                    <div className="text-sm font-black text-amber-700">
+                      {uiTemplate('有 {0} 行冇匯入', bulkSkipped.length)}
+                    </div>
+                    <ul className="mt-1 space-y-0.5 text-xs text-amber-700">
+                      {bulkSkipped.map((row) => (
+                        <li key={`${row.line}-${row.reason}`}>
+                          {uiTemplate('第 {0} 行：{1}', row.line, skippedReasonText[row.reason])}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ) : null}
               </div>
 
@@ -1006,6 +1113,7 @@ export const StudentManagementPage: React.FC = () => {
                     setShowBulkModal(false);
                     setBulkText('');
                     setBulkRows([]);
+                    setBulkSkipped([]);
                   }}
                   className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50"
                 >
@@ -1013,11 +1121,11 @@ export const StudentManagementPage: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  disabled={bulkRows.length === 0 || isSaving}
+                  disabled={bulkRows.length === 0 || bulkRows.length > MAX_ROSTER_ROWS || isSaving}
                   onClick={() => void applyBulkStudents()}
                   className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
                 >
-                  {uiText('加入未分組' )} {`(${bulkRows.length})`}
+                  {uiTemplate('匯入 {0} 位學生', bulkRows.length)}
                 </button>
               </div>
             </motion.div>

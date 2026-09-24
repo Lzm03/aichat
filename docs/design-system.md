@@ -57,6 +57,24 @@
 - 尊重 `prefers-reduced-motion: reduce`；新動效需評估是否跟隨關閉
 - 避免大型 DOM 無過渡直接切換；需要時使用 Framer Motion `AnimatePresence`
 
+## 可展開列（Accordion）與可撳範圍
+
+**「睇落可以撳」嘅嘢一定要真係可以撳。** 2026-09-24 學生管理嘅班級卡就係踩咗：
+展開箭嘴 `<ChevronDown/Right>` 擺喺 toggle `<button>` **外面**做同層裝飾 `<svg>`，
+結果撳班名開得到、撳箭嘴收唔返——箭嘴根本冇 handler。
+
+- **整行（含箭嘴）係同一個可撳範圍**。箭嘴要喺 `<button>` / `<motion.button>` **入面**，
+  用 `ml-auto shrink-0` 推去右邊；唔好另開 sibling
+- 行內仲有互動元素（刪除、剔選）→ 佢自己一個獨立 `<button>`，**唔可以 nest 喺 toggle button 入面**
+  （HTML 唔容許 button 疊 button）
+- toggle 要寫 `aria-expanded`；純裝飾 icon 加 `aria-hidden="true"`
+- 現有兩種寫法：`<motion.button>`（例：`components/assessment/AssessmentQualityList.tsx`）
+  同 `<div onClick>` + `cursor-pointer`（例：`components/assessment/AnomalyAlertsOverview.tsx`）。
+  **新代碼優先 `<button>`**——`<div onClick>` 冇鍵盤支援
+- 呢類錯**測試捉唔到**（撳落去唔會 throw、唔會 render 錯），lint 亦冇規則管得到。
+  驗證方法係真撳一次，而且**唔可以用 locator click**：`locator.click()` 會自動揀可撳嘅祖先、
+  自動 scroll，啱啱好遮蓋「撳唔到」嘅真相。要 `document.elementFromPoint(x, y)` 睇 click 實際落喺邊個 element
+
 ## 相關文件
 
 - [架構總覽](architecture.md)
