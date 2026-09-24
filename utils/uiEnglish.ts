@@ -2124,4 +2124,12 @@ export const englishUi: Record<string, string> = {
   "儲存失敗": "Save Failed",
   "此學生尚未完成作答，完成後先可以確認分數。": "This student has not finished the quiz yet. You can confirm the scores after submission.",
   "已發佈 {0} 份學生成績。未儲存草稿嘅學生會以 AI 分數發佈。": "Results published for {0} students. Students without a saved draft will be graded with AI scores.",
+  "已封存": "Archived",
+  "封存測驗 {0}": "Archive quiz {0}",
+  "還原測驗 {0}": "Restore quiz {0}",
+  "封存失敗": "Could not archive",
+  "還原失敗": "Could not restore",
+  "測驗暫時無法封存或還原，請稍後再試。": "This quiz cannot be archived or restored right now. Please try again later.",
+  "所有測驗都已封存": "All quizzes are archived.",
+  "封存只會收起測驗，作答與成績紀錄都會保留，隨時可以還原。": "Archiving only hides the quiz. All answers and grades are kept, and you can restore it anytime.",
 };

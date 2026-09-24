@@ -161,7 +161,10 @@ export const AssessmentPage: React.FC<AssessmentPageProps> = ({
 
     fetch(`${API_BASE}/api/quizzes/published`)
       .then((res) => res.json())
-      .then((data) => setPublishedCount(Array.isArray(data?.quizzes) ? data.quizzes.length : 0))
+      // Archived quizzes are excluded so this count matches the main list in 我的測驗
+      .then((data) => setPublishedCount(
+        Array.isArray(data?.quizzes) ? data.quizzes.filter((quiz: any) => !quiz?.archivedAt).length : 0
+      ))
       .catch(() => setPublishedCount(0));
 
     fetch(`${API_BASE}/api/teachers/me/grading-summary`)

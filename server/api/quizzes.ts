@@ -201,7 +201,9 @@ async function initializeQuizTables() {
     ADD COLUMN IF NOT EXISTS question_type_distribution_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS grading_completed_at TIMESTAMPTZ,
-    ADD COLUMN IF NOT EXISTS template_key TEXT
+    ADD COLUMN IF NOT EXISTS template_key TEXT,
+    -- archived_at: teacher-initiated hide. Attempts, grades and flags are all preserved.
+    ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ
   `);
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS quizzes_teacher_template_key_unique_idx
@@ -1325,6 +1327,7 @@ router.get("/quizzes/published", requireAuth, async (req, res) => {
          q.id, q.title, q.question_count, q.bot_id,
          COALESCE(q.published_at, q.updated_at) AS published_at,
          q.grading_completed_at,
+         q.archived_at,
          b.name AS bot_name, b.subject AS bot_subject,
          COUNT(u.id) AS total_students,
          COUNT(a.id) FILTER (WHERE a.status='completed') AS submitted,
@@ -1369,6 +1372,7 @@ router.get("/quizzes/published", requireAuth, async (req, res) => {
           botSubject: String(row.bot_subject || ""),
           publishedAt: row.published_at,
           gradingCompletedAt: row.grading_completed_at,
+          archivedAt: row.archived_at ?? null,
           totalStudents,
           submitted,
           completed: Number(row.completed || 0),
@@ -2188,6 +2192,32 @@ router.delete("/quizzes/:id", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("DELETE /quizzes/:id Failed:", error);
     return res.status(500).json({ error: "刪除測驗失敗，請稍後再試。" });
+  }
+});
+
+router.patch("/quizzes/:id/archive", requireAuth, async (req, res) => {
+  try {
+    await ensureQuizTables();
+    const user = getAuthUser(req);
+    if (!user || !["teacher", "admin"].includes(user.role)) {
+      return res.status(403).json({ error: "teacher account required" });
+    }
+    const quizId = String(req.params.id || "").trim();
+    // Reversible hide chosen by the teacher, unlike DELETE. updated_at is deliberately
+    // left alone so archiving cannot reshuffle list ordering.
+    const archived = Boolean(req.body?.archived);
+    const updated = await pool.query(
+      `UPDATE quizzes
+       SET archived_at = CASE WHEN $3::boolean THEN NOW() ELSE NULL END
+       WHERE id=$1 AND teacher_id=$2
+       RETURNING archived_at`,
+      [quizId, user.id, archived]
+    );
+    if (!updated.rowCount) return res.status(404).json({ error: "Quiz not found" });
+    return res.json({ ok: true, id: quizId, archivedAt: updated.rows[0].archived_at ?? null });
+  } catch (error) {
+    console.error("PATCH /quizzes/:id/archive Failed:", error);
+    return res.status(500).json({ error: "封存測驗失敗，請稍後再試。" });
   }
 });
 

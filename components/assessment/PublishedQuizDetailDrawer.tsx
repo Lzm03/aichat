@@ -17,6 +17,8 @@ export type PublishedQuizSummary = {
   botSubject: string;
   publishedAt?: string;
   gradingCompletedAt?: string | null;
+  /** 老師主動封存；與自動嘅批改完成（pendingGrading/pendingConfirm）係兩件事 */
+  archivedAt?: string | null;
   totalStudents: number;
   submitted: number;
   completed: number;
