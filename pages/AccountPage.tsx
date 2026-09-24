@@ -382,73 +382,77 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
           </section>
         </form>
 
-        {/* ---- 安全設定 ---- */}
-        <section className="mt-8 border-t border-[var(--border)] pt-8">
-          <h2 className="text-2xl font-black tracking-tight text-[var(--text-main)]">{uiText("安全設定")}</h2>
+        {/* ---- 安全設定（老師專用）---- */}
+        {/* 學生帳戶由學校名單開立，密碼同電郵都由老師派發，自助修改一律唔開放：
+            成個區塊收埋，API 亦擋（server/api/auth.ts）。老師照舊改得到。 */}
+        {!isStudent && (
+          <section className="mt-8 border-t border-[var(--border)] pt-8">
+            <h2 className="text-2xl font-black tracking-tight text-[var(--text-main)]">{uiText("安全設定")}</h2>
 
-          <form onSubmit={handleChangePassword} className="mt-5 rounded-[28px] border border-[var(--border)] bg-[var(--bg-subtle)] p-5">
-            <div className="text-sm font-bold text-[var(--text-body)]">{uiText("修改密碼")}</div>
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
-              <input
-                type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                placeholder={uiText("目前密碼")}
-                className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3 text-sm text-[var(--text-main)] outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--accent-soft)]"
-              />
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder={uiText("新密碼（至少 8 個字元）")}
-                className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3 text-sm text-[var(--text-main)] outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--accent-soft)]"
-              />
-              <input
-                type="password"
-                value={confirmNewPassword}
-                onChange={(e) => setConfirmNewPassword(e.target.value)}
-                placeholder={uiText("確認新密碼")}
-                className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3 text-sm text-[var(--text-main)] outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--accent-soft)]"
-              />
-            </div>
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <p className="text-xs text-[var(--text-muted)]">{uiText("新密碼至少 8 個字元。")}</p>
-              <button type="submit" disabled={pwSaving} className="rounded-2xl bg-[var(--accent)] px-6 py-2.5 text-sm font-bold text-white transition hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60">
-                {pwSaving ? uiText("更新中...") : uiText("更新密碼")}
-              </button>
-            </div>
-            {pwError && <p className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-700">{uiError(pwError)}</p>}
-            {pwMessage && <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">{uiText(pwMessage)}</p>}
-          </form>
+            <form onSubmit={handleChangePassword} className="mt-5 rounded-[28px] border border-[var(--border)] bg-[var(--bg-subtle)] p-5">
+              <div className="text-sm font-bold text-[var(--text-body)]">{uiText("修改密碼")}</div>
+              <div className="mt-4 grid gap-4 md:grid-cols-3">
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder={uiText("目前密碼")}
+                  className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3 text-sm text-[var(--text-main)] outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--accent-soft)]"
+                />
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder={uiText("新密碼（至少 8 個字元）")}
+                  className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3 text-sm text-[var(--text-main)] outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--accent-soft)]"
+                />
+                <input
+                  type="password"
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                  placeholder={uiText("確認新密碼")}
+                  className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3 text-sm text-[var(--text-main)] outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--accent-soft)]"
+                />
+              </div>
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <p className="text-xs text-[var(--text-muted)]">{uiText("新密碼至少 8 個字元。")}</p>
+                <button type="submit" disabled={pwSaving} className="rounded-2xl bg-[var(--accent)] px-6 py-2.5 text-sm font-bold text-white transition hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60">
+                  {pwSaving ? uiText("更新中...") : uiText("更新密碼")}
+                </button>
+              </div>
+              {pwError && <p className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-700">{uiError(pwError)}</p>}
+              {pwMessage && <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">{uiText(pwMessage)}</p>}
+            </form>
 
-          <form onSubmit={handleChangeEmail} className="mt-5 rounded-[28px] border border-[var(--border)] bg-[var(--bg-subtle)] p-5">
-            <div className="text-sm font-bold text-[var(--text-body)]">{uiText("更改郵箱")}</div>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <input
-                type="email"
-                value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
-                placeholder={uiText("新電郵地址")}
-                className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3 text-sm text-[var(--text-main)] outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--accent-soft)]"
-              />
-              <input
-                type="password"
-                value={emailPassword}
-                onChange={(e) => setEmailPassword(e.target.value)}
-                placeholder={uiText("目前密碼")}
-                className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3 text-sm text-[var(--text-main)] outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--accent-soft)]"
-              />
-            </div>
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <p className="text-xs text-[var(--text-muted)]">{uiText("更改郵箱需要輸入目前密碼確認。")}</p>
-              <button type="submit" disabled={emailSaving} className="rounded-2xl bg-[var(--accent)] px-6 py-2.5 text-sm font-bold text-white transition hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60">
-                {emailSaving ? uiText("更新中...") : uiText("更新電郵")}
-              </button>
-            </div>
-            {emailError && <p className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-700">{uiError(emailError)}</p>}
-            {emailMessage && <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">{uiText(emailMessage)}</p>}
-          </form>
-        </section>
+            <form onSubmit={handleChangeEmail} className="mt-5 rounded-[28px] border border-[var(--border)] bg-[var(--bg-subtle)] p-5">
+              <div className="text-sm font-bold text-[var(--text-body)]">{uiText("更改郵箱")}</div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <input
+                  type="email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  placeholder={uiText("新電郵地址")}
+                  className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3 text-sm text-[var(--text-main)] outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--accent-soft)]"
+                />
+                <input
+                  type="password"
+                  value={emailPassword}
+                  onChange={(e) => setEmailPassword(e.target.value)}
+                  placeholder={uiText("目前密碼")}
+                  className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3 text-sm text-[var(--text-main)] outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--accent-soft)]"
+                />
+              </div>
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <p className="text-xs text-[var(--text-muted)]">{uiText("更改郵箱需要輸入目前密碼確認。")}</p>
+                <button type="submit" disabled={emailSaving} className="rounded-2xl bg-[var(--accent)] px-6 py-2.5 text-sm font-bold text-white transition hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60">
+                  {emailSaving ? uiText("更新中...") : uiText("更新電郵")}
+                </button>
+              </div>
+              {emailError && <p className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-700">{uiError(emailError)}</p>}
+              {emailMessage && <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700">{uiText(emailMessage)}</p>}
+            </form>
+          </section>
+        )}
 
         {/* ---- 外觀 ---- */}
         <section className="mt-8 border-t border-[var(--border)] pt-8">

@@ -28,6 +28,14 @@ const GROUPS_A = [`${PREFIX}group_a1`, `${PREFIX}group_a2`];
 const GROUP_B = `${PREFIX}group_b1`;
 const BOT_A = `${PREFIX}bot_a`;
 const BOT_B = `${PREFIX}bot_b`;
+// 匯入測試用嘅班名同電郵。班級係匯入時即場開嘅，id 係 random UUID，
+// 所以清理要靠名／電郵，唔可以靠 id。
+const IMPORT_CLASSES = [`${PREFIX}class_3a`, `${PREFIX}class_3b`];
+const IMPORT_EMAILS = [
+  `${PREFIX}import_1@example.test`,
+  `${PREFIX}import_2@example.test`,
+  `${PREFIX}import_3@example.test`,
+];
 const ALL_USERS = [TEACHER_A, TEACHER_B, ...STUDENTS_A, STUDENT_FOREIGN];
 const ALL_GROUPS = [...GROUPS_A, GROUP_B];
 
@@ -52,8 +60,18 @@ async function resetFixture() {
     ALL_USERS,
   ]);
   await pool.query("DELETE FROM student_groups WHERE id = ANY($1::text[])", [ALL_GROUPS]);
+  // 匯入會即場開班（random UUID），唔清走嘅話「同名班級重用」呢類測試會假陽性。
+  await pool.query(
+    `DELETE FROM student_group_members
+     WHERE group_id IN (SELECT id FROM student_groups WHERE teacher_id = ANY($1::text[]))`,
+    [ALL_USERS]
+  );
+  await pool.query("DELETE FROM student_groups WHERE teacher_id = ANY($1::text[])", [ALL_USERS]);
   await pool.query("DELETE FROM bots WHERE id = ANY($1::text[])", [[BOT_A, BOT_B]]);
-  await pool.query("DELETE FROM users WHERE id = ANY($1::text[])", [ALL_USERS]);
+  await pool.query("DELETE FROM users WHERE id = ANY($1::text[]) OR email = ANY($2::text[])", [
+    ALL_USERS,
+    IMPORT_EMAILS,
+  ]);
 
   await pool.query(
     `INSERT INTO users (id, full_name, email, role, password_hash) VALUES
@@ -127,7 +145,7 @@ function authHeader(userId = TEACHER_A, role: "teacher" | "student" = "teacher")
 }
 
 async function callApi(
-  method: "PUT" | "DELETE",
+  method: "PUT" | "DELETE" | "POST",
   path: string,
   options: { body?: unknown; role?: "teacher" | "student"; userId?: string; anonymous?: boolean } = {}
 ) {
@@ -383,3 +401,120 @@ test(
     assert.deepEqual(await membershipPairs([GROUPS_A[0]], STUDENTS_A), [`${GROUPS_A[0]}:${STUDENTS_A[0]}`]);
   }
 );
+
+test("POST /api/students/import：班級欄會自動開班、寫入 membership、回報每班人數", { skip: !safeTestDatabase }, async () => {
+  await resetFixture();
+  const response = await callApi("POST", "/api/students/import", {
+    body: {
+      students: [
+        { fullName: "Import One", email: IMPORT_EMAILS[0], className: IMPORT_CLASSES[0] },
+        { fullName: "Import Two", email: IMPORT_EMAILS[1], className: IMPORT_CLASSES[0] },
+      ],
+    },
+  });
+
+  assert.equal(response.status, 201);
+  const [first, second] = response.body.students;
+  assert.equal(first.groupIds.length, 1, "匯入完要即刻帶返班級 id");
+  assert.equal(first.groupIds[0], second.groupIds[0], "同班嘅人要指向同一個 group");
+  assert.deepEqual(response.body.groups, [
+    { id: first.groupIds[0], name: IMPORT_CLASSES[0], created: true, studentCount: 2 },
+  ]);
+
+  const created = await pool.query("SELECT id FROM student_groups WHERE teacher_id=$1 AND name=$2", [
+    TEACHER_A,
+    IMPORT_CLASSES[0],
+  ]);
+  assert.equal(created.rowCount, 1, "班級要真係開咗一個");
+  assert.deepEqual(
+    await membershipPairs([first.groupIds[0]], [first.id, second.id]),
+    [`${first.groupIds[0]}:${first.id}`, `${first.groupIds[0]}:${second.id}`].sort()
+  );
+});
+
+test("POST /api/students/import：同名班級會重用，studentCount 係全班人數", { skip: !safeTestDatabase }, async () => {
+  await resetFixture();
+  const first = await callApi("POST", "/api/students/import", {
+    body: { students: [{ fullName: "Import One", email: IMPORT_EMAILS[0], className: IMPORT_CLASSES[0] }] },
+  });
+  assert.equal(first.body.groups[0].created, true);
+
+  const second = await callApi("POST", "/api/students/import", {
+    body: { students: [{ fullName: "Import Two", email: IMPORT_EMAILS[1], className: IMPORT_CLASSES[0] }] },
+  });
+  assert.equal(second.body.groups[0].created, false, "同名班級要重用，唔可以再開一個");
+  assert.equal(second.body.groups[0].id, first.body.groups[0].id);
+  assert.equal(second.body.groups[0].studentCount, 2, "studentCount 係全班人數，唔係今次加咗幾個");
+
+  const count = await pool.query("SELECT COUNT(*)::int AS total FROM student_groups WHERE teacher_id=$1 AND name=$2", [
+    TEACHER_A,
+    IMPORT_CLASSES[0],
+  ]);
+  assert.equal(count.rows[0].total, 1);
+});
+
+test("POST /api/students/import：冇班級嘅行照樣匯入，唔會硬塞入班", { skip: !safeTestDatabase }, async () => {
+  await resetFixture();
+  const response = await callApi("POST", "/api/students/import", {
+    body: {
+      students: [
+        { fullName: "Import One", email: IMPORT_EMAILS[0] },
+        { fullName: "Import Two", email: IMPORT_EMAILS[1], className: "   " },
+        { fullName: "Import Three", email: IMPORT_EMAILS[2], className: IMPORT_CLASSES[0] },
+      ],
+    },
+  });
+
+  assert.equal(response.status, 201);
+  assert.deepEqual(response.body.students[0].groupIds, []);
+  assert.deepEqual(response.body.students[1].groupIds, [], "空白班級名唔可以開出一個空名班");
+  assert.equal(response.body.groups.length, 1, "只有第三行先有班級");
+
+  const groups = await pool.query("SELECT id FROM student_groups WHERE teacher_id=$1", [TEACHER_A]);
+  assert.equal(groups.rowCount, GROUPS_A.length + 1, "teacher_a 原本兩個班，加新增一個");
+});
+
+test("POST /api/students/import：重匯入會跟返新班級，唔會殘留舊班", { skip: !safeTestDatabase }, async () => {
+  await resetFixture();
+  await callApi("POST", "/api/students/import", {
+    body: { students: [{ fullName: "Import One", email: IMPORT_EMAILS[0], className: IMPORT_CLASSES[0] }] },
+  });
+  const moved = await callApi("POST", "/api/students/import", {
+    body: { students: [{ fullName: "Import One", email: IMPORT_EMAILS[0], className: IMPORT_CLASSES[1] }] },
+  });
+
+  const studentId = moved.body.students[0].id;
+  const rows = await pool.query(
+    `SELECT sg.name FROM student_group_members gm
+     JOIN student_groups sg ON sg.id = gm.group_id
+     WHERE gm.student_id = $1 AND sg.teacher_id = $2`,
+    [studentId, TEACHER_A]
+  );
+  assert.deepEqual(rows.rows.map((row: { name: string }) => row.name), [IMPORT_CLASSES[1]], "同時只可以屬於一個班");
+  const movedGroup = await pool.query("SELECT id FROM student_groups WHERE teacher_id=$1 AND name=$2", [
+    TEACHER_A,
+    IMPORT_CLASSES[1],
+  ]);
+  assert.deepEqual(moved.body.students[0].groupIds, [movedGroup.rows[0].id], "response 要跟返最後嘅班級");
+});
+
+test("POST /api/students/import：中途撞 409 → 成批 rollback，連新開嘅班都收返", { skip: !safeTestDatabase }, async () => {
+  await resetFixture();
+  const response = await callApi("POST", "/api/students/import", {
+    body: {
+      students: [
+        { fullName: "Import One", email: IMPORT_EMAILS[0], className: IMPORT_CLASSES[0] },
+        { fullName: "Teacher A", email: "sops_teacher_a@example.test", className: IMPORT_CLASSES[0] },
+      ],
+    },
+  });
+
+  assert.equal(response.status, 409, "老師電郵唔係學生帳戶");
+  const groups = await pool.query("SELECT id FROM student_groups WHERE teacher_id=$1 AND name = ANY($2::text[])", [
+    TEACHER_A,
+    IMPORT_CLASSES,
+  ]);
+  assert.equal(groups.rowCount, 0, "rollback 要連新開嘅班一齊收返");
+  const accounts = await pool.query("SELECT id FROM users WHERE email = ANY($1::text[])", [IMPORT_EMAILS]);
+  assert.equal(accounts.rowCount, 0, "第一行嘅帳戶都唔應該留低");
+});
