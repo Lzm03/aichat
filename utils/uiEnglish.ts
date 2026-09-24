@@ -1365,6 +1365,7 @@ export const englishUi: Record<string, string> = {
   "退出引導": "Exit Guided Mode",
   "重複這一步": "Repeat This Step",
   "給我示例": "Show an Example",
+  "點一下回覆呢條問題": "Tap to answer this question",
   "已收到回覆語音，請點一下畫面以恢復播放。": "Reply audio is ready. Tap the screen to resume playback.",
   "上傳圖片": "Upload Image",
   "輸入訊息，或按麥克風説話...": "Enter a message or tap the microphone to speak…",

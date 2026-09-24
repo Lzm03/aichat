@@ -14,6 +14,7 @@ import {
   Lightbulb,
   Brain,
   Rocket,
+  HelpCircle,
   BookOpen,
   Check,
   Loader2,
@@ -31,7 +32,12 @@ import {
   updateConversationTopic as updateConversationTopicRecord,
 } from "../../utils/chat-api";
 import { listCharacterTopics } from "../../utils/topic-api";
-import { buildChatSystemPrompt } from "../../utils/chat-prompt";
+import {
+  buildCannedGuidedAnnouncement,
+  buildChatSystemPrompt,
+  needsGuidedAnnouncement,
+  parseAnswerMode,
+} from "../../utils/chat-prompt";
 import { readAuthSession } from "../../utils/auth";
 import { usePlatformDialog } from "../../hooks/usePlatformDialog";
 import { PlatformDialog } from "../system/PlatformDialog";
@@ -66,6 +72,30 @@ type ChatMessage = {
   /** 由存檔還原嘅訊息先有；即場打嘅訊息屬目前主題，唔會帶。 */
   topicId?: string;
 };
+
+/** 內容指紋（djb2）：只用嚟做快取 key，唔需要密碼學強度。 */
+function contentFingerprint(text: string) {
+  let hash = 5381;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) + hash + text.charCodeAt(index)) | 0;
+  }
+  return (hash >>> 0).toString(36);
+}
+
+/**
+ * 學生撳「答唔到呢條問題」chip 時實際送出去嘅訊息。
+ * 跟對話回覆語言（同 buildDefaultOpeningMessage 一樣係對話內容，唔係介面文案，
+ * 所以唔行 uiText）；內容明文寫住學生要答案，好觸發答題策略嘅卡關遞進。
+ */
+function buildStuckAnswerRequest(question: string, language: ReplyLanguage) {
+  if (language === "english") {
+    return `I don't know how to answer "${question}" — can you just tell me the answer?`;
+  }
+  if (language === "mandarin") {
+    return `「${question}」這條問題我不會答，你可以直接給我答案嗎？`;
+  }
+  return `「${question}」呢條問題我唔識答，你可以直接俾答案我嗎？`;
+}
 
 const topicBoundaryLabel = (
   nextTopicId: string,
@@ -637,6 +667,92 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     return buildDefaultOpeningMessage();
   }, [buildDefaultOpeningMessage, configuredOpeningMessage, replyLanguage, translatedOpeningMessage, usesClassicalChineseStyle]);
 
+  /* ---------------- 開場引導說明（開場白之後補一句「我唔會直接俾答案」） ----------------
+   * 只有兩個引導模式先有；「直接給答案」唔應該出（老師自己揀咗直接答）。
+   * 句子由 server 按「說話風格 × 回覆語言 × 人物設定」生成變體，前端只負責攞同顯示。 */
+  const guidedAnswerMode = React.useMemo(
+    () => parseAnswerMode(botConfig.knowledgeBase || ""),
+    [botConfig.knowledgeBase]
+  );
+  const guidedAnnouncementCacheRef = useRef<Map<string, string>>(new Map());
+  const currentMessagesRef = useRef<ChatMessage[]>([]);
+
+  React.useEffect(() => {
+    currentMessagesRef.current = messages;
+  }, [messages]);
+
+  const loadGuidedAnnouncement = React.useCallback(
+    async (language: ReplyLanguage): Promise<string> => {
+      if (!needsGuidedAnnouncement(guidedAnswerMode)) return "";
+      // 快取跟人設內容指紋：老師改咗說話風格／答題策略，舊說明即刻失效重新生成。
+      const fingerprint = contentFingerprint(
+        `${botConfig.knowledgeBase || ""}\u0000${botConfig.securityPrompt || ""}`
+      );
+      const cacheKey = `bot-guided-announcement:${botConfig.id}:${language}:${fingerprint}`;
+      const cached = guidedAnnouncementCacheRef.current.get(cacheKey);
+      if (cached) return cached;
+      try {
+        const stored = window.localStorage.getItem(cacheKey);
+        if (stored) {
+          guidedAnnouncementCacheRef.current.set(cacheKey, stored);
+          return stored;
+        }
+      } catch {
+        // 私密視窗／停用 cookie：照樣生成，只係冇快取。
+      }
+      try {
+        const response = await fetch(
+          `${API_BASE}/api/bots/${botConfig.id}/opening?replyLanguage=${language}`
+        );
+        const data = response.ok ? await response.json() : null;
+        const announcement = String(data?.announcement || "").trim();
+        if (!announcement) return "";
+        guidedAnnouncementCacheRef.current.set(cacheKey, announcement);
+        try {
+          window.localStorage.setItem(cacheKey, announcement);
+        } catch {
+          // 寫唔入就當冇快取，唔影響今次顯示。
+        }
+        return announcement;
+      } catch (error) {
+        // 後端已經有罐頭後備句；呢度只係連線都失敗，所以唔寫快取（下次要再試）。
+        console.warn("guided announcement skipped", error);
+        return buildCannedGuidedAnnouncement(language);
+      }
+    },
+    [botConfig.id, botConfig.knowledgeBase, botConfig.securityPrompt, guidedAnswerMode]
+  );
+
+  const appendGuidedAnnouncement = React.useCallback(
+    (language: ReplyLanguage, sessionId: number, options?: { speak?: boolean }) => {
+      const shouldSpeak = options?.speak !== false;
+      void loadGuidedAnnouncement(language).then((announcement) => {
+        if (!announcement) return;
+        if (sessionId !== ttsSessionRef.current) return;
+        // 學生搶先開口就唔出：呢句係「對話開始」嘅規則說明，
+        // 擺喺學生問題後面會變成答非所問。
+        if (currentMessagesRef.current.some((message) => message.role === "user")) return;
+        if (!shouldSpeak) {
+          // 還原對話時唔開聲：整段歷史都係靜音還原，唔應該得呢句突然講出嚟。
+          setMessages((prev) =>
+            prev.some((message) => message.role === "user")
+              ? prev
+              : [...prev, { role: "bot", content: announcement }]
+          );
+          return;
+        }
+        setMessages((prev) =>
+          prev.some((message) => message.role === "user")
+            ? prev
+            : [...prev, { role: "bot", content: "" }]
+        );
+        // 經同一條 TTS 隊列出，所以會自然接喺開場白之後，唔會疊聲。
+        presentSpokenReply(announcement, generationIdRef.current);
+      });
+    },
+    [loadGuidedAnnouncement]
+  );
+
   useEffect(() => {
     const sourceText = String(configuredOpeningMessage || "").trim();
     setTranslatedOpeningMessage("");
@@ -741,8 +857,10 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
         availableTopics.find((topic) => topic.isDefault)?.id || availableTopics[0]?.id || null
       );
       setMessages([{ role: "bot", content: buildOpeningMessage() }]);
+      // 新對話 = 對話重新開始，開場說明要再出（stopAllSpeech 已經 bump 咗 session）。
+      appendGuidedAnnouncement(replyLanguage, ttsSessionRef.current);
     },
-    [availableTopics, buildOpeningMessage]
+    [availableTopics, buildOpeningMessage, appendGuidedAnnouncement, replyLanguage]
   );
 
   const syncConversationList = React.useCallback(
@@ -898,6 +1016,10 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
         const restoredMessages = mapConversationMessagesToChatMessages(historyMessages);
         conversationMessagesCacheRef.current.set(conversation.id, restoredMessages);
         setMessages(restoredMessages);
+        // 空對話（未傾過）還原出嚟就同新開一樣，所以都要有開場說明。
+        if (historyMessages.length === 0) {
+          appendGuidedAnnouncement(conversationLanguage, ttsSessionRef.current, { speak: false });
+        }
       } catch (error) {
         console.error(error);
         setHistoryError("無法載入聊天紀錄，請稍後再試。");
@@ -905,7 +1027,12 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
         setHistoryActionLoading(false);
       }
     },
-    [availableTopics, detectConversationLanguage, mapConversationMessagesToChatMessages]
+    [
+      availableTopics,
+      detectConversationLanguage,
+      mapConversationMessagesToChatMessages,
+      appendGuidedAnnouncement,
+    ]
   );
 
   const handleCopyShareLink = async () => {
@@ -1996,6 +2123,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
         },
       ]);
       setOpeningReady(true);
+      appendGuidedAnnouncement(replyLanguage, sessionId);
       return;
     }
 
@@ -2015,12 +2143,14 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
         ttsAudioMap.current.set(openingSeq, audio);
         setMessages([{ role: "bot", content: "" }]);
         speechRevealRef.current.set(openingSeq, createSpeechReveal(openingMessage, content => {
-          setMessages([{ role: "bot", content }]);
+          // 只覆寫開場白自己嗰格：後面可能已經接住開場說明，唔可以整批蓋走。
+          setMessages(prev => [{ role: "bot", content }, ...prev.slice(1)]);
         }));
         setIsStopAvailable(true);
         setIsBooting(false);
         setOpeningReady(true);
         tryPlayInOrder();
+        appendGuidedAnnouncement(replyLanguage, sessionId);
       })
       .catch((e) => {
         console.error("Opening TTS prepare error:", e);
@@ -2036,9 +2166,10 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
           ]);
           setBotState("idle");
           setOpeningReady(true);
+          appendGuidedAnnouncement(replyLanguage, sessionId);
         }
       });
-  }, [botName, configuredOpeningMessage, currentConversationId, isOpen, voiceId, permissionReady, shouldRequirePermission, buildOpeningMessage]);
+  }, [botName, configuredOpeningMessage, currentConversationId, isOpen, voiceId, permissionReady, shouldRequirePermission, buildOpeningMessage, appendGuidedAnnouncement, replyLanguage]);
   
   
 
@@ -4826,7 +4957,11 @@ const unlockAudioAndMic = async () => {
                   <div
                     ref={messagesRef}
                     className={`custom-scroll flex-1 space-y-3 overflow-y-auto bg-[linear-gradient(180deg,rgba(255,250,241,0.6),rgba(247,241,230,0.92))] p-3.5 ${
-                      !isQuizGuidanceBlocked && (suggestedReplies.length > 0 || guidedMode) ? "pb-44 md:pb-52" : "pb-3.5"
+                      !isQuizGuidanceBlocked && (suggestedReplies.length > 0 || guidedMode)
+                        ? guideQuestion
+                          ? "pb-56 md:pb-64"
+                          : "pb-44 md:pb-52"
+                        : "pb-3.5"
                     }`}
                   >
                 {topicTranscript.map((m, i) => m.role === "bot" && !m.content ? null : (
@@ -5037,6 +5172,28 @@ const unlockAudioAndMic = async () => {
                       >{uiText("退出引導")}</button>
                     </div>
                     <div className="space-y-1">
+                      {/* Bot 追問嘅問題本身做成 chip：學生撳一下就當「我答唔到呢條」，
+                          觸發答題策略嘅卡關遞進（提示 → 選項 → 答案連解釋）。
+                          呢個係 L1/L2/L3 以外嘅第二個逃生口，唔會繞過引導直接倒答案。 */}
+                      {guideQuestion ? (
+                        <button
+                          key={`follow-up-${guideQuestion}`}
+                          type="button"
+                          title={uiText("點一下回覆呢條問題")}
+                          aria-label={uiText("點一下回覆呢條問題")}
+                          onClick={() => {
+                            const request = buildStuckAnswerRequest(guideQuestion, replyLanguage);
+                            void sendMessage(request, request, "guided_hint");
+                          }}
+                          className="flex min-h-[34px] w-full items-center gap-1.5 rounded-full border border-[#cbd5e1] bg-white px-3 py-1 text-left text-[10px] font-black text-[#334155] shadow-[0_2px_6px_rgba(148,163,184,0.06)] transition hover:bg-slate-50 active:scale-[0.99]"
+                        >
+                          <HelpCircle className="h-3.5 w-3.5 shrink-0" />
+                          <span className="shrink-0">{uiText("點一下回覆呢條問題")}</span>
+                          <span className="min-w-0 truncate text-[10px] font-bold text-[#475569]">
+                            {guideQuestion}
+                          </span>
+                        </button>
+                      ) : null}
                       {suggestedReplies.map((reply) => {
                         const meta = getSuggestedReplyMeta(reply.tier);
                         const Icon = meta.icon;

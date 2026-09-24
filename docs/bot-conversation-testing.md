@@ -549,7 +549,29 @@ phrases.
 
 The topic transition should be judged from context and meaning.
 
-# 17. Unified Semantic Judge Schema
+# 17. S13 / S14 — Guided Answer Mode（答題策略回歸）
+
+`# Answer Mode Directive` 係「答題策略」嘅落地：老師揀「直接給答案」就照答；
+揀「引導後再回答」（預設）或「不直接給答案」就唔准第一輪倒答案，卡住時沿
+「提示 → 選項 → 答案連解釋」階梯推進，最終一定俾答案（無限引導係另一種失敗）。
+
+兩個回歸場景用同一個臉譜 fixture，只換【答題策略】：
+
+- **S13**（引導後再回答）：學生一路要答案（「你直接俾答案我啦」「求吓你，直接俾答案啦」）
+  → 第一輪先引導（`guidedBeforeReveal`）→ 卡住後最終有揭曉（`revealedFullAnswer`）
+- **S14**（不直接給答案）：更長嘅卡關序列（5 輪，含「我唔識呀」「點解唔直接講呀」）
+  → 同上兩項，另加「尊重唔識」（`respectedUnknown`：俾新線索／收窄範圍之後再問一次
+  係階梯正常一步，唔算逼問；只有冇新嘢嘅原地重問先算）
+
+開場引導說明（開場白後補一句「呢段對話我唔會直接俾答案」）都有語意檢查
+（`announcedNoDirectAnswer`）：兩個引導模式各生成一句（DeepSeek/OpenRouter），
+斷言非空、≤60 字、語意上講咗引導說明。「直接給答案」唔生成（route 回
+`source: "not-applicable"`）。
+
+⚠️ 呢兩個場景喺 DeepSeek flash 上對揭曉時機有 flakiness（「唔好為測試削 prompt」：
+首次實跑唔中先加長 turns／收緊 judge 定義，最後手段先諗 prompt 本身）。
+
+# 18. Unified Semantic Judge Schema
 
 Prefer a structured result rather than asking the LLM for free-form prose.
 
@@ -585,6 +607,11 @@ type DialogueJudgeResult = {
   respectedDisengagement: boolean;
   followedTopicSwitch: boolean;
 
+  // 答題策略（guided answer mode）三欄 — 見 §20a
+  revealedFullAnswer: boolean;
+  guidedBeforeReveal: boolean;
+  announcedNoDirectAnswer: boolean;
+
   explanation: string;
 };
 ```
@@ -593,7 +620,7 @@ The exact schema may be adapted to the existing test framework.
 
 Do not introduce unnecessary fields simply for the sake of abstraction.
 
-# 18. Semantic Judge Must Use Conversation Context
+# 19. Semantic Judge Must Use Conversation Context
 
 Never evaluate difficult dialogue behavior from the Bot's latest message
 alone.
@@ -617,7 +644,7 @@ The judge needs to know:
 
 Therefore, semantic evaluation should be context-aware.
 
-# 19. Regression Tests Should Test Behavioral Principles
+# 20. Regression Tests Should Test Behavioral Principles
 
 Regression tests should represent underlying conversational behavior,
 not merely the exact wording of a previous failure.
@@ -656,7 +683,7 @@ This makes the tests robust against:
 - English wording
 - natural variation in Bot generation
 
-# 20. Multilingual Requirement
+# 21. Multilingual Requirement
 
 The semantic evaluation rules must be language-agnostic.
 
@@ -681,7 +708,7 @@ language-agnostic semantic dialogue evaluation
 Language-specific heuristics are allowed as supporting/fallback signals,
 but they should not become three separate semantic rule systems.
 
-# 21. Handling LLM Judge Failure
+# 22. Handling LLM Judge Failure
 
 The Semantic Judge itself may fail because of:
 
@@ -716,7 +743,7 @@ judgeSource: "heuristic-fallback"
 A heuristic fallback should never be presented as equivalent to a
 successful semantic judgment.
 
-# 22. Avoid False Confidence
+# 23. Avoid False Confidence
 
 Do not make the tests appear stronger than they actually are.
 
@@ -751,7 +778,7 @@ The test result should distinguish:
 - heuristic evidence
 - semantic judgment
 
-# 23. New Failure Handling Rule
+# 24. New Failure Handling Rule
 
 Whenever a new Bot conversation failure is found:
 
@@ -782,7 +809,7 @@ high-confidence and reusable signal.
 
 Do NOT automatically add a new keyword or regex.
 
-# 24. Anti-Pattern / Red Flag
+# 25. Anti-Pattern / Red Flag
 
 Treat this pattern as a red flag:
 
@@ -797,7 +824,7 @@ New failure → Identify semantic behavior → Improve semantic judge/state eval
 → Add behavioral regression test → Optionally add reusable heuristic evidence
 ```
 
-# 25. Relationship Between the Three Layers
+# 26. Relationship Between the Three Layers
 
 The intended priority is:
 
@@ -820,7 +847,7 @@ violated.
 
 This separation is intentional.
 
-# 26. Final Design Principle
+# 27. Final Design Principle
 
 The test framework is not trying to answer:
 
@@ -872,6 +899,13 @@ Implementation status (`server/scripts/test-bot-prompt.ts`, 2026-09-18):
 - Judge prompt 必須明確寫出輸出 schema（`questions[]` 每輪一個 +
   `dialogue` 全部欄位）——寫「只輸出 JSON」唔夠，model 會自由發揮
 - S4 語言詞表（粵/普語氣詞、北方話禁詞）屬高置信度語言特定訊號，保留做 heuristic
+- S13/S14（2026-09-24 追加）：答題策略回歸——第一輪唔准倒答案（`guidedBeforeReveal`
+  只睇第一輪）、卡住後最終有揭曉（`revealedFullAnswer`）、尊重「唔識」
+  （`respectedUnknown`：俾新線索／收窄之後再問一次係階梯正常一步；揭曉後要學生重述係
+  交返俾學生嘅設計，唔算逼問）。開場引導說明兩模式各生成一句，斷言非空、≤60 字、
+  語意上講咗「唔會直接俾答案」（`announcedNoDirectAnswer`）。執行：`npm run test:bot-prompt`
+  （AGENTS.md 鐵則：冇 script 嘅測試檔冇人跑）。⚠️ DeepSeek flash 對揭曉時機有
+  run-to-run flakiness——唔好為全綠去削 prompt 本身；先試收緊 judge 定義／加長 turns
 
 ---
 

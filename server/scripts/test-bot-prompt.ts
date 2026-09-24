@@ -16,6 +16,8 @@
  *   S11 disengagement / re-engagement
  *   S12 topic switching
  *   S4  opening message language (Cantonese senior + English teacher)
+ *   S13 guided answer mode: no full answer on turn 1, reveal after stuck ladder (引導後再回答)
+ *   S14 strict guided mode: no full answer on turn 1, reveal after longer ladder (不直接給答案)
  */
 import dotenv from "dotenv";
 import path from "path";
@@ -26,7 +28,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, "..", ".env"), override: false });
 
-import { buildChatSystemPrompt } from "../../utils/chat-prompt.ts";
+import { buildChatSystemPrompt, buildGuidedAnnouncementPrompt } from "../../utils/chat-prompt.ts";
 import { generateOpeningMessage } from "../api/bots.ts";
 
 /* ------------------------------- fixtures ------------------------------- */
@@ -97,9 +99,13 @@ async function callChatApi(
   target: ApiTarget,
   messages: Array<{ role: string; content: string }>,
   model?: string,
-  maxTokens = 8000
+  maxTokens = 8000,
+  temperature?: number
 ) {
   const body: any = { messages, stream: false, max_tokens: maxTokens };
+  // Judge 呼叫固定 temperature 0：judge 係裁判，唔應該每次抽唔同嘅樣，
+  // 否則同一個行為每次判決都唔同（S13/S14 實跑踩過 run-to-run flake）。
+  if (temperature !== undefined) body.temperature = temperature;
   body.model = model || (target.kind === "deepseek" ? "deepseek-chat" : target.model);
   const res = await fetch(target.url, {
     method: "POST",
@@ -206,7 +212,7 @@ type PersonaOverride = {
   knowledgeBase?: string;
   securityPrompt?: string;
   grade?: string | null;
-  turns?: { S1?: string[]; S2?: string[]; S3?: string[]; S5?: string[]; S6?: string[]; S7?: string[]; S8?: string[]; S9?: string[]; S10?: string[]; S11?: string[]; S12?: string[] };
+  turns?: { S1?: string[]; S2?: string[]; S3?: string[]; S5?: string[]; S6?: string[]; S7?: string[]; S8?: string[]; S9?: string[]; S10?: string[]; S11?: string[]; S12?: string[]; S13?: string[]; S14?: string[] };
   checks?: {
     infoKeywords?: string[];
     affirmMarkers?: string[];
@@ -247,6 +253,8 @@ const DEFAULT_TURNS = {
   S10: ["我唔知。", "都係唔知。", "真係唔知呀。"],
   S11: ["嗯。", "唔想答。", "好啦，我想繼續學。"],
   S12: ["紅色臉譜代表咩？", "我突然想轉去講英文學習。", "算啦，返嚟講川劇變臉。"],
+  S13: ["紅色臉譜代表咩？", "我唔知，你直接俾答案我啦", "都係唔明，直接講啦", "求吓你，直接俾答案啦"],
+  S14: ["紅色臉譜代表咩？", "我唔識呀", "直接講俾我聽啦", "點解唔直接講呀？", "我真係諗到諗唔到"],
 };
 
 async function runChatTurns(system: string, userTurns: string[]) {
@@ -287,6 +295,9 @@ type DialogueJudgeResult = {
   asksQuestion: boolean;
   questionCount: number;
   questionType: QuestionAnalysis["questionType"];
+  revealedFullAnswer: boolean;
+  guidedBeforeReveal: boolean;
+  announcedNoDirectAnswer: boolean;
   explanation: string;
 };
 
@@ -322,12 +333,15 @@ async function semanticJudge(log: DialogueTurn[], rubric: SemanticJudgeRubric): 
     `choice 只有當 Bot 明確提供 A/B（或兩個清楚可選項）而學生其後作出選擇時先判定。\n` +
     `repeatedConcept=true 代表 Bot 實質上再次要求學生回答已經回答過、或已經明確表示不知道嘅同一概念；單純補充同一知識唔算。\n` +
     `introducedUnsupportedPremise=true 代表 Bot 把對話/知識庫冇支持嘅事當成已知事實，或者無中生有地聲稱「你頭先講過」而實際冇講。\n` +
-    `respectedUnknown=true 代表學生表示不知道後，Bot 有降低難度、直接解釋、提供提示/答案，且冇無限重問同一概念。\n` +
+    `respectedUnknown=true 代表學生表示不知道後，Bot 有降低難度、直接解釋、提供提示/答案，且冇無限重問同一概念。俾咗新提示／新線索／收窄範圍之後再問一次，係引導階梯嘅正常一步，唔算逼問；只有冇新嘢嘅原地重問先算。直接俾咗答案（揭曉）就係最高程度嘅尊重；揭曉之後要求學生用自己嘅說話重述，係交返俾學生嘅設計，唔算逼問。\n` +
     `respectedDisengagement=true 代表學生明確唔想答/唔想繼續時，Bot 冇逼問，而係降低壓力、提供退出/轉話題空間。\n` +
     `followedTopicSwitch=true 代表學生明確轉換話題後，Bot 有跟隨新話題，而唔係繼續原題。\n` +
+    `revealedFullAnswer=true 代表對話中 Bot 直接講出咗完整答案（例如明確講「紅色代表忠義」或完整解釋咗學生問嘅知識點）；只俾提示、選項或反問唔算。\n` +
+    `guidedBeforeReveal 只睇第一輪（Bot 第一次回覆）：嗰一輪有冇包含學生問嗰個答案事實。有答案事實（即使同時有提問）＝false；純問題／提示／類比／選項＝true。後續輪唔影響呢個欄位。\n` +
+    `announcedNoDirectAnswer=true 代表 Bot 喺對話開頭或早期明確講過類似「呢段對話我唔會直接俾答案，而係會引導你」嘅說明（無論點樣措辭）；純問候、自我介紹或普通提問唔算。\n` +
     `\n` +
     `輸出格式（必須嚴格遵守，直接輸出以下結構嘅 JSON，唔好加任何其他鍵）：\n` +
-    `{"questions":[{"asksQuestion":false,"questionCount":0,"questionType":"none"},...],"dialogue":{"answeredPreviousQuestion":false,"recognizedChoice":null,"repeatedConcept":false,"advancedTopic":false,"introducedUnsupportedPremise":false,"respectedUnknown":false,"respectedDisengagement":false,"followedTopicSwitch":false,"asksQuestion":false,"questionCount":0,"questionType":"none","explanation":""}}\n` +
+    `{"questions":[{"asksQuestion":false,"questionCount":0,"questionType":"none"},...],"dialogue":{"answeredPreviousQuestion":false,"recognizedChoice":null,"repeatedConcept":false,"advancedTopic":false,"introducedUnsupportedPremise":false,"respectedUnknown":false,"respectedDisengagement":false,"followedTopicSwitch":false,"asksQuestion":false,"questionCount":0,"questionType":"none","revealedFullAnswer":false,"guidedBeforeReveal":false,"announcedNoDirectAnswer":false,"explanation":""}}\n` +
     `questions 必須同對話輪數一致，每輪一個元素；questionType 只可以係 none/open/choice/recall/explanation/opinion/observation/comparison/prediction/mixed 其中之一；recognizedChoice 只可以係 "A"/"B"/null。\n` +
     `只輸出 JSON，不要 Markdown，不要額外解釋。`;
 
@@ -335,7 +349,7 @@ async function semanticJudge(log: DialogueTurn[], rubric: SemanticJudgeRubric): 
   const response = await callChatApi(target, [
     { role: "system", content: system },
     { role: "user", content: user },
-  ], undefined, 1800);
+  ], undefined, 1800, 0);
   const parsed: any = extractJson(response.content);
 
   const questions = Array.isArray(parsed?.questions) ? parsed.questions : [];
@@ -358,6 +372,9 @@ async function semanticJudge(log: DialogueTurn[], rubric: SemanticJudgeRubric): 
     questionType: ["none", "open", "choice", "recall", "explanation", "mixed"].includes(parsed?.dialogue?.questionType)
       ? parsed.dialogue.questionType
       : "none",
+    revealedFullAnswer: Boolean(parsed?.dialogue?.revealedFullAnswer),
+    guidedBeforeReveal: Boolean(parsed?.dialogue?.guidedBeforeReveal),
+    announcedNoDirectAnswer: Boolean(parsed?.dialogue?.announcedNoDirectAnswer),
     explanation: String(parsed?.dialogue?.explanation || ""),
   };
   return {
@@ -514,9 +531,9 @@ async function runSemanticScenario(
   log: DialogueTurn[],
   focus: string[],
   rules: (j: JudgeBatchResult) => Array<{ suffix: string; pass: boolean; detail: string }>
-): Promise<CheckResult[]> {
+): Promise<{ checks: CheckResult[]; judge: JudgeBatchResult }> {
   const judge = await semanticJudge(log, { scenario: id, focus });
-  return checkSemanticScenario(label, judge, rules(judge));
+  return { checks: checkSemanticScenario(label, judge, rules(judge)), judge };
 }
 
 function checkS4Opening(
@@ -554,7 +571,7 @@ if (!target) {
 }
 installOpenRouterShim(target);
 
-const only = process.argv.slice(2).map((a) => String(a).toUpperCase()).filter((a) => /^S(?:[1-9]|1[0-2])$/.test(a));
+const only = process.argv.slice(2).map((a) => String(a).toUpperCase()).filter((a) => /^S(?:[1-9]|1[0-4])$/.test(a));
 const run = (id: string) => only.length === 0 || only.includes(id);
 
 const override = loadPersonaOverride();
@@ -576,6 +593,8 @@ const turns = {
   S10: override?.turns?.S10 || DEFAULT_TURNS.S10,
   S11: override?.turns?.S11 || DEFAULT_TURNS.S11,
   S12: override?.turns?.S12 || DEFAULT_TURNS.S12,
+  S13: override?.turns?.S13 || DEFAULT_TURNS.S13,
+  S14: override?.turns?.S14 || DEFAULT_TURNS.S14,
 };
 const checkConfig = {
   infoKeywords: override?.checks?.infoKeywords || DEFAULT_INFO_KEYWORDS,
@@ -606,7 +625,7 @@ const summary: Array<{ label: string; pass: boolean }> = [];
 async function main() {
   out(`Bot prompt rules test — ${new Date().toISOString()}`);
   out(`API target: ${target.kind}${target.kind === "openrouter" ? " (deepseek via OpenRouter)" : ""}`);
-  out(`Scenarios: ${only.length ? only.join(", ") : "S1 S2 S3 S4 S5 S6 S7 S8 S9 S10 S11 S12"}`);
+  out(`Scenarios: ${only.length ? only.join(", ") : "S1 S2 S3 S4 S5 S6 S7 S8 S9 S10 S11 S12 S13 S14"}`);
   if (override) {
     out(`Persona override: bot-prompt-test-persona.json（${persona.name}，grade=${persona.grade || "未設定"}）`);
   }
@@ -703,22 +722,37 @@ async function main() {
     title: string,
     scenarioTurns: string[],
     focus: string[],
-    makeChecks: (j: JudgeBatchResult) => Array<{ suffix: string; pass: boolean; detail: string }>
+    makeChecks: (j: JudgeBatchResult) => Array<{ suffix: string; pass: boolean; detail: string }>,
+    systemPromptOverride?: string,
+    questionRule: "marks" | "semantic" = "marks"
   ) => {
     if (!run(id)) return;
     out(`【${id} ${title}】`);
-    const log = await runChatTurns(systemPrompt, scenarioTurns);
+    const log = await runChatTurns(systemPromptOverride || systemPrompt, scenarioTurns);
     log.forEach((t, i) => {
       out(`--- 第${i + 1}輪 ---`);
       out(`學生：${t.user}`);
       out(`Bot：${t.bot}`);
     });
-    const checks = await runSemanticScenario(id, id, log, focus, makeChecks);
-    const hardQuestionChecks: CheckResult[] = log.map((t, i) => ({
-      label: `${id} q${i + 1} 最多一條硬性問號限制`,
-      pass: qCount(t.bot) <= 1,
-      detail: `問號數:${qCount(t.bot)}`,
-    }));
+    const { checks, judge } = await runSemanticScenario(id, id, log, focus, makeChecks);
+    // 「最多一條問題」：預設用硬性問號數（legacy 檢查）。S13/S14 嘅階梯輪
+    // （「A 定 B？」）天然多問號，而測試架構第一原則係「語意 judge 係最終權威」，
+    // 所以呢兩個場景以語意問題數為準，問號數只做 reference。
+    const hardQuestionChecks: CheckResult[] = log.map((t, i) => {
+      const marksOk = qCount(t.bot) <= 1;
+      const semanticOk = (judge.questions[i]?.questionCount ?? 99) <= 1;
+      return questionRule === "semantic"
+        ? {
+            label: `${id} q${i + 1} 最多一條問題（語意）`,
+            pass: semanticOk,
+            detail: `語意問題數:${judge.questions[i]?.questionCount ?? "?"}（問號數:${qCount(t.bot)} 只作參考）`,
+          }
+        : {
+            label: `${id} q${i + 1} 最多一條硬性問號限制`,
+            pass: marksOk,
+            detail: `問號數:${qCount(t.bot)}`,
+          };
+    });
     for (const c of [...checks, ...hardQuestionChecks]) {
       summary.push({ label: c.label, pass: c.pass });
       out(`${c.pass ? "PASS" : "FAIL"}  ${c.label} ｜ ${c.detail}`);
@@ -768,6 +802,116 @@ async function main() {
       { suffix: "a 跟隨轉題", pass: j.dialogue.followedTopicSwitch, detail: j.dialogue.followedTopicSwitch ? "有跟新話題" : "未跟隨新話題 ❌" },
       { suffix: "b 冇無理拉回舊題", pass: !j.dialogue.introducedUnsupportedPremise, detail: j.dialogue.introducedUnsupportedPremise ? "有不合理前提 ❌" : "冇無理新增前提" },
     ]);
+
+  await runAndReportSemantic("S13", "引導後再回答：第一輪唔准倒答案，卡住照階梯推進，最終俾答案連解釋", turns.S13,
+    [
+      "學生第一次問知識問題時，Bot 必須先引導（提問/提示/選項），唔可以即刻倒出完整答案",
+      "學生連續卡住並直接要求答案時，Bot 依階梯推進：更具體提示或選項，最終俾完整答案連解釋",
+      "最終答案要落喺學生問嘅知識上，唔可以顧左右而言他",
+    ],
+    (j) => [
+      {
+        suffix: "a 第一輪冇倒答案",
+        pass: j.dialogue.guidedBeforeReveal,
+        detail: j.dialogue.guidedBeforeReveal ? "有先引導" : "第一輪就倒咗完整答案 ❌",
+      },
+      {
+        suffix: "b 卡住後最終有俾答案",
+        pass: j.dialogue.revealedFullAnswer,
+        detail: j.dialogue.revealedFullAnswer ? "有揭曉答案" : "全程冇俾到答案 ❌",
+      },
+    ],
+    undefined,
+    "semantic"
+  );
+
+  // S14 用「不直接給答案」：同樣嘅 fixture，只係【答題策略】換咗，
+  // 斷言行為跟返更嚴格嘅階梯（更慢，但最終都要有答案）。
+  const strictKnowledgeBase = persona.knowledgeBase.replace(
+    /【答題策略】[^\n]*/,
+    "【答題策略】不直接給答案"
+  );
+  const strictPrompt = buildChatSystemPrompt({
+    roleName: persona.name,
+    knowledgeBase: strictKnowledgeBase,
+    securityPrompt: persona.securityPrompt,
+    gradeBand: persona.grade,
+  });
+  await runAndReportSemantic("S14", "不直接給答案：更長卡關階梯，最終仍然要俾答案連解釋", turns.S14,
+    [
+      "學生第一次問知識問題時，Bot 必須先引導，唔可以即刻倒出完整答案",
+      "學生連續卡住並直接要求答案時，Bot 依更謹慎嘅階梯推進，最終俾完整答案連解釋",
+      "學生表示唔識時要尊重狀態：俾新線索、收窄範圍或選項之後再問一次係階梯嘅正常一步，只要唔係冇新嘢嘅原地重問就唔算逼問",
+    ],
+    (j) => [
+      {
+        suffix: "a 第一輪冇倒答案",
+        pass: j.dialogue.guidedBeforeReveal,
+        detail: j.dialogue.guidedBeforeReveal ? "有先引導" : "第一輪就倒咗完整答案 ❌",
+      },
+      {
+        suffix: "b 卡住後最終有俾答案",
+        pass: j.dialogue.revealedFullAnswer,
+        detail: j.dialogue.revealedFullAnswer ? "有揭曉答案" : "全程冇俾到答案 ❌",
+      },
+      {
+        suffix: "c 尊重「唔識」",
+        pass: j.dialogue.respectedUnknown,
+        detail: j.dialogue.respectedUnknown ? "有降難度/解釋" : "仍然逼學生猜 ❌",
+      },
+    ],
+    strictPrompt,
+    "semantic"
+  );
+
+  if (run("S13") || run("S14")) {
+    out("【S13/S14 開場引導說明：兩個引導模式都要生成「唔會直接俾答案」變體】");
+    // 生產用 Gemini、呢度用 DeepSeek/OpenRouter：同 prompt 唔同 provider，
+    // 回歸斷言係「行為」（語意上講咗引導說明），唔係逐字比對。
+    for (const mode of ["引導後再回答", "不直接給答案"] as const) {
+      const modeKnowledgeBase = persona.knowledgeBase.replace(
+        /【答題策略】[^\n]*/,
+        `【答題策略】${mode}`
+      );
+      const announcementPrompt = buildGuidedAnnouncementPrompt({
+        roleName: persona.name,
+        knowledgeBase: modeKnowledgeBase,
+        securityPrompt: persona.securityPrompt,
+        replyLanguage: "cantonese",
+        answerMode: mode,
+      });
+      const announcement = (
+        await chatOnce(target, announcementPrompt.systemPrompt, [
+          { role: "user", content: announcementPrompt.userPrompt },
+        ])
+      ).content.trim();
+      out(`${mode} 開場說明：「${announcement}」`);
+
+      const nonEmpty = announcement.length > 0;
+      const shortEnough = announcement.length <= 60;
+      const judged = await semanticJudge(
+        [{ user: "（開場）", bot: announcement }],
+        {
+          scenario: "開場引導說明",
+          focus: ["Bot 向學生說明呢段對話唔會直接俾答案，而係用問題同提示引導學生自己諗"],
+        }
+      );
+      const labels = [
+        { label: `開場說明（${mode}）a 非空`, pass: nonEmpty, detail: `字數:${announcement.length}` },
+        { label: `開場說明（${mode}）b ≤60 字`, pass: shortEnough, detail: `字數:${announcement.length}` },
+        {
+          label: `開場說明（${mode}）c 語意上講咗「唔會直接俾答案」`,
+          pass: judged.dialogue.announcedNoDirectAnswer,
+          detail: judged.dialogue.announcedNoDirectAnswer ? "有說明" : "語意上冇說明 ❌",
+        },
+      ];
+      for (const c of labels) {
+        summary.push({ label: c.label, pass: c.pass });
+        out(`${c.pass ? "PASS" : "FAIL"}  ${c.label} ｜ ${c.detail}`);
+      }
+    }
+    line();
+  }
 
   if (run("S4")) {
     out("【S4 開場白語言跟角色人設】");
