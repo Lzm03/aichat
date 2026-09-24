@@ -59,5 +59,6 @@ export function preloadTeacherWorkspace() {
     loadTeacherData("/api/bots/classes"),
     loadTeacherData("/api/teachers/me/ability-report?period=30d"),
     loadTeacherData("/api/teachers/me/grading-summary"),
+    loadTeacherData("/api/flagged-chat/count"),
   ]);
 }

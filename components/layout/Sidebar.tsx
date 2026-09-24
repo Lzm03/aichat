@@ -2,17 +2,19 @@ import { uiText } from '../../utils/uiI18n';
 import React from 'react';
 import { Icons } from '../icons';
 import type { Page } from '../../App';
+import { useFlaggedChatCount } from '../../hooks/useFlaggedChatCount';
 
 interface NavItemProps {
   icon: React.ElementType;
   label: string;
   active?: boolean;
   disabled?: boolean;
+  badge?: number;
   onClick: () => void;
 }
 
 // FIX: Explicitly type NavItem as a React.FC to correctly handle React's special `key` prop.
-const NavItem: React.FC<NavItemProps> = ({ icon: Icon, label, active = false, disabled = false, onClick }) => (
+const NavItem: React.FC<NavItemProps> = ({ icon: Icon, label, active = false, disabled = false, badge = 0, onClick }) => (
   <li className="px-2">
     <a
       href="#"
@@ -21,7 +23,7 @@ const NavItem: React.FC<NavItemProps> = ({ icon: Icon, label, active = false, di
         if (disabled) return;
         onClick();
       }}
-      className={`flex flex-col items-center justify-center px-2 py-4 rounded-xl transition-all duration-200 ${
+      className={`relative flex flex-col items-center justify-center px-2 py-4 rounded-xl transition-all duration-200 ${
         disabled
           ? 'bg-slate-100 text-slate-400 cursor-not-allowed pointer-events-none'
           : active
@@ -33,6 +35,11 @@ const NavItem: React.FC<NavItemProps> = ({ icon: Icon, label, active = false, di
     >
       <Icon className={`w-6 h-6 mb-1 ${disabled ? 'text-slate-400' : active ? 'text-indigo-500' : ''}`} />
       <span className="text-[10px] text-center leading-tight">{uiText(label)}</span>
+      {badge > 0 && (
+        <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white">
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </a>
   </li>
 );
@@ -46,11 +53,12 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, forceHidden = false, showRequestAdmin = false, requestAdminActive = false }) => {
-  const navItems: { id: Page; label: string; icon: React.ElementType; disabled?: boolean }[] = [
+  const flaggedCount = useFlaggedChatCount();
+  const navItems: { id: Page; label: string; icon: React.ElementType; disabled?: boolean; badge?: number }[] = [
     { id: 'dashboard', label: '教學總覽', icon: Icons.dashboard },
     { id: 'workshop', label: 'AI工作坊', icon: Icons.bot },
     { id: 'assessment', label: '智能評測', icon: Icons.assessment },
-    { id: 'learning', label: '學習報告', icon: Icons.report },
+    { id: 'learning', label: '學習報告', icon: Icons.report, badge: flaggedCount },
     { id: 'students', label: '學生管理', icon: Icons.classes },
   ];
 
@@ -71,6 +79,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, for
                 label={uiText(item.label)}
                 active={!requestAdminActive && activePage === item.id}
                 disabled={item.disabled}
+                badge={item.badge}
                 onClick={() => setActivePage(item.id)}
               />
             ))}

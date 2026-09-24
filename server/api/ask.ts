@@ -18,6 +18,8 @@ import {
   requireAuth,
 } from "../lib/platform-auth.ts";
 import { isFeatureUnlimitedForRole } from "../config/feature-limits.ts";
+import { detectChatAnomaly, shouldScreenChatMessage } from "../lib/chat-anomaly-rules.ts";
+import { recordFlaggedChatMessage } from "./flagged-chat.ts";
 import {
   createConversation,
   getConversationForUser,
@@ -1750,6 +1752,44 @@ router.post("/ask", upload.any(), async (req: Request, res: Response) => {
       ? "請描述這張圖片。"
       : normalized;
     const normalizedBotId = String(botId || "default");
+
+    // 異常對話篩查：學生訊息命中規則就按類別決定動作——不當用語／個人私隱
+    // 完全阻擋（唔到 model、唔扣分、唔入對話史），情緒困擾只留紀錄照樣送出
+    // （靜音求救訊號係最壞失敗模式）。全部都會記低畀老師覆核。
+    // 規則見 docs/chat-anomaly-detection.md。
+    // 位置要喺任何 DB 寫入同 consumeUserCredits 之前。
+    if (shouldScreenChatMessage({ role: authUser.role, integration: actor.integration, usageType })) {
+      const hit = detectChatAnomaly(normalized);
+      if (hit) {
+        try {
+          const teacherId = await getBotOwnerId(normalizedBotId);
+          // 冇老師可通知（default bot／學生自建 bot）就只攔截、唔留紀錄
+          if (teacherId && teacherId !== authUser.id) {
+            await recordFlaggedChatMessage({
+              botId: normalizedBotId,
+              studentUserId: authUser.id,
+              teacherId,
+              content: normalized,
+              excerpt: hit.excerpt,
+              ruleId: hit.ruleId,
+              category: hit.category,
+              action: hit.action,
+            });
+          }
+        } catch (recordError) {
+          console.warn("[ask] failed to record flagged chat message", recordError);
+        }
+        // action=block 嘅類別完全攔截；action=flag（情緒困擾）留紀錄但照送，
+        // 唔可以靜音學生嘅求救訊號。
+        if (hit.action === "block") {
+          return res.status(422).json({
+            error: hit.category === "privacy" ? "訊息含個人資料，已提醒老師" : "請使用合適的用語，此紀錄已通知老師",
+            code: hit.category === "privacy" ? "personal_data_detected" : "inappropriate_language",
+          });
+        }
+      }
+    }
+
     const normalizedConversationId = String(conversationId || "").trim();
     let activeConversation =
       usageType === "chat_message" && !externalMode

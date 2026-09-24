@@ -87,6 +87,7 @@ aichat/
 │   ├── layout/                  # App 外殼：Sidebar/Header/UserMenu/MobileSidebarDrawer
 │   ├── chat/                    # 對話紀錄 Drawer/List Item
 │   ├── dashboard/               # 學習報告卡、能力追蹤報告、學習報告入口卡
+│   │   ├── FlaggedChatSummaryCard.tsx # 異常對話記錄卡（學習報告頁）：扼要＋撳開展開、類別 pill、待處理/已歸檔 tab、分頁
 │   ├── assessment/              # 評估流程：題庫、產題、批改、主觀題、步驟元件
 │   │   ├── MyQuizzesView.tsx        # 我的測驗：草稿/已發佈 + 複製為草稿 flow
 │   │   ├── PublishedQuizDetailDrawer.tsx # 已發佈詳情 Drawer：題目預覽/成績結果/質量分析
@@ -105,7 +106,8 @@ aichat/
 ├── hooks/
 │   ├── useFeatureEntitlements.ts # 方案功能限額與用量
 │   ├── usePlatformDialog.ts      # 全域/局部 PlatformDialog 狀態
-│   └── useBodyScrollLock.ts      # Modal 開啟時鎖 body scroll
+│   ├── useBodyScrollLock.ts      # Modal 開啟時鎖 body scroll
+│   └── useFlaggedChatCount.ts    # 異常對話 open 數 15 秒輪詢（Sidebar「學習報告」badge）
 ├── utils/                   # 前端共用邏輯
 │   ├── api.ts                   # API_BASE：VITE_API_URL 或 same-origin（所有 API 呼叫的入口）
 │   ├── auth.ts                  # localStorage session、auth fetch bridge、登出
@@ -140,8 +142,8 @@ aichat/
 │   ├── index.ts                 # Express 入口：CORS、routes、health、media proxy、uploads
 │   ├── db.ts                    # pg Pool 初始化
 │   ├── botMapper.js             # camelCase ↔ snake_case 欄位映射（bots / modo API 用）
-│   ├── api/                     # REST API routes
-│   ├── lib/                     # 後端邏輯（含 conversation-track-queue.ts）
+│   ├── api/                     # REST API routes（含 flagged-chat.ts：異常對話記錄）
+│   ├── lib/                     # 後端邏輯（含 conversation-track-queue.ts、chat-anomaly-rules.ts：對話異常偵測）
 │   ├── config/                  # 帳號覆寫、方案功能限額
 │   ├── migrations/              # SQL migration
 │   ├── scripts/                 # 主題 migration、Google Sheet 用戶註冊、bot-prompt 手動測試
@@ -158,7 +160,7 @@ aichat/
 | --- | --- | --- |
 | `tests/*.test.mjs` | `npm run test:i18n`、`npm run test:ids` 等逐套 script | `/tests/*` 被 `.gitignore` 擋住，**只追蹤白名單**——新測試要加 `.gitignore` negation 先入版控。注意 `test:all` 係掃 working directory：未入版控嘅新測試**本機照跑、照綠燈**，但同事完全睇唔到，所以白名單係唯一防線 |
 | `tests/ui-i18n.browser.cjs` | **不**行 `node --test`。要開住 dev server，用 `playwright-cli run-code --filename` 跑 | |
-| `server/tests/*.ts` | `cd server && npm run test:<名>` | **每套都應該有 npm script**。冇 script 嘅測試檔冇人跑，會靜靜雞腐爛。要 DB 的自帶 guard：`DATABASE_URL` 要是本機（`localhost`／`127.0.0.1`）且含指定關鍵字，否則全 skip——`character-topics` 要 `topic_test`、`conversation-topic-switch` 同 `conversation-track-queue` 要 `topic_switch_test`、`students` 要 `students_test`；`quiz-audience` 例外，用探測式（DB 可達且有 `quizzes` 表）就照跑 |
+| `server/tests/*.ts` | `cd server && npm run test:<名>` | **每套都應該有 npm script**。冇 script 嘅測試檔冇人跑，會靜靜雞腐爛。要 DB 的自帶 guard：`DATABASE_URL` 要是本機（`localhost`／`127.0.0.1`）且含指定關鍵字，否則全 skip——`character-topics` 要 `topic_test`、`conversation-topic-switch` 同 `conversation-track-queue` 要 `topic_switch_test`、`students` 同 `flagged-chat` 要 `students_test`；`quiz-audience` 例外，用探測式（DB 可達且有 `quizzes` 表）就照跑 |
 
 DB suite 每次都會建 schema，所以**唔可以指去一個你在乎嘅 database**。一個全新空 DB 就夠跑，
 只需先有 `bots`——佢係遺留表，`ensurePlatformTables()` 唔會建，但 `bot_student_progress` 有 FK
@@ -172,4 +174,5 @@ database，而 `CREATE TABLE IF NOT EXISTS` 本身唔係 race-free（兩個進�
 - [學生管理與名單匯入](student-management.md) — 班級欄位慣例、匯入規則、範本格式
 - [Bot 角色設定指南](bot-persona-guide.md)
 - [異常偵測規則規格](anomaly-detection-spec.md)
+- [異常對話偵測規格](chat-anomaly-detection.md) — 學生對話三類別（不當用語／情緒困擾／個人私隱）× 攔截或放行、詞表、紀錄 API
 - [Bot 對話測試架構](bot-conversation-testing.md)
