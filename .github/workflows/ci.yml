@@ -29,6 +29,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # tsconfig.json has no include/exclude, so root `npm run lint` type checks
+      # server/ as well and needs server/node_modules. Without it, tsc reports
+      # 17 phantom errors (missing 'pg' and 'adm-zip' plus the TS2339 fallout).
+      - name: Install server dependencies
+        run: cd server && npm ci
+
       - name: Type check
         run: npm run lint
 
