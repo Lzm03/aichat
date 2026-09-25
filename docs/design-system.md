@@ -54,6 +54,11 @@
   點擊常用 `scale: 0.95`
 - 列表 stagger：`transition.delay = index * 0.03~0.1`
 - Bot 頭像：`bot-avatar-pulse` + `bot-avatar-breathe`，集中在 `globals.css`
+- **數字（KPI／統計）一律用 `components/shared/AnimatedNumber` 滾到新值，唔好硬切**——硬切
+  老師唔會察覺背景已經靜靜雞更新咗。過阻尼彈簧（約 0.4s 定下來、無 overshoot），
+  `tabular-nums` 防止滾動途中數字闊度跳動。現時用喺智能評測總覽四張 KPI 卡
+- 2026-09-25 決定**唔加**「微彈（放大一下）／晃動」一類嘅一下脈衝：實測 ±3px 冇人睇得到，
+  推到 ±8px 又同儀表板嘅警示色語言打對台（晃動＝出錯）。要加之前先問用戶
 - 尊重 `prefers-reduced-motion: reduce`；新動效需評估是否跟隨關閉
   - **機制（2026-09-25 落地）**：`index.tsx` 用 `<MotionConfig reducedMotion="user">` 包住整個 SPA，
     一次覆蓋全部 framer-motion 嘅 transform／layout 動效，唔使逐個元件讀 `useReducedMotion`。

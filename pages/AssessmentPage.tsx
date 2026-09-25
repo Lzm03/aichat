@@ -10,6 +10,7 @@ import { AssessmentQualityCard } from '../components/assessment/AssessmentQualit
 import { AnomalyAlertsOverview } from '../components/assessment/AnomalyAlertsOverview';
 import { MyQuizzesView } from '../components/assessment/MyQuizzesView';
 import { PublishedQuizDetailDrawer, type PublishedQuizSummary } from '../components/assessment/PublishedQuizDetailDrawer';
+import { AnimatedNumber } from '../components/shared/AnimatedNumber';
 import { API_BASE } from '../utils/api';
 
 type TopTab = 'overview' | 'quizzes' | 'library' | 'grading' | 'quality';
@@ -293,7 +294,9 @@ export const AssessmentPage: React.FC<AssessmentPageProps> = ({
                 className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)] text-left transition-shadow hover:shadow-[0_20px_25px_-5px_rgba(0,0,0,0.1)]"
               >
                 <span className="text-xs font-bold text-slate-400">{uiText(card.label)}</span>
-                <div className={`mt-2 text-3xl font-black ${card.valueClass}`}>{card.value}</div>
+                <div className={`mt-2 text-3xl font-black ${card.valueClass}`}>
+                  <AnimatedNumber value={card.value} />
+                </div>
               </motion.button>
             ))}
           </div>
