@@ -152,8 +152,8 @@ export async function mergeStudentProgress(
   try {
     await ensurePlatformTables();
     await pool.query(
-      `INSERT INTO bot_student_progress (bot_id, user_id, topic_id, covered_point_ids, updated_at)
-       VALUES ($1, $2, $3, $4::jsonb, NOW())
+      `INSERT INTO bot_student_progress (bot_id, user_id, topic_id, covered_point_ids, created_at, updated_at)
+       VALUES ($1, $2, $3, $4::jsonb, NOW(), NOW())
        ON CONFLICT (bot_id, user_id, topic_id) DO UPDATE SET
          covered_point_ids = (
            SELECT COALESCE(jsonb_agg(DISTINCT elem), '[]'::jsonb)

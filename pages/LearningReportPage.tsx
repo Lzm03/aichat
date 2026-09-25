@@ -1,7 +1,8 @@
-import { uiText } from '../utils/uiI18n';
-import React, { useState } from 'react';
+import { uiTemplate, uiText } from '../utils/uiI18n';
+import React, { useEffect, useState } from 'react';
 import { Icons } from '../components/icons';
 import { ArrowRight } from 'lucide-react';
+import { loadTeacherData, peekTeacherData } from '../utils/teacher-data-cache';
 import { StudentLearningReportCard } from '../components/dashboard/StudentLearningReportCard';
 import { FlaggedChatSummaryCard } from '../components/dashboard/FlaggedChatSummaryCard';
 import { AbilityTrackingReport, type ReportPeriod } from '../components/dashboard/AbilityTrackingReport';
@@ -30,9 +31,135 @@ const PERIODS: { key: ReportPeriod; label: string }[] = [
   { key: 'all', label: '全期' },
 ];
 
+/** 總覽聚合（docs/learning-report-overview.md）：行為 KPI＋亮點，唔重複智能評測 */
+type OverviewData = {
+  period: string;
+  participation: {
+    activeStudents: number;
+    noInteractionStudents: number;
+    meaninglessMessages: number;
+    studentMessageTotal: number;
+  };
+  classAlerts: Array<{ classId: string; className: string | null; noInteractionStudents: number }>;
+  wellbeingOpen: number;
+  anomalyOpen: number;
+  updates: {
+    abilityReportsToday: number;
+    knowledgeStudentsToday: number;
+    quizReportsGraded7d: number;
+  };
+  today: { activeStudents: number; noInteractionStudents: number };
+};
+
+const overviewPath = (period: ReportPeriod) =>
+  `/api/teachers/me/learning-overview?period=${period}`;
+
 export const LearningReportPage: React.FC<LearningReportPageProps> = ({ onOpenQuizQuality, onCreateQuiz }) => {
   const [tab, setTab] = useState<LearningTab>('overview');
   const [period, setPeriod] = useState<ReportPeriod>('30d');
+  const [overview, setOverview] = useState<OverviewData | null>(() =>
+    peekTeacherData<OverviewData>(overviewPath('30d'))
+  );
+  const [overviewFailed, setOverviewFailed] = useState(false);
+
+  const loadOverview = (force = false) => {
+    loadTeacherData<OverviewData>(overviewPath(period), force ? 0 : undefined)
+      .then((data) => {
+        setOverview(data);
+        setOverviewFailed(false);
+      })
+      .catch(() => setOverviewFailed(true));
+  };
+  useEffect(() => {
+    loadOverview();
+    // period 變先重攞；loadOverview 每次 render 都新，唔入 deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period]);
+
+  // KPI 行：學生行為四卡。撳卡跳去對應 tab（設計：docs/learning-report-overview.md）
+  const meaninglessRatio = overview
+    ? overview.participation.studentMessageTotal > 0
+      ? Math.round(
+          (overview.participation.meaninglessMessages * 100) /
+            overview.participation.studentMessageTotal
+        )
+      : 0
+    : null;
+  const kpis: Array<{
+    key: string;
+    label: string;
+    value: string | number;
+    icon: React.ComponentType<{ className?: string }>;
+    chipClass: string;
+    iconClass: string;
+    alert?: boolean;
+    onClick: () => void;
+  }> = [
+    {
+      key: 'active',
+      label: '有實質互動學生',
+      value: overview?.participation.activeStudents ?? '—',
+      icon: Icons.users,
+      chipClass: 'bg-sky-50',
+      iconClass: 'text-sky-600',
+      onClick: () => setTab('participation'),
+    },
+    {
+      key: 'followup',
+      label: '需要你跟進學生',
+      value: overview?.participation.noInteractionStudents ?? '—',
+      icon: Icons.bell,
+      chipClass: 'bg-amber-50',
+      iconClass: 'text-amber-600',
+      onClick: () => setTab('participation'),
+    },
+    {
+      key: 'ratio',
+      label: '無意義訊息比例',
+      value: meaninglessRatio === null ? '—' : `${meaninglessRatio}%`,
+      icon: Icons.chart,
+      chipClass: 'bg-violet-50',
+      iconClass: 'text-violet-600',
+      onClick: () => setTab('participation'),
+    },
+    {
+      key: 'anomaly',
+      label: '待處理異常對話',
+      value: overview?.anomalyOpen ?? '—',
+      icon: Icons.messageSquareWarning,
+      chipClass: 'bg-rose-50',
+      iconClass: 'text-rose-600',
+      alert: (overview?.anomalyOpen ?? 0) > 0,
+      onClick: () => setTab('chat'),
+    },
+  ];
+
+  // 需要你跟進：班級提醒（最多 3 條，後端已排）＋情緒困擾提醒
+  const followUps: React.ReactNode[] = [];
+  if (overview) {
+    for (const alert of overview.classAlerts) {
+      followUps.push(
+        <li key={`class-${alert.classId}`} className="flex items-start gap-3">
+          <span className="mt-0.5 text-amber-500">●</span>
+          <span>
+            {uiTemplate(
+              "{0}有 {1} 位學生未有互動",
+              alert.className ?? uiText("未分組"),
+              alert.noInteractionStudents
+            )}
+          </span>
+        </li>
+      );
+    }
+    if (overview.wellbeingOpen > 0) {
+      followUps.push(
+        <li key="wellbeing" className="flex items-start gap-3">
+          <span className="mt-0.5 text-purple-500">●</span>
+          <span>{uiTemplate("有 {0} 條情緒困擾訊息待處理", overview.wellbeingOpen)}</span>
+        </li>
+      );
+    }
+  }
 
   // 快速入口卡：跟智能評測頁 QUICK_LINKS 嘅樣式。四張卡排 2×2，冇 accent 卡。
   // 唔放 KPI 卡——已發佈測驗／待批改／已完成批改喺智能評測頁已有，異常紀錄亦有 Sidebar 紅點。
@@ -106,7 +233,7 @@ export const LearningReportPage: React.FC<LearningReportPageProps> = ({ onOpenQu
             {uiText(item.label)}
           </button>
         ))}
-        {tab === 'ability' && (
+        {(tab === 'overview' || tab === 'ability') && (
           <div className="ml-auto mb-4 flex shrink-0 items-center rounded-full bg-slate-100 p-1 text-xs font-semibold">
             {PERIODS.map((item) => (
               <button
@@ -121,28 +248,105 @@ export const LearningReportPage: React.FC<LearningReportPageProps> = ({ onOpenQu
         )}
       </div>
 
-      {/* 總覽：快速入口（KPI 數字等課堂參與數據上線先加） */}
+      {/* 總覽：行為 KPI ＋ 亮點 ＋ 快速入口（docs/learning-report-overview.md） */}
       {tab === 'overview' && (
-        <div>
-          <h2 className="text-lg font-bold text-slate-800 mb-4">{uiText("快速入口")}</h2>
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            {quickLinks.map((link) => (
+        <div className="space-y-8">
+          {overviewFailed ? (
+            <div className="rounded-[24px] border border-slate-100 bg-white p-8 text-center">
+              <p className="text-sm text-slate-500">{uiText("載入總覽失敗，請稍後再試。")}</p>
               <button
-                key={link.key}
                 type="button"
-                onClick={link.onClick}
-                className="group relative flex min-h-[140px] items-center gap-5 overflow-hidden rounded-[28px] border border-slate-100 bg-white p-6 text-left shadow-[0_14px_32px_rgba(15,23,42,0.06)] transition hover:-translate-y-1 hover:shadow-xl"
+                onClick={() => loadOverview(true)}
+                className="mt-3 rounded-full bg-slate-100 px-4 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200"
               >
-                <span className={`relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${link.chipClass}`}>
-                  <link.icon className={`h-7 w-7 ${link.iconClass}`} />
-                </span>
-                <span className="relative min-w-0">
-                  <span className="block text-lg font-black text-slate-900">{uiText(link.label)}</span>
-                  <span className="mt-1 block text-sm text-slate-500">{uiText(link.description)}</span>
-                </span>
-                <ArrowRight className="relative ml-auto h-5 w-5 shrink-0 text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500" />
+                {uiText("重試")}
               </button>
-            ))}
+            </div>
+          ) : (
+            <>
+              {/* KPI 行：四卡跟頁面時間範圍；待處理異常 > 0 用警示色 */}
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                {kpis.map((kpi) => (
+                  <button
+                    key={kpi.key}
+                    type="button"
+                    onClick={kpi.onClick}
+                    className="flex items-center gap-4 rounded-[24px] border border-slate-100 bg-white p-5 text-left shadow-[0_14px_32px_rgba(15,23,42,0.06)] transition hover:-translate-y-1 hover:shadow-lg"
+                  >
+                    <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${kpi.chipClass}`}>
+                      <kpi.icon className={`h-6 w-6 ${kpi.iconClass}`} />
+                    </span>
+                    <span className="min-w-0">
+                      <span
+                        className={`block text-2xl font-black ${kpi.alert ? 'text-rose-600' : 'text-slate-900'}`}
+                      >
+                        {kpi.value}
+                      </span>
+                      <span className="mt-0.5 block text-xs font-semibold text-slate-500">
+                        {uiText(kpi.label)}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* 亮點區：最近動態（規則推導，零 LLM）＋需要你跟進 */}
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <div className="rounded-[24px] border border-slate-100 bg-white p-6">
+                  <h2 className="text-lg font-bold text-slate-800 mb-4">{uiText("最近動態")}</h2>
+                  <ul className="space-y-3 text-sm leading-6 text-slate-600">
+                    <li className="flex items-start gap-3">
+                      <span className="mt-0.5">📄</span>
+                      <span>{uiTemplate("今日生成咗 {0} 份能力追蹤報告", overview?.updates.abilityReportsToday ?? 0)}</span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <span className="mt-0.5">🧠</span>
+                      <span>{uiTemplate("今日 {0} 位學生的知識點掌握有新進展", overview?.updates.knowledgeStudentsToday ?? 0)}</span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <span className="mt-0.5">💬</span>
+                      <span>{uiTemplate("今日有 {0} 位學生有實質互動，{1} 位需要你跟進", overview?.today.activeStudents ?? 0, overview?.today.noInteractionStudents ?? 0)}</span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <span className="mt-0.5">📊</span>
+                      <span>{uiTemplate("最近 7 日生成咗 {0} 份測驗質量報告", overview?.updates.quizReportsGraded7d ?? 0)}</span>
+                    </li>
+                  </ul>
+                </div>
+                <div className="rounded-[24px] border border-slate-100 bg-white p-6">
+                  <h2 className="text-lg font-bold text-slate-800 mb-4">{uiText("需要你跟進")}</h2>
+                  {followUps.length > 0 ? (
+                    <ul className="space-y-3 text-sm leading-6 text-slate-600">{followUps}</ul>
+                  ) : (
+                    <p className="text-sm text-slate-500">{uiText("暫時冇需要跟進嘅事項")}</p>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* 快速入口（保留原 4 張，唔重複智能評測） */}
+          <div>
+            <h2 className="text-lg font-bold text-slate-800 mb-4">{uiText("快速入口")}</h2>
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              {quickLinks.map((link) => (
+                <button
+                  key={link.key}
+                  type="button"
+                  onClick={link.onClick}
+                  className="group relative flex min-h-[140px] items-center gap-5 overflow-hidden rounded-[28px] border border-slate-100 bg-white p-6 text-left shadow-[0_14px_32px_rgba(15,23,42,0.06)] transition hover:-translate-y-1 hover:shadow-xl"
+                >
+                  <span className={`relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${link.chipClass}`}>
+                    <link.icon className={`h-7 w-7 ${link.iconClass}`} />
+                  </span>
+                  <span className="relative min-w-0">
+                    <span className="block text-lg font-black text-slate-900">{uiText(link.label)}</span>
+                    <span className="mt-1 block text-sm text-slate-500">{uiText(link.description)}</span>
+                  </span>
+                  <ArrowRight className="relative ml-auto h-5 w-5 shrink-0 text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500" />
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

@@ -33,6 +33,7 @@ import modoIntegrationRoute from "./api/modo-integration.ts";
 import schoolAvatarRequestsRoute, { ensureSchoolAvatarRequestTables } from "./api/school-avatar-requests.ts";
 import flaggedChatRoute, { ensureFlaggedChatTables } from "./api/flagged-chat.ts";
 import participationRoute from "./api/participation.ts";
+import learningOverviewRoute from "./api/learning-overview.ts";
 import { pool, warmDatabasePool } from "./db.ts";
 import { uploadsDir } from "./lib/uploads-dir.ts";
 import { ensurePlatformTables, maybeAssignLegacyDataByEmail } from "./lib/platform-auth.ts";
@@ -159,6 +160,7 @@ app.use("/api/integrations/modo", modoIntegrationRoute);
 app.use("/api/school-avatar-requests", schoolAvatarRequestsRoute);
 app.use("/api/flagged-chat", flaggedChatRoute);
 app.use("/api", participationRoute);
+app.use("/api", learningOverviewRoute);
 // Routes
 app.use("/api/generate-image", generateImageRoute);
 app.use("/api", ttsRoute);

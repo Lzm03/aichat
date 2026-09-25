@@ -66,6 +66,13 @@ export function ensureParticipationTables(): Promise<void> {
         ALTER TABLE bot_conversation_states
         ADD COLUMN IF NOT EXISTS participation_watermark TIMESTAMPTZ
       `);
+      // 「今日新增能力追蹤報告」要數 bot_student_progress 嘅新 row——
+      // 冇 created_at 欄分唔出「新增」同「更新」。冇 DEFAULT：舊數據 NULL，
+      // 唔當今日新增；mergeStudentProgress 嘅 INSERT 由呢個 commit 起寫 NOW()。
+      await pool.query(`
+        ALTER TABLE bot_student_progress
+        ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ
+      `);
       await pool.query(`
         CREATE INDEX IF NOT EXISTS bcs_idle_scan_idx
         ON bot_conversation_states (updated_at)

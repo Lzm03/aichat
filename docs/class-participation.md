@@ -183,7 +183,7 @@ promise 鏈（fire-and-forget，read-your-writes）。判斷幾時完成唔影�
 
 | Tab | 內容 |
 | --- | --- |
-| 總覽 | 快速入口卡（`QUICK_LINKS` 模式），一眼睇晒 |
+| 總覽 | 行為 KPI＋亮點＋快速入口卡（完整設計見 `docs/learning-report-overview.md`），一眼睇晒 |
 | 課堂參與 | 本規格新增：班級指標（可切「按 Bot」／「按話題」）＋ 未有互動學生名單。**第一期只出「準備中」說明**——判斷後端未上線，唔放假數字 |
 | 學生能力 | `StudentLearningReportCard`（含課堂對話記錄 drawer）＋ `TeacherProgressOverview` 並排，`AbilityTrackingReport`（Bloom 六層級）全闊放下面 |
 | 對話紀錄 | `FlaggedChatSummaryCard`（問題 5） |
@@ -193,9 +193,11 @@ promise 鏈（fire-and-forget，read-your-writes）。判斷幾時完成唔影�
 `TeacherProgressOverview` 都係列表形，並排最自然；`AbilityTrackingReport` 有雷達圖同學生輪廓，
 需要闊度，所以全闊放下面。三張豎排會又長又逼。
 
-**總覽唔重複智能評測已有嘅 KPI**（2026-09-24 用戶決定）：已發佈測驗／待批改作答／已完成批改
-喺智能評測頁總覽已有，待處理異常紀錄亦有 Sidebar 紅點。所以總覽只出快速入口卡；班級級 KPI
-（活躍學生數、未有互動學生數）等課堂參與數據上線先加——嗰時先真係答到「呢班而家點」。
+**總覽唔重複智能評測已有嘅 KPI**（2026-09-24 用戶決定，2026-09-25 擴展）：已發佈測驗／待批改
+作答／已完成批改喺智能評測頁總覽已有——**總覽聚焦學生行為**（有實質互動／需要跟進／無意義比例／
+待處理異常），唔係測驗行政管理。課堂參與數據已上線（2026-09-25），行為 KPI 同亮點嘅完整設計
+喺 `docs/learning-report-overview.md`（KPI 行跟頁面時間範圍、亮點用規則推導、Sidebar 紅點
+處理後即時清除）。
 
 **總覽亦唔出「新建測驗」入口**（2026-09-24 用戶決定）：Dashboard 同智能評測頁已經有建立入口，
 學習報告頁係「睇報告」嘅地方，唔應該搶一個建立動作。快速入口因此由 5 張變 4 張，
@@ -253,7 +255,10 @@ judge 加 `engagement` 輸出（全部答題模式）、`bot_conversation_partic
 窗口表＋水位標、`GET /api/teachers/me/participation?period=30d|90d|all&dimension=class|bot|topic`
 聚合 route（班級維度含未分組 bucket 同未有互動名單）、閒置 10 分鐘補漏掃描
 （SKIP LOCKED＋optimistic watermark guard）、整合測試 11 條＋純函數單測 8 條。
-**唔包含**學生層級數字。剩返嘅係前端接駁：課堂參與 tab 由 placeholder 換成真數據
+**唔包含**學生層級數字。同日另出總覽設計並實作（`docs/learning-report-overview.md`）：
+行為 KPI＋規則亮點＋紅點即時清除（route `GET /api/teachers/me/learning-overview`、
+`bot_student_progress.created_at` 欄）——已實作、測試全綠。
+剩返嘅係前端接駁：課堂參與 tab 由 placeholder 換成真數據
 （班級數字＋未有互動名單→撳開課堂對話記錄 drawer），屬另一件獨立任務。
 
 **第二期**：測驗封存（問題 4 補做）**已完成**——老師可將已發佈測驗封存／還原，

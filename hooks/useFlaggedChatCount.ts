@@ -18,9 +18,13 @@ export function useFlaggedChatCount(): number {
     refresh();
     const interval = window.setInterval(refresh, 15_000);
     window.addEventListener("focus", refresh);
+    // 老師處理完異常後（FlaggedChatSummaryCard 嘅 PATCH 成功）會 dispatch
+    // 呢個 event → 紅點即時滅，唔使等下一 tick。
+    window.addEventListener("chopreality:flagged-count-refresh", refresh);
     return () => {
       window.clearInterval(interval);
       window.removeEventListener("focus", refresh);
+      window.removeEventListener("chopreality:flagged-count-refresh", refresh);
     };
   }, []);
 

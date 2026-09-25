@@ -14,6 +14,7 @@
 | [anomaly-detection-spec.md](anomaly-detection-spec.md) | 要改異常偵測規則、加新規則（含 FP 風險與合規依據） |
 | [chat-anomaly-detection.md](chat-anomaly-detection.md) | 要改學生對話異常偵測：三類（不當用語／情緒困擾／個人私隱）× 兩種動作（攔截／放行）、詞表、紀錄 API 或教師覆核流程 |
 | [class-participation.md](class-participation.md) | 要改課堂參與度分析、學習報告頁 tab 架構、LLM 參與度判斷 |
+| [learning-report-overview.md](learning-report-overview.md) | 要改學習報告「總覽」tab：行為 KPI、規則亮點、Sidebar 紅點清除契約 |
 | [student-management.md](student-management.md) | 要改學生管理、名單匯入、班級欄位規則或 Excel 範本 |
 | [knowledge-map-topic-versions.md](knowledge-map-topic-versions.md) | 要改知識地圖多主題版本（Tab 架構）的 UX／UI |
 

@@ -157,8 +157,11 @@ export const FlaggedChatSummaryCard: React.FC = () => {
         delete rest[flag.id];
         return rest;
       });
-      // badge 同扼要下個 poll tick 會拎到新數；順手清 cache 即刻反映
+      // 處理完即時反映：清列表 cache + 清紅點 count cache + 觸發 Sidebar badge 即時 refresh
+      // （唔使等 15 秒輪詢 tick；useFlaggedChatCount 聽 chopreality:flagged-count-refresh）
       invalidateTeacherData('/api/flagged-chat');
+      invalidateTeacherData('/api/flagged-chat/count');
+      window.dispatchEvent(new CustomEvent('chopreality:flagged-count-refresh'));
     } catch (err) {
       setFlags(original);
       setStatusCounts((prev) => ({

@@ -8,12 +8,21 @@ after(() => pool.end());
 // 呢兩個 test 都要真 DB：上面嗰個淨係要連得到，下面嗰個仲要當前 schema（會 query
 // quizzes / users / bot_student_shares …）。所以探測 schema 而唔係靠 DB 名 ——
 // 任何有 schema 嘅 DB（包括預設 dev DB）都應該跑得到，冇嘅就好聲好氣 skip 而唔係爆。
+// 探測埋 bots.subject：grading-summary 嘅 SQL 會讀呢欄，而共享測試 DB 嘅 bots 表
+// 多數係其他 suite 建嘅最小版（冇 subject）——只探 quizzes 會令呢個 test
+// 喺共享測試 DB 上爆「字段 b.subject 不存在」。
 type DbState = 'ready' | 'no-schema' | 'unreachable';
 let dbStatePromise: Promise<DbState> | null = null;
 function probeDatabase(): Promise<DbState> {
   dbStatePromise ??= pool
-    .query("SELECT to_regclass('public.quizzes') IS NOT NULL AS ready")
-    .then(({ rows }): DbState => (rows[0]?.ready ? 'ready' : 'no-schema'))
+    .query(
+      `SELECT to_regclass('public.quizzes') IS NOT NULL AS has_quizzes,
+              EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name='bots' AND column_name='subject'
+              ) AS bots_full`
+    )
+    .then(({ rows }): DbState => (rows[0]?.has_quizzes && rows[0]?.bots_full ? 'ready' : 'no-schema'))
     .catch((): DbState => 'unreachable');
   return dbStatePromise;
 }
