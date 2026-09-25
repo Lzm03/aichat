@@ -170,8 +170,9 @@ promise 鏈（fire-and-forget，read-your-writes）。判斷幾時完成唔影�
 2026-09-24 已上線：`AbilityTrackingReport` 自帶嘅 `30d`／`all` 切換已刪，時間範圍收歸
 `LearningReportPage` 擁有（受控 `period` prop），避免兩個選擇器講唔同嘢。
 
-**現階段只有學生能力 tab 出呢個選擇器**：其餘 tab 嘅資料源（`assessment-report`、
-`progress-overview`、異常對話、測驗質量）都冇時間參數，出咗都撳完冇反應。等數據源支援先擴展。
+**selector 由「總覽」同「學生能力」兩個 tab 出、並消費**（2026-09-25 總覽上線後）：
+總覽 KPI 跟佢；其餘 tab 嘅資料源（`assessment-report`、`progress-overview`、異常對話、
+測驗質量）都冇時間參數，出咗都撳完冇反應。等數據源支援先再擴展。
 
 ⚠️ **`period=90d` 真後端未支援**：`/api/teachers/me/ability-report` 本身未喺 repo 實作
 （frontend-only，preview mock 實現；mock 已補 90 日）。屬既存 gap，唔喺今期修。
@@ -226,7 +227,7 @@ promise 鏈（fire-and-forget，read-your-writes）。判斷幾時完成唔影�
    - `GradingWorkspaceHome`：「已歸納（批改完成）」默認收起、撳開先展開
    - `AssessmentQualityList`：顯示 10 條（`MAX_VISIBLE_QUIZZES`）＋「看更多」
 3. **時間範圍選擇器係第一道閘**：30 日以外嘅嘢默認唔撳出嚟。
-   （2026-09-24：頁面級選擇器已上線，惟現階段只有學生能力 tab 消費佢——見「時間範圍」。）
+   （2026-09-24 頁面級選擇器上線；2026-09-25 總覽 KPI 消費埋佢——見「時間範圍」。）
 4. **學生能力兩張卡內所有會增長嘅列表封頂 10 個**（2026-09-24 用戶要求「唔可以無限延展」）：
    收成共用元件 `components/shared/ShowMoreList.tsx`（`limit` 預設 10，就地
    「看更多（還有 N 個）／收起」，唔開下拉選單）。適用：能力追蹤報告嘅 AI 夥伴列表、
