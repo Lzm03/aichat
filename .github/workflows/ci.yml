@@ -1,0 +1,45 @@
+# Minimal frontend gate: type check, frontend tests, production build.
+#
+# This automates the frontend half of the AGENTS.md pre-handoff checklist so it
+# runs on every pull request instead of depending on whoever remembers to run it
+# locally. `vite build` alone does not type check, and nothing else in the deploy
+# pipeline runs `tsc`, so without this a type error can reach production.
+#
+# Deliberately excluded: server/tests/*, which needs PostgreSQL and is still run
+# locally. Backend coverage can be added later with a service container.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  frontend:
+    name: type check, tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # tsconfig.json has no include/exclude, so root `npm run lint` type checks
+      # server/ as well and needs server/node_modules. Without it, tsc reports
+      # 17 phantom errors (missing 'pg' and 'adm-zip' plus the TS2339 fallout).
+      - name: Install server dependencies
+        run: cd server && npm ci
+
+      - name: Type check
+        run: npm run lint
+
+      - name: Frontend tests
+        run: npm run test:all
+
+      - name: Build
+        run: npm run build

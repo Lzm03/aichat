@@ -163,6 +163,12 @@ aichat/
 | `server/tests/*.ts` | `cd server && npm run test:<名>` | **每套都應該有 npm script**。冇 script 嘅測試檔冇人跑，會靜靜雞腐爛。要 DB 的自帶 guard：`DATABASE_URL` 要是本機（`localhost`／`127.0.0.1`）且含指定關鍵字，否則全 skip——`character-topics` 要 `topic_test`、`conversation-topic-switch` 同 `conversation-track-queue` 要 `topic_switch_test`、`students` 同 `flagged-chat` 要 `students_test`；`quiz-audience` 例外，用探測式（DB 可達且有 `quizzes` 表）就照跑 |
 | `server/scripts/test-bot-prompt.ts` | `cd server && npm run test:bot-prompt [S1 … S14]` | 真 LLM 回歸場景（DeepSeek／OpenRouter，唔使 DB）；`test:all` 只 glob `tests/*.test.ts` 唔會掃到，所以佢有獨立 script。純 prompt 單元測試另見 `test:answer-mode` |
 
+⚠️ 根目錄 `npm run lint`（`tsc --noEmit`）**會一併檢查 `server/`**：`tsconfig.json` 冇 `include`／
+`exclude`，所以 `server/` 亦在掃描範圍。即係要**先 `cd server && npm install`** 先過得到。
+只裝根目錄依賴就跑 lint，會出一批假錯誤：`Cannot find module 'pg'`／`'adm-zip'`，加連帶嘅
+`TS2339: Property '…' does not exist on type 'unknown'`（2026-09-24 CI 首次運行時係 17 個）。
+（CI 亦因此要裝兩次依賴，見 `.github/workflows/ci.yml`。）
+
 DB suite 每次都會建 schema，所以**唔可以指去一個你在乎嘅 database**。一個全新空 DB 就夠跑，
 只需先有 `bots`——佢係遺留表，`ensurePlatformTables()` 唔會建，但 `bot_student_progress` 有 FK
 指住（測試檔自己會補上）。`test:all` 用 `--test-concurrency=1` 逐檔跑：所有 DB suite 共用同一個
