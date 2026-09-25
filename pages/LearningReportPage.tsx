@@ -77,13 +77,14 @@ export const LearningReportPage: React.FC<LearningReportPageProps> = ({ onOpenQu
   }, [period]);
 
   // KPI 行：學生行為四卡。撳卡跳去對應 tab（設計：docs/learning-report-overview.md）
+  // 分母 0（期內冇訊息）＝冇數據 → 出「—」唔出 0%（0% 會誤導成「全班都實質」）
   const meaninglessRatio = overview
     ? overview.participation.studentMessageTotal > 0
       ? Math.round(
           (overview.participation.meaninglessMessages * 100) /
             overview.participation.studentMessageTotal
         )
-      : 0
+      : null
     : null;
   const kpis: Array<{
     key: string;
