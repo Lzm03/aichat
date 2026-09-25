@@ -55,6 +55,18 @@
 - 列表 stagger：`transition.delay = index * 0.03~0.1`
 - Bot 頭像：`bot-avatar-pulse` + `bot-avatar-breathe`，集中在 `globals.css`
 - 尊重 `prefers-reduced-motion: reduce`；新動效需評估是否跟隨關閉
+  - **機制（2026-09-25 落地）**：`index.tsx` 用 `<MotionConfig reducedMotion="user">` 包住整個 SPA，
+    一次覆蓋全部 framer-motion 嘅 transform／layout 動效，唔使逐個元件讀 `useReducedMotion`。
+    opacity 照郁（framer-motion 原設計）。**但由動效逐格寫入嘅值唔屬 transform
+    （例如數字滾動），MotionConfig 管唔到**——該類元件要自己讀 hook 判斷
+  - ⚠️ **陷阱**：`MotionConfig` 喺 element **建構時**快照 media query
+    （`node_modules/framer-motion/dist/framer-motion.dev.js:6041-6046`）。建構之後才改 OS 設定，
+    已 mount 嘅元件完全唔受影響。驗證時一定要**先 emulate 再 reload**，否則會誤判成「機制失效」
+  - CSS keyframe 由 `globals.css` 底部嘅 `@media (prefers-reduced-motion: reduce)` 區塊負責：
+    `bot-avatar-pulse`／`bot-avatar-breathe`／`animate-pulse`／`animate-bounce` 一律停。
+    **`animate-spin` 特登唔停**——33 處載入指示全靠佢一個講「仲喺度等」，冇文字替代
+  - 該區塊用 `html` 前綴係為咗特異度：Play CDN 喺 runtime 注入 `<style>`，位置喺 `globals.css`
+    之後，同特異度嘅規則會被佢蓋過（包 `@layer` 嘅更加一定輸）
 - 避免大型 DOM 無過渡直接切換；需要時使用 Framer Motion `AnimatePresence`
 
 ## 橫向捲動列（分頁列、chip 列、pill 列）
