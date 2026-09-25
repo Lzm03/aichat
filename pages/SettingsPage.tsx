@@ -549,7 +549,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                   <ArrowLeft className="h-4 w-4" />{uiText("返回工作台")}</a>
               </div>
             </div>
-            <div className="mt-7 flex gap-7 overflow-x-auto text-sm font-bold text-slate-400">
+            {/* 同頁面分頁列一樣：overflow-y 要寫死 hidden，唔係行高零餘裕時會出垂直 scrollbar（▲▼） */}
+            <div className="mt-7 flex shrink-0 gap-7 overflow-x-auto overflow-y-hidden text-sm font-bold text-slate-400">
               <a href="#profile-settings" onClick={() => setActiveSettingsTab("personal")} className={`px-1 pb-4 transition ${activeSettingsTab === "personal" ? "border-b-2 border-indigo-600 text-indigo-600" : "hover:text-slate-700"}`}>{uiText("個人帳戶")}</a>
               <a href="#appearance-settings" onClick={() => setActiveSettingsTab("personal")} className={`px-1 pb-4 transition ${activeSettingsTab === "personal" ? "hover:text-slate-700" : ""}`}>{uiText("介面與偏好")}</a>
               {isDeveloperAccount && <a href="#admin-settings" onClick={() => setActiveSettingsTab("admin")} className={`px-1 pb-4 transition ${activeSettingsTab === "admin" ? "border-b-2 border-indigo-600 text-indigo-600" : "hover:text-slate-700"}`}>{uiText("平台管理")}</a>}

@@ -257,14 +257,14 @@ export const AssessmentPage: React.FC<AssessmentPageProps> = ({
 
   return (
     <div className="h-full flex flex-col space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800 mb-2">{uiText("智能評測")}</h1>
-        <p className="text-slate-500">{uiText("運用 AI 技術快速生成測驗，並自動批改與分析學生表現。")}</p>
-      </div>
+      {/* 頁名（智能評測）已經喺 topbar 出現，內頁唔再重複一次；只留一句用途說明。 */}
+      <p className="text-slate-500">{uiText("運用 AI 技術快速生成測驗，並自動批改與分析學生表現。")}</p>
 
-      {/* Top-level tabs */}
-      <div className="flex gap-7 overflow-x-auto border-b border-slate-200 text-sm font-bold text-slate-400">
+      {/* Top-level tabs：同學習報告分頁列一樣處理。只寫 overflow-x-auto 時 overflow-y 會計成
+          auto，行高零餘裕（38px＝按鈕自身高度）→ 一被壓縮或捨入就喺分頁位置出 ▲▼ 垂直
+          scrollbar；shrink-0 同時避免呢行被壓扁（題庫／批改兩個分頁量到被壓到 30px）。
+          橫向捲動保留，窄螢幕仲捲得到。 */}
+      <div className="flex shrink-0 gap-7 overflow-x-auto overflow-y-hidden border-b border-slate-200 text-sm font-bold text-slate-400">
         {TOP_TABS.map((tab) => (
           <button
             key={tab.key}
