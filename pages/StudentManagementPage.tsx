@@ -33,6 +33,7 @@ import {
   type RosterStudent,
 } from '../utils/student-roster';
 import { invalidateTeacherData, loadTeacherData, peekTeacherData } from '../utils/teacher-data-cache';
+import { ShowMoreList } from '../components/shared/ShowMoreList';
 
 type StudentFormState = {
   fullName: string;
@@ -568,12 +569,8 @@ export const StudentManagementPage: React.FC = () => {
 
   return (
     <div className="mx-auto max-w-7xl">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900">{uiText('學生管理')}</h1>
-          <p className="mt-2 text-sm text-slate-500">{uiText('管理學生帳戶與班級。')}</p>
-        </div>
-      </div>
+      {/* 頁名（學生管理）已經喺 topbar 出現，內頁唔再重複一次；只留一句用途說明。 */}
+      <p className="text-sm text-slate-500">{uiText('管理學生帳戶與班級。')}</p>
 
       {isLoading ? (
         <div className="mt-6 rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm font-bold text-indigo-600">
@@ -690,50 +687,55 @@ export const StudentManagementPage: React.FC = () => {
                   </div>
                 ) : null}
 
-                {/* 一行拆三個兄弟 button（唔可以將剔號塞入原本嗰個 button 度 —— button 包 button
-                    係無效 HTML）。三個都係獨立撳得，所以唔使 stopPropagation。 */}
-                {unassignedStudents.map((student) => {
-                  const selected = selectedUnassignedIds.includes(student.id);
-                  return (
-                    <div
-                      key={student.id}
-                      className={`flex items-center gap-2 rounded-2xl border bg-white py-2.5 pl-3 pr-2 transition ${selected ? 'border-indigo-300 bg-indigo-50/60' : 'border-slate-200 hover:border-indigo-200'}`}
-                    >
-                      <button
-                        type="button"
-                        role="checkbox"
-                        aria-checked={selected}
-                        aria-label={student.fullName}
-                        onClick={() => toggleUnassignedSelected(student.id)}
-                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border transition ${selected ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 text-transparent hover:border-indigo-300'}`}
+                {/* 列表封頂（2026-09-25 用戶要求）：未分組學生會隨註冊累積（mock 235 個），
+                    唔封頂成頁拉唔完。共用 ShowMoreList 默認出 10 個，底下「看更多」原位展開。 */}
+                <ShowMoreList
+                  items={unassignedStudents}
+                  className="space-y-2"
+                  renderItem={(student) => {
+                    const selected = selectedUnassignedIds.includes(student.id);
+                    return (
+                      /* 一行拆三個兄弟 button（唔可以將剔號塞入原本嗰個 button 度 —— button 包 button
+                         係無效 HTML）。三個都係獨立撳得，所以唔使 stopPropagation。 */
+                      <div
+                        className={`flex items-center gap-2 rounded-2xl border bg-white py-2.5 pl-3 pr-2 transition ${selected ? 'border-indigo-300 bg-indigo-50/60' : 'border-slate-200 hover:border-indigo-200'}`}
                       >
-                        {selected ? <Check className="h-4 w-4" /> : null}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openAssignStudent(student.id)}
-                        className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left transition hover:bg-indigo-50/40"
-                      >
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
-                          <UserRound className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-black text-slate-900">{student.fullName}</div>
-                          <div className="mt-0.5 truncate text-xs text-slate-500">{student.email}</div>
-                        </div>
-                        <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeStudent(student.id)}
-                        title={uiText('移除')}
-                        className="rounded-lg p-2 text-slate-300 transition hover:bg-rose-50 hover:text-rose-600"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  );
-                })}
+                        <button
+                          type="button"
+                          role="checkbox"
+                          aria-checked={selected}
+                          aria-label={student.fullName}
+                          onClick={() => toggleUnassignedSelected(student.id)}
+                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border transition ${selected ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 text-transparent hover:border-indigo-300'}`}
+                        >
+                          {selected ? <Check className="h-4 w-4" /> : null}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openAssignStudent(student.id)}
+                          className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left transition hover:bg-indigo-50/40"
+                        >
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+                            <UserRound className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-black text-slate-900">{student.fullName}</div>
+                            <div className="mt-0.5 truncate text-xs text-slate-500">{student.email}</div>
+                          </div>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeStudent(student.id)}
+                          title={uiText('移除')}
+                          className="rounded-lg p-2 text-slate-300 transition hover:bg-rose-50 hover:text-rose-600"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    );
+                  }}
+                />
               </>
             ) : (
               <p className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-400">

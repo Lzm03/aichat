@@ -86,11 +86,8 @@ export const LearningReportPage: React.FC<LearningReportPageProps> = ({ onOpenQu
 
   return (
     <div className="h-full flex flex-col space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800 mb-2">{uiText("學習報告")}</h1>
-        <p className="text-slate-500">{uiText("追蹤學生能力表現、測驗質量與學習狀態。")}</p>
-      </div>
+      {/* 頁名（學習報告）已經喺 topbar 出現，內頁唔再重複一次；只留一句用途說明。 */}
+      <p className="text-slate-500">{uiText("追蹤學生能力表現、測驗質量與學習狀態。")}</p>
 
       {/* 分頁列：跟智能評測頁嘅 tab bar。時間範圍只喺用到嘅分頁出現，唔做無作用嘅控制項。
           overflow-y-hidden 唔可以省：只寫 overflow-x-auto 時 overflow-y 會計成 auto，

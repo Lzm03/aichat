@@ -257,11 +257,8 @@ export const AssessmentPage: React.FC<AssessmentPageProps> = ({
 
   return (
     <div className="h-full flex flex-col space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800 mb-2">{uiText("智能評測")}</h1>
-        <p className="text-slate-500">{uiText("運用 AI 技術快速生成測驗，並自動批改與分析學生表現。")}</p>
-      </div>
+      {/* 頁名（智能評測）已經喺 topbar 出現，內頁唔再重複一次；只留一句用途說明。 */}
+      <p className="text-slate-500">{uiText("運用 AI 技術快速生成測驗，並自動批改與分析學生表現。")}</p>
 
       {/* Top-level tabs：同學習報告分頁列一樣處理。只寫 overflow-x-auto 時 overflow-y 會計成
           auto，行高零餘裕（38px＝按鈕自身高度）→ 一被壓縮或捨入就喺分頁位置出 ▲▼ 垂直
