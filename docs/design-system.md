@@ -57,6 +57,23 @@
 - 尊重 `prefers-reduced-motion: reduce`；新動效需評估是否跟隨關閉
 - 避免大型 DOM 無過渡直接切換；需要時使用 Framer Motion `AnimatePresence`
 
+## 橫向捲動列（分頁列、chip 列、pill 列）
+
+**只寫 `overflow-x-auto` 嘅話，`overflow-y` 一樣會計成 `auto`，嗰行就同時係垂直 scroll
+container。** 2026-09-25 用戶報「學習報告分頁位置有得上下滑嘅 ▲▼」。行高係零餘裕
+（分頁列 38px＝按鈕自身高度；學習報告 52px＝pill 36px＋`mb-4`），所以任何 1px 壓縮、
+sub-pixel 捨入或者橫向 scrollbar 佔走高度，就會出垂直 scrollbar；Windows 經典 scrollbar
+畫成一小對 ▲▼。
+
+- 橫向捲動嘅列一律寫 **`overflow-x-auto overflow-y-hidden`**；喺 flex column 裏面就加
+  `shrink-0`（唔係會被壓扁，量過 5–8px）。已經改嘅：`LearningReportPage` 分頁列、
+  `AssessmentPage` 頂層 tabs、`SettingsPage` 分頁列
+- **唔可以靠截圖驗**：headless／Playwright 用 overlay scrollbar
+  （`offsetWidth - clientWidth === 0`），▲▼ 永遠唔會出現喺截圖。要結構化驗：掃
+  `document.querySelectorAll('*')` 揀 computed `overflow-y ∈ {auto, scroll}` 再比
+  `scrollHeight - clientHeight`
+- 改完檔（特別係 `git checkout` 之後）要 reload 先量，Vite HMR 可能停留在舊 DOM
+
 ## 可展開列（Accordion）與可撳範圍
 
 **「睇落可以撳」嘅嘢一定要真係可以撳。** 2026-09-24 學生管理嘅班級卡就係踩咗：
