@@ -407,6 +407,10 @@ type RecentChatMessage = {
   role: "user" | "bot";
   content: string;
   images?: ChatImageInput[];
+  /** 課堂參與度水位標用（由 conversation_messages row 帶落嚟；其他來源冇） */
+  id?: string;
+  createdAt?: string;
+  messageType?: string;
 };
 
 function normalizeChatModelProvider(input: unknown): ChatModelProvider {
@@ -1945,6 +1949,9 @@ ${buildChatReplyLanguageRule(normalizedReplyLanguage, characterUsesClassicalChin
         role: message.role === "assistant" || message.role === "bot" ? "bot" : "user",
         content: sanitizeChatHistoryContent(String(message.content || "")),
         images: normalizeGeminiImages((message as any)?.images || (message as any)?.metadata?.images),
+        id: String((message as any).id || ""),
+        createdAt: String((message as any).created_at || ""),
+        messageType: String((message as any).message_type || "normal"),
       }))
     );
     const active = actor.shared ? null : await getActiveTeachingSession(authUser.id, normalizedBotId);

@@ -1,6 +1,7 @@
 # 課堂參與度分析規格（Class Participation Spec）
 
-版本：v1（2026-09-24；同日修訂：加 Bot／話題維度、刪「5 條訊息」門檻、改用 `conversation_messages`）
+版本：v1（2026-09-24；同日修訂：加 Bot／話題維度、刪「5 條訊息」門檻、改用 `conversation_messages`；
+2026-09-25 修訂：後端第一期實作完成，「一條摘要」改為「判斷窗口行＋水位標」，見「判斷機制」）
 ｜適用：學習報告頁 tab 架構、班級參與度分析、LLM 參與度判斷
 
 ## 目的
@@ -70,19 +71,34 @@
   否則測驗作答會當成對話訊息，測驗多嘅班會無端端「高參與」
 - `created_at` 喺所選時間範圍內
 
-判斷結果按 **`conversation_id` 存一條摘要**（有效提問數／無意義數／實質訊息數／學生訊息總數），
-唔存逐條訊息標籤。`bot_id`、`topic_id`、`user_id`、閒置時間全部由 conversation 帶落嚟，
-將來加維度唔使改 schema。
+判斷結果存 **`bot_conversation_participation_windows`**（2026-09-25 起，取代原先「一條摘要」），
+**每個判斷窗口一行**（窗口學生訊息數／有效提問數／無意義數／`judge_source`／`judged_at`），
+唔存逐條訊息標籤。`bot_id`、`topic_id`、`user_id` 全部落行，將來加維度唔使改 schema。
+
+點解唔係 conversation 一條摘要（實作時發現嘅兩個問題）：
+
+1. judge 每 3 輪一次、每次都見到全窗口——累加成單行會**重複計數**
+2. 累加成總數之後**切唔返 30/90 日期內**——窗口行帶 `judged_at` 先做得到期內過濾
+
+**邊界用水位標** `bot_conversation_states.participation_watermark`（= 已分類訊息嘅最大
+`created_at`）：`recentMessages` 喺 `persistUserMessage` 之前攞（當輪訊息唔喺窗口），
+計數器切片會令佢永久失蹤——水位標先係可靠邊界（詳見「觸發條件」）。
 
 ## 判斷機制（LLM）
 
 ### 搭現有 judge 順風車，唔另開 call
 
 `conversation-state.ts` 喺 strict coverage 模式下已經每 `JUDGE_INTERVAL_TURNS`（=3）輪
-call 一次 `judgeStudentAnswers`，同一個對話、同一份 context。
+call 一次 judge，同一個對話、同一份 context。
 
-**做法**：喺同一次 call 加問參與度維度（`isEffectiveQuestion`／`isSubstantive`）。
-另開一個 judge = 同一段對話跑兩次 LLM，成本翻倍，冇理由。
+**做法**（2026-09-25 已實作）：同一次 call 嘅 JSON 輸出加 `engagement` 欄——
+`{"demonstrated":[...],"engagement":{"meaningless":[],"effective":[]}}`，兩個 array 係
+0-based 索引，指向 prompt 入面「新訊息（學生）編號清單」。另開一個 judge = 同一段對話
+跑兩次 LLM，成本翻倍，冇理由。
+
+**全部答題模式都判斷**（2026-09-24 用戶拍板）：原本 judge 只喺「引導後再回答／
+不直接給答案」跑，「直接給答案」完全零 LLM——參與度要睇全部學生對話，所以週期擴展到
+全部模式；direct 模式只取 `engagement`，`demonstrated` 唔用於覆蓋（語意不變）。
 
 **明確唔係「每次都 call」。** 成本上限：
 
@@ -111,14 +127,33 @@ call 一次 `judgeStudentAnswers`，同一個對話、同一份 context。
 斷網全部唔會觸發，`beforeunload` 喺手機（尤其 iOS Safari）唔可信；而且學生根本冇
 「關閉 Bot」呢個動作。閒置超時係唯一可靠嘅 session 結束訊號。
 
-**「未判斷」嘅定義**：`bot_conversation_states.turns_since_judge > 0`。補跑完必須清零，
-掃描要 idempotent——否則每個週期重複燒 call。
+**「未判斷」嘅定義**（2026-09-25 已實作）：訊息 `created_at` > 水位標
+（`bot_conversation_states.participation_watermark`）。`turns_since_judge` 改為
+「未分類 user row 數」做節流計數，唔再用嚟切窗口——`recentMessages` 喺
+`persistUserMessage` 之前攞（當輪訊息唔喺窗口），計數器切片會令訊息永久失蹤。
+補跑完水位標推到已分類訊息嘅最大 `created_at`，掃描 idempotent。
+
+### 掃描實作（2026-09-25 已上）
+
+- `server/lib/participation.ts` 嘅 `runIdleParticipationScan()`，`index.ts` 每 5 分鐘
+  `setInterval` 一次（repo 內第一件背景基建；shutdown 有 `clearInterval`）
+- 候選：`bot_conversation_states.updated_at` 閒置 10 分鐘 + 水位標非空 + conversation
+  未刪（`status <> 'deleted'`），batch 20 逐條 sequential
+- **多實例安全**（原「待確認」項）：候選用 `SELECT … FOR UPDATE SKIP LOCKED`
+  （autocommit 即揸即放，唔揸住行鎖跑 LLM——否則會頂住 hot path 嘅 state upsert，
+  令學生下一條訊息遲最多 15 秒）；寫入用 optimistic update 水位標 guard
+  （`WHERE participation_watermark=$舊值`，唔中就 ROLLBACK 成個 transaction，
+  唔會同 hot path 重複計同一批）
+- 免費預濾：新訊息全係短字（< `JUDGE_SUBSTANTIVE_MIN`）就唔打 LLM——heuristic
+  分類對短字完全正確
 
 ### Fallback
 
 跟現有慣例（`judged ?? computeStudentEvidence(...)`）：LLM 判斷唔到**唔可以靜靜當 pass**。
 用 `judgeSource` 標明來源（`llm` ／ `heuristic-fallback`），heuristic fallback 用
-`JUDGE_SUBSTANTIVE_MIN` 字數門檻，統計頁要分得開兩者。
+`JUDGE_SUBSTANTIVE_MIN` 字數門檻，統計頁要分得開兩者。`parseEngagement` 有純函數單測
+（root `tests/participation-judge.test.mjs`：fence block／index 越界／半爛 JSON→null）；
+production Gemini 下嘅回應長度同穩定性仍要上線後核一次（見「待確認」）。
 
 ### 非同步
 
@@ -213,6 +248,14 @@ promise 鏈（fire-and-forget，read-your-writes）。判斷幾時完成唔影�
 同日調整：總覽移除「新建測驗」入口（改為 4 張卡 2×2）；學生能力兩張卡嘅列表封頂 10 個
 （`ShowMoreList`）。
 
+2026-09-25 進度：**後端第一期完成**（branch `doris/class-participation`）——
+judge 加 `engagement` 輸出（全部答題模式）、`bot_conversation_participation_windows`
+窗口表＋水位標、`GET /api/teachers/me/participation?period=30d|90d|all&dimension=class|bot|topic`
+聚合 route（班級維度含未分組 bucket 同未有互動名單）、閒置 10 分鐘補漏掃描
+（SKIP LOCKED＋optimistic watermark guard）、整合測試 11 條＋純函數單測 8 條。
+**唔包含**學生層級數字。剩返嘅係前端接駁：課堂參與 tab 由 placeholder 換成真數據
+（班級數字＋未有互動名單→撳開課堂對話記錄 drawer），屬另一件獨立任務。
+
 **第二期**：測驗封存（問題 4 補做）**已完成**——老師可將已發佈測驗封存／還原，
 作答、成績同異常標記全部保留，`archived_at` 為 NULL 就係未封存；跟住係閒置判斷嘅調校、
 未有互動學生嘅跟進流程。
@@ -220,16 +263,20 @@ promise 鏈（fire-and-forget，read-your-writes）。判斷幾時完成唔影�
 ## 待確認
 
 - 閒置門檻 10 分鐘係估算，要喺真課堂驗（一節課幾長、學生實際節奏）
-- 「有效提問」同「無意義」喺同一次 judge call 加兩個 output field，要核 Gemini 回應
-  長度同 parse 穩定性（`server/lib/answer-judge.ts` 嘅 `parseDemonstrated` 有先例）
-- 閒置補漏要一個 server 內定時掃描。**後端行多過一個 instance 就會同時掃到同一條對話**——
-  要 idempotent（`turns_since_judge` 清零當鎖）或者 `SELECT … FOR UPDATE SKIP LOCKED`
+- ~~judge 回應長度同 parse 穩定性~~ parse 層有單測；**production Gemini 下仍要核一次**
+  （本機冇 key，judge 全行 fallback）
+- ~~多實例掃描 idempotency~~ 已實作：SKIP LOCKED＋optimistic watermark guard（見「掃描實作」）
 - `period=90d` 要後端配合：`/api/teachers/me/ability-report` 未喺 repo（frontend-only），
   上線前要連 90 日窗口一齊做，否則真後端環境攞唔到 90 日數據
+  （參與度 route 自己嘅 90d 已支援）
 - 話題層面嘅版面：一個話題橫跨好多個 conversation（每位學生一個），
   係每個話題一行，定係揀一個話題先睇入面？
 - 上線前要對一次 `conversation_messages`（`role='user'`）同 `bot_chat_messages` 嘅數量差——
   若果有學生訊息只落喺後者，嗰批會計唔到
+- 已知簡化（實作時接受、日後可改）：話題維度以 conversation 嘅**當前** topic 歸類
+  （切話題前嘅訊息跟新話題計）；窗口內容橫跨時間範圍邊界時以 `judged_at` 為準；
+  `characterKnowledgeBase` 空嘅對話冇 track、冇水位標——嗰批只行 heuristic 尾巴、
+  永遠唔會 LLM 分類；冇班學生合併「未分組」bucket，多班學生音量喺每班各計一次
 
 ## 合規依據
 

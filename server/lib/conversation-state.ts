@@ -21,7 +21,13 @@ import {
   computeStudentEvidence,
   computeNextPoint,
 } from "../../utils/coverage.ts";
-import { judgeStudentAnswers, shouldRunJudge } from "./answer-judge.ts";
+import {
+  hasSubstantiveStudentInput,
+  JUDGE_INTERVAL_TURNS,
+  judgeConversationWindow,
+} from "./answer-judge.ts";
+import type { EngagementVerdict } from "./engagement.ts";
+import { recordParticipationWindow } from "./participation.ts";
 import { enqueueConversationTrack } from "./conversation-track-queue.ts";
 
 export {
@@ -55,6 +61,8 @@ export type ConversationStateRow = {
   skipped_point_ids: string[];
   turns_on_next_point: number;
   turns_since_judge: number;
+  /** 課堂參與度水位標：已分類訊息嘅最大 created_at（參與度專用，唔影響覆蓋） */
+  participation_watermark: string | null;
   updated_at: string;
 };
 
@@ -85,6 +93,11 @@ export async function getConversationState(
         : [],
       turns_on_next_point: Number(row.turns_on_next_point || 0),
       turns_since_judge: Number(row.turns_since_judge || 0),
+      // 要 ISO：String(Date) 出 verbose 格式（"Sun Sep 20 2026..."），
+      // 直接傳返俾 Postgres 會 DateTimeParseError。
+      participation_watermark: row.participation_watermark
+        ? new Date(row.participation_watermark).toISOString()
+        : null,
       updated_at: String(row.updated_at || ""),
     };
   } catch (error) {
@@ -239,8 +252,20 @@ export type TrackConversationStateInput = {
   topicId?: string;
   /** 答題模式覆寫：知識來源係話題內容（冇【答題策略】節）時，由主知識庫傳入 */
   answerModeOverride?: string;
-  recentMessages: Array<{ role: string; content: string }>;
+  recentMessages: Array<{
+    role: string;
+    content: string;
+    /** 參與度分類用（由 ask.ts 帶入 conversation_messages 嘅 id／時間／類型） */
+    id?: string;
+    createdAt?: string;
+    messageType?: string;
+  }>;
   reply: string;
+  /**
+   * 測試注入口：ESM named-import 喺 tsx／esbuild 下 mock 唔到，DI 先可靠
+   * （參與度整合測試會傳 stub）。production 唔傳 = 真 judgeConversationWindow。
+   */
+  judgeFn?: typeof judgeConversationWindow;
 };
 
 /**
@@ -256,150 +281,238 @@ async function trackConversationStateWork(input: TrackConversationStateInput): P
   try {
     const allPoints = parsePromptSource({ knowledgeBase: input.knowledgeBase })
       .knowledgePoints;
-    if (!allPoints.length) return;
 
     // 只追蹤「教學目標（core）」；非 core 嘅參考點唔入覆蓋 / next_point / 進度。
+    // 參與度分類唔受呢個 filter 影響：冇 core 點嘅 bot 對話都要計（judge 容許
+    // 空 points，淨出 engagement），所以參與度塊放喺 points early-return 之前。
     const points = allPoints.filter((point) => point.core !== false);
-    if (!points.length) return;
 
     await ensurePlatformTables();
     const previous = await getConversationState(input.conversationId);
     const topicId = input.topicId || "";
-
-    // 新對話開場（冇 conversation 狀態）時，用同一個話題嘅跨對話累積進度 seed，
-    // 令 bot 唔會每段新對話都重新教同一批已掌握知識點。已有 conversation 狀態、
-    // 而且話題冇變，就照舊由 conversation 嘅 covered 起步。
-    // 注意：呢度嘅話題比較係 exact compare —— ''（舊數據／主知識庫）同默認話題
-    // 嘅真 id 會當成「轉咗話題」，由新話題嘅累積進度重新起步；顯示側
-    // aggregateTopicCoverage 嘅 '' 合併唔受影響。
-    const accumulated: TopicScoped<string[]> =
-      !previous || previous.topic_id !== topicId
-        ? await getStudentProgress(input.botId, input.userId, topicId)
-        : { topicId, value: [] };
-    const { coverage: startingCoverage, topicChanged } = seedCoverageOnTopicSwitch({
-      previous: previous
-        ? { topicId: previous.topic_id, value: previous.covered_point_ids }
-        : null,
-      topicId,
-      accumulated,
-    });
-    const previouslyCovered = startingCoverage.value;
-
-    // 老師改過知識點之後，舊 id 可能已經退役（例如重新生成後 title 對唔上）。
-    // 呢啲 id 唔應該再入 conversation state / prompt：Covered_Points 會將佢哋
-    // 渲染成裸 id，而且 computeCoreCovered 由 seed 起步，會將佢哋當成已覆蓋
-    // 一路帶落去，令學生永遠唔會再被教嗰點。
-    const validIds = new Set(points.map((point) => point.id));
-    for (const id of [...previouslyCovered]) {
-      if (!validIds.has(id)) previouslyCovered.delete(id);
-    }
-
-    // 只計「角色自己講過」嘅內容。學生講出知識點名字唔等於教過 ——
-    // 2026-09-12 端到端測試實證：舊版將學生訊息一齊拼入嚟，學生問一句
-    // 「榫卯係咩嚟㗎？」就即刻令 kp_001 標記已覆蓋，6 個知識點有 4 個
-    // 係咁樣被誤標，之後 bot 反而被 Covered_Points 禁止再教。
-    // 注意 role 有兩種寫法：DB 出嚟係 "assistant"，但 ask.ts 會
-    // 正規化成 "bot" 先傳入嚟，兩者都要認。
-    // 每輪獨立一組字（唔 join 成一條），訊號先分得出「跨輪」。
-    const assistantTurns = [
-      ...input.recentMessages
-        .filter((message) => message.role === "assistant" || message.role === "bot")
-        .map((message) => message.content),
-      input.reply,
-    ];
-    // 學生自己講過嘅每輪文字（主訊號來源）。只認 role === "user"。
-    const studentTurns = input.recentMessages
-      .filter((message) => message.role === "user")
-      .map((message) => message.content);
-
-    // 覆蓋判定跟 bot 答題策略：直接給答案 = 角色講過就算；
-    // 引導後再回答 / 不直接給答案 = 角色教咗 AND 學生答到先算。
     const answerMode = input.answerModeOverride || parseAnswerMode(input.knowledgeBase);
     const strictCoverage = answerMode !== "直接給答案";
 
-    // 學生證據：strict mode 下每 JUDGE_INTERVAL_TURNS 輪跑一次 LLM 判斷（D4），
-    // 其餘輪、或者判斷唔到（null）就用字串匹配兜底。
-    let studentEvidence: Set<string> = new Set();
-    let turnsSinceJudge = Number(previous?.turns_since_judge || 0);
-    if (strictCoverage) {
-      const judgeTurns = input.recentMessages.map((message) => ({
-        role: (message.role === "user" ? "student" : "bot") as "student" | "bot",
+    // ---- 課堂參與度（水位標分類）----
+    // 邊界 = participation_watermark（已分類訊息嘅最大 created_at）。
+    // 唔用 turns_since_judge 計數器切片：recentMessages 喺 persistUserMessage
+    // 之前攞（當輪訊息唔喺窗口），而 debounce 可以一條計數對兩條 row，
+    // 計數器切片會令訊息永久失蹤——水位標先係可靠邊界。
+    const watermarkMs = previous?.participation_watermark
+      ? new Date(previous.participation_watermark).getTime()
+      : -1;
+    const newParticipationTurns = input.recentMessages
+      .filter((message) => {
+        if (message.role !== "user") return false;
+        if (message.messageType != null && message.messageType !== "normal") {
+          return false;
+        }
+        if (!message.createdAt) return false;
+        const time = new Date(message.createdAt).getTime();
+        return Number.isFinite(time) && time > watermarkMs;
+      })
+      .map((message) => ({
         content: message.content,
+        createdAt: new Date(message.createdAt as string).toISOString(),
       }));
-      if (shouldRunJudge(turnsSinceJudge, judgeTurns)) {
-        const judged = await judgeStudentAnswers({ points, turns: judgeTurns });
-        studentEvidence = judged ?? computeStudentEvidence(points, studentTurns);
-        turnsSinceJudge = 0;
-      } else {
-        studentEvidence = computeStudentEvidence(points, studentTurns);
-        turnsSinceJudge += 1;
-      }
+
+    // turns_since_judge 語義：未分類 user row 數（debounce 兩條 row 計 2）。
+    let turnsSinceJudge =
+      Number(previous?.turns_since_judge || 0) + newParticipationTurns.length;
+
+    const judgeTurns = input.recentMessages.map((message) => ({
+      role: (message.role === "user" ? "student" : "bot") as "student" | "bot",
+      content: message.content,
+    }));
+
+    // 一次 judge 同時服務覆蓋證據（demonstrated）同參與度（engagement）。
+    // 免費預濾：新訊息全係短字，heuristic 已經分類得啱，唔使打 LLM；
+    // strict 模式照舊要求全窗口有實質輸入先值得判斷 demonstrated。
+    let judgedDemonstrated: Set<string> | null = null;
+    let judgedEngagement: EngagementVerdict | null = null;
+    const judgeRan =
+      newParticipationTurns.length > 0 &&
+      turnsSinceJudge >= JUDGE_INTERVAL_TURNS &&
+      (hasSubstantiveStudentInput(
+        newParticipationTurns.map((turn) => ({
+          role: "student" as const,
+          content: turn.content,
+        }))
+      ) ||
+        (strictCoverage && hasSubstantiveStudentInput(judgeTurns)));
+    if (judgeRan) {
+      const judgeFn = input.judgeFn ?? judgeConversationWindow;
+      const judged = await judgeFn({
+        points,
+        turns: judgeTurns,
+        newStudentTurns: newParticipationTurns.map((turn) => turn.content),
+      });
+      judgedDemonstrated = judged.demonstrated;
+      judgedEngagement = judged.engagement;
     }
 
-    const coveredNow = computeCoreCovered(
-      points,
-      assistantTurns,
-      studentEvidence,
-      previouslyCovered,
-      strictCoverage
-    );
+    // ---- 覆蓋追蹤（原有邏輯；冇 core 點就跳過，參與度照行）----
+    let coverage: TopicScoped<string[]> = { topicId, value: [] };
+    let nextPointId: string | null = previous?.next_point_id || null;
+    let skippedIds: string[] = previous?.skipped_point_ids || [];
+    let turnsOnNextPoint = previous?.turns_on_next_point || 0;
+    if (points.length) {
+      // 新對話開場（冇 conversation 狀態）時，用同一個話題嘅跨對話累積進度 seed，
+      // 令 bot 唔會每段新對話都重新教同一批已掌握知識點。已有 conversation 狀態、
+      // 而且話題冇變，就照舊由 conversation 嘅 covered 起步。
+      // 注意：呢度嘅話題比較係 exact compare —— ''（舊數據／主知識庫）同默認話題
+      // 嘅真 id 會當成「轉咗話題」，由新話題嘅累積進度重新起步；顯示側
+      // aggregateTopicCoverage 嘅 '' 合併唔受影響。
+      const accumulated: TopicScoped<string[]> =
+        !previous || previous.topic_id !== topicId
+          ? await getStudentProgress(input.botId, input.userId, topicId)
+          : { topicId, value: [] };
+      const { coverage: startingCoverage, topicChanged } = seedCoverageOnTopicSwitch({
+        previous: previous
+          ? { topicId: previous.topic_id, value: previous.covered_point_ids }
+          : null,
+        topicId,
+        accumulated,
+      });
+      const previouslyCovered = startingCoverage.value;
 
-    // 寫入側 invariant guard：只寫入而家呢個話題真正存在嘅知識點 id。
-    // 話題由 startingCoverage 帶落嚟 —— 跟住兩個寫入（對話狀態 + 跨對話累積）
-    // 都只可以由呢個物件攞話題，冇得將 A 話題嘅 id 寫入 B 話題。
-    const coverage: TopicScoped<string[]> = {
-      topicId: startingCoverage.topicId,
-      value: Array.from(coveredNow).filter((id) => validIds.has(id)),
-    };
-    // 切話題之後，上一段對話嘅 next_point / 跳過名單唔可以帶落新話題
-    // （舊話題嘅 id 會壓制新話題嘅點），所以 context 傳 null。
-    const { nextPointId, skippedIds, turnsOnNextPoint } = computeNextPoint(
-      points,
-      coveredNow,
-      new Set<string>(topicChanged ? [] : previous?.skipped_point_ids || []),
-      previous && !topicChanged
-        ? {
-            nextPointId: previous.next_point_id,
-            turnsOnNextPoint: previous.turns_on_next_point,
-          }
-        : null
-    );
+      // 老師改過知識點之後，舊 id 可能已經退役（例如重新生成後 title 對唔上）。
+      // 呢啲 id 唔應該再入 conversation state / prompt：Covered_Points 會將佢哋
+      // 渲染成裸 id，而且 computeCoreCovered 由 seed 起步，會將佢哋當成已覆蓋
+      // 一路帶落去，令學生永遠唔會再被教嗰點。
+      const validIds = new Set(points.map((point) => point.id));
+      for (const id of [...previouslyCovered]) {
+        if (!validIds.has(id)) previouslyCovered.delete(id);
+      }
+
+      // 只計「角色自己講過」嘅內容。學生講出知識點名字唔等於教過 ——
+      // 2026-09-12 端到端測試實證：舊版將學生訊息一齊拼入嚟，學生問一句
+      // 「榫卯係咩嚟㗎？」就即刻令 kp_001 標記已覆蓋，6 個知識點有 4 個
+      // 係咁樣被誤標，之後 bot 反而被 Covered_Points 禁止再教。
+      // 注意 role 有兩種寫法：DB 出嚟係 "assistant"，但 ask.ts 會
+      // 正規化成 "bot" 先傳入嚟，兩者都要認。
+      // 每輪獨立一組字（唔 join 成一條），訊號先分得出「跨輪」。
+      const assistantTurns = [
+        ...input.recentMessages
+          .filter((message) => message.role === "assistant" || message.role === "bot")
+          .map((message) => message.content),
+        input.reply,
+      ];
+      // 學生自己講過嘅每輪文字（主訊號來源）。只認 role === "user"。
+      const studentTurns = input.recentMessages
+        .filter((message) => message.role === "user")
+        .map((message) => message.content);
+
+      // 學生證據：judge 有跑（參與度同一 call）就用 demonstrated，判斷唔到
+      // （null）用字串匹配兜底；冇跑就照舊字串匹配。
+      let studentEvidence: Set<string> = new Set();
+      if (strictCoverage) {
+        studentEvidence = judgeRan
+          ? judgedDemonstrated ?? computeStudentEvidence(points, studentTurns)
+          : computeStudentEvidence(points, studentTurns);
+      }
+
+      const coveredNow = computeCoreCovered(
+        points,
+        assistantTurns,
+        studentEvidence,
+        previouslyCovered,
+        strictCoverage
+      );
+
+      // 寫入側 invariant guard：只寫入而家呢個話題真正存在嘅知識點 id。
+      // 話題由 startingCoverage 帶落嚟 —— 跟住兩個寫入（對話狀態 + 跨對話累積）
+      // 都只可以由呢個物件攞話題，冇得將 A 話題嘅 id 寫入 B 話題。
+      coverage = {
+        topicId: startingCoverage.topicId,
+        value: Array.from(coveredNow).filter((id) => validIds.has(id)),
+      };
+      // 切話題之後，上一段對話嘅 next_point / 跳過名單唔可以帶落新話題
+      // （舊話題嘅 id 會壓制新話題嘅點），所以 context 傳 null。
+      const computed = computeNextPoint(
+        points,
+        coveredNow,
+        new Set<string>(topicChanged ? [] : previous?.skipped_point_ids || []),
+        previous && !topicChanged
+          ? {
+              nextPointId: previous.next_point_id,
+              turnsOnNextPoint: previous.turns_on_next_point,
+            }
+          : null
+      );
+      nextPointId = computed.nextPointId;
+      skippedIds = computed.skippedIds;
+      turnsOnNextPoint = computed.turnsOnNextPoint;
+    }
+
     const didSummarize = SUMMARY_MARKERS.test(input.reply);
     const turnsSinceSummary = didSummarize
       ? 0
       : Math.max(0, Number(previous?.turns_since_summary || 0)) + 1;
 
-    await pool.query(
-      `INSERT INTO bot_conversation_states
-         (conversation_id, bot_id, user_id, topic_id, covered_point_ids, next_point_id, student_level, turns_since_summary, skipped_point_ids, turns_on_next_point, turns_since_judge, updated_at)
-       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9::jsonb,$10,$11,NOW())
-       ON CONFLICT (conversation_id) DO UPDATE SET
-         topic_id=EXCLUDED.topic_id,
-         covered_point_ids=EXCLUDED.covered_point_ids,
-         next_point_id=EXCLUDED.next_point_id,
-         student_level=EXCLUDED.student_level,
-         turns_since_summary=EXCLUDED.turns_since_summary,
-         skipped_point_ids=EXCLUDED.skipped_point_ids,
-         turns_on_next_point=EXCLUDED.turns_on_next_point,
-         turns_since_judge=EXCLUDED.turns_since_judge,
-         updated_at=NOW()`,
-      [
-        input.conversationId,
-        input.botId,
-        input.userId,
-        coverage.topicId,
-        JSON.stringify(coverage.value),
-        nextPointId,
-        previous?.student_level || "未評估",
-        turnsSinceSummary,
-        JSON.stringify(skippedIds),
-        turnsOnNextPoint,
-        turnsSinceJudge,
-      ]
-    );
+    // 窗口行 INSERT 同 state upsert（含水滴標、turns_since_judge 清零）同一
+    // transaction：中途死機唔會出現「有窗口但冇水位標」→ 下次重複計。
+    let participationWatermark = previous?.participation_watermark ?? null;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      if (judgeRan) {
+        const recorded = await recordParticipationWindow(
+          {
+            conversationId: input.conversationId,
+            botId: input.botId,
+            userId: input.userId,
+            topicId,
+            newTurns: newParticipationTurns,
+            engagement: judgedEngagement,
+          },
+          client
+        );
+        participationWatermark = recorded.watermark ?? participationWatermark;
+        turnsSinceJudge = 0;
+      }
+      await client.query(
+        `INSERT INTO bot_conversation_states
+           (conversation_id, bot_id, user_id, topic_id, covered_point_ids, next_point_id, student_level, turns_since_summary, skipped_point_ids, turns_on_next_point, turns_since_judge, participation_watermark, updated_at)
+         VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9::jsonb,$10,$11,$12,NOW())
+         ON CONFLICT (conversation_id) DO UPDATE SET
+           topic_id=EXCLUDED.topic_id,
+           covered_point_ids=EXCLUDED.covered_point_ids,
+           next_point_id=EXCLUDED.next_point_id,
+           student_level=EXCLUDED.student_level,
+           turns_since_summary=EXCLUDED.turns_since_summary,
+           skipped_point_ids=EXCLUDED.skipped_point_ids,
+           turns_on_next_point=EXCLUDED.turns_on_next_point,
+           turns_since_judge=EXCLUDED.turns_since_judge,
+           participation_watermark=EXCLUDED.participation_watermark,
+           updated_at=NOW()`,
+        [
+          input.conversationId,
+          input.botId,
+          input.userId,
+          coverage.topicId,
+          JSON.stringify(coverage.value),
+          nextPointId,
+          previous?.student_level || "未評估",
+          turnsSinceSummary,
+          JSON.stringify(skippedIds),
+          turnsOnNextPoint,
+          turnsSinceJudge,
+          participationWatermark,
+        ]
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
 
     // 每輪結束後，將覆蓋進度合併入跨對話累積表（並集，唔會倒退；按話題分維度）。
-    await mergeStudentProgress(input.botId, input.userId, coverage);
+    if (points.length) {
+      await mergeStudentProgress(input.botId, input.userId, coverage);
+    }
   } catch (error) {
     console.warn("[conversation-state] failed to track state", error);
   }

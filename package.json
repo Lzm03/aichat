@@ -11,6 +11,7 @@
     "test:ids": "node --test tests/knowledge-point-ids.test.mjs",
     "test:batches": "node --test tests/student-batches.test.mjs",
     "test:roster": "node --test tests/student-roster.test.mjs",
+    "test:participation-judge": "node --test tests/participation-judge.test.mjs",
     "test:speech-playback": "node --test tests/speech-playback.test.mjs",
     "test:all": "node --test tests/*.test.mjs",
     "preview": "vite preview"

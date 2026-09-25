@@ -4,8 +4,10 @@
 // ask.ts 讀 state 之前等一等就保證讀到最新 —— 即係學生手快連問兩句，第二句
 // 唔會用到第一句未寫好嘅 covered / next_point。
 //
-// 全部 track call 都傳 answerModeOverride「直接給答案」→ strictCoverage = false
-// → judgeStudentAnswers（Gemini）永遠唔會跑，所以測試完全離線、deterministic。
+// 全部 track call 都傳 answerModeOverride「直接給答案」→ strictCoverage = false。
+// 課堂參與度判斷（全部模式掛鉤）喺呢度唔會跑：recentMessages 冇帶 createdAt
+// 元數據 → 唔計入窗口；就算跑，本機冇 Gemini key 都係 null → fallback。
+// 所以測試仍然完全離線、deterministic。
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { pool } from "../db.ts";
@@ -25,7 +27,7 @@ const PREFIX = "trq_";
 const TEACHER = `${PREFIX}teacher`;
 const BOT = `${PREFIX}bot`;
 
-/** 直接給答案 = 角色講過就算（strictCoverage false）→ LLM judge 唔會跑。 */
+/** 直接給答案 = 角色講過就算（strictCoverage false）→ demonstrated 唔用於覆蓋 */
 const ANSWER_MODE = "直接給答案";
 
 /** parsePromptSource 認【知識點分級】節，入面係知識點 JSON 陣列。 */

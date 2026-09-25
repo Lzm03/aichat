@@ -32,11 +32,16 @@ import webmSequenceRoute from "./api/webm-sequence.ts";
 import modoIntegrationRoute from "./api/modo-integration.ts";
 import schoolAvatarRequestsRoute, { ensureSchoolAvatarRequestTables } from "./api/school-avatar-requests.ts";
 import flaggedChatRoute, { ensureFlaggedChatTables } from "./api/flagged-chat.ts";
+import participationRoute from "./api/participation.ts";
 import { pool, warmDatabasePool } from "./db.ts";
 import { uploadsDir } from "./lib/uploads-dir.ts";
 import { ensurePlatformTables, maybeAssignLegacyDataByEmail } from "./lib/platform-auth.ts";
 import { ensureCharacterTopicTables } from "./lib/character-topics.ts";
 import { getRequestConcurrencyState, requestConcurrencyGate } from "./lib/request-concurrency.ts";
+import {
+  ensureParticipationTables,
+  runIdleParticipationScan,
+} from "./lib/participation.ts";
 
 const app = express();
 const allowedOrigins = new Set(
@@ -153,6 +158,7 @@ app.use("/api/bots", botsRoute);
 app.use("/api/integrations/modo", modoIntegrationRoute);
 app.use("/api/school-avatar-requests", schoolAvatarRequestsRoute);
 app.use("/api/flagged-chat", flaggedChatRoute);
+app.use("/api", participationRoute);
 // Routes
 app.use("/api/generate-image", generateImageRoute);
 app.use("/api", ttsRoute);
@@ -216,6 +222,11 @@ app.use(
 // ⭐ Railway 會動態提供 PORT
 const PORT = process.env.PORT || 4000;
 let server: ReturnType<typeof app.listen> | null = null;
+let idleScanTimer: ReturnType<typeof setInterval> | null = null;
+
+// 課堂參與度閒置補漏掃描（每 5 分鐘）：對話閒置 10 分鐘而仲有未判斷訊息 → 補跑一次 judge。
+// 多實例安全：候選用 FOR UPDATE SKIP LOCKED 攞，寫入用水位標 optimistic guard。
+const IDLE_SCAN_INTERVAL_MS = 5 * 60_000;
 
 async function start() {
   await ensurePlatformTables();
@@ -224,6 +235,7 @@ async function start() {
   await ensureStudentTaskTables();
   await ensureSchoolAvatarRequestTables();
   await ensureFlaggedChatTables();
+  await ensureParticipationTables();
   await warmDatabasePool();
   try {
     await maybeAssignLegacyDataByEmail("lzm200303@gmail.com");
@@ -231,6 +243,11 @@ async function start() {
     // Keep startup healthy even if legacy migration assignment fails.
     console.warn("Legacy account assignment skipped:", error);
   }
+  idleScanTimer = setInterval(() => {
+    void runIdleParticipationScan().catch((error) => {
+      console.warn("[participation] idle scan failed", error);
+    });
+  }, IDLE_SCAN_INTERVAL_MS);
   server = app.listen(PORT, () => {
     console.log(`Backend running at http://localhost:${PORT}`);
   });
@@ -238,6 +255,9 @@ async function start() {
 
 async function shutdown(signal: string) {
   console.log(`Received ${signal}, shutting down gracefully...`);
+  // 停止補漏掃描；in-flight 掃描嘅 connection 由 pool.end() 收走，
+  // 10s force-exit 吸收剩餘噪聲。
+  if (idleScanTimer) clearInterval(idleScanTimer);
   server?.close(async () => {
     await pool.end().catch((error) => {
       console.error("Failed to close database pool:", error);

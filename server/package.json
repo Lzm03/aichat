@@ -24,6 +24,7 @@
     "test:vertex-sse": "node --import tsx --test tests/vertex-sse.test.ts",
     "test:chat-anomaly-rules": "node --import tsx --test tests/chat-anomaly-rules.test.ts",
     "test:flagged-chat": "node --import tsx --test tests/flagged-chat.integration.test.ts",
+    "test:participation": "node --import tsx --test tests/participation.integration.test.ts",
     "test:answer-mode": "node --import tsx --test tests/answer-mode-prompt.test.ts",
     "test:bot-prompt": "node --import tsx scripts/test-bot-prompt.ts",
     "test:all": "node --import tsx --test --test-concurrency=1 tests/*.test.ts",
