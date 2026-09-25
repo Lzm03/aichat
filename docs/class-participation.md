@@ -185,7 +185,7 @@ promise 鏈（fire-and-forget，read-your-writes）。判斷幾時完成唔影�
 | Tab | 內容 |
 | --- | --- |
 | 總覽 | 行為 KPI＋亮點＋快速入口卡（完整設計見 `docs/learning-report-overview.md`），一眼睇晒 |
-| 課堂參與 | 本規格新增：班級指標（可切「按 Bot」／「按話題」）＋ 未有互動學生名單。**第一期只出「準備中」說明**——判斷後端未上線，唔放假數字 |
+| 課堂參與 | 本規格新增：班級指標（可切「按 Bot」／「按話題」）＋ 未有互動學生名單。**2026-09-25 已接駁真數據**（維度切換＋每組指標＋名單 popover，見「教師端 UX」） |
 | 學生能力 | `StudentLearningReportCard`（含課堂對話記錄 drawer）＋ `TeacherProgressOverview` 並排，`AbilityTrackingReport`（Bloom 六層級）全闊放下面 |
 | 對話紀錄 | `FlaggedChatSummaryCard`（問題 5） |
 | 測驗質量 | `AssessmentQualityList` |
@@ -259,8 +259,11 @@ judge 加 `engagement` 輸出（全部答題模式）、`bot_conversation_partic
 **唔包含**學生層級數字。同日另出總覽設計並實作（`docs/learning-report-overview.md`）：
 行為 KPI＋規則亮點＋紅點即時清除（route `GET /api/teachers/me/learning-overview`、
 `bot_student_progress.created_at` 欄）——已實作、測試全綠。
-剩返嘅係前端接駁：課堂參與 tab 由 placeholder 換成真數據
-（班級數字＋未有互動名單→撳開課堂對話記錄 drawer），屬另一件獨立任務。
+**同日（用戶 review 後）課堂參與 tab 已接駁真數據**：維度切換（班級／按 Bot／按話題）＋
+每組四指標＋未有互動名單。**名單係純統計**（用戶決定：未有互動嘅學生根本冇對話可睇，
+開 drawer 會係空白）——撳名出 popover 顯示姓名＋班級；「撳名即睇對話」嘅 drill-down
+已由異常對話卡片提供。總覽「最近動態」按用戶要求刪除（同「需要你跟進」信息重複）。
+playwright 真撳 31 項全過。
 
 **第二期**：測驗封存（問題 4 補做）**已完成**——老師可將已發佈測驗封存／還原，
 作答、成績同異常標記全部保留，`archived_at` 為 NULL 就係未封存；跟住係閒置判斷嘅調校、

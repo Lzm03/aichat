@@ -191,6 +191,7 @@ test("KPI 行：期內參與度加總 + 班級提醒（未有互動嘅班）", {
   assert.equal(body.participation.meaninglessMessages, 2);
   // 提醒：未分組 bucket（STUDENT_B）有 1 位未有互動
   assert.equal(body.classAlerts.length, 1);
+  assert.equal(body.classAlertsTotal, 1);
   assert.equal(body.classAlerts[0].classId, "");
   assert.equal(body.classAlerts[0].noInteractionStudents, 1);
 });
@@ -209,21 +210,35 @@ test("異常數字：anomalyOpen = 紅點數、wellbeingOpen 分開", { skip: !s
   assert.equal(body.wellbeingOpen, 1);
 });
 
-test("最近動態：今日新增報告／掌握進展、7 日測驗報告", { skip: !safeTestDatabase }, async () => {
+test("classAlerts 封頂 3 條、classAlertsTotal 反映全數", { skip: !safeTestDatabase }, async () => {
   await resetFixture();
-  const { body } = await callApi("/api/teachers/me/learning-overview?period=30d");
-  // A×1 今日新增（A×2 十日舊、B×C 係老師 B 嘅 bot）→ 報告 1、學生 1
-  assert.equal(body.updates.abilityReportsToday, 1);
-  assert.equal(body.updates.knowledgeStudentsToday, 1);
-  assert.equal(body.updates.quizReportsGraded7d, 1);
-});
-
-test("今日快照：有實質互動／需要跟進（HKT 今日）", { skip: !safeTestDatabase }, async () => {
-  await resetFixture();
-  const { body } = await callApi("/api/teachers/me/learning-overview?period=30d");
-  // 新窗口 judged_at = NOW() → 今日活躍 1；STUDENT_B 尾巴 created_at NOW() → 今日未有互動 1
-  assert.equal(body.today.activeStudents, 1);
-  assert.equal(body.today.noInteractionStudents, 1);
+  // 臨時加 3 班 3 學生（全部未有互動）→ 提醒總數 = 3 + 未分組 1 = 4
+  const extraUsers = [`${PREFIX}cap_s1`, `${PREFIX}cap_s2`, `${PREFIX}cap_s3`];
+  const extraGroups = [`${PREFIX}cap_g1`, `${PREFIX}cap_g2`, `${PREFIX}cap_g3`];
+  try {
+    await pool.query(
+      `INSERT INTO users (id, full_name, email, role, password_hash) VALUES
+         ($1,'Cap 1','lovo_cap_1@example.test','student','x'),
+         ($2,'Cap 2','lovo_cap_2@example.test','student','x'),
+         ($3,'Cap 3','lovo_cap_3@example.test','student','x')`,
+      extraUsers
+    );
+    for (let i = 0; i < 3; i++) {
+      await pool.query(`INSERT INTO student_groups (id, teacher_id, name, type) VALUES ($1,$2,'Cap Class '||($3+1),'class')`, [extraGroups[i], TEACHER_A, i]);
+      await pool.query(`INSERT INTO teacher_students (teacher_id, student_id) VALUES ($1,$2)`, [TEACHER_A, extraUsers[i]]);
+      await pool.query(`INSERT INTO student_group_members (group_id, student_id) VALUES ($1,$2)`, [extraGroups[i], extraUsers[i]]);
+    }
+    const { body } = await callApi("/api/teachers/me/learning-overview?period=30d");
+    assert.equal(body.classAlerts.length, 3);
+    assert.equal(body.classAlertsTotal, 4);
+    // 排最前嘅係人數最多嗰班（4 班都係 1 位，順序穩定即可；長度同 total 係重點）
+    assert.ok(body.classAlerts.every((alert: any) => alert.noInteractionStudents >= 1));
+  } finally {
+    await pool.query("DELETE FROM student_group_members WHERE group_id = ANY($1::text[])", [extraGroups]);
+    await pool.query("DELETE FROM teacher_students WHERE student_id = ANY($1::text[])", [extraUsers]);
+    await pool.query("DELETE FROM student_groups WHERE id = ANY($1::text[])", [extraGroups]);
+    await pool.query("DELETE FROM users WHERE id = ANY($1::text[])", [extraUsers]);
+  }
 });
 
 test("老師範圍隔離：老師 B 只見到自己嘅數據", { skip: !safeTestDatabase }, async () => {
@@ -233,8 +248,10 @@ test("老師範圍隔離：老師 B 只見到自己嘅數據", { skip: !safeTest
   assert.equal(body.participation.noInteractionStudents, 1);
   assert.equal(body.participation.activeStudents, 0);
   assert.equal(body.anomalyOpen, 0);
-  // B×C 今日新增 → 報告 1
-  assert.equal(body.updates.abilityReportsToday, 1);
+  assert.equal(body.wellbeingOpen, 0);
+  // 未分組 bucket（STUDENT_C）有 1 位未有互動 → 提醒 1 條、total 1
+  assert.equal(body.classAlerts.length, 1);
+  assert.equal(body.classAlertsTotal, 1);
 });
 
 test("未登入／學生身份被拒", { skip: !safeTestDatabase }, async () => {
