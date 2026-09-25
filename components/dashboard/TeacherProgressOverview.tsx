@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Target, Users } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
 import { SafeAvatarImage } from '../shared/SafeAvatarImage';
+import { ShowMoreList } from '../shared/ShowMoreList';
 import { loadTeacherData, peekTeacherData } from '../../utils/teacher-data-cache';
 
 type PointProgress = {
@@ -81,9 +82,11 @@ export const TeacherProgressOverview: React.FC = () => {
       ) : !bots.length ? (
         <p className="py-8 text-center text-xs font-semibold text-slate-400">{uiText("尚未有學生對話累積數據。")}</p>
       ) : (
-        <div className="mt-4 space-y-4">
-          {bots.map((bot) => (
-            <div key={bot.id} className="rounded-2xl border border-slate-100 p-3">
+        <ShowMoreList
+          items={bots}
+          className="mt-4 space-y-4"
+          renderItem={(bot) => (
+            <div className="rounded-2xl border border-slate-100 p-3">
               <div className="flex items-center gap-2">
                 <SafeAvatarImage src={bot.avatarUrl} alt={bot.name} className="h-8 w-8 rounded-full" />
                 <span className="text-sm font-black text-slate-800">{bot.name}</span>
@@ -111,14 +114,16 @@ export const TeacherProgressOverview: React.FC = () => {
                         ) : null}
                       </span>
                     </div>
-                    <div className="mt-2 space-y-2">
-                      {section.points.map((point) => {
+                    <ShowMoreList
+                      items={section.points}
+                      className="mt-2 space-y-2"
+                      renderItem={(point) => {
                         const pct = bot.studentsWithProgress > 0
                           ? Math.round((point.coveredCount / bot.studentsWithProgress) * 100)
                           : 0;
                         const untouched = point.coveredCount === 0;
                         return (
-                          <div key={point.id} className="flex items-center gap-3">
+                          <div className="flex items-center gap-3">
                             <span
                               className={`w-32 shrink-0 truncate text-xs font-semibold ${untouched ? 'text-rose-500' : 'text-slate-700'}`}
                               title={point.title}
@@ -144,16 +149,16 @@ export const TeacherProgressOverview: React.FC = () => {
                             ) : null}
                           </div>
                         );
-                      })}
-                    </div>
+                      }}
+                    />
                   </div>
                 )) : (
                   <p className="text-xs font-semibold text-slate-400">{uiText("此 Bot 尚未設定知識點。")}</p>
                 )}
               </div>
             </div>
-          ))}
-        </div>
+          )}
+        />
       )}
     </section>
   );

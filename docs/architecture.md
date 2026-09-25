@@ -66,7 +66,7 @@ aichat/
 ├── pages/                   # Vite SPA 主要頁面（切換靠 App.tsx state）
 │   ├── Dashboard.tsx            # 教師 Command Center 首頁
 │   ├── AssessmentPage.tsx       # 智能評估/測驗工作台入口
-│   ├── LearningReportPage.tsx   # 學習報告：能力追蹤 + 評測質量 + Bloom 六層級
+│   ├── LearningReportPage.tsx   # 學習報告：5-tab（總覽／課堂參與／學生能力／對話紀錄／測驗質量）
 │   ├── AiBotWorkshopPage.tsx    # AI Bot 工作坊主流程
 │   ├── StudentManagementPage.tsx    # 學生帳戶/班級/群組管理
 │   ├── StudentHome.tsx          # 學生首頁（共享 Bot 列表）
@@ -102,7 +102,7 @@ aichat/
 │   │   └── topics/              # 角色主題/知識點管理
 │   ├── student/                 # 學生端：Header/FloatingSidebar/StarMap/Island/TokenHistory/Confetti
 │   ├── system/                  # 通用 UI：Button/Card/BentoGrid/Dialog/Token/FeatureLimit
-│   └── shared/                  # 跨域小元件：AssessmentStepper/IosToggle/SafeAvatarImage
+│   └── shared/                  # 跨域小元件：AssessmentStepper/IosToggle/SafeAvatarImage/ShowMoreList（列表封頂 10＋看更多）
 ├── hooks/
 │   ├── useFeatureEntitlements.ts # 方案功能限額與用量
 │   ├── usePlatformDialog.ts      # 全域/局部 PlatformDialog 狀態
