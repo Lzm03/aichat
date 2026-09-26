@@ -194,9 +194,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
   useEffect(() => {
     const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ botId?: string; hasPendingQuiz?: boolean }>).detail;
-      if (!detail?.botId) return;
-      setBots((current) => current.map((bot) => bot.id === detail.botId ? { ...bot, hasPendingQuiz: Boolean(detail.hasPendingQuiz) } : bot));
+      const detail = (event as CustomEvent<{ botId?: string; pendingQuizCount?: number }>).detail;
+      if (!detail?.botId || typeof detail.pendingQuizCount !== "number") return;
+      const count = Math.max(0, detail.pendingQuizCount);
+      setBots((current) => current.map((bot) => bot.id === detail.botId ? { ...bot, pendingQuizCount: count, hasPendingQuiz: count > 0 } : bot));
     };
     window.addEventListener("quiz-pending-changed", handler as EventListener);
     return () => window.removeEventListener("quiz-pending-changed", handler as EventListener);

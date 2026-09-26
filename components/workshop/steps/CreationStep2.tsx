@@ -163,6 +163,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
   ]);
   const [activeVersionIndex, setActiveVersionIndex] = useState(0);
   const [maxVersions, setMaxVersions] = useState(4);
+  /** 每個主題有幾多份已發佈測驗（topicId → 數）；刪主題前要講清楚後果 */
+  const [quizCounts, setQuizCounts] = useState<Record<string, number>>({});
   const [customLabels, setCustomLabels] = useState<string[]>([]);
   const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [assignmentFileNames, setAssignmentFileNames] = useState<string[]>([]);
@@ -334,9 +336,10 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
     let cancelled = false;
     (async () => {
       try {
-        const { topics, maxTopics } = await listCharacterTopics(characterId);
+        const { topics, maxTopics, quizCounts: loadedQuizCounts } = await listCharacterTopics(characterId);
         if (cancelled) return;
         setMaxVersions(maxTopics);
+        setQuizCounts(loadedQuizCounts || {});
         const loaded: TopicVersionMeta[] = topics
           .slice()
           .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -764,9 +767,14 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
       setKnowledgePoints(pointsOfVersion(nextIndex));
       setKnowledgeSummary(buildKnowledgeSummary(pointsOfVersion(nextIndex)));
     };
+    // 呢個主題有已發佈測驗：刪咗之後佢哋會變成「不分主題」（唔會消失，但去咗 fallback）
+    const quizCount = Number((version.id && quizCounts[version.id]) || 0);
+    const quizWarning = quizCount
+      ? uiTemplate('呢個主題有 {0} 份已發佈測驗。刪咗之後，佢哋會變成「不分主題」，學生喺未有自己測驗嘅主題都會見到。', quizCount)
+      : "";
     showConfirm({
       title: uiText("刪除主題"),
-      message: uiText("刪除後呢個主題嘅知識點同相關學習進度會一併移除，確定？"),
+      message: [uiText("刪除後呢個主題嘅知識點同相關學習進度會一併移除，確定？"), quizWarning].filter(Boolean).join(" "),
       confirmText: uiText("刪除"),
       onConfirm: doRemove,
     });

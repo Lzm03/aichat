@@ -16,6 +16,9 @@
 | [class-participation.md](class-participation.md) | 要改課堂參與度分析、學習報告頁 tab 架構、LLM 參與度判斷 |
 | [student-management.md](student-management.md) | 要改學生管理、名單匯入、班級欄位規則或 Excel 範本 |
 | [knowledge-map-topic-versions.md](knowledge-map-topic-versions.md) | 要改知識地圖多主題版本（Tab 架構）的 UX／UI |
+| [quiz-topic-publishing.md](quiz-topic-publishing.md) | 要改測驗跟 Bot + 主題版本發佈的流程（出題揀主題、學生端測驗入口、各測驗列表的主題標籤） |
+| [quiz-topic-implementation.md](quiz-topic-implementation.md) | 要落手實作上面嗰個功能：DB／API／前端改動、維護性設計、測試與驗證 |
+| [topic-scoped-audience.md](topic-scoped-audience.md) | 要做「受眾縮窄到班級 × 主題」（4A 只准第一課）：兩個軸嘅模型、解析函數、資料模型、班級分配 UI、分階段實作 |
 
 ## 寫文件的規矩
 

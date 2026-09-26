@@ -54,6 +54,8 @@ interface PublishSuccessModalProps {
   /** 唔傳就唔顯示「刪除機器人」（例：由 Dashboard 直接試用）。 */
   onDelete?: (botId: string) => void;
   isSharedView?: boolean;
+  /** 深連結帶入嘅主題（今日任務「去做測試」）：開嗰陣直接揀呢個主題，只生效一次。 */
+  initialTopicId?: string | null;
 }
 
 type SuggestedReply = {
@@ -254,6 +256,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   onEdit,
   onDelete,
   isSharedView = false,
+  initialTopicId = null,
 }) => {
   const prefersReducedMotion = useReducedMotion();
   if (!botConfig) return null;
@@ -463,6 +466,12 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [isTopicSelectorOpen, setIsTopicSelectorOpen] = useState(false);
   const [topicsLoading, setTopicsLoading] = useState(false);
+  // 主題清單載入完（成功或失敗都算）：active-quiz 要等佢，先唔會用 null 主題查一次（開門 flash）
+  const [topicsLoaded, setTopicsLoaded] = useState(false);
+  const initialTopicConsumedRef = useRef(false);
+  // 呢份測驗係咪已經計咗入 pendingQuizCount（開面板／轉主題 fetch 之後對返 server）
+  const quizCountedRef = useRef(false);
+  const [pendingQuizCount, setPendingQuizCount] = useState(0);
   const [isSwitchingTopic, setIsSwitchingTopic] = useState(false);
   const [topicError, setTopicError] = useState("");
   const [historyMenuConversationId, setHistoryMenuConversationId] = useState<string | null>(null);
@@ -631,17 +640,24 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     let cancelled = false;
     if (!isOpen || !botConfig?.id) return;
     setTopicsLoading(true);
+    setTopicsLoaded(false);
     setTopicError("");
     setIsTopicSelectorOpen(false);
     void listCharacterTopics(botConfig.id)
       .then((data) => {
         if (cancelled) return;
         setAvailableTopics(data.topics);
-        setSelectedTopicId((current) =>
-          current && data.topics.some((topic) => topic.id === current)
+        // 深連結主題只認第一次：喺清單度就揀佢，唔喺就照原本鏈（預設主題 → 第一個）
+        const deepLinkTopicId = initialTopicConsumedRef.current ? "" : String(initialTopicId || "").trim();
+        initialTopicConsumedRef.current = true;
+        setSelectedTopicId((current) => {
+          if (deepLinkTopicId && data.topics.some((topic) => topic.id === deepLinkTopicId)) {
+            return deepLinkTopicId;
+          }
+          return current && data.topics.some((topic) => topic.id === current)
             ? current
-            : data.topics.find((topic) => topic.isDefault)?.id || data.topics[0]?.id || null
-        );
+            : data.topics.find((topic) => topic.isDefault)?.id || data.topics[0]?.id || null;
+        });
       })
       .catch((loadError) => {
         if (cancelled) return;
@@ -650,7 +666,10 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
         setTopicError(loadError instanceof Error ? loadError.message : "無法載入主題");
       })
       .finally(() => {
-        if (!cancelled) setTopicsLoading(false);
+        if (!cancelled) {
+          setTopicsLoading(false);
+          setTopicsLoaded(true);
+        }
       });
     return () => {
       cancelled = true;
@@ -3637,9 +3656,14 @@ const unlockAudioAndMic = async () => {
 
   useEffect(() => {
     if (!isOpen || !botConfig?.id) return;
+    // 主題清單未返之前唔查：否則會用「冇主題」查一次，畫面會閃一閃第二份測驗
+    if (!topicsLoaded) return;
+    // 作答中唔中斷：轉主題／重開都唔應該抽走學生手上嘅答卷
+    if (quizUiStateRef.current === "taking") return;
     let cancelled = false;
     setQuizLoading(true);
-    fetch(`${API_BASE}/api/bots/${botConfig.id}/active-quiz`)
+    const quizQuery = selectedTopicId ? `?topicId=${encodeURIComponent(selectedTopicId)}` : "";
+    fetch(`${API_BASE}/api/bots/${botConfig.id}/active-quiz${quizQuery}`)
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data?.error || "載入測驗失敗");
@@ -3647,7 +3671,9 @@ const unlockAudioAndMic = async () => {
       })
       .then((data) => {
         if (cancelled) return;
+        setPendingQuizCount(Math.max(0, Number(data?.pendingQuizCount || 0)));
         if (data?.dismissed) {
+          quizCountedRef.current = false;
           setActiveQuiz(null);
           setActiveQuizAttempt(null);
           setQuizQuestion(null);
@@ -3671,6 +3697,8 @@ const unlockAudioAndMic = async () => {
         setQuizSelectedAnswer("");
         setQuizTextAnswer("");
         setQuizResult(attempt?.result || null);
+        // server 個數係「未完成先計」：完成咗（未結算）嘅唔會計呢一份
+        quizCountedRef.current = Boolean(quiz) && attempt?.status !== "completed";
         if (!quiz) {
           setQuizUiState("hidden");
           return;
@@ -3691,7 +3719,7 @@ const unlockAudioAndMic = async () => {
     return () => {
       cancelled = true;
     };
-  }, [isOpen, botConfig?.id]);
+  }, [isOpen, botConfig?.id, selectedTopicId, topicsLoaded]);
 
   const openQuizPrompt = () => {
     if (!activeQuiz) return;
@@ -4942,7 +4970,13 @@ const unlockAudioAndMic = async () => {
                   <div className="flex min-h-[40px] items-center justify-between gap-3 bg-[linear-gradient(90deg,#4f46e5_0%,#5b43ea_42%,#5638e7_100%)] px-4 py-1.5 text-white shadow-[0_10px_22px_rgba(79,70,229,0.18)]">
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="text-[21px] leading-none text-[#ffd84d]">⚡</span>
-                      <div className="truncate text-[12px] font-black tracking-[0.01em]">{uiText("你有一個待完成的知識測試")}</div>
+                      <div className="min-w-0">
+                        <div className="truncate text-[12px] font-black tracking-[0.01em]">{uiText("你有一個待完成的知識測試")}</div>
+                        {/* 第二行標題：同一隻 Bot 唔同主題可以有唔同測驗，講清楚係邊份（主題名唔重複，上面揀緊） */}
+                        <div className="truncate text-[11px] font-semibold text-white/80">
+                          {uiTemplate("{0}（{1} 題）", activeQuiz.title, Number(activeQuiz.questionCount || 0))}
+                        </div>
+                      </div>
                     </div>
                     <button
                       type="button"
@@ -5132,8 +5166,18 @@ const unlockAudioAndMic = async () => {
                             </div>
                           </div>
                           <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4">
-                            <button type="button" onClick={() => { if (typeof window !== "undefined") { window.dispatchEvent(new CustomEvent("quiz-pending-changed", { detail: { botId: botConfig.id, hasPendingQuiz: true } })); } void retryQuiz(); }} disabled={quizSubmitting} className="rounded-full border border-slate-200 bg-white px-5 py-2 text-sm font-black text-slate-600 transition hover:bg-slate-50 disabled:opacity-60">{uiText("再測一次")}</button>
-                            <button type="button" onClick={() => { if (typeof window !== "undefined") { window.dispatchEvent(new CustomEvent("quiz-pending-changed", { detail: { botId: botConfig.id, hasPendingQuiz: false } })); } void dismissQuizResult(); }} className="rounded-full bg-indigo-600 px-5 py-2 text-sm font-black text-white transition hover:bg-indigo-700">{uiText("完成結算")}</button>
+                            <button type="button" onClick={() => { if (typeof window !== "undefined") { // 再測一次：呢份變返未完成；未計過就加一（例如啱啱結算完先再測）
+                              const nextCount = quizCountedRef.current ? pendingQuizCount : pendingQuizCount + 1;
+                              quizCountedRef.current = true;
+                              setPendingQuizCount(nextCount);
+                              window.dispatchEvent(new CustomEvent("quiz-pending-changed", { detail: { botId: botConfig.id, pendingQuizCount: nextCount } }));
+                            } void retryQuiz(); }} disabled={quizSubmitting} className="rounded-full border border-slate-200 bg-white px-5 py-2 text-sm font-black text-slate-600 transition hover:bg-slate-50 disabled:opacity-60">{uiText("再測一次")}</button>
+                            <button type="button" onClick={() => { if (typeof window !== "undefined") { // 完成結算：呢份唔再待完成，減一（clamp ≥ 0）
+                              const nextCount = quizCountedRef.current ? Math.max(0, pendingQuizCount - 1) : pendingQuizCount;
+                              quizCountedRef.current = false;
+                              setPendingQuizCount(nextCount);
+                              window.dispatchEvent(new CustomEvent("quiz-pending-changed", { detail: { botId: botConfig.id, pendingQuizCount: nextCount } }));
+                            } void dismissQuizResult(); }} className="rounded-full bg-indigo-600 px-5 py-2 text-sm font-black text-white transition hover:bg-indigo-700">{uiText("完成結算")}</button>
                           </div>
                         </div>
                       </div>

@@ -8,6 +8,7 @@ import { GradingDetailView } from './GradingDetailView';
 import { InfoTipModal } from '../system/InfoTipModal';
 import { PlatformDialog } from '../system/PlatformDialog';
 import { usePlatformDialog } from '../../hooks/usePlatformDialog';
+import { QuizTopicTag } from './QuizTopicTag';
 
 interface GradingWorkspaceHomeProps {
   onBack: () => void;
@@ -20,6 +21,8 @@ type QuizSummary = {
   id: string;
   title: string;
   subject: string;
+  /** 空 ＝「不分主題」 */
+  topicName?: string;
   date: string;
   totalStudents: number;
   pendingGrading: number;
@@ -125,9 +128,10 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
       className={`bg-white rounded-[24px] p-6 border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-6 transition-all ${isArchived ? 'bg-slate-50/50' : 'shadow-sm'}`}
     >
       <div className="flex-1">
-        <div className="flex items-center gap-2 mb-2">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md">{uiText(quiz.subject)}</span>
           <span className="text-xs text-slate-400">{quiz.date ? new Date(quiz.date).toISOString().slice(0, 10) : ''}</span>
+          <QuizTopicTag topicName={quiz.topicName} />
           {isArchived && quiz.gradingCompletedAt ? (
             <span className="text-xs font-bold text-emerald-600">{uiText("完成批改")} {new Date(quiz.gradingCompletedAt).toISOString().slice(5, 10)}</span>
           ) : null}

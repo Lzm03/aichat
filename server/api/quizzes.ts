@@ -1,4 +1,13 @@
 import { quizAudienceSql } from "../lib/quiz-audience.ts";
+import { CharacterTopicError, ensureCharacterTopicTables } from "../lib/character-topics.ts";
+import {
+  QUIZ_TOPIC_JOIN_SQL,
+  QUIZ_TOPIC_SELECT_SQL,
+  assertTopicBelongsToBot,
+  countPendingQuizzesForBot,
+  getQuizTopicName,
+  resolveActiveQuizForBotTopic,
+} from "../lib/quiz-topic.ts";
 import crypto from "crypto";
 import express from "express";
 import multer from "multer";
@@ -157,6 +166,9 @@ async function extractAssessmentSourceText(file: Express.Multer.File): Promise<s
 
 async function initializeQuizTables() {
   await ensurePlatformTables();
+  // quizzes.topic_id 有 FK 指住 character_topics；boot 次序係 quiz 先過 topic
+  // （index.ts），所以喺呢度補一次（withSchemaLock 可重入，唔會死鎖）。
+  await ensureCharacterTopicTables();
   await pool.query(`
     CREATE TABLE IF NOT EXISTS quizzes (
       id TEXT PRIMARY KEY,
@@ -202,6 +214,28 @@ async function initializeQuizTables() {
     ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS grading_completed_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS template_key TEXT
+  `);
+  // 測驗嘅主題維度（Bot × 主題）：NULL ＝「不分主題」＝舊行為。
+  // 主題一刪，掛喺佢度嘅測驗自動降級做「不分主題」（唔會變孤兒）。
+  await pool.query(`
+    ALTER TABLE quizzes
+    ADD COLUMN IF NOT EXISTS topic_id TEXT
+  `);
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'quizzes_topic_id_fkey'
+      ) THEN
+        ALTER TABLE quizzes
+          ADD CONSTRAINT quizzes_topic_id_fkey
+          FOREIGN KEY (topic_id) REFERENCES character_topics(id) ON DELETE SET NULL;
+      END IF;
+    END $$;
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS quizzes_bot_topic_status_idx
+    ON quizzes(bot_id, topic_id, status, updated_at DESC)
   `);
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS quizzes_teacher_template_key_unique_idx
@@ -1234,19 +1268,12 @@ function recomputeAttemptScoresForPublish(
   };
 }
 
-async function getActiveQuizForBot(botId: string, viewerId?: string | null) {
+async function getActiveQuizForBot(botId: string, viewerId?: string | null, topicId?: string | null) {
   await ensureQuizTables();
-  const quizResult = await pool.query(
-    `SELECT *
-     FROM quizzes
-     WHERE bot_id=$1 AND status='published'
-     ORDER BY updated_at DESC, created_at DESC
-     LIMIT 1`,
-    [botId]
-  );
-  if (!quizResult.rowCount) return null;
+  // 邊份測驗：判斷只有一個實作（lib/quiz-topic.ts）。唔准喺呢度自己寫 LIMIT 1。
+  const quiz = await resolveActiveQuizForBotTopic(botId, topicId);
+  if (!quiz) return null;
 
-  const quiz = quizResult.rows[0];
   const questions = await listQuizQuestions(String(quiz.id));
   let attempt = null;
 
@@ -1273,6 +1300,7 @@ async function getActiveQuizForBot(botId: string, viewerId?: string | null) {
       id: String(quiz.id),
       title: String(quiz.title || "知識測試"),
       botId: String(quiz.bot_id),
+      topicId: String(quiz.topic_id || ""),
       targetGrade: String(quiz.target_grade || ""),
       questionCount: Number(quiz.question_count || questions.length),
       status: String(quiz.status || "draft"),
@@ -1290,10 +1318,12 @@ router.get("/quizzes/drafts", requireAuth, async (req, res) => {
     const user = getAuthUser(req);
     if (!user) return res.status(401).json({ error: "unauthorized" });
     const result = await pool.query(
-      `SELECT id, title, target_grade, question_count, updated_at, created_at
-       FROM quizzes
-       WHERE teacher_id=$1 AND status='draft'
-       ORDER BY updated_at DESC, created_at DESC
+      `SELECT q.id, q.title, q.target_grade, q.question_count, q.updated_at, q.created_at,
+              ${QUIZ_TOPIC_SELECT_SQL}
+       FROM quizzes q
+       ${QUIZ_TOPIC_JOIN_SQL}
+       WHERE q.teacher_id=$1 AND q.status='draft'
+       ORDER BY q.updated_at DESC, q.created_at DESC
        LIMIT 20`,
       [user.id]
     );
@@ -1303,6 +1333,8 @@ router.get("/quizzes/drafts", requireAuth, async (req, res) => {
         title: String(row.title || "未命名測驗"),
         targetGrade: String(row.target_grade || ""),
         questionCount: Number(row.question_count || 0),
+        topicId: String(row.topic_id || ""),
+        topicName: String(row.topic_name || ""),
         updatedAt: row.updated_at || row.created_at,
       })),
     });
@@ -1326,6 +1358,7 @@ router.get("/quizzes/published", requireAuth, async (req, res) => {
          COALESCE(q.published_at, q.updated_at) AS published_at,
          q.grading_completed_at,
          b.name AS bot_name, b.subject AS bot_subject,
+         ${QUIZ_TOPIC_SELECT_SQL},
          COUNT(u.id) AS total_students,
          COUNT(a.id) FILTER (WHERE a.status='completed') AS submitted,
          COUNT(a.id) FILTER (WHERE a.teacher_status='completed') AS completed,
@@ -1348,11 +1381,12 @@ router.get("/quizzes/published", requireAuth, async (req, res) => {
          ) AS average_score
        FROM quizzes q
        LEFT JOIN bots b ON b.id=q.bot_id
+       ${QUIZ_TOPIC_JOIN_SQL}
        LEFT JOIN users u ON u.role='student' AND u.status='active' AND u.id<>q.teacher_id
          AND ${quizAudienceSql('q.bot_id', 'u.id')}
        LEFT JOIN quiz_attempts a ON a.quiz_id=q.id AND a.student_id=u.id
        WHERE q.teacher_id=$1 AND q.status='published'
-       GROUP BY q.id, b.name, b.subject, q.grading_completed_at
+       GROUP BY q.id, b.name, b.subject, q.grading_completed_at, t.name
        ORDER BY COALESCE(q.published_at, q.updated_at) DESC, q.created_at DESC`,
       [user.id]
     );
@@ -1367,6 +1401,8 @@ router.get("/quizzes/published", requireAuth, async (req, res) => {
           botId: String(row.bot_id || ""),
           botName: String(row.bot_name || "未命名 Bot"),
           botSubject: String(row.bot_subject || ""),
+          topicId: String(row.topic_id || ""),
+          topicName: String(row.topic_name || ""),
           publishedAt: row.published_at,
           gradingCompletedAt: row.grading_completed_at,
           totalStudents,
@@ -1475,9 +1511,10 @@ router.get("/quizzes/:id", requireAuth, async (req, res) => {
     if (!user) return res.status(401).json({ error: "unauthorized" });
     const quizId = String(req.params.id || "").trim();
     const quizResult = await pool.query(
-      `SELECT *
-       FROM quizzes
-       WHERE id=$1 AND teacher_id=$2
+      `SELECT q.*, ${QUIZ_TOPIC_SELECT_SQL}
+       FROM quizzes q
+       ${QUIZ_TOPIC_JOIN_SQL}
+       WHERE q.id=$1 AND q.teacher_id=$2
        LIMIT 1`,
       [quizId, user.id]
     );
@@ -1489,6 +1526,8 @@ router.get("/quizzes/:id", requireAuth, async (req, res) => {
         id: String(quiz.id),
         title: String(quiz.title || ""),
         botId: String(quiz.bot_id),
+        topicId: String(quiz.topic_id || ""),
+        topicName: String(quiz.topic_name || ""),
         targetGrade: String(quiz.target_grade || ""),
         questionCount: Number(quiz.question_count || questions.length),
         questionTypeMode: String(quiz.question_type_mode || "ai_auto"),
@@ -1514,9 +1553,17 @@ router.get("/teachers/me/available-quiz-bots", requireAuth, async (req, res) => 
     }
 
     await ensureDefaultTeacherExperience(user);
+    // 每個 Bot 連埋主題清單一次過回（出題／改主題嘅下拉用），唔另開 API、唔逐個 Bot 查。
     const result = await pool.query(
       `SELECT b.id, b.name, b.subject, b.avatar_url,
-              EXISTS (SELECT 1 FROM bot_student_shares s WHERE s.bot_id=b.id AND s.teacher_id=$1) AS is_shared
+              EXISTS (SELECT 1 FROM bot_student_shares s WHERE s.bot_id=b.id AND s.teacher_id=$1) AS is_shared,
+              COALESCE((
+                SELECT json_agg(json_build_object(
+                         'id', t.id, 'name', t.name, 'isDefault', t.is_default, 'category', t.category
+                       ) ORDER BY t.sort_order ASC, t.created_at ASC)
+                FROM character_topics t
+                WHERE t.character_id = b.id
+              ), '[]'::json) AS topics
        FROM bots b
        WHERE b.owner_id=$1
        ORDER BY b.name ASC`,
@@ -1530,6 +1577,14 @@ router.get("/teachers/me/available-quiz-bots", requireAuth, async (req, res) => 
         subject: String(row.subject || ""),
         avatarUrl: String(row.avatar_url || ""),
         isShared: Boolean(row.is_shared),
+        topics: Array.isArray(row.topics)
+          ? row.topics.map((topic: any) => ({
+              id: String(topic?.id || ""),
+              name: String(topic?.name || ""),
+              isDefault: Boolean(topic?.isDefault),
+              category: String(topic?.category || ""),
+            }))
+          : [],
       })),
     });
   } catch (error) {
@@ -1597,6 +1652,8 @@ router.post("/quizzes/generate", requireAuth, async (req, res) => {
     }
 
     const botId = String(req.body?.botId || "").trim();
+    // 主題係可選：空 ＝「不分主題」（舊行為）。
+    const topicId = String(req.body?.topicId || "").trim();
     const sourceText = String(req.body?.sourceText || "").trim();
     const targetGrade = String(req.body?.targetGrade || "").trim();
     const questionCount = Number(req.body?.questionCount || 0);
@@ -1633,6 +1690,9 @@ router.post("/quizzes/generate", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "請先選擇要發布測驗的 AI Bot。" });
     }
 
+    // 主題必須屬於呢隻 Bot（錯誤碼同知識地圖一致，唔另開）。
+    const selectedTopic = topicId ? await assertTopicBelongsToBot(botId, topicId) : null;
+
     const autoResult =
       questionTypeMode === "rule_based"
         ? null
@@ -1667,8 +1727,8 @@ router.post("/quizzes/generate", requireAuth, async (req, res) => {
     await pool.query(
       `INSERT INTO quizzes (
         id, bot_id, teacher_id, title, source_text, target_grade, question_count, question_type_mode,
-        preferred_question_types_json, question_type_distribution_json, status
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,'draft')`,
+        preferred_question_types_json, question_type_distribution_json, status, topic_id
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,'draft',$11)`,
       [
         quizId,
         botId,
@@ -1680,6 +1740,7 @@ router.post("/quizzes/generate", requireAuth, async (req, res) => {
         questionTypeMode,
         JSON.stringify(preferredQuestionTypes),
         JSON.stringify(questionTypeDistribution),
+        topicId || null,
       ]
     );
 
@@ -1714,12 +1775,16 @@ router.post("/quizzes/generate", requireAuth, async (req, res) => {
         id: quizId,
         title,
         botId,
+        topicId: topicId || "",
         targetGrade,
         questionCount,
         questionTypeMode,
         preferredQuestionTypes,
         questionTypeDistribution,
       },
+      selectedTopic: selectedTopic
+        ? { id: String(selectedTopic.id), name: String(selectedTopic.name || "") }
+        : null,
       selectedBot: {
         id: String(selectedBot.id),
         name: String(selectedBot.name || "未命名 Bot"),
@@ -1729,6 +1794,9 @@ router.post("/quizzes/generate", requireAuth, async (req, res) => {
       questions: previewQuestions.map((question, index) => ({ ...question, id: index + 1 })),
     });
   } catch (error: any) {
+    if (error instanceof CharacterTopicError) {
+      return res.status(error.status).json({ error: error.message, code: error.code });
+    }
     console.error("POST /quizzes/generate Failed:", error);
     return res.status(500).json({ error: "AI 題目生成失敗，請稍後再試。" });
   }
@@ -1763,6 +1831,50 @@ router.patch("/quizzes/:id/draft", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("PATCH /quizzes/:id/draft Failed:", error);
     return res.status(500).json({ error: "儲存草稿失敗，請稍後再試。" });
+  }
+});
+
+// 改已發佈測驗嘅主題（詳情 Drawer 嘅「更改」）——舊測驗全部冇主題，呢個係唯一補救入口。
+// 改主題唔使重新發佈，唔會燒發佈次數限額；已有嘅作答紀錄唔受影響。
+router.patch("/quizzes/:id/topic", requireAuth, async (req, res) => {
+  try {
+    await ensureQuizTables();
+    const user = getAuthUser(req);
+    if (!user || !["teacher", "admin"].includes(user.role)) {
+      return res.status(403).json({ error: "teacher account required" });
+    }
+    const quizId = String(req.params.id || "").trim();
+    const topicId = String(req.body?.topicId || "").trim();
+
+    const quizResult = await pool.query(
+      `SELECT id, bot_id FROM quizzes WHERE id=$1 AND teacher_id=$2 LIMIT 1`,
+      [quizId, user.id]
+    );
+    if (!quizResult.rowCount) return res.status(404).json({ error: "Quiz not found" });
+
+    if (topicId) {
+      await assertTopicBelongsToBot(String(quizResult.rows[0].bot_id || ""), topicId);
+    }
+
+    await pool.query(
+      `UPDATE quizzes SET topic_id=$1, updated_at=NOW() WHERE id=$2 AND teacher_id=$3`,
+      [topicId || null, quizId, user.id]
+    );
+
+    return res.json({
+      ok: true,
+      quiz: {
+        id: quizId,
+        topicId,
+        topicName: await getQuizTopicName(topicId),
+      },
+    });
+  } catch (error) {
+    if (error instanceof CharacterTopicError) {
+      return res.status(error.status).json({ error: error.message, code: error.code });
+    }
+    console.error("PATCH /quizzes/:id/topic Failed:", error);
+    return res.status(500).json({ error: "更改主題失敗，請稍後再試。" });
   }
 });
 
@@ -2229,8 +2341,8 @@ router.post("/quizzes/:id/duplicate", requireAuth, async (req, res) => {
       `INSERT INTO quizzes (
          id, bot_id, teacher_id, title, source_text, target_grade, question_count,
          question_type_mode, preferred_question_types_json, question_type_distribution_json,
-         status, published_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, 'draft', NULL)`,
+         status, published_at, topic_id
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, 'draft', NULL, $11)`,
       [
         newQuizId,
         quiz.bot_id,
@@ -2242,6 +2354,7 @@ router.post("/quizzes/:id/duplicate", requireAuth, async (req, res) => {
         quiz.question_type_mode,
         JSON.stringify(Array.isArray(quiz.preferred_question_types_json) ? quiz.preferred_question_types_json : []),
         JSON.stringify(Array.isArray(quiz.question_type_distribution_json) ? quiz.question_type_distribution_json : []),
+        quiz.topic_id || null,
       ]
     );
 
@@ -2284,6 +2397,7 @@ router.post("/quizzes/:id/duplicate", requireAuth, async (req, res) => {
         title: newTitle,
         questionCount: questions.rowCount,
         status: "draft",
+        topicId: String(quiz.topic_id || ""),
       },
     });
   } catch (error) {
@@ -2358,12 +2472,16 @@ router.get("/bots/:botId/active-quiz", requireAuth, async (req, res) => {
     const canAccess = await canUserAccessQuizBot(botId, user);
     if (!canAccess) return res.status(403).json({ error: "quiz access denied" });
 
-    const payload = await getActiveQuizForBot(botId, user.id);
+    // 冇傳 topicId 嘅呼叫者行為完全不變（向後兼容）；有傳就按該主題解析。
+    const topicId = String(req.query?.topicId || "").trim() || null;
+
+    const payload = await getActiveQuizForBot(botId, user.id, topicId);
     if (!payload) return res.json({ quiz: null });
 
     return res.json({
       quiz: payload.quiz,
       dismissed: Boolean((payload as any)?.dismissed),
+      pendingQuizCount: await countPendingQuizzesForBot(botId, user.id),
       attempt: payload.attempt
         ? {
             id: String(payload.attempt.id),
@@ -2380,6 +2498,10 @@ router.get("/bots/:botId/active-quiz", requireAuth, async (req, res) => {
       currentQuestion: payload.currentQuestion ? sanitizeQuestionForStudent(payload.currentQuestion) : null,
     });
   } catch (error) {
+    // 主題唔屬於呢隻 Bot → 400 + 現有錯誤碼（學生攞錯咗 topicId，唔係伺服器故障）。
+    if (error instanceof CharacterTopicError) {
+      return res.status(error.status).json({ error: error.message, code: error.code });
+    }
     console.error("GET /bots/:botId/active-quiz Failed:", error);
     return res.status(500).json({ error: "Failed to load active quiz" });
   }
@@ -2646,6 +2768,7 @@ router.get("/teachers/me/grading-summary", requireAuth, async (req, res) => {
         q.grading_completed_at,
         b.subject,
         b.name AS bot_name,
+        ${QUIZ_TOPIC_SELECT_SQL},
         COUNT(*) FILTER (WHERE u.id IS NOT NULL)::int AS total_students,
         COUNT(*) FILTER (WHERE u.id IS NOT NULL AND a.teacher_status='pending_grading')::int AS pending_grading,
         COUNT(*) FILTER (WHERE u.id IS NOT NULL AND a.teacher_status='pending_confirm')::int AS pending_confirm,
@@ -2678,8 +2801,9 @@ router.get("/teachers/me/grading-summary", requireAuth, async (req, res) => {
          AND ${quizAudienceSql('q.bot_id', 'u.id')}
        LEFT JOIN quiz_attempts a ON a.quiz_id=q.id AND a.student_id=u.id
        LEFT JOIN bots b ON b.id=q.bot_id
+       ${QUIZ_TOPIC_JOIN_SQL}
        WHERE q.teacher_id=$1 AND q.status='published'
-       GROUP BY q.id, b.subject, b.name, q.bot_id, q.question_count, q.published_at, q.grading_completed_at
+       GROUP BY q.id, b.subject, b.name, q.bot_id, q.question_count, q.published_at, q.grading_completed_at, t.name
        ORDER BY q.updated_at DESC, q.created_at DESC`,
       [user.id]
     );
@@ -2691,6 +2815,8 @@ router.get("/teachers/me/grading-summary", requireAuth, async (req, res) => {
         date: row.updated_at,
         botId: String(row.bot_id || ""),
         botName: String(row.bot_name || "--"),
+        topicId: String(row.topic_id || ""),
+        topicName: String(row.topic_name || ""),
         questionCount: Number(row.question_count || 0),
         publishedAt: row.published_at,
         gradingCompletedAt: row.grading_completed_at,

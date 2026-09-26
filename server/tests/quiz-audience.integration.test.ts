@@ -3,16 +3,21 @@ import { test, after } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { pool } from '../db.ts';
 import { quizAudienceSql } from '../lib/quiz-audience.ts';
+import { QUIZ_TOPIC_JOIN_SQL, QUIZ_TOPIC_SELECT_SQL } from '../lib/quiz-topic.ts';
 after(() => pool.end());
 
 // 呢兩個 test 都要真 DB：上面嗰個淨係要連得到，下面嗰個仲要當前 schema（會 query
-// quizzes / users / bot_student_shares …）。所以探測 schema 而唔係靠 DB 名 ——
+// quizzes / users / bot_student_shares …，而家仲有 character_topics，因為
+// 測驗列表會 LEFT JOIN 佢攞主題名）。所以探測 schema 而唔係靠 DB 名 ——
 // 任何有 schema 嘅 DB（包括預設 dev DB）都應該跑得到，冇嘅就好聲好氣 skip 而唔係爆。
 type DbState = 'ready' | 'no-schema' | 'unreachable';
 let dbStatePromise: Promise<DbState> | null = null;
 function probeDatabase(): Promise<DbState> {
   dbStatePromise ??= pool
-    .query("SELECT to_regclass('public.quizzes') IS NOT NULL AS ready")
+    .query(
+      `SELECT to_regclass('public.quizzes') IS NOT NULL
+         AND to_regclass('public.character_topics') IS NOT NULL AS ready`
+    )
     .then(({ rows }): DbState => (rows[0]?.ready ? 'ready' : 'no-schema'))
     .catch((): DbState => 'unreachable');
   return dbStatePromise;
@@ -50,7 +55,18 @@ test('published and grading queries execute on current schema and progress stays
     assert.ok(start !== -1, `quizzes.ts 已經冇 router.get("${route}" —— 呢個 test 嘅抽取方式要跟住改`);
     const matched = source.slice(start).match(/const result = await pool.query\(\s*`([\s\S]*?)`/);
     assert.ok(matched, `由 ${route} 抽唔到 pool.query 嘅 SQL —— 呢個 test 嘅抽取方式要跟住改`);
-    return matched![1].replace("${quizAudienceSql('q.bot_id', 'u.id')}", quizAudienceSql('q.bot_id','u.id'));
+    const sql = matched![1]
+      // 切片出嚟嘅係源碼**文字**，唔會行 template interpolation：每個 ${...} 都要喺度
+      // 補返，而且要用 lib 嘅真身（順便驗證嗰兩段 fragment 自己係合法 SQL）。
+      .replace("${quizAudienceSql('q.bot_id', 'u.id')}", quizAudienceSql('q.bot_id', 'u.id'))
+      .replace('${QUIZ_TOPIC_SELECT_SQL}', QUIZ_TOPIC_SELECT_SQL)
+      .replace('${QUIZ_TOPIC_JOIN_SQL}', QUIZ_TOPIC_JOIN_SQL);
+    const leftovers = sql.match(/\$\{[^}]*\}/g);
+    assert.ok(
+      !leftovers,
+      `${route} 嘅 SQL 仲有未補嘅 template 佔位符（${leftovers?.join(', ')}）—— 未補就唔會係合法 SQL`
+    );
+    return sql;
   });
 
   // 呢個 test 真正守住嘅係「SQL 對得住當前 schema」—— 欄位改咗名或者被刪就會爆。

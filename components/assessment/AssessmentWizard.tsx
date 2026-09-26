@@ -28,6 +28,10 @@ type GeneratedQuiz = {
   id: string;
   title: string;
   botId: string;
+  /** Bot／主題名由 API 回應帶來（草稿開啟時由 GET /quizzes/:id 回），唔喺前端自己拼。 */
+  botName?: string;
+  topicId?: string;
+  topicName?: string;
   targetGrade: string;
   questionCount: number;
   questionTypeMode: string;

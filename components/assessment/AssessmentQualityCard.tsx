@@ -5,6 +5,7 @@ import { ArrowUpDown, BarChart2, ChevronDown, ChevronRight, ChevronUp, Download,
 import { API_BASE } from '../../utils/api';
 import { downloadAssessmentResultsCsv } from '../../utils/assessment-csv';
 import { Icons } from '../icons';
+import { QuizTopicTag } from './QuizTopicTag';
 
 type AssessmentQualityCardProps = {
   /** 提供後，「異常作答標記」統計 tile 變可點擊：關閉本 modal 並開已發佈測驗 Drawer 嘅質量分析 tab */
@@ -81,9 +82,10 @@ export const AssessmentQualityCard = ({ onOpenQuizAlerts }: AssessmentQualityCar
               >
                 <div>
                   <h4 className="text-sm font-bold text-slate-700 group-hover:text-indigo-700 transition-colors">{summary.title}</h4>
-                  <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                     <span>{summary.date ? new Date(summary.date).toISOString().slice(5, 10) : '--'}</span>
                     <span>{uiText("平均 ")}{avg}{uiText(" 分")}</span>
+                    <QuizTopicTag topicName={summary.topicName} />
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

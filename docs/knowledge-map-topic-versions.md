@@ -177,3 +177,8 @@
 3. 多檔上傳流程改造（前置攔截 + 逐檔提取 + 自動開 tab）
 4. TopicManager 同步收窄
 5. 驗證：lint/test:i18n/test:ids/build + 真後端 topic CRUD 檢查
+
+## 相關文件
+
+- [測驗發佈跟 Bot + 主題](quiz-topic-publishing.md) — 測驗如何跟住同一個主題維度發佈
+  （主題刪除時嘅測驗提示都寫在該檔）

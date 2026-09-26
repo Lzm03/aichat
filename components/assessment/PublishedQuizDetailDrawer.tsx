@@ -1,11 +1,18 @@
 import { uiText, uiTemplate } from '../../utils/uiI18n';
 import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Copy, X, ShieldAlert, ArrowRight } from 'lucide-react';
+import { Copy, X, ShieldAlert, ArrowRight, Tag } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
 import { Icons } from '../icons';
 import { QuestionCard, type LibraryQuestion } from './QuestionCard';
 import { AnomalyAlertCenter, type AnomalyFlag } from './AnomalyAlertCenter';
+import {
+  QuizTopicPicker,
+  mapQuizPublishBots,
+  quizTopicErrorText,
+  type QuizPublishBotOption,
+} from './QuizTopicPicker';
+import { quizTopicName } from './QuizTopicTag';
 import { computeBloomBreakdown } from '../../utils/assessment-csv';
 
 export type PublishedQuizSummary = {
@@ -15,6 +22,9 @@ export type PublishedQuizSummary = {
   botId: string;
   botName: string;
   botSubject: string;
+  /** 空字串 ＝「不分主題」（學生喺未有自己測驗嘅主題傾偈時會見到）。 */
+  topicId: string;
+  topicName: string;
   publishedAt?: string;
   gradingCompletedAt?: string | null;
   totalStudents: number;
@@ -78,6 +88,8 @@ type PublishedQuizDetailDrawerProps = {
   mode?: DrawerMode;
   /** 提供後，質量分析 tab 有待批改時有「前往批改」入口 */
   onOpenGrading?: (quizId: string) => void;
+  /** 改主題成功後回報，令列表唔使 refetch 都跟得住 */
+  onQuizUpdated?: (quiz: PublishedQuizSummary) => void;
 };
 
 const DRAWER_TABS: { key: DrawerTab; label: string }[] = [
@@ -96,6 +108,7 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
   initialTab = 'results',
   mode = 'detail',
   onOpenGrading,
+  onQuizUpdated,
 }) => {
   const isAlertsMode = mode === 'alerts';
   const [activeTab, setActiveTab] = useState<DrawerTab>('results');
@@ -106,11 +119,24 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
   const [duplicating, setDuplicating] = useState(false);
   const [duplicateError, setDuplicateError] = useState('');
   const [alertFocusStudentId, setAlertFocusStudentId] = useState<string | null>(null);
+  // 改主題：local state 先行（成功先算），列表由 onQuizUpdated 同步
+  const [topicId, setTopicId] = useState('');
+  const [topicName, setTopicName] = useState('');
+  const [topicDialogOpen, setTopicDialogOpen] = useState(false);
+  const [topicBots, setTopicBots] = useState<QuizPublishBotOption[]>([]);
+  const [topicBotsLoading, setTopicBotsLoading] = useState(false);
+  const [topicBotsLoaded, setTopicBotsLoaded] = useState(false);
+  const [savingTopic, setSavingTopic] = useState(false);
+  const [topicError, setTopicError] = useState('');
 
   useEffect(() => {
     if (!open || !quiz) return;
     setActiveTab(initialTab);
     setDuplicateError('');
+    setTopicId(String(quiz.topicId || ''));
+    setTopicName(String(quiz.topicName || ''));
+    setTopicDialogOpen(false);
+    setTopicError('');
 
     let active = true;
     if (isAlertsMode) {
@@ -151,6 +177,65 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
       active = false;
     };
   }, [open, quiz]);
+
+  // 改主題對話框：第一次開啟先拉 Bot／主題清單，唔開就唔使多一個 request
+  useEffect(() => {
+    if (!topicDialogOpen || topicBotsLoaded) return;
+    let active = true;
+    setTopicBotsLoading(true);
+    setTopicError('');
+    fetch(`${API_BASE}/api/teachers/me/available-quiz-bots`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!active) return;
+        setTopicBots(mapQuizPublishBots(data));
+      })
+      .catch(() => {
+        if (!active) return;
+        setTopicBots([]);
+        setTopicError(uiText('載入 Bot 清單失敗'));
+      })
+      .finally(() => {
+        if (!active) return;
+        setTopicBotsLoading(false);
+        setTopicBotsLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [topicDialogOpen, topicBotsLoaded]);
+
+  // 揀咗就即刻 PATCH（同 Step 3 一致）：唔留「未儲存」狀態，複製草稿先唔會抄錯主題
+  const handleChangeTopic = async (nextTopicId: string) => {
+    if (!quiz || savingTopic) return;
+    const previousTopicId = topicId;
+    const previousTopicName = topicName;
+    setTopicId(nextTopicId);
+    setTopicError('');
+    setSavingTopic(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/${quiz.id}/topic`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topicId: nextTopicId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(quizTopicErrorText(data, '更改主題失敗，請稍後再試。'));
+      }
+      const savedTopicId = String(data?.quiz?.topicId || '');
+      const savedTopicName = String(data?.quiz?.topicName || '');
+      setTopicId(savedTopicId);
+      setTopicName(savedTopicName);
+      onQuizUpdated?.({ ...quiz, topicId: savedTopicId, topicName: savedTopicName });
+    } catch (error) {
+      setTopicId(previousTopicId);
+      setTopicName(previousTopicName);
+      setTopicError(error instanceof Error ? error.message : uiText('更改主題失敗，請稍後再試。'));
+    } finally {
+      setSavingTopic(false);
+    }
+  };
 
   const handleDuplicate = async () => {
     if (!quiz || duplicating) return;
@@ -196,6 +281,56 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
       {open && quiz ? (
         <div className="fixed inset-0 z-[95] pointer-events-none">
           <div className="absolute inset-0 bg-slate-950/10" aria-hidden="true" />
+          {/* 改主題對話框：掛喺 pointer-events-none 外層（唔好擺入有 transform 嘅抽屜面板，
+              否則 fixed 會被困喺面板入面）。外層唔擋，內容先收 clicks。 */}
+          {topicDialogOpen ? (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-4">
+              <div className="pointer-events-auto w-full max-w-md rounded-[24px] border border-slate-100 bg-white p-6 shadow-2xl">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="text-lg font-bold text-slate-800">{uiText('改主題')}</h3>
+                  <button
+                    type="button"
+                    onClick={() => setTopicDialogOpen(false)}
+                    className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  {Number(quiz.submitted || 0) > 0
+                    ? uiTemplate(
+                        '已有 {0} 位學生作答。改主題唔會影響已收到嘅答案同成績，但學生會改喺新主題先見到呢份測驗。',
+                        Number(quiz.submitted || 0)
+                      )
+                    : uiText('改主題之後，學生會喺新主題嘅對話度見到呢份測驗。')}
+                </p>
+                <div className="mt-4">
+                  <QuizTopicPicker
+                    bots={topicBots}
+                    botId={quiz.botId}
+                    topicId={topicId}
+                    loading={topicBotsLoading || savingTopic}
+                    onTopicChange={(nextTopicId) => void handleChangeTopic(nextTopicId)}
+                    showMultiTopicHint
+                    onDuplicateHintClick={() => void handleDuplicate()}
+                  />
+                </div>
+                {topicError ? <p className="mt-3 text-xs font-bold text-rose-500">{topicError}</p> : null}
+                {/* 對話框開住時 footer 睇唔到，複製失敗要喺呢度講 */}
+                {duplicateError ? <p className="mt-2 text-xs font-bold text-rose-500">{duplicateError}</p> : null}
+                <div className="mt-5 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setTopicDialogOpen(false)}
+                    className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800"
+                  >
+                    {uiText('完成')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <motion.div
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
@@ -213,6 +348,20 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
                     <span className="inline-flex items-center gap-1.5">
                       <Icons.bot className="h-3.5 w-3.5 text-indigo-500" />
                       {uiText("綁定 Bot")}：{quiz.botName}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Tag className="h-3.5 w-3.5 text-slate-400" />
+                      {uiText("主題：")}{quizTopicName(topicName)}
+                      {/* alerts 模式係純異常警示視圖，唔喺嗰度改發佈設定 */}
+                      {!isAlertsMode ? (
+                        <button
+                          type="button"
+                          onClick={() => setTopicDialogOpen(true)}
+                          className="font-bold text-indigo-600 transition hover:text-indigo-700"
+                        >
+                          {uiText("更改")}
+                        </button>
+                      ) : null}
                     </span>
                   </p>
                 </div>

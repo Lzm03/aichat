@@ -3,6 +3,7 @@ import { pool } from "../db.ts";
 import { withSchemaLock } from "../lib/schema-lock.ts";
 import { getAuthUser, requireAuth } from "../lib/platform-auth.ts";
 import { ensureQuizTables } from "./quizzes.ts";
+import { QUIZ_TOPIC_JOIN_SQL, QUIZ_TOPIC_SELECT_SQL } from "../lib/quiz-topic.ts";
 import { quizAudienceSql } from "../lib/quiz-audience.ts";
 
 const router = express.Router();
@@ -19,6 +20,8 @@ type StudentTaskEvent = {
   sharedAt: string;
   quizId?: string;
   quizTitle?: string;
+  topicId?: string;
+  topicName?: string;
   readAt?: string | null;
 };
 
@@ -152,9 +155,11 @@ async function loadStudentTaskEvents(userId: string) {
          b.id AS bot_id,
          b.name AS bot_name,
          b.subject,
+         ${QUIZ_TOPIC_SELECT_SQL},
          teacher.full_name AS teacher_name
        FROM quizzes q
        JOIN bots b ON b.id=q.bot_id
+       ${QUIZ_TOPIC_JOIN_SQL}
        JOIN users teacher ON teacher.id=q.teacher_id
        LEFT JOIN quiz_attempts attempt
          ON attempt.quiz_id=q.id AND attempt.student_id=$1
@@ -196,6 +201,8 @@ async function loadStudentTaskEvents(userId: string) {
       sharedAt,
       quizId: String(row.quiz_id),
       quizTitle: String(row.quiz_title || "知識測試"),
+      topicId: String(row.topic_id || ""),
+      topicName: String(row.topic_name || ""),
     };
   });
 
