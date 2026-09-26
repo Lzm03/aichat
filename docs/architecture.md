@@ -171,7 +171,9 @@ aichat/
 
 DB suite 每次都會建 schema，所以**唔可以指去一個你在乎嘅 database**。一個全新空 DB 就夠跑，
 只需先有 `bots`——佢係遺留表，`ensurePlatformTables()` 唔會建，但 `bot_student_progress` 有 FK
-指住（測試檔自己會補上）。`test:all` 用 `--test-concurrency=1` 逐檔跑：所有 DB suite 共用同一個
+指住（測試檔自己會補上）。有啲 suite 仲要 `bots.subject`——佢同屬 production DDL、唔喺 repo 入面，
+但 `/quizzes/published` 一類查詢會 select 佢，一樣由測試檔自己 `ALTER TABLE` 補返。
+`test:all` 用 `--test-concurrency=1` 逐檔跑：所有 DB suite 共用同一個
 database，而 `CREATE TABLE IF NOT EXISTS` 本身唔係 race-free（兩個進程同時建表，輸家爆
 `pg_type_typname_nsp_index`），併發跑會隨機紅。
 
