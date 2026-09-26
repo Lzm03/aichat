@@ -4,14 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { UploadCloud, FileText, Settings2, Lightbulb, ArrowRight, BookOpen, X, Bot, LoaderCircle, FolderOpen } from 'lucide-react';
 import { API_BASE } from '../../../utils/api';
 import { readAuthSession } from '../../../utils/auth';
-
-interface PublishBotOption {
-  id: string;
-  name: string;
-  subject?: string;
-  isVisible?: boolean;
-  isShared?: boolean;
-}
+import { mapQuizPublishBots, QuizTopicPicker, type QuizPublishBotOption } from '../QuizTopicPicker';
 
 type GeneratedQuestion = {
   id: number | string;
@@ -31,6 +24,9 @@ type GeneratedQuizPayload = {
     id: string;
     title: string;
     botId: string;
+    botName?: string;
+    topicId?: string;
+    topicName?: string;
     targetGrade: string;
     questionCount: number;
     questionTypeMode: string;
@@ -78,8 +74,10 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
   const [importingHistoryId, setImportingHistoryId] = useState('');
   const [historyError, setHistoryError] = useState('');
   const [importedDraft, setImportedDraft] = useState<GeneratedQuizPayload | null>(null);
-  const [publishBots, setPublishBots] = useState<PublishBotOption[]>([]);
+  const [publishBots, setPublishBots] = useState<QuizPublishBotOption[]>([]);
   const [selectedBotId, setSelectedBotId] = useState('');
+  // 空字串 ＝「不分主題」（舊行為；測驗只喺「該主題冇自己測驗」時出）
+  const [selectedTopicId, setSelectedTopicId] = useState('');
   const [loadingBots, setLoadingBots] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -173,6 +171,9 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
           id: String(data.quiz.id || draftId),
           title: String(data.quiz.title || '未命名測驗'),
           botId: String(data.quiz.botId || ''),
+          botName: String(data.quiz.botName || ''),
+          topicId: String(data.quiz.topicId || ''),
+          topicName: String(data.quiz.topicName || ''),
           targetGrade: String(data.quiz.targetGrade || ''),
           questionCount: Number(data.quiz.questionCount || data.questions?.length || 0),
           questionTypeMode: String(data.quiz.questionTypeMode || 'ai_auto'),
@@ -184,6 +185,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
       setGrade(payload.quiz.targetGrade || 'P1-P3');
       setQuestionCount(payload.quiz.questionCount || payload.questions.length || 5);
       setSelectedBotId(payload.quiz.botId || '');
+      setSelectedTopicId(payload.quiz.topicId || '');
       setImportedDraft(payload);
       onDraftModeChange(true);
       setIsDraftModalOpen(false);
@@ -239,17 +241,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
       .then((res) => res.json())
       .then((data) => {
         if (!active) return;
-        const next = Array.isArray(data?.bots)
-          ? data.bots
-              .map((item: any) => ({
-                id: String(item.id || ''),
-                name: String(item.name || '未命名 Bot'),
-                subject: item.subject ? String(item.subject) : '',
-                isVisible: true,
-                isShared: Boolean(item.isShared),
-              }))
-              .filter((item: PublishBotOption) => item.id)
-          : [];
+        const next = mapQuizPublishBots(data);
         setPublishBots(next);
         setSelectedBotId((prev) => prev || String(next[0]?.id || ''));
       })
@@ -299,6 +291,7 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
         },
         body: JSON.stringify({
           botId: selectedBotId,
+          topicId: selectedTopicId,
           sourceText: trimmedText,
           targetGrade: grade,
           questionCount,
@@ -316,6 +309,10 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
           id: String(data?.quiz?.id || data?.quizId || ''),
           title: String(data?.quiz?.title || ''),
           botId: String(data?.quiz?.botId || selectedBotId),
+          botName: String(data?.selectedBot?.name || ''),
+          // 主題名由 generate 回應嘅 selectedTopic 嚟（唔靠本地清單，避免同伺服器唔一致）
+          topicId: String(data?.quiz?.topicId || ''),
+          topicName: String(data?.selectedTopic?.name || ''),
           targetGrade: String(data?.quiz?.targetGrade || grade),
           questionCount: Number(data?.quiz?.questionCount || questionCount),
           questionTypeMode: String(data?.quiz?.questionTypeMode || 'ai_auto'),
@@ -406,31 +403,24 @@ export const Step1TextAndGrade: React.FC<Step1TextAndGradeProps> = ({ onGenerate
             <h2 className="text-lg font-bold text-slate-800">{uiText("測驗設定")}</h2>
           </div>
 
-          {/* 區塊 A：發佈 Bot */}
+          {/* 區塊 A：發佈 Bot ＋ 主題（同一個揀選元件，Step 3 更改時共用） */}
           <div className="space-y-3">
-            <label className="block text-sm font-bold text-slate-700">{uiText("發佈到 Bot")}</label>
-            <div className="relative">
-              <select
-                value={selectedBotId}
-                onChange={(e) => {
-                  setSelectedBotId(e.target.value);
-                  clearImportedDraft();
-                }}
-                className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 rounded-xl px-4 py-3 pr-10 outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-medium disabled:opacity-60"
-                disabled={loadingBots || publishBots.length === 0}
-              >
-                {loadingBots && <option value="">{uiText("載入 Bot 中...")}</option>}
-                {!loadingBots && publishBots.length === 0 && <option value="">{uiText("暫無可用 Bot")}</option>}
-                {publishBots.map((bot) => (
-                  <option key={bot.id} value={bot.id}>
-                    {bot.name}{bot.subject ? ` · ${bot.subject}` : ''}{bot.isShared ? uiText(' · 已分享') : ''}
-                  </option>
-                ))}
-              </select>
-              <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-slate-400">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-              </div>
-            </div>
+            <QuizTopicPicker
+              bots={publishBots}
+              botId={selectedBotId}
+              topicId={selectedTopicId}
+              loading={loadingBots}
+              onBotChange={(nextBotId) => {
+                setSelectedBotId(nextBotId);
+                // 換 Bot → 主題清單同選擇一齊重置（舊 Bot 嘅主題喺新 Bot 唔一定存在）
+                setSelectedTopicId('');
+                clearImportedDraft();
+              }}
+              onTopicChange={(nextTopicId) => {
+                setSelectedTopicId(nextTopicId);
+                clearImportedDraft();
+              }}
+            />
 
             <motion.div
               initial={{ opacity: 0, y: -5 }}

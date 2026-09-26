@@ -1,10 +1,12 @@
 import { uiText, uiError, uiTemplate } from '../../../utils/uiI18n';
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Edit3, ChevronDown, Save, Rocket, ArrowLeft, PlusCircle, X, Search, Eye, LoaderCircle, FolderPlus, CheckCircle2 } from 'lucide-react';
+import { Sparkles, Edit3, ChevronDown, Save, Rocket, ArrowLeft, PlusCircle, X, Search, Eye, LoaderCircle, FolderPlus, CheckCircle2, Info } from 'lucide-react';
 import { API_BASE } from '../../../utils/api';
 import { usePlatformDialog } from '../../../hooks/usePlatformDialog';
 import { PlatformDialog } from '../../system/PlatformDialog';
+import { mapQuizPublishBots, quizTopicHintText, QuizTopicPicker, type QuizPublishBotOption } from '../QuizTopicPicker';
+import { quizTopicName } from '../QuizTopicTag';
 
 interface Step3PreviewAndPublishProps {
   onPrev: () => void;
@@ -14,6 +16,9 @@ interface Step3PreviewAndPublishProps {
     id: string;
     title: string;
     botId: string;
+    botName?: string;
+    topicId?: string;
+    topicName?: string;
     targetGrade: string;
     questionCount: number;
     questionTypeMode: string;
@@ -97,7 +102,40 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
   const [historyError, setHistoryError] = useState('');
   const [searchHistoryQuery, setSearchHistoryQuery] = useState('');
   const [isAddingHistory, setIsAddingHistory] = useState(false);
+  // 發佈目的地（Bot × 主題）：主題可以喺呢一步改，唔使返上一步重新生成
+  const [topicId, setTopicId] = useState(initialQuiz?.topicId || '');
+  const [topicName, setTopicName] = useState(initialQuiz?.topicName || '');
+  const [botName, setBotName] = useState(initialQuiz?.botName || '');
+  const [publishBots, setPublishBots] = useState<QuizPublishBotOption[]>([]);
+  const [isEditingDestination, setIsEditingDestination] = useState(false);
+  const [isSavingTopic, setIsSavingTopic] = useState(false);
   const { dialog, closeDialog, showAlert, showConfirm } = usePlatformDialog();
+
+  // 一個請求就有齊 Bot 名同主題清單（同 Step 1 同一個 API，唔另開）
+  useEffect(() => {
+    let active = true;
+    fetch(`${API_BASE}/api/teachers/me/available-quiz-bots`, { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!active) return;
+        const bots = mapQuizPublishBots(data);
+        setPublishBots(bots);
+        const bot = bots.find((item) => item.id === initialQuiz?.botId);
+        if (!bot) return;
+        // 草稿帶落嚟嘅名為先；冇先由清單補
+        setBotName((prev) => prev || bot.name);
+        setTopicName((prev) => {
+          if (prev) return prev;
+          return String((bot.topics || []).find((topic) => topic.id === topicId)?.name || '');
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+    // topicId 唔入 deps：只喺開頁補一次名，之後由 handleChangeTopic 維護
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuiz?.botId]);
 
   useEffect(() => {
     setTypeSelections(
@@ -227,6 +265,39 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
 
   const visibleQuestions = isExpanded ? questions : questions.slice(0, 2);
 
+  const selectedBot = publishBots.find((bot) => bot.id === initialQuiz?.botId);
+  const destinationHint = quizTopicHintText(selectedBot, topicId);
+  // 主題被刪（另一個 tab／老師）→ 唔好靜靜雞當「不分主題」發出去
+  const topicMissing =
+    Boolean(topicId) && publishBots.length > 0 && !(selectedBot?.topics || []).some((topic) => topic.id === topicId);
+
+  // 改主題即刻寫入（唔使重新發佈，唔燒發佈次數）；失敗就還原個選擇
+  const handleChangeTopic = async (nextTopicId: string) => {
+    if (!initialQuiz?.id) return;
+    const previousTopicId = topicId;
+    setTopicId(nextTopicId);
+    setIsSavingTopic(true);
+    setPublishError('');
+    try {
+      const response = await fetch(`${API_BASE}/api/quizzes/${initialQuiz.id}/topic`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topicId: nextTopicId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(data?.error || '更改主題失敗，請稍後再試。'));
+      }
+      setTopicId(String(data?.quiz?.topicId || ''));
+      setTopicName(String(data?.quiz?.topicName || ''));
+    } catch (error) {
+      setTopicId(previousTopicId);
+      setPublishError(error instanceof Error ? error.message : '更改主題失敗，請稍後再試。');
+    } finally {
+      setIsSavingTopic(false);
+    }
+  };
+
   const handlePublishQuiz = async () => {
     if (!initialQuiz?.id) {
       setPublishError('測驗尚未建立，請返回上一步重新生成。');
@@ -234,6 +305,10 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
     }
     if (!questions.length) {
       setPublishError('測驗沒有任何題目，無法發佈。');
+      return;
+    }
+    if (topicMissing) {
+      setPublishError('呢個主題已經冇咗，請重新揀。');
       return;
     }
     setPublishError('');
@@ -247,9 +322,13 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
       if (!response.ok) {
         throw new Error(String(data?.error || '發佈測驗失敗，請稍後再試。'));
       }
+      const publishedTitle = title.trim() || initialQuiz.title || '';
+      const destinationName = [botName.trim(), topicName.trim()].filter(Boolean).join(' · ');
       showConfirm({
         title: uiText('發佈成功'),
-        message: uiTemplate('「{0}」已發佈，學生將可作答。', title.trim() || initialQuiz.title || ''),
+        message: topicName.trim()
+          ? uiTemplate('「{0}」已發佈到「{1}」，學生喺該主題傾偈時就會見到。', publishedTitle, destinationName)
+          : uiTemplate('「{0}」已發佈，學生喺未有自己測驗嘅主題傾偈時會見到。', publishedTitle),
         confirmText: uiText('返回智能評測'),
         cancelText: uiText('留在本頁'),
         onConfirm: onPublish,
@@ -834,7 +913,53 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
       {/* 底部發佈模塊 */}
       <div className="mt-8 bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 rounded-[24px] p-6 md:p-8 shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-100 rounded-full blur-3xl opacity-50 -translate-y-1/2 translate-x-1/4 pointer-events-none"></div>
-        
+
+        {/* 發佈設定列：目的地喺上一頁定咗，發覺揀錯唔使返上去重新生成 */}
+        <div className="relative z-10 mb-6 rounded-2xl border border-indigo-100 bg-white/80 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="text-xs font-bold uppercase tracking-wider text-indigo-400">{uiText('會發佈到：')}</span>
+            <span className="text-sm font-bold text-slate-800">
+              {botName.trim() ? `${botName.trim()} · ` : ''}
+              {quizTopicName(topicName)}
+            </span>
+            {isSavingTopic ? <LoaderCircle className="h-4 w-4 animate-spin text-indigo-500" /> : null}
+            <button
+              type="button"
+              onClick={() => setIsEditingDestination((prev) => !prev)}
+              className="ml-auto inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold text-indigo-600 hover:bg-indigo-50"
+            >
+              <Edit3 className="h-3.5 w-3.5" />{uiText('更改')}
+            </button>
+          </div>
+          {destinationHint ? (
+            <p className="mt-1.5 flex items-start gap-1.5 text-xs leading-5 text-slate-500">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <span>{destinationHint}</span>
+            </p>
+          ) : null}
+        </div>
+
+        {isEditingDestination ? (
+          <div className="relative z-10 mb-6 rounded-2xl border border-slate-200 bg-white p-4">
+            <QuizTopicPicker
+              bots={publishBots}
+              botId={initialQuiz?.botId || ''}
+              topicId={topicId}
+              loading={isSavingTopic}
+              onTopicChange={(nextTopicId) => void handleChangeTopic(nextTopicId)}
+            />
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsEditingDestination(false)}
+                className="rounded-full bg-slate-100 px-5 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200"
+              >
+                {uiText('完成')}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 relative z-10">
           <div className="flex-1">
             <label className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-2 block">{uiText("測驗名稱")}</label>
