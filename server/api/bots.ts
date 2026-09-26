@@ -13,6 +13,7 @@ import {
   requireAuth,
 } from "../lib/platform-auth.ts";
 import { ensureQuizTables } from "./quizzes.ts";
+import { pendingQuizCountSql } from "../lib/quiz-topic.ts";
 import {
   ensureDefaultTopicForCharacter,
   ensureCharacterTopicTables,
@@ -630,7 +631,8 @@ router.get("/", requireAuth, async (req, res) => {
         b.*,
         q.id AS active_quiz_id,
         q.title AS active_quiz_title,
-        qa.status AS active_quiz_attempt_status
+        qa.status AS active_quiz_attempt_status,
+        ${pendingQuizCountSql("b.id", "$2")} AS pending_quiz_count
       FROM bots b
       LEFT JOIN LATERAL (
         SELECT id, title
@@ -674,6 +676,7 @@ router.get("/", requireAuth, async (req, res) => {
       ...toClient(row),
       hasPublishedQuiz: Boolean(row.active_quiz_id),
       hasPendingQuiz: Boolean(row.active_quiz_id) && row.active_quiz_attempt_status !== "completed",
+      pendingQuizCount: Number(row.pending_quiz_count || 0),
       activeQuizId: row.active_quiz_id || "",
       activeQuizTitle: row.active_quiz_title || "",
       coverage: coverageMap.get(String(row.id)),
@@ -952,7 +955,8 @@ router.get("/shared/with-me", requireAuth, async (req, res) => {
          u.full_name AS teacher_name,
          q.id AS active_quiz_id,
          q.title AS active_quiz_title,
-         qa.status AS active_quiz_attempt_status
+         qa.status AS active_quiz_attempt_status,
+         ${pendingQuizCountSql("b.id", "$1")} AS pending_quiz_count
        FROM bots b
        JOIN users u ON u.id = b.owner_id
        LEFT JOIN LATERAL (
@@ -1010,6 +1014,7 @@ router.get("/shared/with-me", requireAuth, async (req, res) => {
         teacherName: row.teacher_name || "",
         hasPublishedQuiz: Boolean(row.active_quiz_id),
         hasPendingQuiz: Boolean(row.active_quiz_id) && row.active_quiz_attempt_status !== "completed",
+        pendingQuizCount: Number(row.pending_quiz_count || 0),
         activeQuizId: row.active_quiz_id || "",
         activeQuizTitle: row.active_quiz_title || "",
         progress: { covered: aggregate.covered, total: aggregate.total },
@@ -1804,7 +1809,8 @@ router.get("/:id", async (req, res) => {
          bots.*,
          q.id AS active_quiz_id,
          q.title AS active_quiz_title,
-         qa.status AS active_quiz_attempt_status
+         qa.status AS active_quiz_attempt_status,
+         ${pendingQuizCountSql("bots.id", "$2")} AS pending_quiz_count
        FROM bots
        LEFT JOIN LATERAL (
          SELECT id, title
@@ -1831,6 +1837,7 @@ router.get("/:id", async (req, res) => {
       hasPendingQuiz:
         Boolean(result.rows[0].active_quiz_id) &&
         result.rows[0].active_quiz_attempt_status !== "completed",
+      pendingQuizCount: Number(result.rows[0].pending_quiz_count || 0),
       activeQuizId: result.rows[0].active_quiz_id || "",
       activeQuizTitle: result.rows[0].active_quiz_title || "",
     });
