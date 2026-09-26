@@ -1,4 +1,5 @@
 import { uiText, uiTemplate } from '../../utils/uiI18n';
+import { Skeleton } from '../shared/Skeleton';
 import React, { useEffect, useState } from 'react';
 import { Target, Users } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
@@ -76,7 +77,23 @@ export const TeacherProgressOverview: React.FC = () => {
       <p className="mt-0.5 text-xs text-slate-400">{uiText("由學生實際對話累積的知識點掌握統計。")}</p>
 
       {loading ? (
-        <p className="py-8 text-center text-xs font-semibold text-slate-400">{uiText("正在載入…")}</p>
+        <div className="mt-4 space-y-4">
+          {[0, 1].map((slot) => (
+            <div key={slot} className="rounded-2xl border border-slate-100 p-3">
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-8 w-8 shrink-0 rounded-full bg-slate-200/70" />
+                <Skeleton className="h-4 w-28 rounded-full bg-slate-200/70" />
+                <Skeleton className="h-4 w-10 rounded-full bg-slate-200/70" />
+              </div>
+              <div className="mt-3 space-y-2 rounded-2xl bg-slate-50/70 p-2.5">
+                <Skeleton className="h-3 w-24 rounded-full bg-slate-200/70" />
+                <Skeleton className="h-3 w-full rounded-full bg-slate-200/70" />
+                <Skeleton className="h-3 w-5/6 rounded-full bg-slate-200/70" />
+              </div>
+            </div>
+          ))}
+          <span className="sr-only">{uiText("正在載入…")}</span>
+        </div>
       ) : error ? (
         <p className="py-8 text-center text-xs font-semibold text-slate-400">{uiText("暫時無法載入，請稍後再試。")}</p>
       ) : !bots.length ? (

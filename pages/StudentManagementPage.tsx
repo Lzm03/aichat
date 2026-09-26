@@ -1,5 +1,6 @@
 ﻿import { uiText, uiTemplate } from '../utils/uiI18n';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Skeleton } from '../components/shared/Skeleton';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Check,
@@ -572,12 +573,6 @@ export const StudentManagementPage: React.FC = () => {
       {/* 頁名（學生管理）已經喺 topbar 出現，內頁唔再重複一次；只留一句用途說明。 */}
       <p className="text-sm text-slate-500">{uiText('管理學生帳戶與班級。')}</p>
 
-      {isLoading ? (
-        <div className="mt-6 rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm font-bold text-indigo-600">
-          {uiText('正在從資料庫載入學生與班級…')}
-        </div>
-      ) : null}
-
       <section className="mt-6 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-center gap-2 text-lg font-black text-slate-900">
           <ClipboardList className="h-5 w-5 text-indigo-600" />
@@ -633,7 +628,23 @@ export const StudentManagementPage: React.FC = () => {
             {uiText('已註冊但尚未加入班級嘅學生會自動顯示喺呢度。')}
           </p>
           <div className="mt-4 space-y-2">
-            {unassignedStudents.length > 0 ? (
+            {isLoading && !unassignedStudents.length ? (
+              <>
+                {[0, 1, 2].map((slot) => (
+                  <div key={slot} className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white py-2.5 pl-3 pr-2">
+                    <Skeleton className="h-6 w-6 shrink-0 rounded-lg bg-slate-200/70" />
+                    <div className="flex min-w-0 flex-1 items-center gap-3 px-1 py-1">
+                      <Skeleton className="h-9 w-9 shrink-0 rounded-xl bg-slate-200/70" />
+                      <div className="min-w-0 flex-1">
+                        <Skeleton className="h-4 w-1/2 rounded-full bg-slate-200/70" />
+                        <Skeleton className="mt-1.5 h-3 w-2/3 rounded-full bg-slate-200/70" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <span className="sr-only">{uiText('正在從資料庫載入學生與班級…')}</span>
+              </>
+            ) : unassignedStudents.length > 0 ? (
               <>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-xs font-bold text-slate-400">
@@ -763,7 +774,19 @@ export const StudentManagementPage: React.FC = () => {
             />
           </div>
           <div className="mt-3 space-y-2">
-            {visibleAssignedStudents.length > 0 ? (
+            {isLoading && !visibleAssignedStudents.length ? (
+              <>
+                {[0, 1, 2].map((slot) => (
+                  <div key={slot} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/60 px-3 py-3">
+                    <div className="min-w-0 flex-1">
+                      <Skeleton className="h-4 w-1/3 rounded-full bg-slate-200/70" />
+                      <Skeleton className="mt-1.5 h-3 w-1/2 rounded-full bg-slate-200/70" />
+                      <Skeleton className="mt-1.5 h-4 w-16 rounded-full bg-slate-200/70" />
+                    </div>
+                  </div>
+                ))}
+              </>
+            ) : visibleAssignedStudents.length > 0 ? (
               assignedPreviewStudents.map((student) => {
                 const groupsNames = groups
                   .filter((group) => student.groupIds?.includes(group.id))
@@ -857,13 +880,25 @@ export const StudentManagementPage: React.FC = () => {
         ) : null}
 
         <div className="flex flex-col gap-3 p-5 sm:p-6">
-          {groups.length > 0 ? (
+          {isLoading && !groups.length ? (
+            <>
+              {[0, 1].map((slot) => (
+                <div key={slot} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4">
+                  <Skeleton className="h-10 w-10 shrink-0 rounded-xl bg-slate-200/70" />
+                  <div className="min-w-0 flex-1">
+                    <Skeleton className="h-4 w-1/4 rounded-full bg-slate-200/70" />
+                    <Skeleton className="mt-1.5 h-3 w-16 rounded-full bg-slate-200/70" />
+                  </div>
+                </div>
+              ))}
+            </>
+          ) : groups.length > 0 ? (
             groups.map((group) => {
               const expanded = expandedGroupIds.includes(group.id);
               const groupStudents = students.filter((student) => group.studentIds.includes(student.id));
               return (
                 <div key={group.id} className="overflow-hidden rounded-2xl border border-slate-100 bg-white">
-                  <div className="flex items-center gap-3 p-4">
+                  <div className="flex items-center gap-3 p-4 transition hover:bg-indigo-50/40">
                     {/* 箭嘴要放喺 button 入面：擺喺外面嘅話佢只係裝飾，
                         撳落去唔會收起，用家會以為壞咗。 */}
                     <button

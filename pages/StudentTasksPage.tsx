@@ -1,4 +1,5 @@
 import { uiText, uiTemplate, uiLocale, uiError } from '../utils/uiI18n';
+import { Skeleton } from '../components/shared/Skeleton';
 import React, { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Icons } from "../components/icons";
@@ -132,8 +133,21 @@ export const StudentTasksPage: React.FC = () => {
         ) : null}
 
         {loading ? (
-          <div className="mt-16 flex items-center justify-center gap-3 text-sm font-semibold text-[var(--text-muted)]">
-            <span className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--accent)]" />{uiText("正在載入真實任務…")}</div>
+          <section className="mt-8 space-y-3">
+            {[0, 1, 2].map((slot) => (
+              <div key={slot} className="flex flex-col gap-4 rounded-[24px] border border-[var(--border)] bg-[var(--bg-card)] p-5 shadow-[var(--shadow-card)] sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <Skeleton className="h-11 w-11 shrink-0 rounded-2xl bg-[var(--bg-subtle-2)]" />
+                  <div className="min-w-0">
+                    <Skeleton className="h-4 w-56 rounded-full bg-[var(--bg-subtle-2)]" />
+                    <Skeleton className="mt-2 h-3 w-32 rounded-full bg-[var(--bg-subtle-2)]" />
+                  </div>
+                </div>
+                <Skeleton className="h-9 w-24 shrink-0 rounded-full bg-[var(--bg-subtle-2)]" />
+              </div>
+            ))}
+            <span className="sr-only">{uiText("正在載入真實任務…")}</span>
+          </section>
         ) : null}
 
         {isEmpty ? (

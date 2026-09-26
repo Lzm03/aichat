@@ -1,4 +1,5 @@
 import { uiText, uiTemplate } from '../../utils/uiI18n';
+import { Skeleton } from '../shared/Skeleton';
 import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Copy, X, ShieldAlert, ArrowRight } from 'lucide-react';
@@ -245,7 +246,22 @@ export const PublishedQuizDetailDrawer: React.FC<PublishedQuizDetailDrawerProps>
                 {!isAlertsMode && activeTab === 'results' && (
                   <div className="space-y-4">
                     {detailLoading ? (
-                      <div className="rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">{uiText("正在載入成績...")}</div>
+                      <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+                        {[0, 1, 2].map((slot) => (
+                          <div key={slot} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_auto] items-center gap-3 border-b border-slate-50 px-4 py-3 last:border-b-0">
+                            <div className="min-w-0">
+                              <Skeleton className="h-4 w-2/3 rounded-full bg-slate-200/70" />
+                              <Skeleton className="mt-1 h-3 w-1/2 rounded-full bg-slate-200/70" />
+                            </div>
+                            <div className="flex items-center justify-center gap-1">
+                              <Skeleton className="h-4 w-10 rounded-md bg-slate-200/70" />
+                              <Skeleton className="h-4 w-10 rounded-md bg-slate-200/70" />
+                            </div>
+                            <Skeleton className="h-4 w-10 rounded-full bg-slate-200/70" />
+                          </div>
+                        ))}
+                        <span className="sr-only">{uiText("正在載入成績...")}</span>
+                      </div>
                     ) : students.length ? (
                       <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
                         <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_auto] items-center gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-3 text-xs font-bold text-slate-400">

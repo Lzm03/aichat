@@ -1,4 +1,5 @@
 import { uiText, uiTemplate } from '../../utils/uiI18n';
+import { Skeleton } from '../shared/Skeleton';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { AlertCircle, ArrowRight, BarChart2, ChevronDown, HelpCircle, Trash2 } from 'lucide-react';
@@ -185,7 +186,7 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
             <Icons.back className="w-4 h-4 mr-2" />{uiText("返回智能評測")}</button>
           <h1 className="text-2xl font-bold text-slate-800">{uiText("智能批改工作台")}</h1>
         </div>
-        <button type="button" aria-label={uiText("AI 批改説明")} onClick={() => setShowHelp(true)} className="text-indigo-500"><HelpCircle className="h-5 w-5" /></button>
+        <button type="button" aria-label={uiText("AI 批改説明")} onClick={() => setShowHelp(true)} className="text-indigo-500 transition hover:text-indigo-700"><HelpCircle className="h-5 w-5" /></button>
       </div>
 
       {activeQuizzesCount > 0 ? <div className="bg-rose-50 border border-rose-100 text-rose-800 p-4 rounded-2xl flex items-center gap-3 shadow-sm">
@@ -197,7 +198,28 @@ export const GradingWorkspaceHome: React.FC<GradingWorkspaceHomeProps> = ({ onBa
 
       <div className="grid grid-cols-1 gap-4">
         {loading ? (
-          <div className="rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">{uiText("正在載入批改資料...")}</div>
+          <>
+            {[0, 1].map((slot) => (
+              <div key={slot} className="flex flex-col justify-between gap-6 rounded-[24px] border border-slate-100 bg-white p-6 shadow-sm md:flex-row md:items-center">
+                <div className="flex-1">
+                  <div className="mb-2 flex items-center gap-2">
+                    <Skeleton className="h-6 w-16 rounded-md bg-slate-200/70" />
+                    <Skeleton className="h-4 w-24 rounded-full bg-slate-200/70" />
+                  </div>
+                  <Skeleton className="h-5 w-2/3 rounded-full bg-slate-200/70" />
+                </div>
+                <div className="flex flex-wrap items-center gap-4">
+                  {[0, 1, 2].map((stat) => (
+                    <div key={stat} className="flex min-w-[80px] flex-col items-center justify-center rounded-xl bg-slate-50 p-3">
+                      <Skeleton className="h-5 w-8 rounded-full bg-slate-200/70" />
+                      <Skeleton className="mt-1 h-3 w-12 rounded-full bg-slate-200/70" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <span className="sr-only">{uiText("正在載入批改資料...")}</span>
+          </>
         ) : null}
 
         {!loading && !sortedQuizzes.length ? (

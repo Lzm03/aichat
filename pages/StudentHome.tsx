@@ -1,4 +1,5 @@
 import { uiText, uiTemplate } from '../utils/uiI18n';
+import { Skeleton } from '../components/shared/Skeleton';
 import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { BookOpen, Bot, ClipboardList, HelpCircle, Medal, Sparkles } from "lucide-react";
@@ -373,14 +374,25 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
           <button type="button" aria-label={t("companionHelp")} onClick={() => setActiveTip("companions")} className="text-[var(--accent-text)]"><HelpCircle className="h-5 w-5" /></button>
         </div>
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {companions.map((companion, index) => (
-            <StudentBotCard
-              key={companion.id}
-              companion={companion}
-              index={index}
-              onOpen={() => setSelectedBot(companion)}
-            />
-          ))}
+          {loadingBots
+            ? [0, 1, 2].map((slot) => (
+                // StudentBotCard is white in both themes, so the placeholder mirrors that
+                // rather than using --bg-card — otherwise a dark-mode load would flash.
+                <div key={slot} className="flex min-h-[320px] flex-col rounded-[28px] border border-slate-100 bg-white p-[26px] shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+                  <Skeleton className="h-[130px] w-[130px] rounded-full bg-slate-200/70" />
+                  <Skeleton className="mt-5 h-5 w-2/3 rounded-full bg-slate-200/70" />
+                  <Skeleton className="mt-3 h-6 w-20 rounded-full bg-slate-200/70" />
+                  <Skeleton className="mt-3 h-4 w-28 rounded-full bg-slate-200/70" />
+                </div>
+              ))
+            : companions.map((companion, index) => (
+                <StudentBotCard
+                  key={companion.id}
+                  companion={companion}
+                  index={index}
+                  onOpen={() => setSelectedBot(companion)}
+                />
+              ))}
         </div>
 
         <div className="mx-auto mt-6 flex items-center justify-center gap-2 rounded-[20px] border border-dashed border-[var(--accent-border)] bg-[var(--accent-soft)] px-4 py-3.5 text-center text-[13px] text-[var(--accent-text)]">

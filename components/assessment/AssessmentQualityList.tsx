@@ -1,4 +1,5 @@
 import { uiText, uiTemplate } from '../../utils/uiI18n';
+import { Skeleton } from '../shared/Skeleton';
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart2, ChevronDown, ChevronRight, ChevronUp } from 'lucide-react';
@@ -63,7 +64,18 @@ export const AssessmentQualityList: React.FC<AssessmentQualityListProps> = ({ on
       </div>
 
       {loading ? (
-        <div className="flex-1 min-h-[200px] flex items-center justify-center text-sm font-semibold text-slate-400">{uiText("正在載入…")}</div>
+        <div className="space-y-3 flex-1">
+          {[0, 1, 2].map((slot) => (
+            <div key={slot} className="flex items-center justify-between rounded-xl border border-slate-100 p-3">
+              <div className="min-w-0 flex-1">
+                <Skeleton className="h-4 w-1/2 rounded-full bg-slate-200/70" />
+                <Skeleton className="mt-2 h-3 w-24 rounded-full bg-slate-200/70" />
+              </div>
+              <Skeleton className="h-6 w-20 shrink-0 rounded-md bg-slate-200/70" />
+            </div>
+          ))}
+          <span className="sr-only">{uiText("正在載入…")}</span>
+        </div>
       ) : summaries.length ? (
         <div className="space-y-3 flex-1">
           {(showAllQuizzes ? summaries : summaries.slice(0, MAX_VISIBLE_QUIZZES)).map((summary) => {

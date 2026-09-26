@@ -47,7 +47,9 @@
    * sits next to text that already names the state, so stopping them loses no
    * information. The html prefix is for specificity: the Play CDN injects its
    * <style> at runtime, after globals.css, so an equal-specificity rule would lose.
-   * animate-spin is deliberately kept — 33 loading indicators rely on it alone.
+   * animate-spin is deliberately kept — the remaining 32 loading indicators rely on it
+   * alone. (The list/table loads that switched to Skeleton are the exception: they carry
+   * sr-only text instead.)
    */
   html .animate-pulse, html .animate-bounce { animation: none; }
 }

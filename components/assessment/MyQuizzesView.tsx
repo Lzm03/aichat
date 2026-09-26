@@ -1,4 +1,5 @@
 import { uiText, uiTemplate } from '../../utils/uiI18n';
+import { Skeleton } from '../shared/Skeleton';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle2, Edit3, Trash2 } from 'lucide-react';
@@ -220,7 +221,25 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
       {subTab === 'drafts' && (
         <div className="space-y-3">
           {draftsLoading ? (
-            <div className="rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">{uiText("正在載入草稿...")}</div>
+            <>
+              {[0, 1, 2].map((slot) => (
+                <div key={slot} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-1 flex items-center gap-2">
+                      <Skeleton className="h-4 w-12 rounded-md bg-slate-200/70" />
+                      <Skeleton className="h-3 w-16 rounded-full bg-slate-200/70" />
+                    </div>
+                    <Skeleton className="h-4 w-2/3 rounded-full bg-slate-200/70" />
+                    <Skeleton className="mt-2 h-3 w-12 rounded-full bg-slate-200/70" />
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Skeleton className="h-8 w-8 rounded-full bg-slate-200/70" />
+                    <Skeleton className="h-8 w-8 rounded-full bg-slate-200/70" />
+                  </div>
+                </div>
+              ))}
+              <span className="sr-only">{uiText("正在載入草稿...")}</span>
+            </>
           ) : drafts.length ? (
             drafts.map((draft) => (
               <div
@@ -271,7 +290,37 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
       {subTab === 'published' && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {publishedLoading ? (
-            <div className="col-span-full rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">{uiText("正在載入已發佈測驗...")}</div>
+            <>
+              {[0, 1, 2].map((slot) => (
+                <div key={slot} className="flex h-full flex-col rounded-[24px] border border-slate-100 bg-white p-6 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)]">
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Skeleton className="h-9 w-9 shrink-0 rounded-xl bg-slate-200/70" />
+                      <div className="min-w-0">
+                        <Skeleton className="h-3 w-14 rounded-full bg-slate-200/70" />
+                        <Skeleton className="mt-1.5 h-4 w-24 rounded-full bg-slate-200/70" />
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Skeleton className="h-6 w-14 rounded-full bg-slate-200/70" />
+                      <Skeleton className="h-8 w-8 rounded-full bg-slate-200/70" />
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <Skeleton className="h-5 w-4/5 rounded-full bg-slate-200/70" />
+                    <Skeleton className="mt-2 h-4 w-1/2 rounded-full bg-slate-200/70" />
+                  </div>
+                  <div className="mt-5 border-t border-slate-100 pt-4">
+                    <div className="flex items-center justify-between">
+                      <Skeleton className="h-3 w-16 rounded-full bg-slate-200/70" />
+                      <Skeleton className="h-3 w-10 rounded-full bg-slate-200/70" />
+                    </div>
+                    <Skeleton className="mt-2 h-2 w-full rounded-full bg-slate-200/70" />
+                  </div>
+                </div>
+              ))}
+              <span className="sr-only">{uiText("正在載入已發佈測驗...")}</span>
+            </>
           ) : published.length ? (
             published.map((item) => (
               <motion.div
