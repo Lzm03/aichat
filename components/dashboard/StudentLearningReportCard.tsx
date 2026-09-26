@@ -569,7 +569,7 @@ export const StudentLearningReportCard = () => {
                   <span className="text-emerald-700">{uiText("主動輸入 (Independent): ")}{inputRate}%</span>
                   <span className="text-slate-500">{uiText("系統引導 (Assisted): ")}{assistedRate}%</span>
                 </div>
-                <button type="button" onClick={() => setIsRankingOpen(true)} className="mt-3 flex w-full items-center justify-center rounded-2xl bg-slate-50 px-4 py-2.5 text-center text-[11px] font-black text-slate-700">{uiText("學生排行榜 ")}<ChevronRight className="ml-2 inline h-4 w-4" />
+                <button type="button" onClick={() => setIsRankingOpen(true)} className="mt-3 flex w-full items-center justify-center rounded-2xl bg-slate-50 px-4 py-2.5 text-center text-[11px] font-black text-slate-700 transition hover:bg-slate-100 hover:text-indigo-700">{uiText("學生排行榜 ")}<ChevronRight className="ml-2 inline h-4 w-4" />
                 </button>
               </div>
 

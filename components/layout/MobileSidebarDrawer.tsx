@@ -96,7 +96,7 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({ isOpen
                 </button>
                 {showRequestAdmin ? <button
                   onClick={() => { window.location.href = "/admin/avatar-requests"; }}
-                  className={`mt-2 flex w-full items-center gap-4 rounded-2xl px-4 py-3 text-sm font-semibold ${requestAdminActive ? 'bg-[#1b365d] text-white' : 'border border-slate-200 bg-white text-slate-600'}`}
+                  className={`mt-2 flex w-full items-center gap-4 rounded-2xl px-4 py-3 text-sm font-semibold transition ${requestAdminActive ? 'bg-[#1b365d] text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
                 >
                   <Icons.inbox className="h-5 w-5" />
                   <span>{uiText("申請管理")}</span>

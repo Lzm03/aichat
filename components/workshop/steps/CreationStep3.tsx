@@ -145,10 +145,10 @@ export const CreationStep3: React.FC<CreationStep3Props> = ({
           <button
             key={tab.id}
             onClick={() => setAvatarSource(tab.id)}
-            className={`w-full py-2 px-4 rounded-lg text-sm font-semibold ${
+            className={`w-full py-2 px-4 rounded-lg text-sm font-semibold transition ${
               avatarSource === tab.id
                 ? "bg-white shadow-sm text-indigo-600"
-                : "text-slate-500"
+                : "text-slate-500 hover:text-slate-700"
             }`}
           >
             {uiText(tab.label)}

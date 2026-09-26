@@ -83,7 +83,7 @@ export const HelpCenterPage: React.FC<{ variant?: "student" | "teacher" }> = ({ 
                 <button
                   type="button"
                   onClick={() => setOpenIndex(isOpen ? null : index)}
-                  className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
+                  className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-[var(--bg-subtle)]"
                 >
                   <span className="text-sm font-bold text-[var(--text-main)]">{uiText(faq.q)}</span>
                   <ChevronDown

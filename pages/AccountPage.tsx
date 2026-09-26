@@ -277,7 +277,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-bold text-white hover:bg-[var(--accent)]"
+                  className="rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-110"
                 >
                   {uploading ? uiText("上傳中...") : uiText("上傳照片")}
                 </button>
@@ -302,7 +302,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
                       type="button"
                       onClick={() => setAvatarUrl(preset)}
                       className={`rounded-2xl border p-1 transition ${
-                        avatarUrl === preset ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--border)] bg-[var(--bg-card)]"
+                        avatarUrl === preset ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--accent-border)] hover:bg-[var(--bg-subtle)]"
                       }`}
                     >
                       <img src={preset} alt="Preset Avatar" className="h-16 w-16 rounded-xl object-cover" />
@@ -373,7 +373,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
                 <button
                   type="submit"
                   disabled={saving || uploading}
-                  className="rounded-2xl bg-[var(--accent)] px-6 py-3 text-sm font-bold text-white hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:bg-indigo-400"
+                  className="rounded-2xl bg-[var(--accent)] px-6 py-3 text-sm font-bold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-indigo-400"
                 >
                   {saving ? uiText("儲存中...") : uiText("儲存帳戶資料")}
                 </button>
@@ -416,7 +416,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
               </div>
               <div className="mt-4 flex items-center justify-between gap-3">
                 <p className="text-xs text-[var(--text-muted)]">{uiText("新密碼至少 8 個字元。")}</p>
-                <button type="submit" disabled={pwSaving} className="rounded-2xl bg-[var(--accent)] px-6 py-2.5 text-sm font-bold text-white transition hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60">
+                <button type="submit" disabled={pwSaving} className="rounded-2xl bg-[var(--accent)] px-6 py-2.5 text-sm font-bold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60">
                   {pwSaving ? uiText("更新中...") : uiText("更新密碼")}
                 </button>
               </div>
@@ -444,7 +444,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ currentUser, onProfile
               </div>
               <div className="mt-4 flex items-center justify-between gap-3">
                 <p className="text-xs text-[var(--text-muted)]">{uiText("更改郵箱需要輸入目前密碼確認。")}</p>
-                <button type="submit" disabled={emailSaving} className="rounded-2xl bg-[var(--accent)] px-6 py-2.5 text-sm font-bold text-white transition hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60">
+                <button type="submit" disabled={emailSaving} className="rounded-2xl bg-[var(--accent)] px-6 py-2.5 text-sm font-bold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60">
                   {emailSaving ? uiText("更新中...") : uiText("更新電郵")}
                 </button>
               </div>

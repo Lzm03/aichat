@@ -314,7 +314,7 @@ export const BotPermissionDrawer: React.FC<Props> = ({
                                 <button
                                   type="button"
                                   onClick={() => toggleGroup(group.id)}
-                                  className="flex min-w-0 flex-1 items-center gap-3 px-3.5 py-3.5 text-left"
+                                  className="flex min-w-0 flex-1 items-center gap-3 px-3.5 py-3.5 text-left transition hover:bg-slate-50"
                                 >
                                   <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border ${selected ? "border-indigo-600 bg-indigo-600 text-white" : "border-slate-200 text-transparent"}`}>
                                     {selected ? <Check className="h-4 w-4" /> : null}

@@ -1272,7 +1272,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
           />
           <button
             onClick={handleProcess}
-            className="px-4 py-2 rounded-lg bg-indigo-600 text-white"
+            className="px-4 py-2 rounded-lg bg-indigo-600 text-white transition hover:bg-indigo-700"
           >{uiText("整理")}</button>
         </div>
       );
@@ -1289,7 +1289,7 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
         />
         <button
           onClick={handleProcess}
-          className="w-full py-2 rounded-lg bg-indigo-600 text-white"
+          className="w-full py-2 rounded-lg bg-indigo-600 text-white transition hover:bg-indigo-700"
         >{uiText("整理")}</button>
       </div>
     );
@@ -1660,9 +1660,9 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
                                 </div>
                               </div>
                               <div className="mt-3 flex flex-wrap gap-2">
-                                <button type="button" onClick={() => toggleKnowledgeCore(point.id)} className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${point.core ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"}`}>{uiText("教學目標")}{point.core ? " ✓" : ""}</button>
-                                <button type="button" onClick={() => toggleKnowledgeTier(point.id)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700">{uiText("切換為深度理解")}</button>
-                                <button type="button" onClick={() => removeKnowledgePoint(point.id)} className="rounded-lg bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600">{uiText("刪除")}</button>
+                                <button type="button" onClick={() => toggleKnowledgeCore(point.id)} className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${point.core ? "bg-indigo-600 text-white hover:bg-indigo-700" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{uiText("教學目標")}{point.core ? " ✓" : ""}</button>
+                                <button type="button" onClick={() => toggleKnowledgeTier(point.id)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200">{uiText("切換為深度理解")}</button>
+                                <button type="button" onClick={() => removeKnowledgePoint(point.id)} className="rounded-lg bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 transition hover:bg-rose-100">{uiText("刪除")}</button>
                               </div>
                             </div>
                           </div>
@@ -1694,9 +1694,9 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
                                 </div>
                               </div>
                               <div className="mt-3 flex flex-wrap gap-2">
-                                <button type="button" onClick={() => toggleKnowledgeCore(point.id)} className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${point.core ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"}`}>{uiText("教學目標")}{point.core ? " ✓" : ""}</button>
-                                <button type="button" onClick={() => toggleKnowledgeTier(point.id)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700">{uiText("切換為基礎知識")}</button>
-                                <button type="button" onClick={() => removeKnowledgePoint(point.id)} className="rounded-lg bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600">{uiText("刪除")}</button>
+                                <button type="button" onClick={() => toggleKnowledgeCore(point.id)} className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${point.core ? "bg-indigo-600 text-white hover:bg-indigo-700" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{uiText("教學目標")}{point.core ? " ✓" : ""}</button>
+                                <button type="button" onClick={() => toggleKnowledgeTier(point.id)} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200">{uiText("切換為基礎知識")}</button>
+                                <button type="button" onClick={() => removeKnowledgePoint(point.id)} className="rounded-lg bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 transition hover:bg-rose-100">{uiText("刪除")}</button>
                               </div>
                             </div>
                           </div>
@@ -2025,8 +2025,8 @@ export const CreationStep2: React.FC<CreationStep2Props> = ({ onGenerated, initi
             <button
               key={m}
               onClick={() => setUploadMethod(m as UploadMethod)}
-              className={`w-full py-2 px-4 text-sm rounded-lg font-semibold ${
-                uploadMethod === m ? "bg-white shadow text-indigo-600" : "text-slate-500"
+              className={`w-full py-2 px-4 text-sm rounded-lg font-semibold transition ${
+                uploadMethod === m ? "bg-white shadow text-indigo-600" : "text-slate-500 hover:text-slate-700"
               }`}
             >
               {m === "file" ? uiText("上傳文件") : m === "url" ? uiText("導入網址") : uiText("貼上文字")}

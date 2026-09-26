@@ -958,10 +958,10 @@ const handleDeleteBot = async () => {
                 void handlePublish();
               }}
               disabled={!canPublish || isPublishing}
-              className={`px-6 py-3 rounded-xl text-sm font-semibold disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed ${
+              className={`px-6 py-3 rounded-xl text-sm font-semibold transition disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed ${
                 !botId && featureMap.get("bot_publish")?.locked
-                  ? "bg-slate-200 text-slate-500"
-                  : "bg-emerald-600 text-white"
+                  ? "bg-slate-200 text-slate-500 hover:bg-slate-300"
+                  : "bg-emerald-600 text-white hover:bg-emerald-700"
               }`}
             >
               {isPublishing ? t("publishing") : botId ? t("update") : t("publish")}

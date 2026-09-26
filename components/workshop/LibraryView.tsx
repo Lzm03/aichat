@@ -399,7 +399,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       <section className="mb-7 rounded-[24px] border border-slate-200 bg-white px-5 py-5 sm:px-6">
         <div className="flex items-center gap-2">
           <h3 className="text-base font-extrabold text-slate-950">{isPro ? t("yourUsage") : t("freeUsage")}</h3>
-          <button type="button" aria-label={t("viewPlanAria")} onClick={() => setTip("limit")} className="text-indigo-500"><HelpCircle className="h-5 w-5" /></button>
+          <button type="button" aria-label={t("viewPlanAria")} onClick={() => setTip("limit")} className="text-indigo-500 transition hover:text-indigo-700"><HelpCircle className="h-5 w-5" /></button>
         </div>
         <div className="mt-3.5 grid gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
@@ -414,7 +414,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         {isPro && createBotFeature?.locked && !bannerDismissed ? (
           <div className="mt-3.5 flex flex-col gap-3 rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-[13px] leading-6 text-indigo-900 sm:flex-row sm:items-center sm:justify-between">
             <span>{tf("seatsFull")(usageLabel(createBotFeature))}</span>
-            <div className="flex shrink-0 items-center gap-2"><a href="mailto:Mandy@chopreality.com" className="rounded-[10px] bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white">{t("contactSupport")}</a><button type="button" onClick={() => setBannerDismissed(true)} className="px-1 text-indigo-400">×</button></div>
+            <div className="flex shrink-0 items-center gap-2"><a href="mailto:Mandy@chopreality.com" className="rounded-[10px] bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-indigo-700">{t("contactSupport")}</a><button type="button" onClick={() => setBannerDismissed(true)} className="px-1 text-indigo-400 transition hover:text-indigo-600">×</button></div>
           </div>
         ) : null}
       </section>
