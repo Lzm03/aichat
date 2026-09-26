@@ -1,4 +1,13 @@
 import { quizAudienceSql } from "../lib/quiz-audience.ts";
+import { ensureCharacterTopicTables } from "../lib/character-topics.ts";
+import {
+  QUIZ_TOPIC_JOIN_SQL,
+  QUIZ_TOPIC_SELECT_SQL,
+  assertTopicBelongsToBot,
+  countPendingQuizzesForBot,
+  getQuizTopicName,
+  resolveActiveQuizForBotTopic,
+} from "../lib/quiz-topic.ts";
 import crypto from "crypto";
 import express from "express";
 import multer from "multer";
@@ -157,6 +166,9 @@ async function extractAssessmentSourceText(file: Express.Multer.File): Promise<s
 
 async function initializeQuizTables() {
   await ensurePlatformTables();
+  // quizzes.topic_id 有 FK 指住 character_topics；boot 次序係 quiz 先過 topic
+  // （index.ts），所以喺呢度補一次（withSchemaLock 可重入，唔會死鎖）。
+  await ensureCharacterTopicTables();
   await pool.query(`
     CREATE TABLE IF NOT EXISTS quizzes (
       id TEXT PRIMARY KEY,
@@ -202,6 +214,28 @@ async function initializeQuizTables() {
     ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS grading_completed_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS template_key TEXT
+  `);
+  // 測驗嘅主題維度（Bot × 主題）：NULL ＝「不分主題」＝舊行為。
+  // 主題一刪，掛喺佢度嘅測驗自動降級做「不分主題」（唔會變孤兒）。
+  await pool.query(`
+    ALTER TABLE quizzes
+    ADD COLUMN IF NOT EXISTS topic_id TEXT
+  `);
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'quizzes_topic_id_fkey'
+      ) THEN
+        ALTER TABLE quizzes
+          ADD CONSTRAINT quizzes_topic_id_fkey
+          FOREIGN KEY (topic_id) REFERENCES character_topics(id) ON DELETE SET NULL;
+      END IF;
+    END $$;
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS quizzes_bot_topic_status_idx
+    ON quizzes(bot_id, topic_id, status, updated_at DESC)
   `);
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS quizzes_teacher_template_key_unique_idx
