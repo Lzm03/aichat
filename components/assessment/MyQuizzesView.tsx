@@ -7,6 +7,7 @@ import { Icons } from '../icons';
 import { PlatformDialog } from '../system/PlatformDialog';
 import { usePlatformDialog } from '../../hooks/usePlatformDialog';
 import { PublishedQuizDetailDrawer, type PublishedQuizSummary, type DrawerTab } from './PublishedQuizDetailDrawer';
+import { QuizTopicTag, quizTopicName } from './QuizTopicTag';
 
 type MyQuizzesViewProps = {
   onEditDraft: (draftId: string) => void;
@@ -24,7 +25,11 @@ type DraftSummary = {
   title: string;
   date: string;
   questionCount: number;
+  topicName: string;
 };
+
+/** 篩選 pill 用嘅目的地組合（Bot × 主題）；key 為空 ＝ 全部 */
+type DestinationFilter = { key: string; label: string };
 
 const SUB_TABS = [
   { key: 'drafts', label: '草稿' },
@@ -53,6 +58,7 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
   const [deletingPublishedId, setDeletingPublishedId] = useState<string | null>(null);
   const [detailQuiz, setDetailQuiz] = useState<PublishedQuizSummary | null>(null);
   const [detailInitialTab, setDetailInitialTab] = useState<DrawerTab>('results');
+  const [destinationFilter, setDestinationFilter] = useState('');
   const deepLinkAttempted = useRef(false);
   const { dialog, closeDialog, showAlert, showConfirm } = usePlatformDialog();
 
@@ -67,6 +73,7 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
           title: String(item.title || '未命名測驗'),
           date: item.updatedAt ? new Date(item.updatedAt).toISOString().slice(0, 10) : '',
           questionCount: Number(item.questionCount || 0),
+          topicName: String(item.topicName || ''),
         })));
       })
       .catch(() => setDrafts([]))
@@ -187,6 +194,20 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
     });
   };
 
+  // 目的地篩選 pill：只有多過一個（Bot, 主題）組合先有意思，單一組合唔出
+  const destinations: DestinationFilter[] = [];
+  const seenDestinations = new Set<string>();
+  published.forEach((item) => {
+    const key = `${item.botId}::${item.topicId || ''}`;
+    if (seenDestinations.has(key)) return;
+    seenDestinations.add(key);
+    destinations.push({ key, label: `${item.botName} · ${quizTopicName(item.topicName)}` });
+  });
+  const activeDestination = destinations.some((item) => item.key === destinationFilter) ? destinationFilter : '';
+  const visiblePublished = activeDestination
+    ? published.filter((item) => `${item.botId}::${item.topicId || ''}` === activeDestination)
+    : published;
+
   const handleDuplicated = (quiz: PublishedQuizSummary) => {
     setDetailQuiz(null);
     setSubTab('drafts');
@@ -217,6 +238,29 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
         ))}
       </div>
 
+      {/* 已發佈列表嘅目的地篩選（≥2 個 Bot × 主題組合先出） */}
+      {subTab === 'published' && destinations.length >= 2 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {[{ key: '', label: uiText('全部') }, ...destinations].map((option) => {
+            const selected = activeDestination === option.key;
+            return (
+              <button
+                key={option.key || 'all'}
+                type="button"
+                onClick={() => setDestinationFilter(option.key)}
+                className={`max-w-[16rem] truncate rounded-full border px-3 py-1.5 text-xs font-bold transition-all duration-200 ${
+                  selected
+                    ? 'border-slate-900 bg-slate-900 text-white'
+                    : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
       {subTab === 'drafts' && (
         <div className="space-y-3">
           {draftsLoading ? (
@@ -229,9 +273,10 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
                 className="group flex items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition-all cursor-pointer hover:border-indigo-100 hover:bg-indigo-50/30 hover:shadow-md"
               >
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-700">{uiText("草稿")}</span>
                     <span className="text-xs text-slate-400">{draft.date}</span>
+                    <QuizTopicTag topicName={draft.topicName} />
                   </div>
                   <h3 className="truncate font-semibold text-slate-700 group-hover:text-indigo-700 transition-colors">{draft.title}</h3>
                   <p className="mt-1 text-xs text-slate-400">{draft.questionCount}{uiText(" 題")}</p>
@@ -272,8 +317,8 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {publishedLoading ? (
             <div className="col-span-full rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">{uiText("正在載入已發佈測驗...")}</div>
-          ) : published.length ? (
-            published.map((item) => (
+          ) : visiblePublished.length ? (
+            visiblePublished.map((item) => (
               <motion.div
                 key={item.id}
                 whileHover={{ y: -4 }}
@@ -320,12 +365,13 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
 
                 <div className="flex-1">
                   <h3 className="text-lg font-bold text-slate-800 line-clamp-2">{item.title}</h3>
-                  <p className="mt-2 text-sm text-slate-400">
-                    {item.questionCount}{uiText(" 題")} · {uiText("發佈日期")} {item.publishedAt ? new Date(item.publishedAt).toISOString().slice(0, 10) : '--'}
+                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-400">
+                    <span>{item.questionCount}{uiText(" 題")} · {uiText("發佈日期")} {item.publishedAt ? new Date(item.publishedAt).toISOString().slice(0, 10) : '--'}</span>
+                    <QuizTopicTag topicName={item.topicName} />
                     {isQuizGraded(item) && item.gradingCompletedAt ? (
-                      <span className="font-bold text-emerald-600"> · {uiText("完成批改")} {new Date(item.gradingCompletedAt).toISOString().slice(5, 10)}</span>
+                      <span className="font-bold text-emerald-600">{uiText("完成批改")} {new Date(item.gradingCompletedAt).toISOString().slice(5, 10)}</span>
                     ) : null}
-                  </p>
+                  </div>
                 </div>
 
                 <div className="mt-5 pt-4 border-t border-slate-100">
@@ -354,6 +400,10 @@ export const MyQuizzesView: React.FC<MyQuizzesViewProps> = ({
         }}
         initialTab={detailInitialTab}
         onOpenGrading={onOpenGrading}
+        onQuizUpdated={(updated) => {
+          // 只更新列表；detailQuiz 唔換 identity，否則 Drawer 個 effect 會重跑（閂咗改主題框）
+          setPublished((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
+        }}
       />
       <PlatformDialog
         open={dialog.open}

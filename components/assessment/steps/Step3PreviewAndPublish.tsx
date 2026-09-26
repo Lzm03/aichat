@@ -5,7 +5,7 @@ import { Sparkles, Edit3, ChevronDown, Save, Rocket, ArrowLeft, PlusCircle, X, S
 import { API_BASE } from '../../../utils/api';
 import { usePlatformDialog } from '../../../hooks/usePlatformDialog';
 import { PlatformDialog } from '../../system/PlatformDialog';
-import { mapQuizPublishBots, quizTopicHintText, QuizTopicPicker, type QuizPublishBotOption } from '../QuizTopicPicker';
+import { mapQuizPublishBots, quizTopicErrorText, quizTopicHintText, QuizTopicPicker, type QuizPublishBotOption } from '../QuizTopicPicker';
 import { quizTopicName } from '../QuizTopicTag';
 
 interface Step3PreviewAndPublishProps {
@@ -286,7 +286,7 @@ export const Step3PreviewAndPublish: React.FC<Step3PreviewAndPublishProps> = ({
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(String(data?.error || '更改主題失敗，請稍後再試。'));
+        throw new Error(quizTopicErrorText(data, '更改主題失敗，請稍後再試。'));
       }
       setTopicId(String(data?.quiz?.topicId || ''));
       setTopicName(String(data?.quiz?.topicName || ''));

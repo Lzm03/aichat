@@ -119,6 +119,8 @@ const toPublishedQuizSummary = (summary: any): PublishedQuizSummary => ({
   botId: String(summary.botId || ''),
   botName: String(summary.botName || '--'),
   botSubject: String(summary.subject || ''),
+  topicId: String(summary.topicId || ''),
+  topicName: String(summary.topicName || ''),
   publishedAt: summary.publishedAt || summary.date,
   gradingCompletedAt: summary.gradingCompletedAt,
   totalStudents: Number(summary.totalStudents || 0),

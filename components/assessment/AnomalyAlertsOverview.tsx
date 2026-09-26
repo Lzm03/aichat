@@ -2,6 +2,7 @@ import { uiText, uiTemplate } from '../../utils/uiI18n';
 import React, { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, ChevronRight, HeartPulse, HelpCircle, MessageSquareWarning, ShieldAlert } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
+import { QuizTopicTag } from './QuizTopicTag';
 
 type AnomalyAlertsOverviewProps = {
   onOpenQuiz: (summary: any) => void;
@@ -124,9 +125,10 @@ export const AnomalyAlertsOverview: React.FC<AnomalyAlertsOverviewProps> = ({ on
               >
                 <div className="min-w-0">
                   <h4 className="truncate text-sm font-bold text-slate-700 transition-colors group-hover:text-rose-700">{summary.title}</h4>
-                  <div className="mt-1 flex items-center gap-3 text-xs text-slate-500">
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                     <span>{summary.botName || '--'}</span>
                     <span>{formatDate(summary.publishedAt || summary.date)}</span>
+                    <QuizTopicTag topicName={summary.topicName} />
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">

@@ -2136,4 +2136,9 @@ export const englishUi: Record<string, string> = {
   "更改": "Change",
   "「{0}」已發佈到「{1}」，學生喺該主題傾偈時就會見到。": "“{0}” is published to “{1}”. Students will see it when they chat in that topic.",
   "「{0}」已發佈，學生喺未有自己測驗嘅主題傾偈時會見到。": "“{0}” is published. Students will see it when they chat in a topic that has no quiz of its own.",
+  "更改主題失敗，請稍後再試。": "Could not change the topic. Please try again later.",
+  "主題：": "Topic:",
+  "改主題": "Change topic",
+  "改主題之後，學生會喺新主題嘅對話度見到呢份測驗。": "After the change, students will see this quiz in the new topic’s conversation.",
+  "已有 {0} 位學生作答。改主題唔會影響已收到嘅答案同成績，但學生會改喺新主題先見到呢份測驗。": "{0} students have already answered. Changing the topic will not affect the answers and grades already received, but students will now see this quiz in the new topic.",
 };

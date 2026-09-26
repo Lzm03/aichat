@@ -4,11 +4,14 @@ import { motion } from 'framer-motion';
 import { BarChart2, ChevronDown, ChevronRight, ChevronUp } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
 import { loadTeacherData, peekTeacherData } from '../../utils/teacher-data-cache';
+import { QuizTopicTag } from './QuizTopicTag';
 
 type QualitySummary = {
   id: string;
   title: string;
   subject?: string;
+  /** 空 ＝「不分主題」 */
+  topicName?: string;
   date?: string;
   totalStudents?: number;
   submitted?: number;
@@ -78,9 +81,10 @@ export const AssessmentQualityList: React.FC<AssessmentQualityListProps> = ({ on
               >
                 <div className="min-w-0">
                   <h4 className="text-sm font-bold text-slate-700 group-hover:text-indigo-700 transition-colors truncate">{summary.title}</h4>
-                  <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                     <span>{summary.date ? new Date(summary.date).toISOString().slice(5, 10) : '--'}</span>
                     <span>{uiText("平均 ")}{avg}{uiText(" 分")}</span>
+                    <QuizTopicTag topicName={summary.topicName} />
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">

@@ -57,6 +57,19 @@ export function quizTopicHintText(bot: QuizPublishBotOption | undefined, topicId
   return uiText('學生喺未有自己測驗嘅主題傾偈時，會見到呢份測驗。');
 }
 
+/**
+ * 改主題失敗 → 老師睇得明嘅一句。Step 3 同詳情 Drawer 共用，唔好各自寫一份。
+ * `TOPIC_CHARACTER_MISMATCH` 係「呢個主題唔屬於呢隻 Bot」＝已經冇咗，
+ * 伺服器原句係英文，唔可以直接顯示俾老師。
+ */
+export function quizTopicErrorText(payload: unknown, fallback: string): string {
+  const data = payload as { error?: unknown; code?: unknown } | undefined;
+  if (String(data?.code || '') === 'TOPIC_CHARACTER_MISMATCH') {
+    return uiText('呢個主題已經冇咗，請重新揀。');
+  }
+  return String(data?.error || '').trim() || fallback;
+}
+
 interface QuizTopicPickerProps {
   bots: QuizPublishBotOption[];
   botId: string;
