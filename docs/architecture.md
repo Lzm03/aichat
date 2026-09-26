@@ -94,6 +94,8 @@ aichat/
 │   │   ├── AnomalyAlertCenter.tsx   # 異常警示中心：Drawer 質量分析 tab 主體
 │   │   ├── AnomalyAlertsOverview.tsx # AI 異常警示 sub-tab：有待處理警示嘅測驗列表
 │   │   ├── AssessmentQualityList.tsx    # 評測質量測驗列表（學習報告頁，click 直開 Drawer）
+│   │   ├── QuizTopicPicker.tsx      # Bot × 主題揀選器（出題／發佈／改主題共用；空字串＝不分主題）
+│   │   ├── QuizTopicTag.tsx         # 唯讀主題標籤 chip（測驗列表／詳情共用）
 │   │   └── QuestionCard.tsx         # 題目卡片（AssessmentLibrary 抽出共用）
 │   ├── workshop/                # Bot 建立流程：CreationFlow/步驟/主題管理/影片/發布彈窗
 │   │   ├── permissions/         # Bot 權限管理 Drawer
@@ -143,7 +145,7 @@ aichat/
 │   ├── db.ts                    # pg Pool 初始化
 │   ├── botMapper.js             # camelCase ↔ snake_case 欄位映射（bots / modo API 用）
 │   ├── api/                     # REST API routes（含 flagged-chat.ts：異常對話記錄）
-│   ├── lib/                     # 後端邏輯（含 conversation-track-queue.ts、chat-anomaly-rules.ts：對話異常偵測）
+│   ├── lib/                     # 後端邏輯（含 conversation-track-queue.ts、chat-anomaly-rules.ts：對話異常偵測、quiz-topic.ts：測驗嘅 Bot×主題解析）
 │   ├── config/                  # 帳號覆寫、方案功能限額
 │   ├── migrations/              # SQL migration
 │   ├── scripts/                 # 主題 migration、Google Sheet 用戶註冊、bot-prompt 回歸場景（test:bot-prompt）
@@ -160,7 +162,7 @@ aichat/
 | --- | --- | --- |
 | `tests/*.test.mjs` | `npm run test:i18n`、`npm run test:ids` 等逐套 script | `/tests/*` 被 `.gitignore` 擋住，**只追蹤白名單**——新測試要加 `.gitignore` negation 先入版控。注意 `test:all` 係掃 working directory：未入版控嘅新測試**本機照跑、照綠燈**，但同事完全睇唔到，所以白名單係唯一防線 |
 | `tests/ui-i18n.browser.cjs` | **不**行 `node --test`。要開住 dev server，用 `playwright-cli run-code --filename` 跑 | |
-| `server/tests/*.ts` | `cd server && npm run test:<名>` | **每套都應該有 npm script**。冇 script 嘅測試檔冇人跑，會靜靜雞腐爛。要 DB 的自帶 guard：`DATABASE_URL` 要是本機（`localhost`／`127.0.0.1`）且含指定關鍵字，否則全 skip——`character-topics` 要 `topic_test`、`conversation-topic-switch` 同 `conversation-track-queue` 要 `topic_switch_test`、`students` 同 `flagged-chat` 要 `students_test`；`quiz-audience` 例外，用探測式（DB 可達且有 `quizzes` 表）就照跑 |
+| `server/tests/*.ts` | `cd server && npm run test:<名>` | **每套都應該有 npm script**。冇 script 嘅測試檔冇人跑，會靜靜雞腐爛。要 DB 的自帶 guard：`DATABASE_URL` 要是本機（`localhost`／`127.0.0.1`）且含指定關鍵字，否則全 skip——`character-topics` 要 `topic_test`、`conversation-topic-switch` 同 `conversation-track-queue` 要 `topic_switch_test`、`students` 同 `flagged-chat` 要 `students_test`、`quiz-topic` 要 `quiz_topic_test`（呢套會 INSERT，所以唔可以用探測式）；`quiz-audience` 例外，用探測式（DB 可達、且有 `quizzes` 同 `character_topics` 兩張表——佢會切片檢查嘅兩條 query 都 join 主題）就照跑 |
 | `server/scripts/test-bot-prompt.ts` | `cd server && npm run test:bot-prompt [S1 … S14]` | 真 LLM 回歸場景（DeepSeek／OpenRouter，唔使 DB）；`test:all` 只 glob `tests/*.test.ts` 唔會掃到，所以佢有獨立 script。純 prompt 單元測試另見 `test:answer-mode` |
 
 ⚠️ 根目錄 `npm run lint`（`tsc --noEmit`）**會一併檢查 `server/`**：`tsconfig.json` 冇 `include`／
