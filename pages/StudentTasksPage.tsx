@@ -16,6 +16,9 @@ type StudentTaskItem = {
   sharedAt: string;
   quizId?: string;
   quizTitle?: string;
+  /** 空字串 ＝「不分主題」（測驗喺任何未有自己測驗嘅主題都會出） */
+  topicId?: string;
+  topicName?: string;
   readAt?: string | null;
 };
 
@@ -79,8 +82,11 @@ export const StudentTasksPage: React.FC = () => {
     void loadTasks();
   }, [loadTasks]);
 
-  const navigateToBot = (botId: string) => {
-    window.location.assign(`/?bot=${encodeURIComponent(botId)}`);
+  // topic 帶埋過去：開嘅時候要直接揀返同一個主題，先見到同一份測驗
+  const navigateToBot = (botId: string, topicId?: string) => {
+    const params = new URLSearchParams({ bot: botId });
+    if (topicId) params.set("topic", topicId);
+    window.location.assign(`/?${params.toString()}`);
   };
 
   const openPendingTask = async (item: StudentTaskItem) => {
@@ -103,7 +109,7 @@ export const StudentTasksPage: React.FC = () => {
           ...current.filter((task) => task.taskKey !== item.taskKey),
         ]);
       }
-      navigateToBot(item.botId);
+      navigateToBot(item.botId, item.topicId);
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : "開啟任務失敗");
       setOpeningTaskKey("");
@@ -166,11 +172,19 @@ export const StudentTasksPage: React.FC = () => {
                     <div className="min-w-0">
                       <p className="text-sm font-bold leading-6 text-[var(--text-main)]">
                         {item.type === "quiz"
-                          ? uiTemplate("「{0}」有新測試「{1}」等你挑戰！", item.botName, item.quizTitle || uiText("知識測試"))
+                          ? item.topicName
+                            ? uiTemplate("「{0} · {1}」有新測試「{2}」等你挑戰！", item.botName, item.topicName, item.quizTitle || uiText("知識測試"))
+                            : uiTemplate("「{0}」有新測試「{1}」等你挑戰！", item.botName, item.quizTitle || uiText("知識測試"))
                           : uiTemplate("{0} 分享了新的 AI Bot「{1}」給你", item.teacherName, item.botName)}
                       </p>
                       <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
                         <span className="rounded-full bg-white px-2.5 py-0.5 font-semibold text-[var(--text-body)]">{uiText(item.subject) || uiText("未分類")}</span>
+                        {item.topicName ? (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--bg-card)] px-2.5 py-0.5 font-semibold text-[var(--text-muted)]">
+                            <span aria-hidden="true">🏷</span>
+                            {item.topicName}
+                          </span>
+                        ) : null}
                         <span>{item.teacherName} · {uiText(formatTime(item.sharedAt))}</span>
                       </div>
                     </div>

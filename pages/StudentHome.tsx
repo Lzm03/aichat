@@ -34,6 +34,8 @@ type SharedBot = {
   interactions?: number;
   teacherName?: string;
   hasPendingQuiz?: boolean;
+  /** 有幾多個（主題）桶仲有未完成測驗；舊 server 唔會回，靠 hasPendingQuiz 兜底 */
+  pendingQuizCount?: number;
   progress?: { covered: number; total: number };
 };
 
@@ -175,8 +177,12 @@ const StudentBotCard: React.FC<{
             />
           ) : null}
         </div>
-        {companion.hasPendingQuiz ? (
-          <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-1 text-[9px] font-bold text-amber-600 sm:px-2 sm:text-[10px]">{uiText("測試題")}</span>
+        {companion.hasPendingQuiz || Number(companion.pendingQuizCount || 0) > 0 ? (
+          <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-1 text-[9px] font-bold text-amber-600 sm:px-2 sm:text-[10px]">
+            {typeof companion.pendingQuizCount === "number"
+              ? uiTemplate("{0} 份測驗", companion.pendingQuizCount)
+              : uiText("測試題")}
+          </span>
         ) : null}
       </div>
       <h2 className="mt-4 truncate text-lg font-extrabold text-slate-950">{companion.name}</h2>
@@ -261,6 +267,7 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
   const displayName = currentUser.fullName || "同學";
   const [companions, setCompanions] = useState<SharedBot[]>([]);
   const [selectedBot, setSelectedBot] = useState<SharedBot | null>(null);
+  const [pendingTopicId, setPendingTopicId] = useState<string | null>(null);
   const [loadingBots, setLoadingBots] = useState(true);
   const [activeTip, setActiveTip] = useState<"companions" | null>(null);
 
@@ -282,11 +289,12 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
 
   useEffect(() => {
     const handlePendingQuizChange = (event: Event) => {
-      const detail = (event as CustomEvent<{ botId?: string; hasPendingQuiz?: boolean }>).detail;
-      if (!detail?.botId || typeof detail.hasPendingQuiz !== "boolean") return;
+      const detail = (event as CustomEvent<{ botId?: string; pendingQuizCount?: number }>).detail;
+      if (!detail?.botId || typeof detail.pendingQuizCount !== "number") return;
+      const count = Math.max(0, detail.pendingQuizCount);
       setCompanions((current) => current.map((companion) => (
         companion.id === detail.botId
-          ? { ...companion, hasPendingQuiz: detail.hasPendingQuiz }
+          ? { ...companion, pendingQuizCount: count, hasPendingQuiz: count > 0 }
           : companion
       )));
     };
@@ -294,16 +302,20 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
     return () => window.removeEventListener("quiz-pending-changed", handlePendingQuizChange);
   }, []);
 
-  // 深鏈接：/?bot=<id>（今日任務頁「查看/去做測試」）→ 自動開該 bot 的對話彈窗
+  // 深鏈接：/?bot=<id>&topic=<id>（今日任務頁「查看/去做測試」）→ 自動開該 bot 的對話彈窗，
+  // 有 topic 就直接開該主題（測驗係跟主題出，唔帶過去會見到第二份）
   useEffect(() => {
     if (companions.length === 0) return;
     const params = new URLSearchParams(window.location.search);
     const botId = params.get("bot");
     if (!botId) return;
+    const topicId = params.get("topic");
     const target = companions.find((c) => c.id === botId);
     if (target) {
       setSelectedBot(target);
+      setPendingTopicId(topicId || null);
       params.delete("bot");
+      params.delete("topic");
       const qs = params.toString();
       window.history.replaceState({}, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
     }
@@ -415,8 +427,12 @@ export const StudentHome: React.FC<StudentHomeProps> = ({ currentUser }) => {
       {selectedBot ? (
         <PublishSuccessModal
           isOpen
-          onClose={() => setSelectedBot(null)}
+          onClose={() => {
+            setSelectedBot(null);
+            setPendingTopicId(null);
+          }}
           botConfig={selectedBot}
+          initialTopicId={pendingTopicId}
           isSharedView={true}
           onEdit={() => {}}
           onDelete={() => {}}

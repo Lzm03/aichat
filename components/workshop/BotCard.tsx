@@ -156,8 +156,10 @@ export const BotCard: React.FC<BotCardProps> = ({ bot, onOpen, onEdit, onDelete,
           ) : null}
         </div>
 
-        {bot.hasPendingQuiz ? (
-          <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-600 shadow-sm">{uiText("測試題")}</span>
+        {bot.hasPendingQuiz || Number(bot.pendingQuizCount || 0) > 0 ? (
+          <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-600 shadow-sm">
+            {typeof bot.pendingQuizCount === "number" ? uiTemplate("{0} 份測驗", bot.pendingQuizCount) : uiText("測試題")}
+          </span>
         ) : null}
       </div>
 

@@ -27,6 +27,8 @@ export interface AiBot {
   allowedReplyLanguages?: Array<"cantonese" | "mandarin" | "english">;
   hasPublishedQuiz?: boolean;
   hasPendingQuiz?: boolean;
+  /** 仲有未完成測驗嘅（主題）桶數；舊 server 唔會回，卡片靠 hasPendingQuiz 兜底 */
+  pendingQuizCount?: number;
   activeQuizId?: string;
   activeQuizTitle?: string;
   /** 全班覆蓋：covered = 有學生覆蓋咗嘅知識點數、total = 知識點總數（教師端卡片用） */

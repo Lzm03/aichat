@@ -2141,4 +2141,7 @@ export const englishUi: Record<string, string> = {
   "改主題": "Change topic",
   "改主題之後，學生會喺新主題嘅對話度見到呢份測驗。": "After the change, students will see this quiz in the new topic’s conversation.",
   "已有 {0} 位學生作答。改主題唔會影響已收到嘅答案同成績，但學生會改喺新主題先見到呢份測驗。": "{0} students have already answered. Changing the topic will not affect the answers and grades already received, but students will now see this quiz in the new topic.",
+  "{0} 份測驗": "{0} quizzes",
+  "{0}（{1} 題）": "{0} ({1} questions)",
+  "「{0} · {1}」有新測試「{2}」等你挑戰！": "{0} · {1} has a new quiz, “{2}”, for you!",
 };
