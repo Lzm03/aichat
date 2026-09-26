@@ -19,6 +19,7 @@
     "test:knowledge-files": "node --import tsx --test tests/knowledge-files.test.ts",
     "test:platform-auth": "node --import tsx --test tests/platform-auth-password.test.ts",
     "test:quiz-audience": "node --import tsx --test tests/quiz-audience.integration.test.ts",
+    "test:quiz-archive": "node --import tsx --test tests/quiz-archive.integration.test.ts",
     "test:request-concurrency": "node --import tsx --test tests/request-concurrency.test.ts",
     "test:upload-filename": "node --import tsx --test tests/upload-filename.test.ts",
     "test:vertex-sse": "node --import tsx --test tests/vertex-sse.test.ts",
