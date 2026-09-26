@@ -430,16 +430,16 @@ export const GradingDetailView: React.FC<GradingDetailViewProps> = ({ quizId, on
             <button
               onClick={() => downloadAssessmentResultsCsv(data)}
               disabled={!students.length}
-              className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-7 py-3 text-sm font-black text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-7 py-3 text-sm font-black text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Download className="h-4 w-4" />{uiText("匯出 CSV")}</button>
             <button
               onClick={() => void saveDraft()}
               disabled={!canEdit || saving || !isDirty}
-              className="rounded-full border border-slate-200 bg-white px-7 py-3 text-sm font-black text-slate-600 transition disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-full border border-slate-200 bg-white px-7 py-3 text-sm font-black text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {saving ? uiText("儲存中...") : uiText("儲存草稿")}</button>
-            <button onClick={() => void publishGrades()} disabled={publishing} className="rounded-full bg-indigo-600 px-7 py-3 text-sm font-black text-white disabled:opacity-60">
+            <button onClick={() => void publishGrades()} disabled={publishing} className="rounded-full bg-indigo-600 px-7 py-3 text-sm font-black text-white transition hover:bg-indigo-700 disabled:opacity-60">
               {publishing ? uiText('發佈中...') : uiText('批量發佈成績')}
             </button>
           </div>

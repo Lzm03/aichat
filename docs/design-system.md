@@ -54,7 +54,51 @@
   點擊常用 `scale: 0.95`
 - 列表 stagger：`transition.delay = index * 0.03~0.1`
 - Bot 頭像：`bot-avatar-pulse` + `bot-avatar-breathe`，集中在 `globals.css`
+- **數字（KPI／統計）一律用 `components/shared/AnimatedNumber` 滾到新值，唔好硬切**——硬切
+  老師唔會察覺背景已經靜靜雞更新咗。過阻尼彈簧（約 0.4s 定下來、無 overshoot），
+  `tabular-nums` 防止滾動途中數字闊度跳動。現時用喺智能評測總覽四張 KPI 卡
+- **載入狀態：列表／卡片型（等 1–2 秒嗰種）一律用 `components/shared/Skeleton`，唔好淨出
+  「正在載入…」一行字**——一行字冇形狀，老師睇唔出等緊嘅係一張卡定一個表，載入完仲會跳位。
+  骨架形狀抄返即將出現嘅內容，配同一個 `min-h` 防跳位
+  - **顏色同圓角由 caller 傳**（老師端 `bg-slate-200/70`，學生端
+    `bg-[var(--bg-subtle-2)]`），Skeleton 本身唔 bake：Tailwind 兩個同層 bg utility 邊個贏
+    係睇 stylesheet 次序、唔可靠
+  - **Skeleton 純裝飾**（`aria-hidden`）：真嘅載入文字要留喺 `sr-only` span，讀屏先聽到狀態。
+    文字重用現有 `uiText` key，唔使加新 key
+  - 首次載入用 `isLoading && !items.length` 守住，refetch 已有資料時唔好閃 skeleton
+  - **唔適用**：AI 生成／上傳等長流程（保留 spinner 加進度文案）、按鈕微狀態（上傳中／
+    提交中）、全屏聊天頁——用戶已經預期等，灰塊反而似壞咗
+  - reduced-motion 下自動靜止：`animate-pulse` 已喺下面嘅 `@media` 區塊停咗，灰塊唔郁但
+    仍然讀得出「未載入」，零新 keyframe
+  - **尚未覆蓋**（下次做）：`AbilityTrackingReport`／`StudentLearningReportCard` 嘅能力追蹤
+    圖表位、`AnomalyAlerts*`、`TopicManager`、`ConversationHistoryDrawer`、`TokenDetailModal`、
+    `SchoolAvatarRequestsAdmin`
+- **可撳元素一定要有 hover 回饋**：`button`／`a`／`role="button"` 冇 hover 態嘅要補返，
+  連 `transition` 一齊加
+  - 跟**就近慣例**揀色：同一個卡片／列表入面通常已經有個有 hover 嘅 sibling，抄佢，
+    唔好自創色
+  - 顏色／邊框／陰影用 CSS `hover:`（`hover:bg-slate-50`、`hover:border-indigo-200`）；
+    **transform 才用 framer `whileHover`**——兩套唔好撈，CSS hover 先跟到
+    `prefers-reduced-motion` 嘅統一語義
+  - ⚠️ **同底色一樣嘅 hover 等於冇**（例如 `bg-[var(--accent)]` 配
+    `hover:bg-[var(--accent)]`）：呢類實色掣改用 `hover:brightness-110`
+  - 已選中／已啟用嘅分支唔使加 hover，顏色本身已經分辨到
+- 2026-09-25 決定**唔加**「微彈（放大一下）／晃動」一類嘅一下脈衝：實測 ±3px 冇人睇得到，
+  推到 ±8px 又同儀表板嘅警示色語言打對台（晃動＝出錯）。要加之前先問用戶
 - 尊重 `prefers-reduced-motion: reduce`；新動效需評估是否跟隨關閉
+  - **機制（2026-09-25 落地）**：`index.tsx` 用 `<MotionConfig reducedMotion="user">` 包住整個 SPA，
+    一次覆蓋全部 framer-motion 嘅 transform／layout 動效，唔使逐個元件讀 `useReducedMotion`。
+    opacity 照郁（framer-motion 原設計）。**但由動效逐格寫入嘅值唔屬 transform
+    （例如數字滾動），MotionConfig 管唔到**——該類元件要自己讀 hook 判斷
+  - ⚠️ **陷阱**：`MotionConfig` 喺 element **建構時**快照 media query
+    （`node_modules/framer-motion/dist/framer-motion.dev.js:6041-6046`）。建構之後才改 OS 設定，
+    已 mount 嘅元件完全唔受影響。驗證時一定要**先 emulate 再 reload**，否則會誤判成「機制失效」
+  - CSS keyframe 由 `globals.css` 底部嘅 `@media (prefers-reduced-motion: reduce)` 區塊負責：
+    `bot-avatar-pulse`／`bot-avatar-breathe`／`animate-pulse`／`animate-bounce` 一律停。
+    **`animate-spin` 特登唔停**——剩低 32 處載入指示全靠佢一個講「仲喺度等」。
+    改用 Skeleton 嘅列表位係例外：佢哋有 `sr-only` 文字替代，唔靠動畫講狀態
+  - 該區塊用 `html` 前綴係為咗特異度：Play CDN 喺 runtime 注入 `<style>`，位置喺 `globals.css`
+    之後，同特異度嘅規則會被佢蓋過（包 `@layer` 嘅更加一定輸）
 - 避免大型 DOM 無過渡直接切換；需要時使用 Framer Motion `AnimatePresence`
 
 ## 橫向捲動列（分頁列、chip 列、pill 列）

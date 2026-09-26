@@ -1,4 +1,5 @@
 import { uiText, uiTemplate } from '../../utils/uiI18n';
+import { Skeleton } from '../shared/Skeleton';
 import React, { useEffect, useState } from 'react';
 import { CheckCircle2, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
 import { API_BASE } from '../../utils/api';
@@ -408,8 +409,24 @@ export const FlaggedChatSummaryCard: React.FC = () => {
       {error ? <p className="mt-3 text-xs font-bold text-rose-500">{error}</p> : null}
 
       {loading ? (
-        <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">
-          {uiText("正在載入異常對話記錄...")}
+        <div className="mt-3 space-y-3">
+          {[0, 1, 2].map((slot) => (
+            <div key={slot} className="rounded-2xl border border-slate-100 bg-white p-3.5 shadow-sm">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Skeleton className="h-4 w-16 rounded-full bg-slate-200/70" />
+                <Skeleton className="h-4 w-12 rounded-md bg-slate-200/70" />
+                <Skeleton className="h-4 w-28 rounded-md bg-slate-200/70" />
+                <Skeleton className="h-4 w-14 rounded-md bg-slate-200/70" />
+              </div>
+              <div className="mt-2 rounded-xl bg-slate-50 p-3">
+                <Skeleton className="h-3 w-16 rounded-full bg-slate-200/70" />
+                <Skeleton className="mt-2 h-3 w-full rounded-full bg-slate-200/70" />
+                <Skeleton className="mt-1.5 h-3 w-4/5 rounded-full bg-slate-200/70" />
+              </div>
+              <Skeleton className="mt-2 h-3 w-2/3 rounded-full bg-slate-200/70" />
+            </div>
+          ))}
+          <span className="sr-only">{uiText("正在載入異常對話記錄...")}</span>
         </div>
       ) : flags.length === 0 ? (
         <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center">

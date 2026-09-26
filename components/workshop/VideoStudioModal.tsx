@@ -951,10 +951,10 @@ export default function VideoStudioModal({
 
             <button
               onClick={handleSaveAndClose}
-              className={`mt-3 w-full py-3 rounded-xl font-semibold ${
+              className={`mt-3 w-full py-3 rounded-xl font-semibold transition ${
                 canSave
                   ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                  : "border"
+                  : "border hover:bg-slate-100"
               }`}
             >
               {canSave ? uiText("保存並返回") : loading ? uiText("先關閉，去做別的步驟") : uiText("關閉")}

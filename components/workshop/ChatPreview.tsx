@@ -312,7 +312,7 @@ function renderFormattedMessage(text: string) {
                           <button
                             type="button"
                             onClick={() => removeChatImage(index)}
-                            className="absolute -right-1 -top-1 rounded-full bg-black/70 px-1 text-[10px] text-white"
+                            className="absolute -right-1 -top-1 rounded-full bg-black/70 px-1 text-[10px] text-white transition hover:bg-black/90"
                           >
                             x
                           </button>
@@ -338,7 +338,7 @@ function renderFormattedMessage(text: string) {
                           type="button"
                           onClick={() => chatImageInputRef.current?.click()}
                           disabled={chatImages.length >= 4}
-                          className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white/90 text-lg leading-none text-slate-700 disabled:opacity-40"
+                          className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white/90 text-lg leading-none text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 disabled:opacity-40"
                         >
                           +
                         </button>

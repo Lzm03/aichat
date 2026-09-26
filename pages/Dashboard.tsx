@@ -12,6 +12,7 @@ import { loadTeacherData, peekTeacherData } from '../utils/teacher-data-cache';
 
 import { LearningReportEntryCard } from '../components/dashboard/LearningReportEntryCard';
 import { DemoNotice } from '../components/system/DemoNotice';
+import { Skeleton } from '../components/shared/Skeleton';
 import { SafeAvatarImage } from '../components/shared/SafeAvatarImage';
 import { ProgressRing } from '../components/shared/ProgressRing';
 import { PublishSuccessModal } from '../components/workshop/PublishSuccessModal';
@@ -145,8 +146,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {botsLoading ? (
-              <div className="mt-10 flex flex-1 items-center justify-center rounded-2xl border border-slate-100 bg-slate-50/70 text-sm font-semibold text-slate-400">
-                {uiText("正在載入…")}
+              <div className="mt-auto grid gap-4 lg:grid-cols-3">
+                {[0, 1, 2].map((slot) => (
+                  <div key={slot} className="flex min-h-[280px] flex-col rounded-2xl border border-slate-100 bg-white p-5">
+                    <Skeleton className="mx-auto h-28 w-28 rounded-full bg-slate-200/70" />
+                    <Skeleton className="mt-5 h-5 w-2/3 rounded-full bg-slate-200/70" />
+                    <Skeleton className="mt-3 h-6 w-24 rounded-full bg-slate-200/70" />
+                    <Skeleton className="mt-3 h-4 w-28 rounded-full bg-slate-200/70" />
+                    <div className="mt-auto grid gap-2 pt-6">
+                      <Skeleton className="h-11 w-full rounded-xl bg-slate-200/70" />
+                      <Skeleton className="h-11 w-full rounded-xl bg-slate-200/70" />
+                    </div>
+                  </div>
+                ))}
+                <span className="sr-only">{uiText("正在載入…")}</span>
               </div>
             ) : hasBots ? (
               <div className="mt-auto grid gap-4 lg:grid-cols-3">

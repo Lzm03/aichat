@@ -42,6 +42,16 @@
 
 @media (prefers-reduced-motion: reduce) {
   .bot-avatar-pulse, .bot-avatar-breathe { animation: none; }
+  /*
+   * Tailwind's decorative loops (offline dot, upload dot, typing dots). Each one
+   * sits next to text that already names the state, so stopping them loses no
+   * information. The html prefix is for specificity: the Play CDN injects its
+   * <style> at runtime, after globals.css, so an equal-specificity rule would lose.
+   * animate-spin is deliberately kept — the remaining 32 loading indicators rely on it
+   * alone. (The list/table loads that switched to Skeleton are the exception: they carry
+   * sr-only text instead.)
+   */
+  html .animate-pulse, html .animate-bounce { animation: none; }
 }
 
 /* ===== 學生工作台明暗主題 token（:root 亮色預設，.dark 深色覆寫）===== */

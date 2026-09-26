@@ -683,10 +683,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                             appearance: { ...prev.appearance, themeMode: item.value },
                           }))
                         }
-                        className={`rounded-2xl border px-4 py-3 text-left text-sm font-semibold ${
+                        className={`rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${
                           preferences.appearance.themeMode === item.value
                             ? "border-indigo-400 bg-indigo-50 text-indigo-700"
-                            : "border-slate-200 bg-white text-slate-700"
+                            : "border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:bg-indigo-50/40"
                         }`}
                       >
                         {uiText(item.label)}
@@ -707,10 +707,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                             appearance: { ...prev.appearance, backgroundStyle: item.value },
                           }))
                         }
-                        className={`rounded-2xl border px-4 py-4 text-left ${
+                        className={`rounded-2xl border px-4 py-4 text-left transition ${
                           preferences.appearance.backgroundStyle === item.value
                             ? "border-indigo-400 bg-indigo-50"
-                            : "border-slate-200 bg-white"
+                            : "border-slate-200 bg-white hover:border-indigo-200 hover:bg-indigo-50/40"
                         }`}
                       >
                         <div className="text-sm font-bold text-slate-900">{uiText(item.label)}</div>
@@ -734,10 +734,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser, onProfi
                           appearance: { ...prev.appearance, cardStyle: item.value },
                         }))
                       }
-                      className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${
+                      className={`rounded-2xl border px-4 py-3 text-sm font-semibold transition ${
                         preferences.appearance.cardStyle === item.value
                           ? "border-indigo-400 bg-indigo-50 text-indigo-700"
-                          : "border-slate-200 bg-white text-slate-700"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:bg-indigo-50/40"
                       }`}
                     >
                       {uiText(item.label)}

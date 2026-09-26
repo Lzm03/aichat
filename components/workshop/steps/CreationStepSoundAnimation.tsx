@@ -418,10 +418,10 @@ export const CreationStepSoundAnimation = ({
 
         <button
           onClick={handleAudition}
-          className={`w-full px-4 py-2 border rounded-xl text-sm mt-2 ${
+          className={`w-full px-4 py-2 border rounded-xl text-sm mt-2 transition ${
             !selectedVoice || voicePreviewFeature?.locked
               ? "bg-slate-100 border-slate-200 text-slate-400"
-              : "bg-white"
+              : "bg-white hover:bg-slate-50"
           }`}
         >
           {isAuditioning ? uiText("試聽中…") : uiText("試聽")}

@@ -116,7 +116,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="relative" ref={featureMenuTriggerRef}>
             <button
               onClick={() => setIsFeatureMenuOpen((prev) => !prev)}
-              className="flex h-10 items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3.5 text-xs font-semibold text-indigo-700"
+              className="flex h-10 items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3.5 text-xs font-semibold text-indigo-700 transition hover:border-indigo-200 hover:bg-indigo-100"
             >
               <Icons.cpu className="h-4 w-4 xl:hidden" />
               <span className="hidden xl:inline">{th.planUsage}</span>

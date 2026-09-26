@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { MotionConfig } from 'framer-motion';
 import App from './App';
 import './globals.css';
 import { readAuthSession } from './utils/auth';
@@ -17,6 +18,14 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <App />
+    {/*
+      One place to honour the OS "reduce motion" setting: every framer-motion
+      transform/layout animation in the app (47 files) is covered here instead of
+      each component reading useReducedMotion itself. Opacity still animates —
+      that is framer-motion's intended behaviour for reducedMotion="user".
+    */}
+    <MotionConfig reducedMotion="user">
+      <App />
+    </MotionConfig>
   </React.StrictMode>
 );

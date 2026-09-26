@@ -1,4 +1,5 @@
 import { uiText } from '../../utils/uiI18n';
+import { Skeleton } from '../shared/Skeleton';
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icons } from '../icons';
@@ -153,7 +154,20 @@ export const AssessmentLibrary: React.FC<AssessmentLibraryProps> = ({ onBack }) 
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {loadingBanks ? (
-          <div className="col-span-full rounded-[24px] border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-400">{uiText("正在載入題庫...")}</div>
+          <>
+            {[0, 1, 2].map((slot) => (
+              <div key={slot} className="flex h-full flex-col rounded-[24px] border border-slate-100 bg-white p-6 shadow-[0_10px_15px_-3px_rgba(0,0,0,0.05)]">
+                <div className="mb-4 flex items-start justify-between">
+                  <Skeleton className="h-10 w-10 rounded-xl bg-slate-200/70" />
+                  <Skeleton className="h-5 w-16 rounded-full bg-slate-200/70" />
+                </div>
+                <Skeleton className="h-5 w-3/4 rounded-full bg-slate-200/70" />
+                <Skeleton className="mt-2 h-4 w-1/2 rounded-full bg-slate-200/70" />
+                <Skeleton className="mt-6 h-4 w-24 rounded-full bg-slate-200/70" />
+              </div>
+            ))}
+            <span className="sr-only">{uiText("正在載入題庫...")}</span>
+          </>
         ) : filteredBanks.length ? (
           filteredBanks.map((item) => (
             <motion.div
