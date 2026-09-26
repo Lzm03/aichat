@@ -1,4 +1,4 @@
-import { uiText, uiError } from '../../../utils/uiI18n';
+import { uiText, uiTemplate, uiError } from '../../../utils/uiI18n';
 import { topicCategoryTone } from '../../../utils/topic-categories';
 import React, { useEffect, useState } from "react";
 import { BookOpen, Check, Loader2, Pencil, Plus, Star, Trash2 } from "lucide-react";
@@ -51,6 +51,7 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
   const [error, setError] = useState("");
   const [savedNotice, setSavedNotice] = useState("");
   const [maxTopics, setMaxTopics] = useState(4);
+  const [quizCounts, setQuizCounts] = useState<Record<string, number>>({});
   const { dialog, closeDialog, showConfirm } = usePlatformDialog();
 
   const loadTopics = async (preferredTopicId?: string | null) => {
@@ -58,6 +59,7 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
     const data = await listCharacterTopics(characterId);
     setTopics(data.topics);
     setMaxTopics(data.maxTopics || 4);
+    setQuizCounts(data.quizCounts || {});
     const nextId =
       (preferredTopicId && data.topics.some((topic) => topic.id === preferredTopicId)
         ? preferredTopicId
@@ -88,6 +90,7 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
         if (cancelled) return;
         setTopics(data.topics);
         setMaxTopics(data.maxTopics || 4);
+        setQuizCounts(data.quizCounts || {});
         setSelectedTopicId(
           data.topics.find((topic) => topic.isDefault)?.id || data.topics[0]?.id || null
         );
@@ -205,13 +208,19 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
 
   const requestDelete = (topic: CharacterTopicSummary) => {
     if (!characterId || deletingId) return;
+    // 呢個主題有已發佈測驗：講清楚刪咗之後佢哋會變成「不分主題」（唔會消失，但去咗 fallback）
+    const quizCount = Number(quizCounts[topic.id] || 0);
+    const quizWarning = quizCount
+      ? uiTemplate('呢個主題有 {0} 份已發佈測驗。刪咗之後，佢哋會變成「不分主題」，學生喺未有自己測驗嘅主題都會見到。', quizCount)
+      : "";
+    const conversationNotice = topic.isDefault
+      ? uiText("這是目前的預設主題。刪除後，系統會自動把下一個主題設為預設，相關對話也會安全轉移。")
+      : uiText("相關對話會自動轉移至其餘主題，既有訊息不會被刪除。");
     showConfirm({
-      title: `刪除「${topic.name}」？`,
-      message: topic.isDefault
-        ? "這是目前的預設主題。刪除後，系統會自動把下一個主題設為預設，相關對話也會安全轉移。"
-        : "相關對話會自動轉移至其餘主題，既有訊息不會被刪除。",
-      confirmText: "刪除主題",
-      cancelText: "取消",
+      title: uiTemplate("刪除「{0}」？", topic.name),
+      message: [conversationNotice, quizWarning].filter(Boolean).join(" "),
+      confirmText: uiText("刪除主題"),
+      cancelText: uiText("取消"),
       tone: "danger",
       onConfirm: async () => {
         setDeletingId(topic.id);
@@ -221,7 +230,7 @@ export const TopicManager: React.FC<TopicManagerProps> = ({ characterId }) => {
           setIsCreating(false);
           setIsEditing(false);
           await loadTopics(result.defaultTopicId);
-          setSavedNotice(`已刪除「${topic.name}」。`);
+          setSavedNotice(uiTemplate("已刪除「{0}」。", topic.name));
         } catch (deleteError) {
           setError(deleteError instanceof Error ? deleteError.message : "刪除失敗，請稍後再試。");
         } finally {

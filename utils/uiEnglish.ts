@@ -2142,6 +2142,7 @@ export const englishUi: Record<string, string> = {
   "改主題之後，學生會喺新主題嘅對話度見到呢份測驗。": "After the change, students will see this quiz in the new topic’s conversation.",
   "已有 {0} 位學生作答。改主題唔會影響已收到嘅答案同成績，但學生會改喺新主題先見到呢份測驗。": "{0} students have already answered. Changing the topic will not affect the answers and grades already received, but students will now see this quiz in the new topic.",
   "{0} 份測驗": "{0} quizzes",
+  "呢個主題有 {0} 份已發佈測驗。刪咗之後，佢哋會變成「不分主題」，學生喺未有自己測驗嘅主題都會見到。": "This topic has {0} published quizzes. After deleting it they become “No topic”, so students will see them in topics that have no quiz of their own.",
   "{0}（{1} 題）": "{0} ({1} questions)",
   "「{0} · {1}」有新測試「{2}」等你挑戰！": "{0} · {1} has a new quiz, “{2}”, for you!",
 };

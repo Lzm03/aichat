@@ -21,6 +21,8 @@ export async function listCharacterTopics(characterId: string) {
     topics: CharacterTopicSummary[];
     maxTopics: number;
     legacyFallback: boolean;
+    /** 每個主題有幾多份已發佈測驗（topicId → 數）；刪主題前要講清楚後果 */
+    quizCounts?: Record<string, number>;
   }>(response);
 }
 
