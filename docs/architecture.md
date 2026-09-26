@@ -162,7 +162,7 @@ aichat/
 | --- | --- | --- |
 | `tests/*.test.mjs` | `npm run test:i18n`、`npm run test:ids` 等逐套 script | `/tests/*` 被 `.gitignore` 擋住，**只追蹤白名單**——新測試要加 `.gitignore` negation 先入版控。注意 `test:all` 係掃 working directory：未入版控嘅新測試**本機照跑、照綠燈**，但同事完全睇唔到，所以白名單係唯一防線 |
 | `tests/ui-i18n.browser.cjs` | **不**行 `node --test`。要開住 dev server，用 `playwright-cli run-code --filename` 跑 | |
-| `server/tests/*.ts` | `cd server && npm run test:<名>` | **每套都應該有 npm script**。冇 script 嘅測試檔冇人跑，會靜靜雞腐爛。要 DB 的自帶 guard：`DATABASE_URL` 要是本機（`localhost`／`127.0.0.1`）且含指定關鍵字，否則全 skip——`character-topics` 要 `topic_test`、`conversation-topic-switch` 同 `conversation-track-queue` 要 `topic_switch_test`、`students` 同 `flagged-chat` 要 `students_test`、`quiz-topic` 要 `quiz_topic_test`（呢套會 INSERT，所以唔可以用探測式）；`quiz-audience` 例外，用探測式（DB 可達、且有 `quizzes` 同 `character_topics` 兩張表——佢會切片檢查嘅兩條 query 都 join 主題）就照跑 |
+| `server/tests/*.ts` | `cd server && npm run test:<名>` | **每套都應該有 npm script**。冇 script 嘅測試檔冇人跑，會靜靜雞腐爛。要 DB 的自帶 guard：`DATABASE_URL` 要是本機（`localhost`／`127.0.0.1`）且含指定關鍵字，否則全 skip——`character-topics` 要 `topic_test`、`conversation-topic-switch` 同 `conversation-track-queue` 要 `topic_switch_test`、`students` 同 `flagged-chat` 要 `students_test`、`quiz-topic` 要 `quiz_topic_test`（呢套會 INSERT，所以唔可以用探測式）、`quiz-topic-integration` 要 `quizzes_test`（同 `quiz-archive` 共用；兩套測驗主題 suite 點解要分開 DB 見下面）；`quiz-audience` 例外，用探測式（DB 可達、且有 `quizzes` 同 `character_topics` 兩張表——佢會切片檢查嘅兩條 query 都 join 主題）就照跑 |
 | `server/scripts/test-bot-prompt.ts` | `cd server && npm run test:bot-prompt [S1 … S14]` | 真 LLM 回歸場景（DeepSeek／OpenRouter，唔使 DB）；`test:all` 只 glob `tests/*.test.ts` 唔會掃到，所以佢有獨立 script。純 prompt 單元測試另見 `test:answer-mode` |
 
 ⚠️ 根目錄 `npm run lint`（`tsc --noEmit`）**會一併檢查 `server/`**：`tsconfig.json` 冇 `include`／
@@ -176,6 +176,10 @@ DB suite 每次都會建 schema，所以**唔可以指去一個你在乎嘅 data
 指住（測試檔自己會補上）。`test:all` 用 `--test-concurrency=1` 逐檔跑：所有 DB suite 共用同一個
 database，而 `CREATE TABLE IF NOT EXISTS` 本身唔係 race-free（兩個進程同時建表，輸家爆
 `pg_type_typname_nsp_index`），併發跑會隨機紅。
+
+例外係測驗主題兩套：`quiz-topic`（lib 層）會 `DROP TABLE … CASCADE` 再建最小 schema，
+`quiz-topic-integration`（route 層）要 `ensureQuizTables()` 出嘅真 schema，**同一個 DB 會互相拆台**，
+所以兩者刻意用唔同關鍵字、唔同 DB；同一次 `DATABASE_URL` 只會跑到其中一套。
 
 ## 相關文件
 
