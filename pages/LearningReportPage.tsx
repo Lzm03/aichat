@@ -45,12 +45,16 @@ type OverviewData = {
   classAlertsTotal: number;
   wellbeingOpen: number;
   anomalyOpen: number;
+  /** 知識點掌握增長：期內首次掌握新知識點嘅學生數（自己發佈嘅 Bot × roster） */
+  masteryStudents: number;
 };
 
 /** 課堂參與 tab 每組一行（participation route 契約） */
 type ParticipationRow = {
   id: string;
   name: string | null;
+  /** 行所屬 Bot（topic 維度由 character_topics 帶出）；null = 主知識庫／已刪 → 唔可撳 */
+  botId?: string | null;
   studentMessageTotal: number;
   effectiveQuestions: number;
   meaninglessMessages: number;
@@ -138,6 +142,15 @@ export const LearningReportPage: React.FC<LearningReportPageProps> = ({ onOpenQu
     return () => document.removeEventListener('mousedown', close);
   }, []);
 
+  // 課堂參與 bot／topic 行撳入 → 學生能力 tab 預選該 Bot 嘅能力追蹤報告（deep-link，
+  // card mount 後經 onInitialBotIdConsumed 清走，唔會鎖死之後嘅選擇）
+  const [abilityInitialBotId, setAbilityInitialBotId] = useState<string | null>(null);
+  const jumpToAbilityReport = (botId: string | null | undefined) => {
+    if (!botId) return;
+    setAbilityInitialBotId(botId);
+    setTab('ability');
+  };
+
   // KPI 行：學生行為四卡＋固定定義小字。撳卡跳去對應 tab（docs/learning-report-overview.md）
   // 分母 0（期內冇訊息）＝冇數據 → 出「—」唔出 0%（0% 會誤導成「全班都實質」）
   const meaninglessRatio = overview
@@ -161,14 +174,14 @@ export const LearningReportPage: React.FC<LearningReportPageProps> = ({ onOpenQu
     onClick: () => void;
   }> = [
     {
-      key: 'active',
-      label: '有實質互動學生',
-      definition: '期內有實質對話的學生數（所有 Bot、話題合計）',
-      value: overview?.participation.activeStudents ?? '—',
-      icon: Icons.users,
-      chipClass: 'bg-sky-50',
-      iconClass: 'text-sky-600',
-      onClick: () => setTab('participation'),
+      key: 'mastery',
+      label: '知識點掌握增長',
+      definition: '發佈 Bot 後，與 Bot 對話並首次掌握新知識點的學生數（期內）',
+      value: overview?.masteryStudents ?? '—',
+      icon: Icons.brain,
+      chipClass: 'bg-violet-50',
+      iconClass: 'text-violet-600',
+      onClick: () => setTab('ability'),
     },
     {
       key: 'followup',
@@ -326,7 +339,9 @@ export const LearningReportPage: React.FC<LearningReportPageProps> = ({ onOpenQu
     },
   ];
 
-  // 課堂參與每組一行：組名＋四指標；class 維度多一個未有互動名單（撳名出姓名班級 popover）
+  // 課堂參與每組一行：組名＋四指標；class 維度多一個未有互動名單（撳名出姓名班級 popover）。
+  // bot／topic 維度嘅行可撳 → 跳去該 Bot 嘅能力追蹤報告（topic 經 character_topics
+  // 映射所屬 Bot；主知識庫／已刪話題 botId null → 唔可撳）
   const renderParticipationRow = (row: ParticipationRow, rowIndex: number) => {
     const ratio =
       row.studentMessageTotal > 0
@@ -335,10 +350,24 @@ export const LearningReportPage: React.FC<LearningReportPageProps> = ({ onOpenQu
     // name null 喺唔同維度意思唔同：topic 嘅 '' = 主知識庫；class／bot 先係未分組
     const displayName =
       row.name ?? (dimension === 'topic' ? uiText("主知識庫") : uiText("未分組"));
+    const jumpable = dimension !== 'class' && Boolean(row.botId);
     return (
       <div
         key={`${row.id}-${rowIndex}`}
-        className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-[20px] border border-slate-100 bg-white p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]"
+        role={jumpable ? 'button' : undefined}
+        tabIndex={jumpable ? 0 : undefined}
+        onClick={jumpable ? () => jumpToAbilityReport(row.botId) : undefined}
+        onKeyDown={
+          jumpable
+            ? (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  jumpToAbilityReport(row.botId);
+                }
+              }
+            : undefined
+        }
+        className={`flex flex-wrap items-center gap-x-6 gap-y-2 rounded-[20px] border border-slate-100 bg-white p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)] ${jumpable ? 'cursor-pointer transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-lg' : ''}`}
       >
         <span className="min-w-[88px] text-[15px] font-black text-slate-900">
           {displayName}
@@ -347,7 +376,10 @@ export const LearningReportPage: React.FC<LearningReportPageProps> = ({ onOpenQu
           <b className="block text-[15px] font-bold text-slate-900 tabular-nums">{row.studentMessageTotal}</b>
           {uiText("訊息總數")}
         </span>
-        <span className="text-xs text-slate-400">
+        <span
+          className="text-xs text-slate-400"
+          title={uiText("學生主動提出、同學習內容相關的提問；由 AI 自動判斷（每 3 輪對話判斷一次），判斷不到時以訊息長度估算")}
+        >
           <b className="block text-[15px] font-bold text-slate-900 tabular-nums">{row.effectiveQuestions}</b>
           {uiText("有效提問")}
         </span>
@@ -386,6 +418,9 @@ export const LearningReportPage: React.FC<LearningReportPageProps> = ({ onOpenQu
               ))}
             </span>
           </span>
+        )}
+        {jumpable && (
+          <ChevronRight className="ml-auto h-5 w-5 shrink-0 text-slate-300" />
         )}
       </div>
     );
@@ -560,7 +595,10 @@ export const LearningReportPage: React.FC<LearningReportPageProps> = ({ onOpenQu
       {tab === 'ability' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 items-stretch gap-6 xl:grid-cols-2">
-            <StudentLearningReportCard />
+            <StudentLearningReportCard
+              initialBotId={abilityInitialBotId ?? undefined}
+              onInitialBotIdConsumed={() => setAbilityInitialBotId(null)}
+            />
             <TeacherProgressOverview />
           </div>
           <AbilityTrackingReport period={period} onCreateQuiz={onCreateQuiz} />

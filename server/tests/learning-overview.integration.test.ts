@@ -37,6 +37,7 @@ let baseUrl = "";
 async function resetFixture() {
   await pool.query("DELETE FROM flagged_chat_messages WHERE teacher_id = ANY($1::text[]) OR student_user_id = ANY($1::text[])", [ALL_USERS]);
   await pool.query("DELETE FROM bot_conversation_participation_windows WHERE conversation_id = ANY($1::text[])", [ALL_CONVS]);
+  await pool.query("DELETE FROM bot_student_mastery_events WHERE bot_id = ANY($1::text[])", [[BOT_A, BOT_B]]);
   await pool.query("DELETE FROM bot_conversation_states WHERE conversation_id = ANY($1::text[])", [ALL_CONVS]);
   await pool.query("DELETE FROM conversation_messages WHERE conversation_id = ANY($1::text[])", [ALL_CONVS]);
   await pool.query("DELETE FROM conversations WHERE id = ANY($1::text[])", [ALL_CONVS]);
@@ -116,6 +117,15 @@ async function resetFixture() {
     [BOT_A, STUDENT_A, STUDENT_B, BOT_B, STUDENT_C]
   );
 
+  // 知識點掌握事件：A×1 今日（30d 計 1）、A×2 六十日舊（30d 唔計、all 計）、B×C 今日
+  await pool.query(
+    `INSERT INTO bot_student_mastery_events (bot_id, user_id, topic_id, point_id, first_covered_at) VALUES
+       ($1,$2,'','kp_001',NOW()),
+       ($1,$3,'','kp_002',NOW() - INTERVAL '60 days'),
+       ($4,$5,'','kp_003',NOW())`,
+    [BOT_A, STUDENT_A, STUDENT_B, BOT_B, STUDENT_C]
+  );
+
   // 測驗質量報告：1 日前批改（計）、10 日前（唔計）
   await pool.query(
     `INSERT INTO quizzes (id, bot_id, teacher_id, title, source_text, target_grade, question_count, status, published_at, grading_completed_at) VALUES
@@ -189,6 +199,8 @@ test("KPI 行：期內參與度加總 + 班級提醒（未有互動嘅班）", {
   assert.equal(body.participation.noInteractionStudents, 1);
   assert.equal(body.participation.studentMessageTotal, 4);
   assert.equal(body.participation.meaninglessMessages, 2);
+  // 掌握增長：A×1 今日（A×2 十日舊、B×C 係老師 B 嘅 bot）→ 30d = 1
+  assert.equal(body.masteryStudents, 1);
   // 提醒：未分組 bucket（STUDENT_B）有 1 位未有互動
   assert.equal(body.classAlerts.length, 1);
   assert.equal(body.classAlertsTotal, 1);
@@ -201,6 +213,7 @@ test("period=all 包埋 60 日前嘅舊窗口", { skip: !safeTestDatabase }, asy
   const { body } = await callApi("/api/teachers/me/learning-overview?period=all");
   assert.equal(body.participation.studentMessageTotal, 9); // 3 + 1 + 5
   assert.equal(body.participation.meaninglessMessages, 3); // 1 + 1 + 1
+  assert.equal(body.masteryStudents, 2); // all 唔過濾時間：A×1 + A×2（六十日舊）
 });
 
 test("異常數字：anomalyOpen = 紅點數、wellbeingOpen 分開", { skip: !safeTestDatabase }, async () => {
@@ -249,6 +262,8 @@ test("老師範圍隔離：老師 B 只見到自己嘅數據", { skip: !safeTest
   assert.equal(body.participation.activeStudents, 0);
   assert.equal(body.anomalyOpen, 0);
   assert.equal(body.wellbeingOpen, 0);
+  // B×C 今日事件 → 掌握增長 1
+  assert.equal(body.masteryStudents, 1);
   // 未分組 bucket（STUDENT_C）有 1 位未有互動 → 提醒 1 條、total 1
   assert.equal(body.classAlerts.length, 1);
   assert.equal(body.classAlertsTotal, 1);

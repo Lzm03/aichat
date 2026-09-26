@@ -8,6 +8,7 @@ import participationRouter from "../api/participation.ts";
 import { trackConversationState } from "../lib/conversation-state.ts";
 import {
   ensureParticipationTables,
+  recordMasteryEvents,
   runIdleParticipationScan,
 } from "../lib/participation.ts";
 import { ensurePlatformTables, signToken } from "../lib/platform-auth.ts";
@@ -69,6 +70,10 @@ async function resetFixture() {
   await pool.query(
     "DELETE FROM bot_conversation_participation_windows WHERE conversation_id = ANY($1::text[])",
     [ALL_CONVS]
+  );
+  await pool.query(
+    "DELETE FROM bot_student_mastery_events WHERE bot_id = ANY($1::text[])",
+    [[BOT_A]]
   );
   await pool.query(
     "DELETE FROM bot_conversation_states WHERE conversation_id = ANY($1::text[])",
@@ -647,4 +652,90 @@ test("未登入／學生身份被拒", { skip: !safeTestDatabase }, async () => 
     "student"
   );
   assert.equal(student.status, 403);
+});
+
+test("掌握事件：首次寫入＋重複 idempotent（PK 去重）", { skip: !safeTestDatabase }, async () => {
+  await resetFixture();
+  await recordMasteryEvents(BOT_A, STUDENT_A, "", ["kp_a", "kp_b"]);
+  await recordMasteryEvents(BOT_A, STUDENT_A, "", ["kp_a", "kp_b"]); // 重複批 → 唔加
+  await recordMasteryEvents(BOT_A, STUDENT_A, "", ["kp_a", "kp_c"]); // 新 kp_c → 加
+  await recordMasteryEvents(BOT_A, STUDENT_B, "", ["kp_a"]); // 另一學生
+
+  const result = await pool.query(
+    `SELECT user_id, point_id FROM bot_student_mastery_events
+     WHERE bot_id=$1 ORDER BY user_id, point_id`,
+    [BOT_A]
+  );
+  assert.deepEqual(
+    result.rows.map((row) => [String(row.user_id), String(row.point_id)]),
+    [
+      [STUDENT_A, "kp_a"],
+      [STUDENT_A, "kp_b"],
+      [STUDENT_A, "kp_c"],
+      [STUDENT_B, "kp_a"],
+    ]
+  );
+});
+
+test("topic 維度行帶 botId（character_topics 映射）；主知識庫 botId null", { skip: !safeTestDatabase }, async () => {
+  await resetFixture();
+  const topicId = `${PREFIX}topic_tp1`;
+  const convId = `${PREFIX}conv_tp`;
+  try {
+    // character_topics 行先（conversations.topic_id 有 FK 指佢）
+    await pool.query(
+      `INSERT INTO character_topics (id, character_id, name, knowledge_content)
+       VALUES ($1,$2,'測試話題','')`,
+      [topicId, BOT_A]
+    );
+    await pool.query(
+      `INSERT INTO conversations (id, user_id, bot_id, topic_id, title, type, status)
+       VALUES ($1,$2,$3,$4,'conv tp','bot_learning','active')`,
+      [convId, STUDENT_A, BOT_A, topicId]
+    );
+    await pool.query(
+      `INSERT INTO bot_conversation_states
+         (conversation_id, bot_id, user_id, topic_id, covered_point_ids, next_point_id, student_level, turns_since_summary, skipped_point_ids, turns_on_next_point, turns_since_judge, participation_watermark, updated_at)
+       VALUES ($1,$2,$3,$4,'[]'::jsonb,NULL,'未評估',0,'[]'::jsonb,0,0,NOW(),NOW())`,
+      [convId, BOT_A, STUDENT_A, topicId]
+    );
+    await pool.query(
+      `INSERT INTO bot_conversation_participation_windows
+         (conversation_id, bot_id, user_id, topic_id, window_student_count, effective_count, meaningless_count, judge_source)
+       VALUES ($1,$2,$3,$4,3,1,0,'llm')`,
+      [convId, BOT_A, STUDENT_A, topicId]
+    );
+    // 主知識庫 conversation（topic NULL → 聚合歸 ''，botId null）
+    await pool.query(
+      `INSERT INTO conversations (id, user_id, bot_id, topic_id, title, type, status)
+       VALUES ($1,$2,$3,NULL,'conv main','bot_learning','active')`,
+      [`${PREFIX}conv_main`, STUDENT_A, BOT_A]
+    );
+    await pool.query(
+      `INSERT INTO bot_conversation_states
+         (conversation_id, bot_id, user_id, topic_id, covered_point_ids, next_point_id, student_level, turns_since_summary, skipped_point_ids, turns_on_next_point, turns_since_judge, participation_watermark, updated_at)
+       VALUES ($1,$2,$3,'','[]'::jsonb,NULL,'未評估',0,'[]'::jsonb,0,0,NOW(),NOW())`,
+      [`${PREFIX}conv_main`, BOT_A, STUDENT_A]
+    );
+    await pool.query(
+      `INSERT INTO bot_conversation_participation_windows
+         (conversation_id, bot_id, user_id, topic_id, window_student_count, effective_count, meaningless_count, judge_source)
+       VALUES ($1,$2,$3,'',2,0,1,'llm')`,
+      [`${PREFIX}conv_main`, BOT_A, STUDENT_A]
+    );
+
+    const { body } = await callApi("/api/teachers/me/participation?period=all&dimension=topic");
+    const tpRow = body.rows.find((row: any) => row.id === topicId);
+    assert.ok(tpRow, "要有話題行");
+    assert.equal(tpRow.botId, BOT_A);
+    const mainRow = body.rows.find((row: any) => row.id === "");
+    assert.ok(mainRow, "要有主知識庫行");
+    assert.equal(mainRow.botId, null);
+  } finally {
+    const mainConv = `${PREFIX}conv_main`;
+    await pool.query("DELETE FROM bot_conversation_participation_windows WHERE conversation_id = ANY($1::text[])", [[convId, mainConv]]);
+    await pool.query("DELETE FROM bot_conversation_states WHERE conversation_id = ANY($1::text[])", [[convId, mainConv]]);
+    await pool.query("DELETE FROM conversations WHERE id = ANY($1::text[])", [[convId, mainConv]]);
+    await pool.query("DELETE FROM character_topics WHERE id=$1", [topicId]);
+  }
 });

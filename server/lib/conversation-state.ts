@@ -27,7 +27,7 @@ import {
   judgeConversationWindow,
 } from "./answer-judge.ts";
 import type { EngagementVerdict } from "./engagement.ts";
-import { recordParticipationWindow } from "./participation.ts";
+import { recordParticipationWindow, recordMasteryEvents } from "./participation.ts";
 import { enqueueConversationTrack } from "./conversation-track-queue.ts";
 
 export {
@@ -164,6 +164,8 @@ export async function mergeStudentProgress(
          updated_at = NOW()`,
       [botId, userId, coverage.topicId, JSON.stringify(coverage.value)]
     );
+    // 記「首次掌握」事件（idempotent，PK 去重）——「知識點掌握增長」KPI 嘅數據源
+    await recordMasteryEvents(botId, userId, coverage.topicId, coverage.value);
   } catch (error) {
     console.warn("[conversation-state] failed to merge student progress", error);
   }

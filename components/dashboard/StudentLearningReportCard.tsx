@@ -151,18 +151,36 @@ const normalizeSharedBots = (bots: any[]): SharedBotOption[] => bots.map((bot: a
   avatarUrl: bot.avatarUrl || bot.avatar_url || '',
 })).filter((bot: SharedBotOption) => Boolean(bot.id));
 
-export const StudentLearningReportCard = () => {
+type StudentLearningReportCardProps = {
+  /** 課堂參與 tab 跳轉過嚟時預選嘅 Bot（deep-link；用完 page 會清走，唔會鎖死選擇） */
+  initialBotId?: string;
+  onInitialBotIdConsumed?: () => void;
+};
+
+export const StudentLearningReportCard: React.FC<StudentLearningReportCardProps> = ({
+  initialBotId,
+  onInitialBotIdConsumed,
+}) => {
   const cachedAssessment = peekTeacherData<any>('/api/bots/teacher/assessment-report');
   const currentRole = readAuthSession()?.user?.role;
   const canViewClassAssessmentDetail = currentRole === 'teacher' || currentRole === 'admin';
-  const [viewLevel, setViewLevel] = useState<'overview' | 'report'>('overview');
+  const [viewLevel, setViewLevel] = useState<'overview' | 'report'>(
+    initialBotId ? 'report' : 'overview'
+  );
   const [isClassDetailOpen, setIsClassDetailOpen] = useState(false);
   const [detailFilter, setDetailFilter] = useState<'all' | 'warning' | 'knowledge' | 'normal'>('all');
   const [selectedDetailStudent, setSelectedDetailStudent] = useState<any | null>(null);
   const [isRankingOpen, setIsRankingOpen] = useState(false);
   const [assessmentRows, setAssessmentRows] = useState<AssessmentRow[]>(cachedAssessment?.rows || []);
   const [sharedBots, setSharedBots] = useState<SharedBotOption[]>(normalizeSharedBots(cachedAssessment?.sharedBots || []));
-  const [selectedBotId, setSelectedBotId] = useState(String(cachedAssessment?.selectedBotId || ''));
+  const [selectedBotId, setSelectedBotId] = useState(
+    initialBotId || String(cachedAssessment?.selectedBotId || '')
+  );
+  // deep-link 用一次就通知 page 清走：tab 切走再返唔會被迫返同一個 Bot
+  useEffect(() => {
+    if (initialBotId) onInitialBotIdConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [studentProgressData, setStudentProgressData] = useState<StudentProgressPayload | null>(null);
   const [interactionSummary, setInteractionSummary] = useState<{
     independentRate: number;

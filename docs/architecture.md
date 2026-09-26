@@ -143,7 +143,7 @@ aichat/
 │   ├── db.ts                    # pg Pool 初始化
 │   ├── botMapper.js             # camelCase ↔ snake_case 欄位映射（bots / modo API 用）
 │   ├── api/                     # REST API routes（含 flagged-chat.ts：異常對話記錄、participation.ts：課堂參與聚合、learning-overview.ts：學習報告總覽）
-│   ├── lib/                     # 後端邏輯（含 conversation-track-queue.ts、chat-anomaly-rules.ts：對話異常偵測、participation.ts：參與度窗口表＋閒置掃描、engagement.ts：參與度分類純函數）
+│   ├── lib/                     # 後端邏輯（含 conversation-track-queue.ts、chat-anomaly-rules.ts：對話異常偵測、participation.ts：參與度窗口表＋掌握事件＋閒置掃描、engagement.ts：參與度分類純函數）
 │   ├── config/                  # 帳號覆寫、方案功能限額
 │   ├── migrations/              # SQL migration
 │   ├── scripts/                 # 主題 migration、Google Sheet 用戶註冊、bot-prompt 回歸場景（test:bot-prompt）

@@ -73,6 +73,23 @@ export function ensureParticipationTables(): Promise<void> {
         ALTER TABLE bot_student_progress
         ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ
       `);
+      // 知識點掌握增長事件：每個 (bot, student, topic, point) 嘅「首次掌握」。
+      // PK 天然去重，recordMasteryEvents 用 ON CONFLICT DO NOTHING——重複寫入
+      // 零影響；統計「期內首次掌握嘅學生數」就係 COUNT(DISTINCT user_id)。
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS bot_student_mastery_events (
+          bot_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          topic_id TEXT NOT NULL DEFAULT '',
+          point_id TEXT NOT NULL,
+          first_covered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (bot_id, user_id, topic_id, point_id)
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS bsme_first_covered_idx
+        ON bot_student_mastery_events (first_covered_at)
+      `);
       await pool.query(`
         CREATE INDEX IF NOT EXISTS bcs_idle_scan_idx
         ON bot_conversation_states (updated_at)
@@ -96,6 +113,28 @@ export type ParticipationTurn = {
 type Queryable = {
   query(text: string, values?: unknown[]): Promise<{ rowCount?: number | null }>;
 };
+
+/**
+ * 記「首次掌握」事件（每個知識點一條，idempotent）。
+ * 由 mergeStudentProgress 每輪 call；PK 去重令重複寫入零影響，
+ * 「期內首次掌握嘅學生數」統計就係 COUNT(DISTINCT user_id)。
+ */
+export async function recordMasteryEvents(
+  botId: string,
+  userId: string,
+  topicId: string,
+  pointIds: readonly string[]
+): Promise<void> {
+  if (!pointIds.length) return;
+  await ensureParticipationTables();
+  await pool.query(
+    `INSERT INTO bot_student_mastery_events (bot_id, user_id, topic_id, point_id)
+     SELECT $1, $2, $3, elem
+     FROM jsonb_array_elements_text($4::jsonb) AS elem
+     ON CONFLICT DO NOTHING`,
+    [botId, userId, topicId, JSON.stringify(pointIds)]
+  );
+}
 
 /**
  * 記一個判斷窗口（純 INSERT，唔 upsert——同一批 new turns 只會 judge 一次，
@@ -283,6 +322,9 @@ export async function runIdleParticipationScan(): Promise<number> {
 export type ParticipationRow = {
   id: string;
   name: string | null;
+  /** 行所屬嘅 Bot id：bot 維度 = 自己；topic 維度 = character_topics.character_id；
+   *  ''（主知識庫）或 topic 已刪時 null → 前端唔可撳跳能力報告 */
+  botId?: string | null;
   studentMessageTotal: number;
   effectiveQuestions: number;
   meaninglessMessages: number;
@@ -359,7 +401,8 @@ export async function aggregateParticipation(input: {
             p.meaningless::int AS meaningless,
             u.full_name AS student_name,
             b.name AS bot_name,
-            ct.name AS topic_name
+            ct.name AS topic_name,
+            ct.character_id AS topic_bot_id
      FROM perconv p
      JOIN users u ON u.id = p.user_id
      LEFT JOIN bots b ON b.id = p.bot_id
@@ -375,6 +418,7 @@ export async function aggregateParticipation(input: {
     string,
     {
       name: string | null;
+      botId: string | null;
       msgTotal: number;
       effective: number;
       meaningless: number;
@@ -412,6 +456,14 @@ export async function aggregateParticipation(input: {
           : null;
     const bucket = bucketStats.get(bucketId) || {
       name: bucketName,
+      // bot 維度 id 就係 bot；topic 維度用 character_topics.character_id
+      // （''／已刪話題 JOIN miss → null，前端唔可撳）
+      botId:
+        input.dimension === "bot"
+          ? bucketId
+          : row.topic_bot_id
+            ? String(row.topic_bot_id)
+            : null,
       msgTotal: 0,
       effective: 0,
       meaningless: 0,
@@ -448,6 +500,7 @@ export async function aggregateParticipation(input: {
     rows.push({
       id,
       name: bucket.name,
+      botId: bucket.botId,
       studentMessageTotal: bucket.msgTotal,
       effectiveQuestions: bucket.effective,
       meaninglessMessages: bucket.meaningless,

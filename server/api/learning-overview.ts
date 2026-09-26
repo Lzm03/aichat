@@ -34,8 +34,10 @@ router.get("/teachers/me/learning-overview", requireAuth, async (req, res) => {
         ? req.query.period
         : "30d";
     const periodStart = PERIOD_SQL[period];
+    // periodStart 係白名單硬編碼表達式，直接嵌入（綁參數會俾 Postgres 當字串）
+    const periodExpr = periodStart ? `(${periodStart})::timestamptz` : "NULL::timestamptz";
 
-    const [classRows, anomaly] = await Promise.all([
+    const [classRows, anomaly, mastery] = await Promise.all([
       aggregateParticipation({ teacherId: user.id, periodStartSql: periodStart, dimension: "class" }),
       pool.query(
         `SELECT
@@ -43,6 +45,19 @@ router.get("/teachers/me/learning-overview", requireAuth, async (req, res) => {
            COUNT(*) FILTER (WHERE status='open' AND category='wellbeing')::int AS wellbeing_open
          FROM flagged_chat_messages
          WHERE teacher_id=$1`,
+        [user.id]
+      ),
+      // 知識點掌握增長：期內「首次掌握」事件嘅學生數（自己發佈嘅 Bot × roster 學生）
+      pool.query(
+        `SELECT COUNT(DISTINCT e.user_id)::int AS mastery_students
+         FROM bot_student_mastery_events e
+         WHERE (${periodExpr} IS NULL OR e.first_covered_at >= ${periodExpr})
+           AND e.bot_id IN (SELECT id FROM bots WHERE owner_id=$1)
+           AND e.user_id IN (
+             SELECT ts.student_id FROM teacher_students ts
+             JOIN users u ON u.id = ts.student_id AND u.status = 'active'
+             WHERE ts.teacher_id = $1
+           )`,
         [user.id]
       ),
     ]);
@@ -84,6 +99,7 @@ router.get("/teachers/me/learning-overview", requireAuth, async (req, res) => {
       classAlertsTotal,
       wellbeingOpen: Number(anomaly.rows[0]?.wellbeing_open || 0),
       anomalyOpen: Number(anomaly.rows[0]?.anomaly_open || 0),
+      masteryStudents: Number(mastery.rows[0]?.mastery_students || 0),
     });
   } catch (error) {
     console.error("GET /teachers/me/learning-overview Failed:", error);

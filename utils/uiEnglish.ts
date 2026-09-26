@@ -931,7 +931,7 @@ export const englishUi: Record<string, string> = {
   "能力追蹤、Bloom 六層級與知識點掌握": "Ability tracking, Bloom levels and knowledge mastery",
   "覆核異常對話並跟進學生": "Review chat anomalies and follow up with students",
   // 學習報告頁：總覽（docs/learning-report-overview.md）
-  "有實質互動學生": "Students with real interaction",
+  "知識點掌握增長": "Knowledge mastery growth",
   "需要你跟進學生": "Students needing follow-up",
   "無意義訊息比例": "Low-effort message ratio",
   "待處理異常對話": "Open chat alerts",
@@ -942,7 +942,7 @@ export const englishUi: Record<string, string> = {
   "暫時冇需要跟進嘅事項": "Nothing to follow up for now",
   "載入總覽失敗，請稍後再試。": "Couldn't load the overview. Please try again.",
   // KPI 卡定義小字（新手老師唔使 hover 先明「=？」；定義見 docs/learning-report-overview.md）
-  "期內有實質對話的學生數（所有 Bot、話題合計）": "Students with meaningful messages in this period (across all bots and topics)",
+  "發佈 Bot 後，與 Bot 對話並首次掌握新知識點的學生數（期內）": "Students who chatted with a bot and mastered new knowledge points for the first time in this period",
   "期內沒有實質對話的學生數": "Students with no meaningful messages in this period",
   "全部對話中簡短回應（如「哦」「唔知」）所佔比例": "Share of brief replies (e.g. \"oh\", \"I don't know\") in all chats",
   "待處理的異常對話數，與左側紅點一致": "Open chat alerts — matches the sidebar red dot",
@@ -955,6 +955,7 @@ export const englishUi: Record<string, string> = {
   "主知識庫": "Main knowledge base",
   "訊息總數": "Total messages",
   "有效提問": "Effective questions",
+  "學生主動提出、同學習內容相關的提問；由 AI 自動判斷（每 3 輪對話判斷一次），判斷不到時以訊息長度估算": "Questions the student raised proactively, related to the learning content — judged by AI (every 3 turns); falls back to message length when AI cannot judge",
   "無意義比例": "Low-effort ratio",
   "活躍學生": "Active students",
   "未有互動": "No interaction",

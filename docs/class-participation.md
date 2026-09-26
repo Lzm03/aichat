@@ -265,6 +265,13 @@ judge 加 `engagement` 輸出（全部答題模式）、`bot_conversation_partic
 已由異常對話卡片提供。總覽「最近動態」按用戶要求刪除（同「需要你跟進」信息重複）。
 playwright 真撳 31 項全過。
 
+2026-09-26 追加（用戶第三輪）：課堂參與 tab 嘅 **Bot／話題行撳入 → 學生能力 tab
+預選該 Bot 嘅能力追蹤報告**（topic 經 `character_topics.character_id` 映射；
+主知識庫唔可撳）；行內「有效提問」加 hover tooltip 講明判定規則（AI 每 3 輪判斷、
+失敗用字數估算）；總覽「有實質互動學生」KPI 卡按用戶意思換做**「知識點掌握增長」**
+（`bot_student_mastery_events` 首次掌握事件表，PK 去重、`COUNT(DISTINCT user_id)`——
+好統計：每條事件寫一次永唔重複）。playwright 39 項全過。
+
 **第二期**：測驗封存（問題 4 補做）**已完成**——老師可將已發佈測驗封存／還原，
 作答、成績同異常標記全部保留，`archived_at` 為 NULL 就係未封存；跟住係閒置判斷嘅調校、
 未有互動學生嘅跟進流程。

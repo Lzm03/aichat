@@ -21,7 +21,7 @@ KPI 卡固定定義小字、異常卡紅點、對話紀錄入口漸變、課堂�
 
 | 卡 | 定義（卡上固定小字，新手老師唔使 hover） | 撳入去 |
 | --- | --- | --- |
-| 有實質互動學生 | 期內有實質對話的學生數（所有 Bot、話題合計） | 課堂參與 tab |
+| 知識點掌握增長 | 發佈 Bot 後，與 Bot 對話並首次掌握新知識點的學生數（期內） | 學生能力 tab |
 | 需要你跟進學生 | 期內沒有實質對話的學生數 | 課堂參與 tab |
 | 無意義訊息比例 | 全部對話中簡短回應（如「哦」「唔知」）所佔比例 | 課堂參與 tab |
 | 待處理異常對話 | 待處理的異常對話數，與左側紅點一致 | 對話紀錄 tab |
@@ -32,11 +32,13 @@ KPI 卡固定定義小字、異常卡紅點、對話紀錄入口漸變、課堂�
 
 **指標定義（用戶問「=？」嘅答案，寫喺卡上）**：
 
-- **有實質互動學生**＝期內喺**任何 Bot、任何話題**有 ≥1 條「實質訊息」嘅學生。
-  來源：`conversation_messages`（`role='user'`＋`message_type='normal'`）經 LLM judge
-  （每 3 輪搭順風車；失敗用 ≥4 字 heuristic fallback）分類。**歸納喺學生層面**：
-  老師一日發佈 2 個 bot × 6 個話題，全部對話合併計、一位學生只計一次；
-  要睇每個 Bot／每個話題嘅拆解 → 課堂參與 tab 維度切換
+- **知識點掌握增長**（2026-09-26 取代「有實質互動學生」——用戶覺得嗰張雞肋）：
+  期內「首次掌握」新知識點嘅學生數。數據源：新表 `bot_student_mastery_events`
+  （PK = bot×學生×話題×知識點，記每個知識點嘅**首次**掌握；`mergeStudentProgress`
+  每輪 idempotent 寫入，`ON CONFLICT DO NOTHING` 去重——唔追增長曲線，事件級事實
+  就夠統計）。範圍：自己發佈嘅 Bot（`bots.owner_id`）× roster 學生 ×
+  `first_covered_at` 喺期內。**好統計**：每條事件寫一次、永唔重複，統計就係
+  `COUNT(DISTINCT user_id)`，零歷史追蹤負擔
 - **需要你跟進學生**＝期內 0 條實質訊息。跟進原因得一個：**冇實質參與**（binary）。
   **同異常對話唔重合**：異常（`flagged_chat_messages`）係安全／情緒困擾／私隱命中，
   數據源同機制完全唔同；同一位學生可以同時喺兩邊出現，兩條數唔互相包含
@@ -71,6 +73,13 @@ KPI 卡固定定義小字、異常卡紅點、對話紀錄入口漸變、課堂�
 
 - 頂部維度切換：班級／按 Bot／按話題（`dimension` param 打 participation route）
 - 每組一行：組名＋訊息總數、有效提問、無意義比例、活躍學生（唔排名、唔排序）
+- **「有效提問」有 hover tooltip**（2026-09-26 用戶要求講明判定規則）：
+  「學生主動提出、同學習內容相關的提問；由 AI 自動判斷（每 3 輪對話判斷一次），
+  判斷不到時以訊息長度估算」
+- **bot／topic 行可撳**（2026-09-26）：撳入 → 學生能力 tab 預選該 Bot 嘅能力追蹤報告
+  （`StudentLearningReportCard` 加 `initialBotId`／`onInitialBotIdConsumed` deep-link
+  props，用完即清唔鎖死選擇；topic 經 `character_topics.character_id` 映射所屬 Bot；
+  「主知識庫」同已刪話題 botId null → 唔可撳）
 - **組名 null 因維度而異**：topic 嘅 `''`＝「主知識庫」；class／bot 嘅 null＝「未分組」
 - class 維度先有「未有互動」chip＋學生名單：**純統計**（用戶決定：未有互動嘅學生
   根本冇對話可睇，開 drawer 會係空白）。撳名 → popover 顯示**姓名＋班級**，
@@ -102,11 +111,15 @@ KPI 卡固定定義小字、異常卡紅點、對話紀錄入口漸變、課堂�
   ],
   "classAlertsTotal": 4,                 // 全部未有互動嘅班數（超出 3 時前端出「仲有 N 班」）
   "wellbeingOpen": 1,
-  "anomalyOpen": 4                       // = 紅點數
+  "anomalyOpen": 4,                      // = 紅點數
+  "masteryStudents": 3                   // 期內首次掌握新知識點嘅學生數（bot_student_mastery_events）
 }
 ```
 
 - participation 總數由 `aggregateParticipation`（class 維度）加總，一套口徑
+- **participation route 嘅 bot／topic 行而家都帶 `botId`**（bot 維度 = 自己；
+  topic 維度 = `character_topics.character_id`，主知識庫／已刪話題 null）——
+  前端跳能力報告用
 - `bot_student_progress.created_at` 欄保留（2026-09-25 為「今日新增報告」亮點加；
   亮點已按用戶要求刪，欄位留做數據模型，日後可即插）
 - 401／403／500 慣例跟 participation route
@@ -119,9 +132,11 @@ KPI 卡固定定義小字、異常卡紅點、對話紀錄入口漸變、課堂�
 
 ## 分期
 
-- **已完成（2026-09-25）**：KPI 行＋定義小字＋紅點、需要你跟進（可撳＋封頂＋
-  15s 輪詢＋處理即消失）、快速入口漸變卡、課堂參與 tab 接駁、Sidebar 紅點即時清除、
-  overview route＋`classAlertsTotal`、mock 罐頭、整合測試 6 條＋playwright 31 項
+- **已完成（2026-09-25 → 09-26 追加）**：KPI 行＋定義小字＋紅點（09-26
+  「有實質互動學生」換「知識點掌握增長」）、需要你跟進（可撳＋封頂＋15s 輪詢＋
+  處理即消失）、快速入口漸變卡、課堂參與 tab 接駁＋bot／topic 行跳能力報告＋
+  有效提問 hover 判定、Sidebar 紅點即時清除、overview route＋`classAlertsTotal`＋
+  `masteryStudents`、掌握事件表、mock 罐頭、整合測試 6 條＋playwright 39 項
 - 之後可選：AI 生成洞察（用戶揀咗規則推導；日後要另開 LLM route＋評測）
 
 ## 驗證
